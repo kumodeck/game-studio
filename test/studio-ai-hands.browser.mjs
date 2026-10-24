@@ -307,7 +307,7 @@ async function runCode(theme) {
     const r3 = await ai([{ do: 'motion.code', code: 'spiral', name: '螺旋', key: 'pillar' }]);
     check(r3.results?.[0]?.ok, `motion.code done (${JSON.stringify(r3.results)})`);
     const t3 = await toast();
-    check(t3.includes(LANG === 'ja' ? 'コードの動き「螺旋」' : 'the code motion “螺旋”'), `the line: "${t3}"`);
+    check(t3.includes(LANG === 'ja' ? '動きのルール「螺旋」' : 'the rule motion “螺旋”'), `the line: "${t3}"`);
     const m = JSON.parse(await page.eval(`JSON.stringify(window.__studioTimeline.motionOf('pillar'))`));
     const sp = m?.clips?.find((c) => c.name === '螺旋');
     check(!!sp && !sp.keys?.p?.length && sp.len === 8, `the pillar's timeline has 螺旋, no points, one round (8 s) wide (${JSON.stringify(sp)})`);

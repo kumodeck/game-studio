@@ -469,6 +469,24 @@ export class PlacementModel {
     if (it) it.pose = this.current.get(key)!;
   }
 
+  /**
+   * Where a code layout's rule puts its objects (studio-code-knobs, 2026-10-24): the game's own place for them — their
+   * `was` — not the person's move. What the person changes of a layout (its knobs, one object put by hand, all of them
+   * put individually) lives in `places` (code-places.ts), so these objects never become an `objects` entry and never count
+   * on Save · n by themselves. Called with every list of the world (the page's poses) and every in-place layout.
+   */
+  codePoses(poses: Array<{ key: string; pose: Pose }>): void {
+    for (const { key, pose } of poses) {
+      const old = this.current.get(key);
+      const p: Pose = pose.z === undefined && old?.z !== undefined ? { ...pose, z: old.z } : { ...pose };
+      this.was.set(key, { ...p });
+      this.saved.set(key, { ...p });
+      this.current.set(key, { ...p });
+      const it = this.items.find((i) => i.key === key);
+      if (it) it.pose = { ...p };
+    }
+  }
+
   /** Sibling lists the game reported (2D adapters with draw order only). */
   layers(): string[] {
     return [...new Set(this.items.filter(hasLayer).map((i) => i.layer!))];

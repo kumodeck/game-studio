@@ -14,7 +14,8 @@
 //
 // WHY its own file: main.ts is 3,900 lines and other members change it the same week; main.ts only routes moves,
 // the card's numbers, undo and the bridge's messages through here.
-import type { BridgeToShell, Dim, LibraryMotion, Motion, MotionChannel, MotionClip, MotionEase, MotionKey, MotionRepeat, MotionUntil, MotionWhen, Pose, ShellToBridge } from '../contract.ts';
+import type { BridgeToShell, CodeAt, CodeMotionInfo, Dim, LibraryMotion, Motion, MotionChannel, MotionClip, MotionEase, MotionKey, MotionRepeat, MotionUntil, MotionWhen, Pose, ShellToBridge } from '../contract.ts';
+import { ruleKnobsAfter, ruleOf, ruleWords, type RuleInfo } from './rule-motion.ts';
 import { motionRunner, whenOf, whensOf } from '../loader/studio-placement.js';
 import { bend, insertAt, pointKind, setKind, toggleCorner, type PointKind } from './path-edit.ts';
 import { asOrdinary, asScene, joinClip, likeScene, sceneMembers, trackOrder as sceneOrder, withOrder, withTrack, withoutTrack } from './scene-motion.ts';
@@ -93,6 +94,13 @@ export interface TimelineDeps {
    * and the cursor there (`name` = the clip's name on screen, `use` = its Library motion). Absent = no AI here: no button.
    */
   ask?(key: string, motion: { name: string; use: string }): void;
+  /**
+   * The game page's rule motions (codeMotion; studio-code-knobs, 2026-10-24): their knobs with the code's numbers, their
+   * round. [] / absent = not said yet (a page opening, a game without any). A rule motion's strip, line and ◇ read them.
+   */
+  codeMotions?(): CodeMotionInfo[];
+  /** A one-line notice with the way back ("Made “Spiral” into editable points (16) · ⌘Z undoes it"). Absent = none. */
+  told?(text: string): void;
 }
 
 /**
@@ -106,6 +114,11 @@ export interface TimelineDeps {
  * (FINE_KEY below), so a person who closes it is not given it open again on this machine.
  */
 const FINE_SEEN = 'timeline-fine';
+/**
+ * "Make editable points" (studio-code-knobs): points a round of a rule motion — the plan's 16 (its words table, "Make editable
+ * points": "16 a turn"). Enough for a circle to read as one, few enough to drag by hand.
+ */
+const POINTS_PER_ROUND = 16;
 const FINE_KEY = 'studio.tl.fine';
 /** How long "✓ “Hop” attached" stays when nothing is chosen (then the row reads "Starts" again). */
 const FRESH_MS = 6000;
@@ -214,6 +227,26 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
 
   const raw = () => d.store;
   const lib = () => d.lib;
+  // ----- rule motions (studio-code-knobs, 2026-10-24; rule-motion.ts) -----
+  /** The rule behind a clip (its Library motion's `code`), with the game page's knobs; null = a motion of points. */
+  const ruleFor = (c: MotionClip | null | undefined): RuleInfo | null => {
+    if (!c) return null;
+    const list = d.codeMotions?.() ?? [];
+    return ruleOf(lib().get(c.use ?? c.name), list.length ? list : null);
+  };
+  /** The rule motions of these objects at `t` (their knob values: the file's over the code's — the page merges them). */
+  const rulesAt = (keys: string[], t: number): CodeAt[] => keys.flatMap((k) => {
+    const c = clipOf(k);
+    const l = c && !c.off ? lib().get(c.use ?? c.name) : undefined;
+    return l?.code ? [{ key: k, code: l.code, t, knobs: Object.fromEntries(Object.entries(l.knobs ?? {}).map(([n, x]) => [n, x.v])) }] : [];
+  });
+  /** A rule's knob values now (code's, then the file's), for the page's path and its points. */
+  const ruleValues = (r: RuleInfo) => Object.fromEntries(r.knobs.map((k) => [k.name, k.v]));
+  // "Make editable points" waiting for the page's answer (timeline/code-points): its id, the Library motion, its length.
+  let pointsAsk: { id: number; name: string; len: number; per: number } | null = null;
+  let pointsId = 0;
+  // A rule's knob being turned (the line's knob or the path's ◇): its Library motion before it (one undo step).
+  let knobFrom: { name: string; lib: LibraryMotion } | null = null;
   /**
    * An object's motion as the timeline works on it: each attachment with its Library motion's len / repeat / keys filled
    * in (`use` kept), so every edit below — keys, length, repeat — is a clip edit as before. A clip whose motion is not
@@ -338,9 +371,11 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
       const at = shown() ? offsets(k, time, rs) : null;
       poses.push({ key: k, pose: at ? compose(place, at, dim()) : place });
     }
-    const sig = JSON.stringify(poses);
+    // Rule motions (studio-code-knobs): their offsets come from the game page (it runs their at()).
+    const code = shown() ? rulesAt(moving().filter((k) => rs.has(k)), time) : [];
+    const sig = JSON.stringify([poses, code]);
     if (poses.length && (force || sig !== sentPoses)) {
-      d.send({ type: 'studio:timeline/pose', poses });
+      d.send({ type: 'studio:timeline/pose', poses, ...(code.length ? { code } : {}) });
       d.numbers();
     }
     sentPoses = sig;
@@ -367,7 +402,13 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
     const c = key ? clipOf(key) : null;
     const place = key ? d.place(key) : undefined;
     const ks = c?.keys.p;
-    const msg: ShellToBridge = key && place && ks?.length
+    // A rule motion (studio-code-knobs): its line comes from the game page's at(), with the ◇ of its `drag` knob.
+    const rule = ruleFor(c);
+    const dragKnob = rule?.drag ? rule.knobs.find((k) => k.name === rule.drag) : undefined;
+    const msg: ShellToBridge = key && place && rule && !rule.missing && !rule.loading && !c!.off
+      ? { type: 'studio:timeline/path', key, base: place.p.slice(), code: { code: rule.code, name: c!.use ?? c!.name, knobs: ruleValues(rule), round: rule.round,
+        ...(dragKnob ? { drag: dragKnob.name, unit: dragKnob.unit, label: dragKnob.label } : {}) } }
+      : key && place && ks?.length
       ? { type: 'studio:timeline/path', key, base: place.p.slice(), keys: structuredClone(ks), now: offsets(key)?.p ?? null,
         sel: ks.map((k, i) => (sel.some((r) => r.key === key && r.ch === 'p' && sameT(r.t, k.t)) ? i : -1)).filter((i) => i >= 0),
         // Making step by step: a press on the object where it stands is the next step, not a drag of that point.
@@ -471,6 +512,9 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
   // clipOf() hides the object's clips until the first move of a making (line ~263).
   // (A function, not a const: sendRec() above reads it, and may run before this line is reached.)
   function records(key: string): boolean {
+    // A rule motion shown (studio-code-knobs): it has no points to add — a move moves where the object stands (its rule
+    // goes round that place), as with the timeline folded.
+    if (ruleFor(clipOf(key))) return false;
     return !trying && shown() && auto && (!!clipOf(key) || making?.key === key) && !!d.place(key);
   }
   /** What `key` shows now (its place + its clip at the time line). */
@@ -507,7 +551,8 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
     const run = playing.from + (performance.now() - playing.t0) / 1000;
     const c = head() ? clipOf(head()!) : null;
     const len = c?.len ?? span();
-    const rep = c?.repeat ?? 'once';
+    // A rule motion goes on as long as the game runs: ▶ shows it round and round (its strip is one round wide).
+    const rep = ruleFor(c) ? 'loop' : c?.repeat ?? 'once';
     if (rep === 'loop') time = run % len;
     else if (rep === 'pingpong') time = run % (2 * len) > len ? 2 * len - (run % (2 * len)) : run % (2 * len);
     else time = Math.min(run, len);
@@ -518,7 +563,8 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
       const at = offsets(k, rep === 'once' || !c ? time : run, rs);
       if (at) poses.push({ key: k, pose: compose(d.place(k)!, at, dim()) });
     }
-    if (poses.length) (d.send({ type: 'studio:timeline/pose', poses }), d.numbers());
+    const code = rulesAt(moving().filter((k) => rs.has(k)), run);
+    if (poses.length) (d.send({ type: 'studio:timeline/pose', poses, ...(code.length ? { code } : {}) }), d.numbers());
     sentPoses = '';
     panel.place();
     sendPath();
@@ -568,7 +614,13 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
   function rows() {
     const p = d.picked();
     const ms = scene ? members() : [];
-    return [...rowKeys()].map((k) => ({ key: k, label: d.label(k), picked: k === p, open: openRows.has(k), clip: clipOf(k), ...(scene ? { member: ms.includes(k) } : {}) }));
+    return [...rowKeys()].map((k) => {
+      const c = clipOf(k);
+      const r = ruleFor(c);
+      return { key: k, label: d.label(k), picked: k === p, open: openRows.has(k), clip: c, ...(scene ? { member: ms.includes(k) } : {}),
+        // A rule motion's strip (studio-code-knobs): its words from its knobs, one round wide.
+        ...(r && c ? { rule: { words: ruleWords(d.t, r), off: !!c.off, missing: r.missing, round: r.round, len: c.len } } : {}) };
+    });
   }
   /** The rows' objects in their order (rows() without what each row draws): also the objects ▶ moves (offsets). */
   function rowKeys(): Set<string> {
@@ -744,7 +796,50 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
       // (studio-motion-line, 2026-10-23: the first-time three steps, `coach`, are gone — the line says the next step.)
       fine: fineNow(),
       slim,
+      // A rule motion (studio-code-knobs): its knobs on the line, in place of Repeat.
+      rule: (() => {
+        const r = ruleFor(c);
+        return r && c ? { knobs: r.knobs, off: !!c.off, missing: r.missing, loading: r.loading, pointsTip: d.t('rule.pointsTip', { n: POINTS_PER_ROUND }) } : null;
+      })(),
     };
+  }
+
+  // ----- rule motions: their knobs, their switch, "Make editable points" (studio-code-knobs) -----
+  /**
+   * A rule's knob turned (the line's knob, or the ◇ of its path in the game): the Library motion's knobs, live, then ONE
+   * undo step (`end`) — a knob is the Library motion's, so every object with that motion follows (as a point would).
+   */
+  function turnRule(libName: string, knob: string, v: number, end: boolean, fromPanel: boolean) {
+    const l = lib().get(libName);
+    const r = ruleOf(l, (d.codeMotions?.() ?? []).length ? d.codeMotions!() : null);
+    if (!l || !r || r.loading || r.missing) return;
+    if (!knobFrom || knobFrom.name !== libName) knobFrom = { name: libName, lib: structuredClone(l) };
+    const ks = ruleKnobsAfter(r, knob, v);
+    const next: LibraryMotion = { ...l };
+    if (ks) next.knobs = ks;
+    else delete next.knobs;
+    lib().set(libName, next);
+    if (end) {
+      const from = knobFrom.lib;
+      knobFrom = null;
+      if (JSON.stringify(from) !== JSON.stringify(lib().get(libName))) d.undo.push({ changes: [{ kind: 'motion-lib', key: libName, from, to: structuredClone(lib().get(libName)!) }] });
+      d.changed();
+    }
+    refresh();
+    // The line's own knob keeps its drag (not drawn again under the pointer): only the strips' words follow, until `end`.
+    if (fromPanel && !end) {
+      const rr = ruleOf(lib().get(libName), d.codeMotions!());
+      if (rr) for (const k of moving()) if ((clipOf(k)?.use ?? clipOf(k)?.name) === libName) panel.ruleWords?.(k, ruleWords(d.t, rr));
+    } else panel.render();
+  }
+  /** "Make editable points": ask the game page for the rule's shape (timeline/code-points); the answer makes the points. */
+  function rulePoints(key: string) {
+    const c = clipOf(key);
+    const r = ruleFor(c);
+    if (!c || !r || r.missing || r.loading) return;
+    const len = r.round && r.round > 0 ? r.round : 4;
+    pointsAsk = { id: ++pointsId, name: c.use ?? c.name, len, per: POINTS_PER_ROUND };
+    d.send({ type: 'studio:timeline/code-points', id: pointsAsk.id, code: r.code, knobs: ruleValues(r), len, per: POINTS_PER_ROUND });
   }
 
   // ----- keys -----
@@ -1137,6 +1232,21 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
 
   const panel = makePanel(view, {
     t: d.t,
+    ruleKnob(name, v, end) {
+      const key = head();
+      const c = key ? clipOf(key) : null;
+      if (c) turnRule(c.use ?? c.name, name, v, end, true);
+    },
+    ruleOff(key, off) {
+      const c = clipOf(key);
+      if (c) editOf(key, c, (x) => {
+        const out = { ...x };
+        if (off) out.off = true;
+        else delete out.off;
+        return out;
+      });
+    },
+    rulePoints: (key) => rulePoints(key),
     play: (on) => (on ? play() : stop()),
     scrub(t, end) {
       if (playing) stop();
@@ -1543,6 +1653,27 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
       return true;
     },
     onMessage(m: BridgeToShell): boolean {
+      // The ◇ of a rule motion's path dragged in the game (studio-code-knobs): its knob, live then one undo step.
+      if (m.type === 'studio:timeline/code-knob') {
+        turnRule(m.name, m.knob, m.v, m.end, false);
+        return true;
+      }
+      // The rule's shape as points (the answer to rulePoints): the Library motion becomes a motion of points, ONE undo step.
+      if (m.type === 'studio:timeline/code-points') {
+        const ask = pointsAsk;
+        if (!ask || ask.id !== m.id) return true;
+        pointsAsk = null;
+        const l = lib().get(ask.name);
+        if (!l?.code || !m.keys?.length) return void d.told?.(d.t('rule.pointsFail', { name: ask.name })), true;
+        const to: LibraryMotion = { name: ask.name, len: ask.len, repeat: 'loop', keys: { p: structuredClone(m.keys) } };
+        lib().set(ask.name, to);
+        d.undo.push({ changes: [{ kind: 'motion-lib', key: ask.name, from: structuredClone(l), to: structuredClone(to) }] });
+        d.changed();
+        refresh();
+        panel.render();
+        d.told?.(d.t('rule.pointsDone', { name: ask.name, n: m.keys.length }));
+        return true;
+      }
       if (m.type === 'studio:timeline/area-moved') {
         const c = clipOf(m.key);
         const w = c ? (whensOf(c) as MotionWhen[]).find((x) => x.on === 'enter') : null;
@@ -1631,6 +1762,9 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
         remove: (name) => deleteLib(name),
         usedBy: (name) => usage(name).length,
         t: d.t,
+        isRule: (name) => !!lib().get(name)?.code,
+        ruleTag: d.t('rule.tag'),
+        ruleTip: d.t('rule.motionTip'),
         clips: () => clipsOf(key),
         shown: () => clipOf(key),
         library: () => lib().list(),

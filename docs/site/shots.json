@@ -21,7 +21,8 @@
     { "id": "presence", "test": "test/studio-ai-presence.browser.mjs", "args": ["--theme", "light"] },
     { "id": "playsave", "test": "test/studio-play-save.browser.mjs", "args": ["--only", "save", "--theme", "light", "--prefix", "docs"] },
     { "id": "motion-line", "test": "test/studio-motion-line.browser.mjs", "args": ["--only", "pc", "--themes", "light", "--games", "neon"] },
-    { "id": "openside", "test": "test/studio-open-side.browser.mjs", "args": ["--only", "side", "--theme", "light", "--prefix", "docs"] }
+    { "id": "openside", "test": "test/studio-open-side.browser.mjs", "args": ["--only", "side", "--theme", "light", "--prefix", "docs"] },
+    { "id": "code-knobs", "test": "test/studio-code-place.browser.mjs", "args": ["--themes", "light", "--only", "layout,motion"] }
   ],
   "pictures": [
     { "as": "open", "run": "w1", "file": "pc-light-*-open.png" },
@@ -59,6 +60,8 @@
     { "as": "make-sound", "run": "gen", "file": "gen-lantern-cove-pc-light-2-sound-form.png" },
     { "as": "ask-watching", "run": "presence", "file": "after-{lang}-light-6-watching.png" },
     { "as": "ask-kept", "run": "presence", "file": "after-{lang}-light-3-sent-nobody.png" },
-    { "as": "side-sheet", "run": "openside", "file": "07-docs-side-{lang}-light-*-sheet.png" }
+    { "as": "side-sheet", "run": "openside", "file": "07-docs-side-{lang}-light-*-sheet.png" },
+    { "as": "rule-layout", "run": "code-knobs", "file": "2-{lang}-light-3-drag.png" },
+    { "as": "rule-motion", "run": "code-knobs", "file": "2-{lang}-light-10-diamond.png" }
   ]
 }

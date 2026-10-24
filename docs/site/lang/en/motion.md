@@ -2,7 +2,7 @@
 title: Motion
 nav: Motion
 order: 4
-written-for: 0.1.42
+written-for: 0.1.49
 description: Make things move with the timeline, choose when a motion starts and stops, and reuse motions from the Library.
 ---
 
@@ -159,8 +159,21 @@ You don’t have to add points yourself. Two ways to use your AI:
 - **Use a motion you made.** Press **✦ Ask Claude** on the timeline (or a right-click on the object, or the motion in the Library). The chat box at the bottom gets a chip with both names, like **crate · Hop**, and the cursor. Say what you want: “start it when the player walks up,” then “a bit slower.” Your AI connects that moment in the game’s code.
 
 ![The chat box with the chip “crate · Hop” and the words “Start it when the player walks up”](media/motion-ask.webp)
-- **Describe it.** Select something and ask in the box at the bottom: “make the boat rock gently,” “spin the pillar in a spiral.” A motion of places (from here to there, a hop) your AI makes from points, on the timeline like yours. A motion said by numbers (a spiral, a wave, round and round) or one that follows the game (chasing the player) it writes as a **code motion**: the motion’s shape is in the game’s code, and it is on the timeline under its name, with no points. It plays in **▶ Play** and in the game, and <kbd>⌘</kbd><kbd>Z</kbd> takes it off. To change its shape, ask your AI again.
-- **Lay things out.** “Ten street lamps along the road, 6 m apart”: your AI writes the row in the game’s code and shows it in the editor at once. The list shows the lamps under the row’s name (**Street lamps 1**, **2** …). Ask “a bit closer together” and the row changes on screen (one <kbd>⌘</kbd><kbd>Z</kbd> takes it back, and it counts on **Save**). Places to keep clear (“not on the road”, “not near the player”) work the same way.
+- **Describe it.** Select something and ask in the box at the bottom: “make the boat rock gently,” “spin the pillar in a spiral.” A motion of places (from here to there, a hop) your AI makes from points, on the timeline like yours. A motion said by numbers (a spiral, a wave, round and round) or one that follows the game (chasing the player) it writes as a **rule motion**: the motion’s shape is a rule in the game’s code, and it is on the timeline as a violet strip, with no points but with its numbers (below). It plays in **▶ Play** and in the game, and <kbd>⌘</kbd><kbd>Z</kbd> takes it off. To change its shape, ask your AI again.
+- **Lay things out.** “Ten street lamps along the road, 6 m apart”: your AI writes the row in the game’s code and shows it in the editor at once. The list shows the lamps under the row’s name with the tag **Rule**, and the card shows its numbers ([Things laid out by a rule](editing.md#things-laid-out-by-a-rule)). Ask “a bit closer together” and the row changes on screen (one <kbd>⌘</kbd><kbd>Z</kbd> takes it back, and it counts on **Save**). Places to keep clear (“not on the road”, “not near the player”) work the same way.
+
+## Rule motions
+
+A motion your AI wrote as a rule is a violet strip on the timeline that says what it is, in its own numbers: **Rule motion: Spiral · Radius 2 m · Lap 4 s**. Its shape is the game’s rule, so it has no points; its numbers are yours to change.
+
+- **Its knobs are on the top line**, where **Repeat** is for a motion of points (a rule goes on as long as the game runs): drag one left or right, or press it and type. The strip’s words follow.
+- **In the game**, its path is a violet dotted line with one **◇**. Drag the ◇ and the number it stands for (the rule says which) changes so the path goes through your finger: **Radius 2 → 3 m**.
+- The **switch** at the strip’s left disables it: the motion stays on the object and doesn’t play until you switch it on again.
+- **Make editable points** copies its shape into an ordinary motion of points (16 a round) that you move one by one.
+
+Each change is one <kbd>⌘</kbd><kbd>Z</kbd> and counts on **Save**; after Save, your AI writes the new numbers into the game’s code.
+
+![The pillar’s rule motion: the violet strip “Rule motion: Spiral · Radius 3 m · Lap 4 s”, its knobs on the top line, and the ◇ dragged in the game](media/rule-motion.webp)
 
 ## In the game
 

@@ -1043,51 +1043,80 @@ function placeCode(root, three, places, report, opts) {
   const all = codeList(CODE_PLACES);
   if (!all.size) return;
   report.places = {};
-  const n = three ? 3 : 2;
-  const level = (opts && opts.level) || null;
   const made = new Set();
   for (const p of all.values()) {
     for (const o of p.objs) if (o && o.parent) three ? o.parent.remove(o) : o.parent.removeChild(o);
     p.objs = [];
     p.keys = [];
-    p.skipped = [];
+    p.home = { root, three, opts };
     const f = places && typeof places === 'object' && places[p.id] && typeof places[p.id] === 'object' ? places[p.id] : {};
-    const k = knobValues(p.knobs, f.knobs);
-    let count = p.count;
-    try {
-      if (typeof count === 'function') count = count(k);
-    } catch (e) {
-      warnOnce(`codePlace('${p.id}'): count failed (${e && e.message})`);
-      count = 0;
+    for (const o of layOut(p, f)) made.add(o);
+    report.places[p.id] = { keys: p.keys.slice(), skipped: p.skipped.slice() };
+  }
+  // `from` (✦ To code): the hand-placed objects a layout replaced, hidden until the AI takes them out of the code —
+  // only objects this file did not make (the hand ones may have had the layout's own keys).
+  for (const [id, f] of Object.entries(places && typeof places === 'object' ? places : {})) {
+    if (!f || !Array.isArray(f.from) || !all.has(id)) continue;
+    for (const key of f.from) {
+      const o = typeof key === 'string' && handObject(root, key, three, made);
+      if (o) o.visible = false;
     }
-    count = isNum(count) ? Math.max(0, Math.min(MAX_PLACED, Math.floor(count))) : 0;
-    // Keep-out areas move what the formula places; what a hand put ("just this one", "Place by hand") stays put.
-    const tests = f.hand ? [] : avoidTests(p, f, n, { player: playerAt(root, three, opts), level });
-    for (let i = 0; i < count; i++) {
-      const key = `${p.id}-${i + 1}`;
-      const pin = f.pins && f.pins[key] && Array.isArray(f.pins[key].p) ? f.pins[key] : null;
-      let at = null;
-      if (pin || !tests.length) at = codePlaceAt(p, i, k, 0, level, n);
-      else {
-        let prev = null;
-        for (let tr = 0; tr < MAX_TRIES; tr++) {
-          const a = codePlaceAt(p, i, k, tr, level, n);
-          if (!a) break;
-          const q = vecOf(a.p, n, false);
-          if (!tests.some((t) => t(q))) {
-            at = a;
-            break;
-          }
-          // The same place again: a row, which has nowhere else to go.
-          if (prev && prev.every((v, j) => Math.abs(v - q[j]) < 1e-9)) break;
-          prev = q;
+  }
+}
+
+/**
+ * One layout's objects, number by number: the formula's place (tried again out of the keep-out areas), then the pin.
+ * An object of the same key made before is kept and only moved (the editor turning a knob in place: relayCodePlace);
+ * new numbers are made, numbers that are gone are taken out. p.spots = each number's formula place (null: none).
+ */
+function layOut(p, f) {
+  const { root, three, opts } = p.home;
+  const n = three ? 3 : 2;
+  const level = (opts && opts.level) || null;
+  const old = new Map(p.objs.map((o, j) => [p.keys[j], o]));
+  p.objs = [];
+  p.keys = [];
+  p.skipped = [];
+  p.spots = [];
+  const k = knobValues(p.knobs, f.knobs);
+  let count = p.count;
+  try {
+    if (typeof count === 'function') count = count(k);
+  } catch (e) {
+    warnOnce(`codePlace('${p.id}'): count failed (${e && e.message})`);
+    count = 0;
+  }
+  count = isNum(count) ? Math.max(0, Math.min(MAX_PLACED, Math.floor(count))) : 0;
+  // Keep-out areas move what the formula places; what a hand put ("just this one", "Place by hand") stays put.
+  const tests = f.hand ? [] : avoidTests(p, f, n, { player: playerAt(root, three, opts), level });
+  for (let i = 0; i < count; i++) {
+    const key = `${p.id}-${i + 1}`;
+    const pin = f.pins && f.pins[key] && Array.isArray(f.pins[key].p) ? f.pins[key] : null;
+    let at = null;
+    if (pin || !tests.length) at = codePlaceAt(p, i, k, 0, level, n);
+    else {
+      let prev = null;
+      for (let tr = 0; tr < MAX_TRIES; tr++) {
+        const a = codePlaceAt(p, i, k, tr, level, n);
+        if (!a) break;
+        const q = vecOf(a.p, n, false);
+        if (!tests.some((t) => t(q))) {
+          at = a;
+          break;
         }
+        // The same place again: a row, which has nowhere else to go.
+        if (prev && prev.every((v, j) => Math.abs(v - q[j]) < 1e-9)) break;
+        prev = q;
       }
-      if (!at && !pin) {
-        p.skipped.push(key);
-        continue;
-      }
-      let o = null;
+    }
+    p.spots.push(at ? vecOf(at.p, n, false) : null);
+    if (!at && !pin) {
+      p.skipped.push(key);
+      continue;
+    }
+    let o = old.get(key) || null;
+    old.delete(key);
+    if (!o) {
       try {
         o = p.make(i);
       } catch (e) {
@@ -1106,23 +1135,33 @@ function placeCode(root, three, places, report, opts) {
         o.studioKey = key;
         root.addChild(o);
       }
-      if (at) putCode(o, at, three);
-      if (pin) put(o, pin, n, three);
-      p.objs.push(o);
-      p.keys.push(key);
-      made.add(o);
     }
-    report.places[p.id] = { keys: p.keys.slice(), skipped: p.skipped.slice() };
+    if (at) putCode(o, at, three);
+    if (pin) put(o, pin, n, three);
+    p.objs.push(o);
+    p.keys.push(key);
   }
-  // `from` (✦ To code): the hand-placed objects a layout replaced, hidden until the AI takes them out of the code —
-  // only objects this file did not make (the hand ones may have had the layout's own keys).
-  for (const [id, f] of Object.entries(places && typeof places === 'object' ? places : {})) {
-    if (!f || !Array.isArray(f.from) || !all.has(id)) continue;
-    for (const key of f.from) {
-      const o = typeof key === 'string' && handObject(root, key, three, made);
-      if (o) o.visible = false;
-    }
-  }
+  for (const o of old.values()) if (o && o.parent) three ? o.parent.remove(o) : o.parent.removeChild(o);
+  return p.objs;
+}
+
+/**
+ * The editor (studio-code-knobs, 2026-10-24: "turning a layout's number reloads the game — change it in place"): code
+ * layout `id` laid out again where it stands, with `f` (its `places` entry of the draft). Null: no such layout yet.
+ */
+export function relayCodePlace(id, f) {
+  const p = codeList(CODE_PLACES).get(id);
+  if (!p || !p.home) return null;
+  layOut(p, f && typeof f === 'object' ? f : {});
+  return { keys: p.keys.slice(), skipped: p.skipped.slice() };
+}
+
+/** Number i's formula place with the knob values `k` (the editor's drag looks for a knob with it), or null. */
+export function codeSpot(id, i, k) {
+  const p = codeList(CODE_PLACES).get(id);
+  const n = p && p.home && p.home.three ? 3 : 2;
+  const a = p && codePlaceAt(p, i, k, 0, (p.home && p.home.opts && p.home.opts.level) || null, n);
+  return a ? vecOf(a.p, n, false) : null;
 }
 
 /** The object with this key that is not one of `made` (a code layout's). */

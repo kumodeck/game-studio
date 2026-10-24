@@ -26,6 +26,7 @@ import {
   type CodeAvoidInfo,
   type CodeMotionInfo,
   type CodePlaceInfo,
+  type PlacementPlace,
   type Lang,
   type PlacementFile,
   type Pose,
@@ -77,6 +78,7 @@ import { motionLibrary } from './motion-library.ts';
 import { attachWorld, roundLib } from './motion-model.ts';
 import { icon, setButton } from './icons.ts';
 import { receipt, type SavedThing } from './save-receipt.ts';
+import { createCodePlaceWire } from './code-place-wire.ts';
 import { createPalette, type PaletteRow } from './palette.ts';
 import { fitPicture } from './thumb-fit.ts';
 import { PlacementModel } from './placement-model.ts';
@@ -298,6 +300,9 @@ export function start(host: StudioHost) {
     // studio-motion-focus: the rows are the picked objects; a click in the game while "+ Link an object" is open links.
     group: () => (editing && editLayer === 'world' ? group.slice() : []),
     reselect: (k) => selectObject(k),
+    // Rule motions (studio-code-knobs): the game page's codeMotion() list (knobs, round, the ◇'s knob).
+    codeMotions: () => codeMotionList,
+    told: (text) => showToast(phone() ? t('hands.undoTouch', { text }) : t('hands.undo', { text, key: keyOf('undo', isMac()) }), 6000),
     place: (k) => worldModel.pose(k),
     order: () => worldItems.map((i) => i.key),
     label: (k) => {
@@ -1173,6 +1178,40 @@ export function start(host: StudioHost) {
   }
   new ResizeObserver(() => placeTimeline()).observe(timeline.el);
 
+  // The game's code layouts on the card, in the list and in the game (studio-code-knobs, 2026-10-24; code-place-wire.ts):
+  // the card's Layout and its knobs, a drag that turns a knob, "Manually overridden", "Place individually".
+  const codePlaces = createCodePlaceWire({
+    t,
+    list: () => codePlaceList,
+    store: () => worldModel.places,
+    codePoses: (poses) => worldModel.codePoses(poses),
+    pose: (k) => worldModel.pose(k),
+    dim: () => worldDim,
+    send: (m) => send(m),
+    commit: (id, from, to) => setPlace(id, from, to),
+    changed: (card) => {
+      if (card) placementPanel.render();
+      renderButtons();
+    },
+    told: (text) => showToast(phone() ? t('hands.undoTouch', { text }) : t('hands.undo', { text, key: keyOf('undo', isMac()) }), 6000),
+    selected: () => (editLayer === 'world' ? selected : null),
+    group: () => (editLayer === 'world' ? group : []),
+    editing: () => editing && !playing && editLayer === 'world',
+  });
+  /** One change of a code layout's `places` entry: one undo step, laid out in the game (studio-code-base's setPlace). */
+  function setPlace(id: string, from: PlacementPlace | null, to: PlacementPlace | null) {
+    worldModel.places.set(id, to);
+    const now = worldModel.places.get(id);
+    if (JSON.stringify(from) === JSON.stringify(now)) return void placesChanged();
+    undo.push({ changes: [{ kind: 'code-place', key: id, from, to: now }] });
+    placesChanged(swapsHand(from, now));
+  }
+  /**
+   * A layout took the place of hand-placed objects, or gave it back (`from`: the AI's place.code --replace, its ⌘Z): only
+   * the game's loader hides / shows those, so the game reads the draft again then (as every change did before).
+   */
+  const swapsHand = (a: PlacementPlace | null, b: PlacementPlace | null) => JSON.stringify(a?.from ?? null) !== JSON.stringify(b?.from ?? null);
+
   // ----- tools -----
   const placementPanel = createPlacementPanel({
     t,
@@ -1180,7 +1219,12 @@ export function start(host: StudioHost) {
     uiLook: (k) => uiWire.look(k),
     uiFoot: () => uiWire.foot(),
     // A mouse over a row, the card or the ask chip lights those objects in the game (a hands-on try, 2026-10-19).
-    hover: (keys) => editing && send({ type: 'studio:placement/hover', keys }),
+    hover: (keys) => {
+      if (!editing) return;
+      send({ type: 'studio:placement/hover', keys });
+      // …and the violet rings of their code layout (studio-code-knobs: a row of the list tells a rule's object).
+      if (editLayer === 'world') codePlaces.hover(keys);
+    },
     items: () => items,
     selected: () => selected,
     // With the timeline open, the numbers are how the object stands at the time line (its place + its motion).
@@ -1202,6 +1246,8 @@ export function start(host: StudioHost) {
       const shown = editLayer === 'world' ? timeline.shownPose(k) : undefined;
       if (shown && timeline.card(k, pose, shown)) return;
       if (editLayer === 'world') pose = timeline.placeFor(k, pose);
+      // An object of a code layout (studio-code-knobs): a number typed is its pin (one put by hand), never a move.
+      if (editLayer === 'world' && codePlaces.setPose(k, pose)) return;
       const from = model.pose(k);
       if (!from) return;
       if (undo.push(poseChange(k, from, pose))) applyPose(k, pose);
@@ -1222,6 +1268,13 @@ export function start(host: StudioHost) {
     scrub: (k, pose, end, from) => {
       if (editLayer === 'world' && timeline.card(k, pose, from, !end)) return;
       if (editLayer === 'world') (pose = timeline.placeFor(k, pose)), (from = timeline.placeFor(k, from));
+      // A code layout's object (studio-code-knobs): live to the game, then its pin (one undo step).
+      if (editLayer === 'world' && codePlaces.layoutOf(k)) {
+        send({ type: 'studio:placement/pose', key: k, pose });
+        if (end) codePlaces.setPose(k, pose);
+        else (worldModel.codePoses([{ key: k, pose }]), placementPanel.updateNumbers());
+        return;
+      }
       if (!end) {
         model.moved(k, pose);
         send({ type: 'studio:placement/pose', key: k, pose });
@@ -1257,6 +1310,10 @@ export function start(host: StudioHost) {
     shortcut: (op) => keyOf(op, isMac()),
     // studio-motion-delete (2026-10-24): the Motion row's right-click / ⋯ menu — the ⋯'s plate like cardMenu's (under it,
     // right edges together), a right-click's at the pointer; it holds Delete back (that key deletes the OBJECT).
+    // A code layout's object (studio-code-knobs): the card's Layout and knobs, or "Manually overridden"; the list's tag.
+    layout: (k) => (editLayer === 'world' ? codePlaces.card(k) : null),
+    ruleTag: (k) => (editLayer === 'world' ? codePlaces.listTag(k) : null),
+    ruleRows: (k) => (editLayer === 'world' ? codePlaces.rows(k) : []),
     motion: (k) => timeline.cardRow(k, {
       menu: (at, entries) => {
         const o = { place: 'card-motion', label: t('motion.label'), holdDelete: true };
@@ -1888,6 +1945,17 @@ export function start(host: StudioHost) {
       ai: r.ai,
       run: run[r.id] ?? (() => undefined),
     }));
+    // A code layout's object (studio-code-knobs): "Place individually" / "Reset to rule", in a group of their own before
+    // the last group (Delete stays last).
+    const rr = place === 'object' && its.length === 1 && editLayer === 'world' ? codePlaces.rows(its[0]!.key) : [];
+    if (rr.length) {
+      let at = entries.length;
+      for (let i = entries.length - 1; i >= 0; i--) if ('sep' in entries[i]!) {
+        at = i;
+        break;
+      }
+      entries.splice(at, 0, { sep: true }, ...rr.map((r) => ({ id: r.id, label: r.label, key: '', run: r.run })));
+    }
     if (!entries.length) return;
     // A phone: the menu never covers the card or the ask box (review 2 ②): its bottom stays 8 px above the higher of
     // the two (the card sits on the ask bar when something is picked).
@@ -2074,6 +2142,7 @@ export function start(host: StudioHost) {
 
   function sendSelection(focus = false) {
     send({ type: 'studio:placement/select', key: selected, focus, keys: group.length > 1 ? group.slice() : undefined });
+    codePlaces.guide();
     if (tool === 'placement' && page === 'tool') placementPanel.render();
     else placementPanel.renderAsk();
     renderShelf();
@@ -2162,7 +2231,7 @@ export function start(host: StudioHost) {
       // A code layout's changes (studio-code-base): the game lays it out again from the draft.
       else if (c.kind === 'code-place') {
         worldModel.places.set(c.key, dir === 'undo' ? c.from : c.to);
-        placesChanged();
+        placesChanged(swapsHand(c.from, c.to));
       }
       // Put in this level from the Library (placeHere): undo hides it again, redo shows it again.
       else if (c.kind === 'place') {
@@ -3026,6 +3095,7 @@ export function start(host: StudioHost) {
     renderSheet();
     sendInset();
     send({ type: 'studio:placement/select', key, focus });
+    codePlaces.guide();
   }
 
   // Thumbnails asked for (answered or not), so a scroll never asks twice. Cleared with `thumbs` on reload.
@@ -3281,11 +3351,27 @@ export function start(host: StudioHost) {
       case 'studio:code-motions':
         codeMotionList = m.list;
         if (motionLibrary.settle(m.list)) (renderAll(), keepSoon());
+        // A rule motion's knobs and strip read the list (studio-code-knobs): the timeline shows them now.
+        timeline.render();
         break;
       case 'studio:code-places':
         codePlaceList = m.list;
         codeAvoidList = m.avoids;
-        if (worldModel.places.settle(m.list)) (renderAll(), keepSoon());
+        if (worldModel.places.settle(m.list)) keepSoon();
+        // Where the rule put them is the code's place, not a move (studio-code-knobs: placement-model.ts codePoses).
+        codePlaces.poses(worldItems.map((i) => ({ key: i.key, pose: i.pose })));
+        renderAll();
+        codePlaces.guide(true);
+        break;
+      // A code layout laid out again in place (studio-code-knobs; bridge/code-place.ts): where its objects stand now.
+      case 'studio:place/poses':
+        codePlaces.poses(m.poses);
+        if (selected && m.poses.some((x) => x.key === selected)) placementPanel.updateNumbers();
+        break;
+      // A drag of a layout's object in the game turned its knob (live, then one undo step).
+      case 'studio:place/knob':
+        codePlaces.knob(m);
+        if (m.end) keepSoon();
         break;
       case 'studio:placement/items': {
         // UI stage 1: the UI layer's list feeds its own model; nothing of the world's below (the AI's marks, copies,
@@ -3450,6 +3536,8 @@ export function start(host: StudioHost) {
         timeline.render();
         renderSheet();
         sendInset();
+        // The violet rings of the pick's code layout (studio-code-knobs), or none.
+        codePlaces.guide();
         // "+ New motion" was pressed with nothing picked (studio-motion-flow): this pick is the object it was for.
         if (makeOnPick && m.key && group.length <= 1 && editLayer === 'world' && !libraryShown()) {
           const ok = Date.now() < makeOnPick;
@@ -3469,6 +3557,13 @@ export function start(host: StudioHost) {
         }
         // Otherwise the place moves; with the timeline open, what the game shows is the place + the motion now.
         if (hand) (m.pose = timeline.placeFor(m.key, m.pose)), m.from && (m.from = timeline.placeFor(m.key, m.from));
+        // An object of a code layout (studio-code-knobs): ⌥-dragged (or a turn / a resize) = just this one by hand, its
+        // pin (one undo step); never an `objects` entry of its own.
+        if (hand && codePlaces.moved(m.key, m.pose, !!m.end)) {
+          if (m.key === selected) placementPanel.updateNumbers();
+          renderButtons();
+          break;
+        }
         model.moved(m.key, m.pose);
         if (m.end && m.from) undo.push(poseChange(m.key, m.from, m.pose));
         if (m.end && hand) timeline.refresh();
@@ -3480,7 +3575,10 @@ export function start(host: StudioHost) {
       }
       case 'studio:placement/moved-group': {
         // The timeline: those that record become keys (one undo step with the others' moves), the rest move their place.
-        const tl = editLayer === 'world' ? timeline.movedGroup(m.poses, !!m.end) : { rest: m.poses, changes: [] };
+        const tl0 = editLayer === 'world' ? timeline.movedGroup(m.poses, !!m.end) : { rest: m.poses, changes: [] };
+        // A code layout's objects among them (studio-code-knobs): their pins, in the same undo step.
+        const cp = editLayer === 'world' ? codePlaces.groupMoved(tl0.rest, !!m.end) : { rest: tl0.rest, changes: [] };
+        const tl = { rest: cp.rest, changes: [...tl0.changes, ...cp.changes] };
         for (const e of tl.rest) model.moved(e.key, e.pose);
         if (m.end) {
           undo.push({ changes: [...tl.rest.filter((e) => e.from).map((e) => ({ kind: 'pose' as const, key: e.key, from: e.from!, to: e.pose })), ...tl.changes] });
@@ -3878,6 +3976,8 @@ export function start(host: StudioHost) {
       if (name) out.push({ kind: 'motion', name: t('motion.firstName', { name }) });
     }
     for (const n of motionLibrary.changedNames()) out.push({ kind: 'motion', name: n });
+    // A code layout's knobs (studio-code-knobs; the plan's receipt "Saved: hex Gap → 4 m"), said as what changed.
+    for (const w of codePlaces.savedWords()) out.push({ kind: 'motion', name: w });
     return out;
   }
 
@@ -4053,18 +4153,27 @@ export function start(host: StudioHost) {
     loadGame(true);
     renderAiLine();
   }
-  // A code layout changed (studio-code-base, 2026-10-24: a knob, a hand-placed one, a keep-out area, or its ⌘Z): only
-  // the game's loader lays a layout out, so the game reads the draft again — once for a burst of changes (the AI's job
-  // of three ops), after a page that is still opening. (Stage 2 of the plan moves them in place, without a reload.)
+  // A code layout changed (studio-code-base, 2026-10-24: a knob, a hand-placed one, a keep-out area, or its ⌘Z). Since
+  // studio-code-knobs (the same day; the first step's report: "turning a layout's number reloads the game — change it in
+  // place") the game page lays it out again where it stands (studio:place/layout → bridge/code-place.ts, the loader's own
+  // relayCodePlace): the same objects move, a new count makes / takes out objects and lists them again. A page that is
+  // opening or playing gets the draft when it opens (the loader reads it), so nothing is sent then.
+  // `reload`: a change the page cannot make in place (hand-placed objects hidden / shown again: swapsHand) — read the
+  // draft again, once for a burst of changes, after a page that is still opening.
   let placesTimer = 0;
-  function placesChanged() {
+  function placesChanged(reload = false) {
     renderAll();
     keepSoon();
-    clearTimeout(placesTimer);
-    placesTimer = window.setTimeout(function again() {
-      if (swapping || playing) return void (placesTimer = window.setTimeout(again, 200));
-      void softReload('draft');
-    }, 60);
+    if (reload) {
+      clearTimeout(placesTimer);
+      placesTimer = window.setTimeout(function again() {
+        if (swapping || playing) return void (placesTimer = window.setTimeout(again, 200));
+        void softReload('draft');
+      }, 60);
+      return;
+    }
+    if (swapping || playing || !editing) return;
+    codePlaces.layout();
   }
   function finishSwap() {
     clearTimeout(swapTimer);
@@ -4781,6 +4890,8 @@ export function start(host: StudioHost) {
   let lastPage = '';
   function renderAll(remount = false) {
     motionTool.sync();
+    // The violet rings of the picked object's code layout (studio-code-knobs): sent only when the pick or its layout changed.
+    codePlaces.guide();
     document.documentElement.lang = lang;
     keySheet.render();
     app.dataset.layout = phone() ? 'phone' : 'pc';
@@ -5037,14 +5148,7 @@ export function start(host: StudioHost) {
     },
     place: (id) => worldModel.places.get(id),
     placeIds: () => worldModel.places.ids(),
-    setPlace: (id, e) => {
-      const from = worldModel.places.get(id);
-      worldModel.places.set(id, e);
-      const to = worldModel.places.get(id);
-      if (JSON.stringify(from) === JSON.stringify(to)) return;
-      undo.push({ changes: [{ kind: 'code-place', key: id, from, to }] });
-      placesChanged();
-    },
+    setPlace: (id, e) => setPlace(id, worldModel.places.get(id), e),
     levels: {
       active: () => levels.active,
       current: () => levels.current,

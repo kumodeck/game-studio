@@ -215,7 +215,10 @@ export function createLibraryMotions(d: LibraryMotionsDeps): LibraryMotionsPart 
       const tile = h('div', { class: `gsl-tile lib-motion${on ? ' gsl-open' : ''}`, role: 'button', tabindex: 0, 'aria-pressed': String(on), title: m.name,
         dataset: { kind: 'motion', motion: m.name } },
       h('div', { class: 'gsl-thumb lib-motion-thumb' }, pic.el),
-      h('span', { class: 'gsl-name' }, m.name, h('span', { class: 'lib-motion-len', text: ` ${(Math.round(m.len * 10) / 10).toFixed(1)} s ${repeatSign(m.repeat)}` })), meta);
+      h('span', { class: 'gsl-name' }, m.name, m.code
+        // A rule motion (studio-code-knobs): its length and "once" are not its own (it goes on as the game runs) — "Rule".
+        ? h('span', { class: 'pill rule-tag', title: d.t('rule.motionTip'), text: d.t('rule.tag') })
+        : h('span', { class: 'lib-motion-len', text: ` ${(Math.round(m.len * 10) / 10).toFixed(1)} s ${repeatSign(m.repeat)}` })), meta);
       // A scene (studio-timeline-2) says so on its tile: it moves several objects, dropping it on another adds that one.
       if (m.tracks) meta.prepend(h('span', { class: 'lib-motion-scene', dataset: { part: 'motion-scene' }, text: `${d.t('lib.motion.scene', { n: Object.keys(m.tracks).length })} · ` }));
       d.holdable?.(tile, m.name);
@@ -250,10 +253,11 @@ export function createLibraryMotions(d: LibraryMotionsDeps): LibraryMotionsPart 
       // line in the narrow detail, .gsl-path's overflow-wrap:anywhere broke it mid-word (the Japanese "points" split in two).
       // Each part ("2.0 s", "Back and forth") never breaks inside: in the narrow column the line breaks only at the "·"
       // (English broke "Back and / forth" otherwise).
-      h('span', { class: 'gsl-path lib-motion-meta', dataset: { part: 'motion-meta' } },
+      // A rule motion (studio-code-knobs): "Rule motion" — no seconds, no "Once", no points (its shape is the game's rule).
+      m.code ? h('span', { class: 'gsl-path lib-motion-meta', dataset: { part: 'motion-meta' }, text: d.t('rule.motion') }) : h('span', { class: 'gsl-path lib-motion-meta', dataset: { part: 'motion-meta' } },
         ...d.t('lib.motion.meta', { len: (Math.round(m.len * 10) / 10).toFixed(1), repeat: d.t(`tl.repeat.${m.repeat ?? 'once'}`) }).split(' · ')
           .flatMap((part, i) => [...(i ? [' · '] : []), h('span', { class: 'lib-meta-part', text: part })])),
-      h('span', { class: 'gsl-path lib-motion-meta', dataset: { part: 'motion-points' }, text: d.t('lib.motion.points', { n: keys }) }),
+      m.code ? null : h('span', { class: 'gsl-path lib-motion-meta', dataset: { part: 'motion-points' }, text: d.t('lib.motion.points', { n: keys }) }),
       // The hand, said where the attaching is (studio-motion-flow): the tile itself goes onto an object.
       ...(d.holdable ? [h('span', { class: 'gsl-path lib-motion-hand', text: d.t('lib.motion.dragTip') })] : []));
     // Rename: the title becomes a field (Enter / leaving keeps it, Esc goes back). Every object that uses it follows.

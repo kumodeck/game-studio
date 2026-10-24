@@ -2,7 +2,7 @@
 title: Editing
 nav: Editing
 order: 2
-written-for: 0.1.34
+written-for: 0.1.49
 description: Select, move, turn and resize things in your game, look around, use the Library, and save.
 ---
 
@@ -161,6 +161,18 @@ When it isn’t, the line says what happened: **Kept as a note for Claude. Nothi
 ![Sent while Claude wasn’t open: kept as a note, with “How to open” beside the box](media/ask-kept.webp)
 
  A violet light runs round the box while it works, and its one-line reply shows above. When it’s done, the game updates by itself, with your camera and selection kept, and only what changed glows violet. Don’t like it? **Undo AI change** puts it back in one press.
+
+## Things laid out by a rule
+
+When your AI lays things out by a rule (“four hexagons in a row, 6 m apart”, “scatter crystals on the field”), the list shows them under one name with the tag **Rule**, and a press on one shows the card’s **Layout** where its position was: **Line · 4** (or **Scatter · 12**), with the rule’s numbers as knobs, like **Count** and **Gap**. Things you placed yourself stay as they are: their numbers are their place.
+
+- **Turn a knob** (drag it left or right, or press it and type), **or just drag one of them** in the game: the rule’s number changes, the others follow and they stay a rule. While you drag, a small label says it: **Gap 4 → 2.5 m**. Violet rings show where the rule puts each one (point at one in the game to see them before you press), and the line under the tool strip says what a drag will do.
+- **Hold <kbd>⌥</kbd> while you drag** to move just that one: its card says **Manually overridden**, with **Reset to rule**. The rest stays on the rule. (A scatter, which has no number to turn by a drag, places the one you drag this way.)
+- **Place individually** turns the whole layout into ordinary things you move one by one.
+
+Each change is one <kbd>⌘</kbd><kbd>Z</kbd> and counts on **Save**; after Save, your AI writes the new numbers into the game’s code (**Saved: hex Gap → 4 m**).
+
+![A hexagon of a row dragged toward the camera: violet rings, “Gap 4 → 2.5 m”, and the card’s Layout with Count and Gap](media/rule-layout.webp)
 
 ## The side window and phones
 

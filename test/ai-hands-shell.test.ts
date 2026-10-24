@@ -174,7 +174,7 @@ test('place.code: a game page without the layout yet is read again first; one it
   const r = await hands.run({ id: '1', by: 'claude', ops: [{ do: 'place.code', id: 'hex' }] });
   assert.equal(e.reloads(), 1, 'read again once, without asking the person');
   assert.deepEqual(r.results.map((x) => [x.ok, x.said]), [[true, 'showed codePlace(\'hex\') (4 objects) in the editor — nothing to write: the code places it']]);
-  assert.deepEqual(e.lines(), ['Claude がコードの並べ方「六角形の列」を出しました（4 個 · 個数 4, 間 6 m） (no undo)']);
+  assert.deepEqual(e.lines(), ['Claude がルールの並べ方「六角形の列」を出しました（4 個 · 個数 4, 間 6 m） (no undo)']);
   const r2 = await hands.run({ id: '2', ops: [{ do: 'place.code', id: 'lamp' }] });
   assert.equal(r2.results[0]!.error, "the game has no codePlace('lamp') (it has: 'hex')");
 });
@@ -218,7 +218,7 @@ test('motion.code: the Library gets { name, code } (one motion per code), on the
   assert.ok(r.results[0]!.ok, r.results[0]!.error);
   assert.deepEqual(made[0], { name: '螺旋', len: 8, keys: {}, code: 'spiral' }, 'the strip is one round wide (8 s)');
   assert.equal(r.results[0]!.said, 'put the code motion "螺旋" (codeMotion(\'spiral\')) on pillar-1, starts with the game');
-  assert.equal(e.lines()[0], 'Claude が Blue pillar にコードの動き「螺旋」を付けました');
+  assert.equal(e.lines()[0], 'Claude が Blue pillar に動きのルール「螺旋」を付けました');
   // The same code on another object: the same motion, attached (not a second motion with a "2" after its name).
   await hands.run({ id: '2', ops: [{ do: 'motion.code', code: 'spiral', name: 'Spiral', key: 'pillar-6' }] });
   assert.equal(made.length, 1);

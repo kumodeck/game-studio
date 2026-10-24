@@ -139,6 +139,16 @@ export interface PlacementPanelDeps {
    * the button that opens the timeline, timeline-wire.ts cardRow). Absent = no row (the UI layer, a build without it).
    */
   motion?: (key: string) => HTMLElement[];
+  /**
+   * An object a code layout of the game put (studio-code-knobs, 2026-10-24; code-place-wire.ts): the card's Layout block
+   * (the rule's kind and count, its knobs, "Place individually") — `numbers` false = in place of Position / Rotation /
+   * Size, which the rule decides; true = above the object's own numbers (one put by hand). null / absent = an ordinary object.
+   */
+  layout?: (key: string) => { els: HTMLElement[]; numbers: boolean } | null;
+  /** The list: a code layout's objects under one heading with its tag ("hex ×4 [Rule]"). null / absent = as before. */
+  ruleTag?: (key: string) => { group: string; tag: string; tip: string } | null;
+  /** The card's ⋯ rows for a code layout's object ("Place individually", "Reset to rule"). [] / absent = none. */
+  ruleRows?: (key: string) => Array<{ id: string; label: string; run(): void }>;
 }
 
 export interface PlacementPanel {
@@ -536,6 +546,8 @@ export function createPlacementPanel(d: PlacementPanelDeps): PlacementPanel {
     if (d.showInLibrary && !it.kinds.includes('ui')) rows.push({ id: 'show-in-library', label: d.t('card.showInLibrary').replace(/\s*→$/, ''), run: () => d.showInLibrary!() });
     const kind = sameKind(d.items(), key);
     if (kind.length > 1) rows.push({ id: 'select-kind', label: d.t('ops.selectKind', { n: kind.length }), run: () => d.selectMany(kind, key) });
+    // A code layout's object (studio-code-knobs): the same as its card's buttons, where the other ways are.
+    rows.push(...(d.ruleRows?.(key) ?? []));
     return rows;
   };
   // A phone has a ⋯ on its card already (the numbers' fold, `fine`): the rows go in there as links (moreLinks), not
@@ -756,6 +768,19 @@ export function createPlacementPanel(d: PlacementPanelDeps): PlacementPanel {
       return h('label', { class: `num${axis ? '' : ' wide'}` }, grab, input);
     };
     const fields = h('div', { class: 'fields' });
+    // A code layout's object (studio-code-knobs): its Layout (the rule's numbers) where Position was, or "Manually
+    // overridden" over its own numbers. The phone shows it too, folded like the numbers.
+    const rule = d.layout?.(key) ?? null;
+    // In the numbers' place: on a phone under "…" with them (the phone card is name, copy, delete and "…": W1-11).
+    if (rule) fine.append(...rule.els);
+    if (rule && !rule.numbers) {
+      if (d.motion && dim === '3d') fields.append(...d.motion(key));
+      if (fields.childElementCount) fine.append(fields);
+      if (d.cardMenu && d.phone()) for (const r of moreRows(it, key)) fine.append(h('button', { type: 'button', class: 'link-btn', dataset: { action: r.id }, text: r.label, onclick: () => r.run() }));
+      body.append(fine);
+      card.append(body);
+      return;
+    }
     // A UI element's numbers are its offset from where the game's CSS puts it (UI stage 1), in px.
     fields.append(h('span', { class: 'f-l', text: d.t(it.kinds.includes('ui') ? 'uiLayer.offset' : 'placement.pos') }));
     const posCells = h('div', { class: `f-cells n${axes.length}` });
@@ -1111,9 +1136,13 @@ export function createPlacementPanel(d: PlacementPanelDeps): PlacementPanel {
       }
     }
     const groups = new Map<string, Item[]>();
+    // A code layout's objects share one heading (studio-code-knobs: "hex ×4 [Rule]"), whatever the adapter groups by.
+    const tags = new Map<string, { tag: string; tip: string }>();
     for (const it of d.items()) {
       if (fold && it.unstable) continue;
-      const g = it.group || `key:${it.key}`;
+      const rt = d.ruleTag?.(it.key) ?? null;
+      if (rt) tags.set(rt.group, { tag: rt.tag, tip: rt.tip });
+      const g = rt?.group || it.group || `key:${it.key}`;
       const arr = groups.get(g) || [];
       arr.push(it);
       groups.set(g, arr);
@@ -1142,6 +1171,7 @@ export function createPlacementPanel(d: PlacementPanelDeps): PlacementPanel {
         // `group` is an id (often a texture URL), not a name: show the first object's label.
         // A group is named by its kind ("crate ×4" → "crate"), not by its first member.
         many ? h('span', { class: 'name', text: heading }) : nameOf(first),
+        tags.has(g) ? h('span', { class: 'pill rule-tag', title: tags.get(g)!.tip, text: tags.get(g)!.tag }) : null,
         many ? h('span', { class: 'count n mono', text: String(members.length) }) : null,
         !many && first.unstable ? noNamePill(first) : null,
         !many && first.copyOf ? copyTag(first) : null,

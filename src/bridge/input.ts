@@ -97,6 +97,7 @@ import { BREAK_PX, BREAK_PX_TOUCH, firstToTouch, freeHeld, liftDetent, type Dete
 import { canLift, offWhy, type OffWhy } from './hold.ts';
 import { beginGroup, groupAnchor, groupLift, groupMove, groupPoses, groupRotate, groupScale, type GroupSession } from './group.ts';
 import { slideOf } from './outline-slide.ts';
+import type { CodePlaceView } from './code-place.ts';
 
 export interface InputDeps {
   adapter: StudioAdapter;
@@ -122,6 +123,12 @@ export interface InputDeps {
    * shell's placement/unhold does). Absent = the line has no pressable word (pause-move).
    */
   unhold?: (keys: string[]) => void;
+  /**
+   * The game's code layouts (studio-code-knobs, 2026-10-24; code-place.ts): the line under the strip for one of their
+   * objects, and a Move drag that turns the layout's knob instead of moving the one object (⌥: just this one).
+   * Absent = none (the UI layer, pause-move).
+   */
+  codePlace?: Pick<CodePlaceView, 'note' | 'dragStart' | 'dragTo' | 'dragEnd'>;
 }
 
 export interface InputHandle {
@@ -461,6 +468,10 @@ export function attachInput(deps: InputDeps): InputHandle {
    */
   const noteOf = (off: Partial<Record<HandleKind, string>>): string | null => {
     const picked = state.items.filter((i) => (state.group.length > 1 ? state.group.includes(i.key) : i.key === state.selected));
+    // One object of a code layout (studio-code-knobs): before a touch, what a drag will do — turn the layout's knob
+    // ("hex ×4 (rule): Drag to adjust Gap · ⌥-drag to move one") or place just it by hand.
+    const rule = picked.length === 1 ? deps.codePlace?.note(picked[0]!.key) : null;
+    if (rule) return rule;
     const moved = picked.find((i) => i.held === 'game' && i.driven?.length);
     if (moved) {
       const g = gameNote(lang, moved.driven!.filter((k) => k !== 'lift' || adapter.dim === '3d'), !!moved.meets);
@@ -705,6 +716,19 @@ export function attachInput(deps: InputDeps): InputHandle {
       if (Math.abs(f - 1) > 1e-4) pose = adapter.scale(key, f);
     } else if (m.handle === 'move') {
       pose = adapter.drag(key, p.x, p.y);
+      // An object of a code layout with a `drag` knob (studio-code-knobs, decision 11): decided at the drag's first step —
+      // the knob that brings it nearest where the finger put it, every object of the layout laid out with it (it stops
+      // where the rule cannot reach); ⌥ (Ctrl) held = just this one, an ordinary move (the shell keeps it as its pin).
+      if (data.code === undefined) data.code = deps.codePlace?.dragStart(key, free) ? 1 : 0;
+      if (data.code === 1) {
+        const r = deps.codePlace!.dragTo(key, pose.p);
+        if (r) {
+          m.last = r.pose;
+          markDirty();
+          handles.readout(r.chip);
+        }
+        return;
+      }
     } else if (m.handle === 'rotate') {
       const a = adapter.anchor(key);
       if (!a) return;
@@ -792,7 +816,9 @@ export function attachInput(deps: InputDeps): InputHandle {
       const m = mode;
       const pose = adapter.anchor(m.key)?.pose ?? m.last;
       handles.setActive(null);
-      if (!samePose(pose, m.from)) emitMoved(m.key, pose, { end: true, from: m.from, press: m.handle });
+      // A drag that turned a code layout's knob: the knob's end (one undo step in the shell), never a move of its own.
+      if (m.data.code === 1) deps.codePlace?.dragEnd(m.key, true);
+      else if (!samePose(pose, m.from)) emitMoved(m.key, pose, { end: true, from: m.from, press: m.handle });
     }
     mode = { kind: 'none' };
   };

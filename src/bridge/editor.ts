@@ -18,6 +18,8 @@ import { createTimelineView } from './timeline-path.ts';
 import { createUiExtras } from './ui-extras.ts';
 import { loaderPlay } from './play-switch.ts';
 import { codeAvoidsOf, codeMotionsOf, codePlacesOf, namedByLayout } from './code-lists.ts';
+import { createCodePlaceView } from './code-place.ts';
+import { createCodeMotionView, withRuleMotions } from './code-motion.ts';
 import { seenEnough, tooSmall } from './seen.ts';
 
 export interface EditorDeps {
@@ -180,6 +182,17 @@ export function createEditor(deps: EditorDeps): Editor {
   // path in 3D. Made here, before input.ts attaches, so a press on a path point reaches it first (timeline-path.ts says why).
   const timeline = createTimelineView({ win, adapter: () => adapter, poser: () => edits, post: (m) => post(m), lang: () => lang,
     markDirty: () => (dirtyFrame = true), inHand: () => input?.inHand() ?? [] });
+  // The game's rule motions (studio-code-knobs, 2026-10-24; code-motion.ts): their offsets on the timeline's poses, the
+  // picked one's violet line and its ◇. Made before input.ts attaches, so a press on the ◇ reaches it first.
+  const codeMotion = createCodeMotionView({ win, adapter: () => adapter, post: (m) => post(m), lang: () => lang, markDirty: () => (dirtyFrame = true) });
+  // The game's code layouts (studio-code-knobs, 2026-10-24; code-place.ts): laid out again in place, their violet rings,
+  // a drag of one of their objects that turns the layout's knob. The world layer's only (the UI has none).
+  const codePlace = createCodePlaceView({ win, adapter: () => adapter, post: (m) => post(m), lang: () => lang, markDirty: () => (dirtyFrame = true),
+    relist: () => {
+      refreshItems();
+      postSelected();
+      input?.selectionChanged();
+    } });
   let lang: Lang = 'en';
   let loopId = 0;
   let dirtyFrame = true;
@@ -266,6 +279,7 @@ export function createEditor(deps: EditorDeps): Editor {
     input?.frame();
     toolHost.frame();
     timeline.frame();
+    if (layer === 'world') (codePlace.frame(), codeMotion.frame());
     dirtyFrame = false;
   };
 
@@ -1128,7 +1142,8 @@ export function createEditor(deps: EditorDeps): Editor {
       if (m.type !== 'studio:core/view-state' || layer === 'world') post(m);
     };
     input = attachInput({ adapter, edits, core, win, post: inPost, state, select, selectMany, step, tools: toolHost, markDirty: () => (dirtyFrame = true),
-      ...(deps.paused ? { passKeyUp: true } : { unhold }), ...(deps.ignore ? { ignore: deps.ignore } : {}) });
+      ...(deps.paused ? { passKeyUp: true } : { unhold }), ...(deps.ignore ? { ignore: deps.ignore } : {}),
+      ...(layer === 'world' && !deps.paused ? { codePlace } : {}) });
     if (pendingHandlePx) input.setHandleSize(pendingHandlePx);
     input.setInset(inset);
     input.setTheme(theme);
@@ -1295,12 +1310,24 @@ export function createEditor(deps: EditorDeps): Editor {
           }
           break;
         case 'studio:timeline/pose':
+          // Rule motions (studio-code-knobs): their offsets at that time, worked out here (the shell cannot run at()).
+          if (state.editing && layer === 'world') timeline.handle(msg.code?.length ? { ...msg, poses: withRuleMotions(win, msg.poses, msg.code, adapter.dim) } : msg);
+          break;
         case 'studio:timeline/path':
+          if (state.editing && layer === 'world') (timeline.handle(msg), codeMotion.handle(msg));
+          break;
+        case 'studio:timeline/code-points':
+          codeMotion.handle(msg);
+          break;
         case 'studio:timeline/area':
           if (state.editing && layer === 'world') timeline.handle(msg);
           break;
+        case 'studio:place/layout':
+        case 'studio:place/guide':
+          if (state.editing && layer === 'world') codePlace.handle(msg);
+          break;
         case 'studio:core/edit':
-          if (!msg.on) timeline.clear();
+          if (!msg.on) (timeline.clear(), codePlace.clear(), codeMotion.clear());
           setEditing(msg.on, msg.viewState);
           if (msg.on && wantLayer) {
             const w = wantLayer;
@@ -1309,7 +1336,7 @@ export function createEditor(deps: EditorDeps): Editor {
           }
           break;
         case 'studio:core/layer':
-          if (msg.layer !== layer) timeline.clear();
+          if (msg.layer !== layer) (timeline.clear(), codePlace.clear(), codeMotion.clear());
           if (msg.layer === 'world' || msg.layer === 'ui') setLayer(msg.layer);
           break;
         case 'studio:ui/screen':

@@ -47,6 +47,8 @@ export function codeMotionsOf(win: Win): CodeMotionInfo[] {
   return [...(listOf(win, 'codeMotions')?.values() ?? [])].map((m) => ({
     code: str(m.id, 40), name: str(m.name, 40), knobs: knobs(m.knobs), round: roundOf(m),
     ...(str(m.note, 20) ? { note: str(m.note, 20) } : {}), ...(m.game === true ? { game: true } : {}),
+    // The ◇ on its path (studio-code-knobs): only a knob it has.
+    ...(typeof m.drag === 'string' && m.drag in knobs(m.knobs) ? { drag: m.drag } : {}),
   }));
 }
 
@@ -61,8 +63,41 @@ export function codePlacesOf(win: Win): CodePlaceInfo[] {
       knobs: knobs(p.knobs),
       ...(drag ? { drag } : {}),
       avoid: Array.isArray(p.avoid) ? (p.avoid as string[]).slice() : [],
+      ...(kindOf(p) ? { kind: kindOf(p)! } : {}),
     };
   });
+}
+
+/**
+ * What a layout's rule looks like, for the card's "Layout: Line · 4" / "Scatter · 12" (studio-code-knobs, 2026-10-24;
+ * the words chosen with Gemini that day): 'scatter' when at() reads its seeded random, 'line' when every place it gives
+ * is on one straight line (three or more objects), else nothing (the card says the layout's name). WHY by running at()
+ * and not a field the AI writes: the editor learns it from the rule itself, so it can never say "Line" of a ring.
+ */
+export function kindOf(p: Entry): 'line' | 'scatter' | null {
+  if (typeof p.at !== 'function') return null;
+  const spots = Array.isArray(p.spots) ? (p.spots as Array<number[] | null>) : [];
+  const k = Object.fromEntries(Object.entries(knobs(p.knobs)).map(([n, x]) => [n, x.v]));
+  let random = false;
+  const at = p.at as (i: number, k: Record<string, number>, g: Record<string, unknown>) => unknown;
+  try {
+    for (let i = 0; i < Math.min(3, Math.max(1, spots.length)); i++) at(i, k, { try: 0, rand: () => ((random = true), 0.5), level: null });
+  } catch {
+    return null;
+  }
+  if (random) return 'scatter';
+  const ps = spots.filter((q): q is number[] => Array.isArray(q));
+  if (ps.length < 3) return ps.length === 2 ? 'line' : null;
+  const a = ps[0]!, b = ps[ps.length - 1]!;
+  const ab = b.map((v, i) => v - a[i]!);
+  const len = Math.hypot(...ab);
+  if (len < 1e-6) return null;
+  // Every place within 2 % of the row's length off the line through its two ends.
+  return ps.every((q) => {
+    const aq = q.map((v, i) => v - a[i]!);
+    const t = aq.reduce((s, v, i) => s + v * ab[i]!, 0) / (len * len);
+    return Math.hypot(...aq.map((v, i) => v - t * ab[i]!)) <= len * 0.02;
+  }) ? 'line' : null;
 }
 
 /** Every keep-out condition of the game's page (codeAvoid), whichever layouts use it. */

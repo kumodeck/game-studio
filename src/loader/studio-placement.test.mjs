@@ -522,6 +522,8 @@ for (const [label, file] of [['source', './studio-placement.js'], ['built', path
 // motion triggers, 16 since the timeline, 12 since motion-gui, 9 since UI stage 1, 6 before). The same limit as
 // src/server/build.mjs LOADER_LIMIT.
 // 29 KB since the play hook (▶ Play in the editor's own page for every motion: studio-no-reload, 2026-10-22).
-test('the built loader is under 29 KB', () => {
-  assert.ok(readFileSync(BUILT).length < 29 * 1024);
+// 42 KB since code motions / layouts / keep-out areas (studio-code-base, 2026-10-24: LOADER_LIMIT was raised there and
+// this test, not in `npm test`, was left at 29 — studio-code-knobs put it back in step).
+test('the built loader is under 42 KB', () => {
+  assert.ok(readFileSync(BUILT).length < 42 * 1024);
 });

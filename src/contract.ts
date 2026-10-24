@@ -1027,7 +1027,9 @@ export type ShellToBridge =
    * snapping) and report nothing: a preview is not an edit. Sent on every scrub / ▶ frame, and with the places when
    * the timeline folds (everything back where it stands).
    */
-  | { type: 'studio:timeline/pose'; poses: Array<{ key: string; pose: Pose }> }
+  // `code` (studio-code-knobs, 2026-10-24): rule motions (codeMotion) of these objects at their time — the shell cannot
+  // run the game's at(), so the page adds each one's offsets to that object's pose above (p added, r added, s times).
+  | { type: 'studio:timeline/pose'; poses: Array<{ key: string; pose: Pose }>; code?: CodeAt[] }
   /**
    * The picked object's path in 3D (studio-timeline): its place `base` (parent space) and its clip's position keys
    * (offsets from `base`, with `t` and `ease` as in the file), drawn as a curve through the points with a line down
@@ -1036,7 +1038,27 @@ export type ShellToBridge =
    */
   // `making`: the motion is being made step by step (the Motion button's "Make a motion"): the point the object stands
   // on now is not taken by a press — a drag there moves the object, the next step (studio-motion-move, 2026-10-23).
-  | { type: 'studio:timeline/path'; key: string | null; base?: number[]; keys?: MotionKey[]; now?: number[] | null; sel?: number[]; times?: boolean; making?: boolean }
+  // `code` (studio-code-knobs): the picked object's rule motion instead of keys — the page samples its at() over one
+  // round (none: 4 s) as a violet dotted line, nothing to grab but the ◇ of its `drag` knob (studio:timeline/code-knob).
+  | { type: 'studio:timeline/path'; key: string | null; base?: number[]; keys?: MotionKey[]; now?: number[] | null; sel?: number[]; times?: boolean; making?: boolean;
+      code?: { code: string; name: string; knobs: Record<string, number>; round: number | null; drag?: string; unit?: string; label?: string } }
+  /**
+   * studio-code-knobs (2026-10-24): "Make editable points" — a rule motion's shape as points: the page runs its at()
+   * over `len` seconds, `per` points a round, and answers with the keys (studio:timeline/code-points, same `id`).
+   */
+  | { type: 'studio:timeline/code-points'; id: number; code: string; knobs: Record<string, number>; len: number; per: number }
+  /**
+   * The game's code layouts laid out again where they stand (studio-code-knobs, 2026-10-24; a layout's knob, a pin, by
+   * hand, their ⌘Z): `places` = the level's whole `places` of the draft, `ids` = the layouts to lay out (absent: all).
+   * Moved objects come back as studio:place/poses (not the person's moves); made / taken out ones as a new list.
+   */
+  | { type: 'studio:place/layout'; places: Record<string, PlacementPlace>; ids?: string[] }
+  /**
+   * The violet rings and dotted line of the code layouts `ids` (the picked object's and the one under the mouse): where
+   * the rule puts each of its objects, an empty ring where one is placed by hand. `sel` = the picked object, `places` =
+   * the level's `places` of the draft (which ones are put by hand). [] = none.
+   */
+  | { type: 'studio:place/guide'; ids: string[]; sel: string | null; places?: Record<string, PlacementPlace> }
   /**
    * studio-motion-move (2026-10-23): a move / turn / resize is a point of a motion now (the timeline open, ● on, no Try
    * running) — or not any more. While on, a thing the game moves takes every tool as a motion's point (Item.meets),
@@ -1288,6 +1310,23 @@ export type BridgeToShell =
    * undo step for the whole drag).
    */
   | { type: 'studio:timeline/point'; key: string; i: number; v: number[]; end: boolean }
+  /**
+   * studio-code-knobs (2026-10-24): the ◇ of a rule motion's path dragged — its `drag` knob turned to `v` (live, then
+   * `end`); one undo step in the shell.
+   */
+  | { type: 'studio:timeline/code-knob'; name: string; knob: string; v: number; end: boolean }
+  /** The answer to studio:timeline/code-points: the rule motion's shape as position keys (null: it could not run). */
+  | { type: 'studio:timeline/code-points'; id: number; keys: MotionKey[] | null }
+  /**
+   * A code layout's objects moved by its rule in place (studio-code-knobs; studio:place/layout or a drag that turns a
+   * knob): where they stand now. Not the person's moves — the editor keeps them as the code's places.
+   */
+  | { type: 'studio:place/poses'; poses: Array<{ key: string; pose: Pose }> }
+  /**
+   * A drag of a code layout's object turned its `drag` knob (studio-code-knobs, decision 11 of the plan): `v` live, then
+   * `end` (one undo step and one Save count in the shell). `key` = the object dragged.
+   */
+  | { type: 'studio:place/knob'; id: string; knob: string; v: number; end: boolean; key: string }
   /** studio-motion-triggers: the area's middle dragged in the game (world [x, y, z]); `end` = the drag ended. `size` (studio-timeline-2): a corner dragged — the area's new size (and middle). */
   | { type: 'studio:timeline/area-moved'; key: string; p: number[]; end: boolean; size?: number[] }
   /**
@@ -2107,6 +2146,15 @@ export interface CodeMotionInfo {
   round: number | null;
   note?: string;
   game?: boolean;
+  /** The knob a drag of its path's ◇ turns (codeMotion `drag`; studio-code-knobs). */
+  drag?: string;
+}
+/** A rule motion of one object at one moment (studio:timeline/pose `code`): its code id, time and knob values. */
+export interface CodeAt {
+  key: string;
+  code: string;
+  t: number;
+  knobs: Record<string, number>;
 }
 /** A code layout as the game page lists it (`studio:code-places`): the objects it put and its keep-out conditions. */
 export interface CodePlaceInfo {
@@ -2116,6 +2164,11 @@ export interface CodePlaceInfo {
   skipped: string[];
   knobs: Record<string, CodeKnob>;
   drag?: string | Record<string, string>;
+  /**
+   * What its rule looks like (studio-code-knobs; the card's "Layout: Line · 4"): 'line' = the places are on one straight
+   * line, 'scatter' = at() uses its seeded random. Absent = neither (the card says the layout's name).
+   */
+  kind?: 'line' | 'scatter';
   /** The codeAvoid() ids it names in the code (on unless the file switches them off). */
   avoid: string[];
 }

@@ -51,6 +51,13 @@ export interface MotionCardDeps {
   say?(text: string): void;
   /** The Undo key as this system spells it ("⌘Z" / "Ctrl+Z"), for the "⌘Z brings it back" line. */
   undoKey?: string;
+  /**
+   * studio-code-knobs (2026-10-24): the Library motion `name` is a rule motion (the game's codeMotion) — the row says its
+   * name with the tag "Rule" (`ruleTag`, its tooltip `ruleTip`). Absent = never.
+   */
+  isRule?(name: string): boolean;
+  ruleTag?: string;
+  ruleTip?: string;
 }
 
 export function motionCardRow(d: MotionCardDeps): HTMLElement[] {
@@ -75,7 +82,10 @@ export function motionCardRow(d: MotionCardDeps): HTMLElement[] {
   const open = d.open();
   const btn = h('button', { type: 'button', class: `motion-line${open ? ' on' : ''}`, 'aria-pressed': String(open), title: d.t('tl.openTip'), dataset: { action: 'timeline', part: 'motion-timeline-line' },
     onclick: () => (open ? undefined : d.toggle()) },
-  h('span', { class: 'motion-line-text', text: `${c.name}${more}` }), icon('chevronRight'));
+  h('span', { class: 'motion-line-text', text: `${c.name}${more}` }),
+  // A rule motion (studio-code-knobs): "Spiral [Rule]" — its shape is the game's rule, its numbers are on the timeline.
+  d.isRule?.(c.use ?? c.name) && d.ruleTag ? h('span', { class: 'pill rule-tag', title: d.ruleTip, text: d.ruleTag }) : null,
+  icon('chevronRight'));
   const row = h('div', { class: 'f-cells motion-cells', dataset: { part: 'motion-row' } }, btn);
   if (d.menu) {
     // studio-motion-delete (a request, 10/24: "is there a way to delete a motion?" — the answer was two places deep: the

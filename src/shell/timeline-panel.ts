@@ -38,6 +38,8 @@ import type { PointKind } from './path-edit.ts';
 import { fillLinkList, type LinkItem } from './timeline-link.ts';
 import { createMorePop } from './timeline-more.ts';
 import { CHANNELS, keyName, keyTimes, sameT, type KeyRef } from './timeline-model.ts';
+import { knobEl } from './knob.ts';
+import type { RuleKnob } from './rule-motion.ts';
 
 /** Starts menu, in two groups: what the loader plays by itself, then what your AI connects in the game's code. */
 export const SELF_TRIGGERS: MotionTrigger[] = ['start', 'time', 'key', 'click', 'after', 'enter'];
@@ -74,6 +76,11 @@ export interface TimelineRow {
   clip: MotionClip | null;
   /** studio-timeline-2, with a scene open: in it (studio-motion-focus: a linked row's × takes it out). */
   member?: boolean;
+  /**
+   * studio-code-knobs (2026-10-24): its clip is a rule motion — drawn as a violet strip one round wide ("Rule motion:
+   * Spiral · Radius 2 m · Lap 4 s"), not keys. `off` = disabled (grey, dashed), `missing` = the game has no such rule.
+   */
+  rule?: { words: string; off: boolean; missing: boolean; round: number | null; len: number } | null;
 }
 
 /** Several ways to start, in a row's few characters: "▣ Area or ⌨ E" (studio-timeline-2). */
@@ -137,6 +144,11 @@ export interface TimelineView {
   all?: boolean;
   /** How many objects move in the scene (⋯ is there for "every motion" even when the focused object has none). */
   moving?: number;
+  /**
+   * studio-code-knobs (2026-10-24): the focused clip is a rule motion — its knobs go on the line where "Repeat [Once ▾]"
+   * is for a motion of points (a rule goes on; it has no "once"). `loading` = the game page has not said its knobs yet.
+   */
+  rule?: { knobs: RuleKnob[]; off: boolean; missing: boolean; loading: boolean; pointsTip: string } | null;
 }
 
 export interface TimelineActs {
@@ -185,6 +197,12 @@ export interface TimelineActs {
   reorder?(key: string, to: number): void;
   /** The list opened / closed: while it is open a click on an object in the game links it. */
   linking?(on: boolean): void;
+  /** studio-code-knobs: a rule motion's knob on the line turned (live, then `end`: one undo step). */
+  ruleKnob?(name: string, v: number, end: boolean): void;
+  /** A rule motion's switch on `key`'s strip: disabled (it stays on the object and does not play) / enabled. */
+  ruleOff?(key: string, off: boolean): void;
+  /** "Make editable points" on `key`'s strip: the rule's shape becomes a motion of points (one undo step). */
+  rulePoints?(key: string): void;
   leave?(key: string): void;
   /** ⋯'s "Show every motion in the scene" on / off (the rows' "Show only the picked one" turns it off). */
   showAll?(on: boolean): void;
@@ -301,6 +319,17 @@ export function createTimelinePanel(view: () => TimelineView, act: TimelineActs)
       select('tl-repeat-line', t('tl.repeat'), (['once', 'loop', 'pingpong'] as MotionRepeat[]).map((r) => [r, t(`tl.repeat.${r}`)]), c.repeat ?? 'once', (r) => act.repeat(r as MotionRepeat)))];
   }
 
+  /**
+   * A rule motion's knobs on the line (studio-code-knobs; shell/knob.ts — the same part as the card's Layout): "Radius
+   * [2 m]  Lap [4 s]". The game page not there yet: nothing (the strip has its name); no such rule: the one line why.
+   */
+  function ruleItems(r: NonNullable<TimelineView['rule']>): Node[] {
+    if (r.loading) return [];
+    if (r.missing) return [h('span', { class: 'tl-lbl tl-rule-missing', title: t('rule.missingTip', { name: view().clip?.use ?? view().clip?.name ?? '' }), dataset: { part: 'tl-rule-missing' }, text: t('rule.missing') })];
+    return [h('span', { class: 'tl-knobs', dataset: { part: 'tl-knobs' } }, ...r.knobs.map((k) => knobEl({ label: k.label, unit: k.unit ? t(`hands.unit.${k.unit}`) : '', v: k.v, min: k.min, max: k.max, step: k.step,
+      tip: t('rule.knobTip'), part: `tl-knob-${k.name}`, set: (v, end) => act.ruleKnob?.(k.name, v, end) })))];
+  }
+
   /** A small text field that acts on Enter / leaving (Esc: as it was). */
   const field = (part: string, label: string, value: string, width: string, done: (text: string) => void, mode: 'text' | 'decimal' = 'text') => {
     const f = h('input', { type: 'text', inputmode: mode, class: 'tl-field', 'aria-label': label, title: label, autocomplete: 'off', spellcheck: false, style: `width:${width}`, dataset: { part } });
@@ -388,7 +417,8 @@ export function createTimelinePanel(view: () => TimelineView, act: TimelineActs)
       // made (Done pressed), the menu is ringed — the next step — with no "✓ attached" chip before it (studio-ui-lead:
       // the row and the card say the name; "attached" was a maker's word, the ux review of 10/23).
       // How it repeats first ("Repeat [Once ▾]", studio-no-sentence; it was studio-motion-line's sentence) — then when.
-      items.push(...repeatItems(c), h('span', { class: 'tl-sep', 'aria-hidden': 'true', text: '·' }));
+      // A rule motion (studio-code-knobs): its knobs here — it goes on as the game runs, so "Repeat [Once ▾]" would be wrong.
+      items.push(...(v.rule ? ruleItems(v.rule) : repeatItems(c)), h('span', { class: 'tl-sep', 'aria-hidden': 'true', text: '·' }));
       items.push(h('span', { class: 'tl-lbl tl-when-lbl', text: t('tl.whenAsk') }));
       items.push(startsMenu('tl-starts', t('tl.starts'), w, v, 0, true), ...whenField(w, v, (x) => sendWhen(v, 0, x)));
       // The other ways it starts (studio-timeline-2's "or") live in Fine-tune; the line says there are some ("+1").
@@ -446,7 +476,8 @@ export function createTimelinePanel(view: () => TimelineView, act: TimelineActs)
     // "Loop & End" (studio-ui-lead2, 2026-10-23; Gemini's words — "it is where loop, back and forth and stop are
     // chosen"): one row for the repeat menu and Stops ▾ (never / after N rounds / a cue) with, once it stops, stay or go
     // back. They were two rows, "Repeat" and "Stops" (a hands-on try read the old "how it stops" heading as nothing).
-    const loop: Node[] = [select('tl-repeat', t('tl.repeat'), (['once', 'loop', 'pingpong'] as MotionRepeat[]).map((r) => [r, t(`tl.repeat.${r}`)]), c.repeat ?? 'once', (r) => act.repeat(r as MotionRepeat))];
+    // A rule motion (studio-code-knobs) has no repeat of its own (it goes on): only when it stops.
+    const loop: Node[] = v.rule ? [] : [select('tl-repeat', t('tl.repeat'), (['once', 'loop', 'pingpong'] as MotionRepeat[]).map((r) => [r, t(`tl.repeat.${r}`)]), c.repeat ?? 'once', (r) => act.repeat(r as MotionRepeat))];
     const u = v.until;
     const kind = u?.times ? 'times' : u?.cue ? 'cue' : 'never';
     // fix-0140 (② of the first-run check, 2026-10-23): "Loop & End [Once] [Never]" read as "once, but it never stops?"
@@ -458,7 +489,7 @@ export function createTimelinePanel(view: () => TimelineView, act: TimelineActs)
     // they cannot see. It is in the menu only when the motion already stops on a cue (the AI made it so), so what it has
     // stays visible and can be set back to Never / some rounds; otherwise the menu is Never / After some rounds.
     const stops: [string, string][] = [['never', t('tl.until.never')], ['times', t('tl.until.times')], ...(u?.cue ? [['cue', t('tl.until.cue')] as [string, string]] : [])];
-    if ((c.repeat ?? 'once') !== 'once' || u) loop.push(select('tl-stops', t('tl.stops'), stops, kind, (k) =>
+    if ((c.repeat ?? 'once') !== 'once' || u || v.rule) loop.push(select('tl-stops', t('tl.stops'), stops, kind, (k) =>
       act.setUntil(k === 'never' ? null : k === 'times' ? { times: 3, ...(u?.then ? { then: u.then } : {}) } : { cue: v.cueNames[0] ?? cueSlug(`${c.name}-stop`), ...(u?.then ? { then: u.then } : {}) })));
     if (u?.times) loop.push(field('tl-times', t('tl.until.timesTip'), String(u.times), '3em', (x) => {
       const n = Math.round(parseFloat(x));
@@ -760,6 +791,7 @@ export function createTimelinePanel(view: () => TimelineView, act: TimelineActs)
   }
 
   function drawKeys(lane: HTMLElement, r: TimelineRow, ch: MotionChannel | null, times: number[], v: TimelineView) {
+    if (r.rule && !ch) return drawRule(lane, r, v);
     if (times.length > 1) lane.append(h('div', { class: 'tl-span', style: `left:${xOf(times[0]!)}px;width:${xOf(times[times.length - 1]!) - xOf(times[0]!)}px` }));
     for (const s of times) {
       const refs = refsAt(r, ch, s);
@@ -768,6 +800,28 @@ export function createTimelinePanel(view: () => TimelineView, act: TimelineActs)
       lane.append(h('div', { class: `tl-key${ch ? '' : ' sum'}${on ? ' on' : ''}`, style: `left:${xOf(s)}px`, role: 'button', 'aria-pressed': String(on), 'aria-label': label, title: label,
         dataset: { key: r.key, ch: ch ?? '', t: String(s), part: 'tl-key' } }));
     }
+  }
+
+  /**
+   * A rule motion's strip (studio-code-knobs, 2026-10-24; the plan's first round, decision 6 and its picture one.png):
+   * violet, with thin slanted lines (no points: its shape is the game's rule), one round wide and a thin line at every
+   * round after it; a switch at its left (Disable / enable), its words from the knobs, and — on the picked row —
+   * "Make editable points". Disabled: grey and dashed. The game without that rule: dashed, "No motion rule found".
+   */
+  function drawRule(lane: HTMLElement, r: TimelineRow, v: TimelineView) {
+    const rr = r.rule!;
+    const len = rr.len > 0 ? rr.len : 4;
+    const total = span();
+    const strip = h('div', { class: `tl-rule${rr.off ? ' off' : ''}${rr.missing ? ' missing' : ''}`, style: `left:${xOf(0)}px;width:${Math.max(24, xOf(total) - xOf(0))}px`,
+      title: rr.missing ? t('rule.missingTip', { name: r.clip?.use ?? r.clip?.name ?? '' }) : t('rule.motionTip'), dataset: { part: 'tl-rule', key: r.key } });
+    for (let k = 1; rr.round && k * len < total; k++) strip.append(h('i', { class: 'tl-rule-round', style: `left:${xOf(k * len) - xOf(0)}px` }));
+    const sw = h('button', { type: 'button', class: 'tl-rule-sw', role: 'switch', 'aria-checked': String(!rr.off), title: t(rr.off ? 'rule.enableTip' : 'rule.disableTip'),
+      'aria-label': t(rr.off ? 'rule.enableTip' : 'rule.disableTip'), dataset: { part: 'tl-rule-sw', ruleAct: '1' }, onclick: () => act.ruleOff?.(r.key, !rr.off) }, h('i', {}));
+    const words = rr.missing ? t('rule.missing') : rr.off ? `${t('rule.disabled')} · ${rr.words}` : `${t('rule.motion')}: ${rr.words}`;
+    strip.append(sw, h('span', { class: 'tl-rule-w', dataset: { part: 'tl-rule-words' }, text: words }));
+    if (r.picked && !rr.missing && act.rulePoints) strip.append(h('button', { type: 'button', class: 'tl-rule-pts', title: v.rule?.pointsTip ?? '', dataset: { part: 'tl-rule-points', ruleAct: '1' },
+      onclick: () => act.rulePoints!(r.key) }, t('rule.points')));
+    lane.append(strip);
   }
 
   /** The keys one diamond stands for: one key, or every property's key at that time (an object row's diamond). */
@@ -785,6 +839,8 @@ export function createTimelinePanel(view: () => TimelineView, act: TimelineActs)
   const dtOf = (d: { x0: number; per?: number }, x: number) => (d.per !== undefined ? (x - d.x0) * d.per : tOf(x) - tOf(d.x0));
   track.addEventListener('pointerdown', (e) => {
     if (e.pointerType === 'mouse' && e.button !== 0) return;
+    // A rule motion strip's switch / "Make editable points" (studio-code-knobs): their own press, not a scrub or a box.
+    if ((e.target as HTMLElement).closest?.('[data-rule-act]')) return;
     act.touched();
     el.focus({ preventScroll: true });
     const x = localX(e);
@@ -1039,5 +1095,10 @@ export function createTimelinePanel(view: () => TimelineView, act: TimelineActs)
 
   /** The link list closed (the plate was hidden: the Library, Play, fold). Optional for the tests' stand-in panels. */
   const closeMore: (() => void) | undefined = () => linkPop.hide();
-  return { el, render, place, focusStarts, closeMore };
+  /** A rule knob being turned on the line (studio-code-knobs): the strips' words follow without drawing the line again. */
+  function ruleWords(key: string, words: string) {
+    const w = lanes.querySelector<HTMLElement>(`.tl-rule[data-key="${CSS.escape(key)}"] .tl-rule-w`);
+    if (w && !w.closest('.off, .missing')) w.textContent = `${t('rule.motion')}: ${words}`;
+  }
+  return { el, render, place, focusStarts, closeMore, ruleWords };
 }

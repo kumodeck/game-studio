@@ -694,15 +694,33 @@ function placeCode(root, three, places, report, opts) {
 const all = codeList(CODE_PLACES);
 if (!all.size) return;
 report.places = {};
-const n = three ? 3 : 2;
-const level = (opts && opts.level) || null;
 const made = new Set();
 for (const p of all.values()) {
 for (const o of p.objs) if (o && o.parent) three ? o.parent.remove(o) : o.parent.removeChild(o);
 p.objs = [];
 p.keys = [];
-p.skipped = [];
+p.home = { root, three, opts };
 const f = places && typeof places === 'object' && places[p.id] && typeof places[p.id] === 'object' ? places[p.id] : {};
+for (const o of layOut(p, f)) made.add(o);
+report.places[p.id] = { keys: p.keys.slice(), skipped: p.skipped.slice() };
+}
+for (const [id, f] of Object.entries(places && typeof places === 'object' ? places : {})) {
+if (!f || !Array.isArray(f.from) || !all.has(id)) continue;
+for (const key of f.from) {
+const o = typeof key === 'string' && handObject(root, key, three, made);
+if (o) o.visible = false;
+}
+}
+}
+function layOut(p, f) {
+const { root, three, opts } = p.home;
+const n = three ? 3 : 2;
+const level = (opts && opts.level) || null;
+const old = new Map(p.objs.map((o, j) => [p.keys[j], o]));
+p.objs = [];
+p.keys = [];
+p.skipped = [];
+p.spots = [];
 const k = knobValues(p.knobs, f.knobs);
 let count = p.count;
 try {
@@ -732,11 +750,14 @@ if (prev && prev.every((v, j) => Math.abs(v - q[j]) < 1e-9)) break;
 prev = q;
 }
 }
+p.spots.push(at ? vecOf(at.p, n, false) : null);
 if (!at && !pin) {
 p.skipped.push(key);
 continue;
 }
-let o = null;
+let o = old.get(key) || null;
+old.delete(key);
+if (!o) {
 try {
 o = p.make(i);
 } catch (e) {
@@ -755,21 +776,26 @@ o.label = key;
 o.studioKey = key;
 root.addChild(o);
 }
+}
 if (at) putCode(o, at, three);
 if (pin) put(o, pin, n, three);
 p.objs.push(o);
 p.keys.push(key);
-made.add(o);
 }
-report.places[p.id] = { keys: p.keys.slice(), skipped: p.skipped.slice() };
+for (const o of old.values()) if (o && o.parent) three ? o.parent.remove(o) : o.parent.removeChild(o);
+return p.objs;
 }
-for (const [id, f] of Object.entries(places && typeof places === 'object' ? places : {})) {
-if (!f || !Array.isArray(f.from) || !all.has(id)) continue;
-for (const key of f.from) {
-const o = typeof key === 'string' && handObject(root, key, three, made);
-if (o) o.visible = false;
+export function relayCodePlace(id, f) {
+const p = codeList(CODE_PLACES).get(id);
+if (!p || !p.home) return null;
+layOut(p, f && typeof f === 'object' ? f : {});
+return { keys: p.keys.slice(), skipped: p.skipped.slice() };
 }
-}
+export function codeSpot(id, i, k) {
+const p = codeList(CODE_PLACES).get(id);
+const n = p && p.home && p.home.three ? 3 : 2;
+const a = p && codePlaceAt(p, i, k, 0, (p.home && p.home.opts && p.home.opts.level) || null, n);
+return a ? vecOf(a.p, n, false) : null;
 }
 function handObject(root, key, three, made) {
 let found = null;
