@@ -41,7 +41,10 @@ const OUT_DIR = path.join(PKG, 'skills/arrange/bin');
 // points — what then?" and the four user needs): codeMotion / codePlace / codeAvoid, the knobs, placing a layout with its
 // pins and keep-out areas (tries again with a seeded random, skips a row), hiding what a layout replaced; 28.7 → 39.4 KB.
 // Most of it is the layout's own rules, which no game can do without once it has a codePlace.
-const LOADER_LIMIT = 42 * 1024;
+// 48 KB since offsets (studio-offsets, 2026-10-24: "a lamp dragged away from the road did nothing" — a rule's objects
+// shifted as a rule: the row frame of one or two rows, ranks, mirrored turns, same / zigzag / ramp, before the keep-out
+// areas); 40.9 → 46.2 KB. A game with a codePlace needs it as much as the rule itself.
+const LOADER_LIMIT = 48 * 1024;
 
 const IMPORT_RE = /^import\s+([\s\S]*?)\s+from\s+['"]([^'"]+)['"];?[ \t]*$/gm;
 const DECL_RE = /^(?:export\s+)?(?:async\s+)?(?:function\*?|const|let|var|class)\s+([A-Za-z_$][\w$]*)/gm;

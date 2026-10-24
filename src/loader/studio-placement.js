@@ -77,8 +77,9 @@
 //       at(i, k, g) — `places.hex` in the file: knobs, pins ("just this one" by hand, over the formula), hand (all by
 //       hand), avoid (keep-out areas), from (hand-placed objects it replaced: hidden). Placed with or without a file.
 //       `drag` = the knob each way a person drags one of its objects turns: 'gap' (moving it), or by way
-//       { along, side, up, turn, size } (studio-to-coords, 2026-10-24). A way with no knob does not move (the editor
-//       says why); only ⌥ puts one object by hand.
+//       { along, side, up, turn, size } (studio-to-coords, 2026-10-24). A way with no knob is taken by the file's
+//       `offsets` (studio-offsets, 2026-10-24: "how it is shifted and by how much", over at(), before the keep-out
+//       areas and the pins — see offsetFrame); only ⌥ puts one object by hand.
 //   codeAvoid('road', { name, after, knobs, test(p, k, g), show })   a keep-out condition: a layout's place that tests
 //       true is tried again (g.try + 1, up to 30 times); a place that never gets out (a row) is left out (skipped).
 // report.places = { hex: { keys, skipped } } (a game makes physics bodies for them after applyPlacement, as for the rest).
@@ -860,7 +861,8 @@ export function codeMotion(id, def) {
  *          nothing and said nothing, and lifted it left the rule): { along: 'gap', side: 'offset', up: 'height',
  *          turn: 'angle', size: 'scale' } — along / side = moving it along the row / away from it (both are Move's: the
  *          editor looks for the numbers that bring it nearest the finger), up = Height, turn = Turn, size = Size. A way
- *          with no knob does not move the object (the editor says why); ⌥ is the one way to put one by hand
+ *          with no knob is the editor's offset (studio-offsets: every object follows, `places[id].offsets`); ⌥ is the
+ *          one way to put one by hand
  *   avoid  codeAvoid ids on from the start (the person can switch them off)
  */
 export function codePlace(id, def) {
@@ -1029,9 +1031,13 @@ function putCode(o, a, three) {
   }
 }
 
-/** One layout's place for number i on try `tr` (at() answers { p, r?, s? }), or null when at() gives nothing usable. */
-function codePlaceAt(p, i, k, tr, level, n) {
-  const g = { try: tr, rand: randOf(`${p.id}:${i}:${tr}`), level: level || null };
+/**
+ * One layout's place for number i on try `tr` (at() answers { p, r?, s? }), or null when at() gives nothing usable.
+ * `seen.rand` is set when at() read its seeded random (a scatter: never a row, studio-offsets).
+ */
+function codePlaceAt(p, i, k, tr, level, n, seen) {
+  const r = randOf(`${p.id}:${i}:${tr}`);
+  const g = { try: tr, rand: seen ? () => ((seen.rand = true), r()) : r, level: level || null };
   let a;
   try {
     a = p.at(i, k, g);
@@ -1040,6 +1046,153 @@ function codePlaceAt(p, i, k, tr, level, n) {
     return null;
   }
   return a && typeof a === 'object' && vecOf(a.p, n, false) ? a : null;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Offsets (studio-offsets, 2026-10-24; CONTRACT.md §1.12 "Offsets", §4.1 `places[id].offsets`). The CRYSTAL FIELD try of
+// CRYSTAL FIELD that day: a lamp of a row dragged away from the road "did nothing and said nothing" (the code had no knob
+// that way). The answer: a rule's objects stay a rule however they are moved — a drag the code has no knob for adds an
+// OFFSET to the whole rule ("every lamp 1 m further from the road", "every other one", "a little more each one"), and
+// the file keeps only which way, how and how much ({ way, how, v }), the way knobs keep { v, was }. WHY not a pin each:
+// pins are coordinates, so a lamp the count adds would not get it ("the rule stays the rule" was the whole point).
+// Order (decision 8): at(i, k) → offsets → keep-out areas (tested where the offsets put it) → pins (a hand wins).
+//   way  along · side (a row: along it / away from the middle line of its two rows) · up · turn (degrees; the second row
+//        mirrored) · size (× a factor) · move (the ground [x, z] — 2D [x, y] — for a layout that is not a row)
+//   how  same (every object v) · zigzag (every other one: the ones whose rank is odd when `odd`, else even) · ramp
+//        (v × its rank: "further each one" — size: 1 + (v − 1) × rank)
+// Only `same` works without a row (a scatter, a ring, a grid): along / side / zigzag / ramp wait in the file until it is
+// a row again (decision 13: a count of 2 has no row).
+
+const OFFSET_WAYS = ['along', 'side', 'up', 'turn', 'size', 'move'];
+const OFFSET_HOWS = ['same', 'zigzag', 'ramp'];
+// A rule's rows of offsets at most (decision 6: the card's rows; beyond, ✦ folds them into the rule).
+const MAX_OFFSETS = 8;
+
+/** The file's offsets that this loader can play (a bad one is said once and left out); [] = none. */
+function offsetsOf(v, where) {
+  if (!Array.isArray(v)) return [];
+  const out = [];
+  for (const o of v.slice(0, MAX_OFFSETS)) {
+    const ok = o && OFFSET_WAYS.includes(o.way) && OFFSET_HOWS.includes(o.how)
+      && (o.way === 'move' ? Array.isArray(o.v) && o.v.length === 2 && o.v.every(isNum) : isNum(o.v));
+    if (ok) out.push(o);
+    else warnOnce(`${where}: an offset needs a way (${OFFSET_WAYS.join(', ')}), a how (${OFFSET_HOWS.join(', ')}) and a number v`);
+  }
+  return out;
+}
+
+/**
+ * The frame offsets are measured in (decision 3), from the places the rule gives BEFORE any offset (so shifting or
+ * zigzagging never changes it): one straight row, or two parallel rows (a road's two sides written as ONE codePlace with
+ * `(i % 2 ? 1 : -1) * k.side`, as CRYSTAL FIELD and the real AI's answer do). For each number: { l: its row (0 = the
+ * row of number 1), r: its rank in its row (0 = the end number 1's row starts at — "lamp 1's end", decision 4), a: along
+ * [x, z] (the same for both rows: along is never mirrored), s: side [x, z] (away from the middle line of the two rows,
+ * so both sides leave the road; one row: away from the root's origin, else to the left of along), m: true on the second
+ * row (its turn is mirrored) }. 3D ground = x, z; 2D = x, y. null = not a row (fewer than 3 places, a scatter — at()
+ * read its random — a ring, a grid…). WHY rank by row and not the number: with `i % 2` sides, every other NUMBER is one
+ * whole side, and "every other lamp" would never zigzag (the second check asked for).
+ */
+export function offsetFrame(spots, n, random) {
+  if (random || !Array.isArray(spots)) return null;
+  const pts = [];
+  spots.forEach((q, i) => Array.isArray(q) && pts.push({ i, x: q[0], z: n === 3 ? q[2] : q[1] }));
+  if (pts.length < 3) return null;
+  const xs = pts.map((q) => q.x), zs = pts.map((q) => q.z);
+  // Within 2 % of the layout's size of a line (the card's "Line" tells a row the same way: code-lists.ts kindOf).
+  const tol = Math.max(1e-6, 0.02 * Math.hypot(Math.max(...xs) - Math.min(...xs), Math.max(...zs) - Math.min(...zs)));
+  // Two of the first three are on the same row (two rows at most): their direction is the rows'.
+  for (const [u, w] of [[0, 1], [0, 2], [1, 2]]) {
+    const len = Math.hypot(pts[w].x - pts[u].x, pts[w].z - pts[u].z);
+    if (len < tol) continue;
+    let d = [(pts[w].x - pts[u].x) / len, (pts[w].z - pts[u].z) / len];
+    const across = (q) => d[0] * q.z - d[1] * q.x;
+    const c0 = across(pts[0]);
+    let c1 = null;
+    const row = pts.map((q) => {
+      const c = across(q);
+      if (Math.abs(c - c0) <= tol) return 0;
+      if (c1 === null) c1 = c;
+      return Math.abs(c - c1) <= tol ? 1 : -1;
+    });
+    if (row.includes(-1)) continue;
+    const nb = row.filter((x) => x === 1).length;
+    // Two rows: 3 + 2 at least (2 + 2 could pair either way round).
+    if (c1 !== null && (Math.min(nb, pts.length - nb) < 2 || Math.max(nb, pts.length - nb) < 3)) continue;
+    const t = (q) => d[0] * q.x + d[1] * q.z;
+    const rows = c1 === null ? [pts] : [pts.filter((_, j) => !row[j]), pts.filter((_, j) => row[j])];
+    // Along points away from the end of number 1's row (its first number is nearer that end).
+    const lo = Math.min(...rows[0].map(t)), hi = Math.max(...rows[0].map(t));
+    if (Math.abs(t(rows[0][0]) - hi) < Math.abs(t(rows[0][0]) - lo)) d = [-d[0], -d[1]];
+    // Side: n = d turned a quarter (across() measures along it); its sign per row.
+    const nrm = [-d[1], d[0]];
+    const cs = rows.map((r) => d[0] * r[0].z - d[1] * r[0].x);
+    const mid = rows.length === 2 ? (cs[0] + cs[1]) / 2 : 0;
+    const out = spots.map(() => null);
+    rows.forEach((r, l) => {
+      const sg = Math.abs(cs[l] - mid) > tol ? Math.sign(cs[l] - mid) : 1;
+      const lo2 = Math.min(...r.map(t)), hi2 = Math.max(...r.map(t));
+      // Each row counts from its own first number's end (the second row's lamp 2 may stand at the far end).
+      const back = Math.abs(t(r[0]) - hi2) < Math.abs(t(r[0]) - lo2);
+      const order = r.slice().sort((a, b) => (back ? t(b) - t(a) : t(a) - t(b)) || a.i - b.i);
+      order.forEach((q, rank) => (out[q.i] = { l, r: rank, a: d.slice(), s: [nrm[0] * sg, nrm[1] * sg], m: l === 1 }));
+    });
+    return out;
+  }
+  return null;
+}
+
+/**
+ * What the offsets add to number i of a frame (offsetFrame's, null = not a row): { p: added place (n long), r: added
+ * turn (radians), s: size factor }, or null for none. Order does not matter (adding and multiplying), so the card can
+ * keep the row turned last at the end.
+ */
+export function offsetAt(offs, frame, i, n) {
+  if (!offs || !offs.length) return null;
+  const f = frame ? frame[i] : null;
+  const p = n === 3 ? [0, 0, 0] : [0, 0];
+  const z = n === 3 ? 2 : 1;
+  let r = 0, s = 1;
+  for (const o of offs) {
+    if (!f && (o.how !== 'same' || o.way === 'along' || o.way === 'side')) continue;
+    const k = o.how === 'zigzag' ? ((f.r % 2 === 1) === !!o.odd ? 1 : 0) : o.how === 'ramp' ? f.r : 1;
+    if (o.way === 'size') s *= o.how === 'ramp' ? 1 + (o.v - 1) * k : k ? o.v : 1;
+    else if (o.way === 'turn') r += (((f && f.m ? -1 : 1) * o.v * k) * Math.PI) / 180;
+    else if (o.way === 'up') {
+      if (n === 3) p[1] += o.v * k;
+    } else if (o.way === 'move') (p[0] += o.v[0] * k), (p[z] += o.v[1] * k);
+    else {
+      const u = o.way === 'along' ? f.a : f.s;
+      p[0] += u[0] * o.v * k;
+      p[z] += u[1] * o.v * k;
+    }
+  }
+  return { p, r, s: Math.max(0.01, s) };
+}
+
+/** at()'s answer with an offset's place added (the keep-out test and the guide's rings use the place). */
+function shiftAt(a, off, n) {
+  if (!a || !off) return a;
+  return { ...a, p: vecOf(a.p, n, false).map((v, j) => v + off.p[j]) };
+}
+
+/**
+ * at()'s answer with an offset's turn and size too, for putting it on `o`: what at() leaves out is the object's own
+ * (as make() made it: `made`), so a turn offset on a rule without `r` turns it from where it stood.
+ */
+const MADE = new WeakMap();
+function turnedAt(a, off, o, three) {
+  if (!off || (!off.r && off.s === 1)) return a;
+  const out = { ...a };
+  const own = MADE.get(o) || { r: 0, s: 1 };
+  if (off.r) {
+    if (three && Array.isArray(a.r) && a.r.length === 3) out.r = [a.r[0], a.r[1] + off.r, a.r[2]];
+    else out.r = (isNum(a.r) ? a.r : Array.isArray(a.r) && isNum(a.r[0]) ? a.r[0] : own.r) + off.r;
+  }
+  if (off.s !== 1) {
+    const s = a.s !== undefined ? a.s : own.s;
+    out.s = Array.isArray(s) ? s.map((v) => v * off.s) : (isNum(s) && s !== 0 ? s : 1) * off.s;
+  }
+  return out;
 }
 
 /**
@@ -1072,10 +1225,23 @@ function placeCode(root, three, places, report, opts) {
   }
 }
 
+/** How many objects a layout puts with the knob values `k` (0–200). */
+function countOf(p, k) {
+  let count = p.count;
+  try {
+    if (typeof count === 'function') count = count(k);
+  } catch (e) {
+    warnOnce(`codePlace('${p.id}'): count failed (${e && e.message})`);
+    count = 0;
+  }
+  return isNum(count) ? Math.max(0, Math.min(MAX_PLACED, Math.floor(count))) : 0;
+}
+
 /**
  * One layout's objects, number by number: the formula's place (tried again out of the keep-out areas), then the pin.
  * An object of the same key made before is kept and only moved (the editor turning a knob in place: relayCodePlace);
- * new numbers are made, numbers that are gone are taken out. p.spots = each number's formula place (null: none).
+ * new numbers are made, numbers that are gone are taken out. p.spots = each number's place (the formula with its
+ * offsets: where "Reset to rule" puts it; null: none), p.base = the formula's alone, p.frame = offsetFrame of p.base.
  */
 function layOut(p, f) {
   const { root, three, opts } = p.home;
@@ -1087,25 +1253,30 @@ function layOut(p, f) {
   p.skipped = [];
   p.spots = [];
   const k = knobValues(p.knobs, f.knobs);
-  let count = p.count;
-  try {
-    if (typeof count === 'function') count = count(k);
-  } catch (e) {
-    warnOnce(`codePlace('${p.id}'): count failed (${e && e.message})`);
-    count = 0;
-  }
-  count = isNum(count) ? Math.max(0, Math.min(MAX_PLACED, Math.floor(count))) : 0;
+  const count = countOf(p, k);
+  // The rule's places before any offset (try 0): the offsets' frame is made from them (studio-offsets), and the editor
+  // reads them (p.base, p.frame: a drag's way and rank, `--do list`'s line / rank / offset).
+  const seen = { rand: false };
+  const first = [];
+  for (let i = 0; i < count; i++) first.push(codePlaceAt(p, i, k, 0, level, n, seen));
+  p.base = first.map((a) => (a ? vecOf(a.p, n, false) : null));
+  p.frame = offsetFrame(p.base, n, seen.rand);
+  p.random = seen.rand;
+  p.fk = { sig: JSON.stringify(k), frame: p.frame };
+  const offs = (p.offs = f.hand ? [] : offsetsOf(f.offsets, `codePlace('${p.id}')`));
   // Keep-out areas move what the formula places; what a hand put ("just this one", "Place by hand") stays put.
   const tests = f.hand ? [] : avoidTests(p, f, n, { player: playerAt(root, three, opts), level });
   for (let i = 0; i < count; i++) {
     const key = `${p.id}-${i + 1}`;
     const pin = f.pins && f.pins[key] && Array.isArray(f.pins[key].p) ? f.pins[key] : null;
+    // The same offset on every try (its frame is the rule's first places): a scatter tried again keeps its shift.
+    const off = offsetAt(offs, p.frame, i, n);
     let at = null;
-    if (pin || !tests.length) at = codePlaceAt(p, i, k, 0, level, n);
+    if (pin || !tests.length) at = shiftAt(first[i], off, n);
     else {
       let prev = null;
       for (let tr = 0; tr < MAX_TRIES; tr++) {
-        const a = codePlaceAt(p, i, k, tr, level, n);
+        const a = shiftAt(tr ? codePlaceAt(p, i, k, tr, level, n) : first[i], off, n);
         if (!a) break;
         const q = vecOf(a.p, n, false);
         if (!tests.some((t) => t(q))) {
@@ -1134,6 +1305,8 @@ function layOut(p, f) {
         p.skipped.push(key);
         continue;
       }
+      // Its own turn and size as make() left them: a turn / size offset on a rule that does not give them starts there.
+      MADE.set(o, { r: three ? o.rotation.y : o.rotation, s: three ? [o.scale.x, o.scale.y, o.scale.z] : [o.scale.x, o.scale.y] });
       if (three) {
         o.name = key;
         o.userData.studioKey = key;
@@ -1144,7 +1317,7 @@ function layOut(p, f) {
         root.addChild(o);
       }
     }
-    if (at) putCode(o, at, three);
+    if (at) putCode(o, turnedAt(at, off, o, three), three);
     if (pin) put(o, pin, n, three);
     p.objs.push(o);
     p.keys.push(key);
@@ -1164,12 +1337,40 @@ export function relayCodePlace(id, f) {
   return { keys: p.keys.slice(), skipped: p.skipped.slice() };
 }
 
-/** Number i's formula place with the knob values `k` (the editor's drag looks for a knob with it), or null. */
-export function codeSpot(id, i, k) {
+/**
+ * Number i's rule answer with the knob values `k` and the offsets it was last laid out with (studio-offsets: a knob's
+ * look-up then measures where the object really goes), or null: { a (at()'s, shifted), off, o (its object) }.
+ */
+function ruleAt(id, i, k) {
   const p = codeList(CODE_PLACES).get(id);
-  const n = p && p.home && p.home.three ? 3 : 2;
-  const a = p && codePlaceAt(p, i, k, 0, (p.home && p.home.opts && p.home.opts.level) || null, n);
-  return a ? vecOf(a.p, n, false) : null;
+  if (!p) return null;
+  const n = p.home && p.home.three ? 3 : 2;
+  const level = (p.home && p.home.opts && p.home.opts.level) || null;
+  const a = codePlaceAt(p, i, k, 0, level, n);
+  if (!a) return null;
+  let off = null;
+  if (p.offs && p.offs.length) {
+    // The frame for these knobs (a count or a gap being looked for changes the places it is made from); kept for the
+    // same numbers, as a look-up asks ~35 times a step.
+    const sig = JSON.stringify(k);
+    if (!p.fk || p.fk.sig !== sig) {
+      const seen = { rand: false };
+      const spots = [];
+      for (let j = 0; j < countOf(p, k); j++) {
+        const b = codePlaceAt(p, j, k, 0, level, n, seen);
+        spots.push(b ? vecOf(b.p, n, false) : null);
+      }
+      p.fk = { sig, frame: offsetFrame(spots, n, seen.rand) };
+    }
+    off = offsetAt(p.offs, p.fk.frame, i, n);
+  }
+  return { a: shiftAt(a, off, n), off, o: p.objs[p.keys.indexOf(`${id}-${i + 1}`)] || null, n, three: n === 3 };
+}
+
+/** Number i's place with the knob values `k` and its offsets (the editor's drag looks for a knob with it), or null. */
+export function codeSpot(id, i, k) {
+  const r = ruleAt(id, i, k);
+  return r ? vecOf(r.a.p, r.n, false) : null;
 }
 
 /**
@@ -1179,10 +1380,10 @@ export function codeSpot(id, i, k) {
  * 2026-10-24); what at() leaves out stays out (the object keeps its own).
  */
 export function codePose(id, i, k) {
-  const p = codeList(CODE_PLACES).get(id);
-  const n = p && p.home && p.home.three ? 3 : 2;
-  const a = p && codePlaceAt(p, i, k, 0, (p.home && p.home.opts && p.home.opts.level) || null, n);
-  if (!a) return null;
+  const r = ruleAt(id, i, k);
+  if (!r) return null;
+  const n = r.n;
+  const a = r.o ? turnedAt(r.a, r.off, r.o, r.three) : r.a;
   const out = { p: vecOf(a.p, n, false) };
   if (n === 3 && Array.isArray(a.r) && a.r.length === 3 && a.r.every(isNum)) (out.r = a.r[1]), (out.t = [a.r[0], a.r[2]]);
   else if (isNum(a.r)) out.r = a.r;

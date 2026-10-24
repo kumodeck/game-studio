@@ -11,5 +11,9 @@ comments stripped (under 6 KB), to
 `skills/arrange/bin/studio-placement.js`; the agent copies that file into a game when the user
 chooses "add the loader" instead of rewriting numbers in code.
 
+Since studio-offsets (2026-10-24) a code layout's `places[id].offsets` shift the whole rule (`offsetFrame`: one row
+or two parallel rows — a road's two sides — ranks per row, side away from their middle line; `offsetAt`: same / zigzag
+/ ramp), after `at()` and before the keep-out areas and the pins (`test/offsets.test.mjs`).
+
 - `studio-placement.test.mjs` - `node --test src/loader/studio-placement.test.mjs` (source and built copy)
 - `fixtures/` - two tiny games (three.js, PixiJS) for the headless end-to-end check

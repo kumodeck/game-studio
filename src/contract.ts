@@ -1065,6 +1065,12 @@ export type ShellToBridge =
    */
   | { type: 'studio:place/guide'; ids: string[]; sel: string | null; places?: Record<string, PlacementPlace>; compare?: Record<string, PlaceCompareMarks>; lit?: string[] }
   /**
+   * studio-offsets (2026-10-24): the four choices under a rule drag (All the same / Zigzag / Ramp / Just this one) are
+   * open (`on`) or closed in the editor page: while open, 1–4 and Esc pressed in the game are theirs (not the strip's
+   * tools, not "pick nothing"); the game page forwards them as studio:core/key as it does every key.
+   */
+  | { type: 'studio:place/choices'; on: boolean }
+  /**
    * studio-code-keepout (2026-10-24; the plan's step 3): the keep-out areas of the picked object's rule layout `id`
    * painted on the ground (red hatching; a box's edge orange with its corners to drag, a code condition's violet and
    * dashed, its ◇ when it has a knob and a shape), with `entry` = the layout's `places` entry of the draft. `draw` = the
@@ -1363,6 +1369,22 @@ export type BridgeToShell =
    * it), up / turn / size (Height / Turn / Size), group (several picked: a rule's objects stay where the rule puts them).
    */
   | { type: 'studio:place/held'; id: string; key: string; way: PlaceWay }
+  /**
+   * studio-offsets (2026-10-24): a drag of a rule's object a way its code has no knob for shifts the whole rule — layout
+   * `id`'s `offsets` live, then `end` (one undo step and one Save count in the shell, like place/knob). `key` = the
+   * object dragged.
+   */
+  | { type: 'studio:place/offsets'; id: string; key: string; offsets: PlaceOffset[]; end: boolean }
+  /**
+   * studio-offsets: a drag of a rule's object ended (after its place/knob or place/offsets end): what the shell needs for
+   * the four choices under it (All the same / Zigzag / Ramp / Just this one, decision 1). `way` the drag went; `d` how
+   * far the dragged object went that way, in the offset's own number (m, °, a size factor; `move`: [x, z]); `rank` /
+   * `row` its place in the rule's frame (row false: not a row — only All the same and Just this one); `did` what the
+   * drag did live (the knob, or the offset row it turned); `pose` where the object stands now (Just this one pins it
+   * there); `skipped` = how many more objects a keep-out area left out because of it.
+   */
+  | { type: 'studio:place/dragged'; id: string; key: string; way: OffsetWay; d: number | [number, number]; rank: number; row: boolean;
+      did: 'knob' | OffsetHow; knob?: string; pose: Pose; skipped?: number }
   /** studio-motion-triggers: the area's middle dragged in the game (world [x, y, z]); `end` = the drag ended. `size` (studio-timeline-2): a corner dragged — the area's new size (and middle). */
   | { type: 'studio:timeline/area-moved'; key: string; p: number[]; end: boolean; size?: number[] }
   /**
@@ -2200,7 +2222,23 @@ export interface PlacementPlace {
   avoid?: PlacementAvoid[];
   /** The hand-placed objects this layout replaced (✦ To code): hidden until the AI takes them out of the code. */
   from?: string[];
+  /**
+   * Offsets (studio-offsets, 2026-10-24): a drag of one of its objects the code has no knob for, kept as a rule — which
+   * way, how and how much — over at(), before the keep-out areas and the pins; ≤ 8. Until Save writes them into the code.
+   */
+  offsets?: PlaceOffset[];
 }
+/**
+ * One offset of a rule layout (CONTRACT.md §1.12 "Offsets"). `way`: along / side (a row's: along it, away from the middle
+ * line of its two rows), up, turn (°; mirrored on the second row), size (× a factor), move (not a row: the ground [x, z],
+ * 2D [x, y]). `how`: same (every object v), zigzag (every other: the odd ranks when `odd`, else the even), ramp (v × the
+ * rank; size 1 + (v − 1) × rank). `v` = the number the card shows.
+ */
+export type OffsetWay = 'along' | 'side' | 'up' | 'turn' | 'size' | 'move';
+export type OffsetHow = 'same' | 'zigzag' | 'ramp';
+export type PlaceOffset =
+  | { way: Exclude<OffsetWay, 'move'>; how: OffsetHow; v: number; odd?: true }
+  | { way: 'move'; how: 'same'; v: [number, number] };
 export type PlacementAvoid =
   | { box: { p: number[]; size: number[] }; name?: string; off?: true }
   | { code: string; knobs?: Record<string, KnobValue>; off?: true };
@@ -2242,9 +2280,16 @@ export interface CodePlaceInfo {
   drag?: string | Record<string, string>;
   /**
    * What its rule looks like (studio-code-knobs; the card's "Layout: Line · 4"): 'line' = the places are on one straight
-   * line, 'scatter' = at() uses its seeded random. Absent = neither (the card says the layout's name).
+   * line, 'lines' = on two parallel ones (a road's two sides, studio-offsets), 'scatter' = at() uses its seeded random.
+   * Absent = neither (the card says the layout's name).
    */
-  kind?: 'line' | 'scatter';
+  kind?: 'line' | 'lines' | 'scatter';
+  /**
+   * studio-offsets: each number's place in the offsets' frame (index = number − 1; null = none) — its row (0 = number
+   * 1's), its rank in that row, the row's along and side on the ground ([x, z]; 2D [x, y]) and `mirror` on the second
+   * row (absent all three: not a row), and what its offsets add now ([dx, dy(, dz)]). Absent: not a row and no offsets.
+   */
+  rows?: Array<{ line: number; rank: number; along?: [number, number]; side?: [number, number]; mirror?: true; offset?: number[] } | null>;
   /** The codeAvoid() ids it names in the code (on unless the file switches them off). */
   avoid: string[];
 }

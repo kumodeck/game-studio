@@ -18,6 +18,14 @@
 // { v, was }, pins, hand. Every change is one ⌘Z and one Save count per layout (the plan's decision 16); the game page
 // lays the layout out again IN PLACE (studio:place/layout) — the first step reloaded the game for each number.
 //
+// studio-offsets (2026-10-24; the CRYSTAL FIELD try of 10/24: "a lamp dragged away from the road did nothing and said
+// nothing", and the answer "a rule's objects stay a rule however they are moved"): a drag a way the code has no knob for
+// shifts the whole rule (studio:place/offsets, live then one ⌘Z, like a knob), and when it ends the four choices open
+// over the ask field (offset-choices.ts; studio:place/dragged). The card lists the offsets under the knobs. A key step
+// of one object, and Move / Height of several picked, are offsets too (All the same, one ⌘Z with the rest); only a
+// group's turn / size still leaves a rule's objects where they are (it turns round the group's middle, which no offset
+// can say), with why.
+//
 // studio-code-torule (2026-10-24, need 3 — the other way round): after the AI swapped a layout in for hand-placed
 // objects (✦ Turn into a rule), the card's Layout has "◉ Compare with original" and "Max deviation: lamp-3 (0.6 m)",
 // and the guide sends where those hand objects stood (orange dots and thin lines in the game) — until Save.
@@ -32,10 +40,12 @@
 //   - the list: [✋ 2] on the rule's heading, [✋ Placed by hand] on a row (picked: [✋] and Back to rule)
 //   - the moment one leaves: "✋ Placed Crystal 9 by hand (the rest stay on the rule) · Back to rule · ⌘Z" (`told`'s
 //     hand form) while its ring spreads violet → sand in the game (bridge/code-place.ts)
-import type { CodePlaceInfo, Dim, PlaceCompareMarks, PlacementPlace, PlaceWay, Pose, ShellToBridge } from '../contract.ts';
+import type { CodePlaceInfo, Dim, PlaceCompareMarks, PlacementPlace, PlaceOffset, PlaceWay, Pose, ShellToBridge } from '../contract.ts';
 import { h } from './dom.ts';
 import { knobEl, knobNumber } from './knob.ts';
 import { turnKnobs, type PlaceStore } from './code-places.ts';
+import { amountWords, createOffsetChoices, offsetRowWords, offsetRowsEl, type Dragged, type OffsetChoices } from './offset-choices.ts';
+import { addOffset, dragAmount, lastOf, movesRank, noAmount, type FrameRow, type OffsetAmount } from './offset-model.ts';
 import { roundPose } from './pose-compare.ts';
 import { gapText, placeGaps, type HandSpot } from './to-rule.ts';
 
@@ -54,6 +64,13 @@ export interface CodePlaceWireDeps {
   send(m: ShellToBridge): void;
   /** One change of a layout: one undo step, then the game lays it out (main.ts setPlace). */
   commit(id: string, from: PlacementPlace | null, to: PlacementPlace | null): void;
+  /**
+   * studio-offsets: the last undo step's change of layout `id` ends at `to` instead (the four choices swap what a drag
+   * did in the same ⌘Z); false = the last step is not that layout's. The draft and the game follow (main.ts).
+   */
+  retarget?(id: string, to: PlacementPlace | null): boolean;
+  /** A small menu at a button (an offset row's ⋯ → Remove). Absent = no ⋯. */
+  menu?(at: HTMLElement, rows: Array<{ id: string; label: string; run(): void }>): void;
   /**
    * A live change shown (a knob being turned): the Save count — and the card when `card` (a drag in the game; the card's
    * own knob is not drawn again under the pointer, which would drop its drag).
@@ -118,11 +135,18 @@ export interface CodePlaceWire {
   knob(m: { id: string; knob: string; v: number; end: boolean; knobs?: Record<string, number> }): void;
   /** studio:place/held from the game page: a drag the rule did not follow — why, ⌥, and ✦ to ask for that knob. */
   held(m: { id: string; key: string; way: PlaceWay }): void;
+  /** studio:place/offsets from the game page (studio-offsets): a drag shifted the whole rule — live, then one ⌘Z. */
+  offsets(m: { id: string; offsets: PlaceOffset[]; end: boolean }): void;
+  /** studio:place/dragged: a rule drag ended — the four choices open over the ask field. */
+  dragged(m: Dragged): void;
+  /** The four choices (main.ts: their element in the news card; keys 1–4, Esc; closed by the next action). */
+  choices: OffsetChoices;
   /**
-   * Key steps (arrows, Q / E, PgUp / PgDn, End) on these keys: the ones that may move; a rule's objects stay, and why
-   * (`quiet`: a held key's repeats — said once already).
+   * Key steps (arrows, Q / E, PgUp / PgDn, End) on these keys: the ones that may move. One rule's object steps as an
+   * offset of its whole rule (studio-offsets); with several picked, a rule's objects step with the rest on Move /
+   * Height (an offset), and stay on a turn / size / End, with why (`quiet`: a held key's repeats — said once already).
    */
-  steps(keys: string[], quiet?: boolean): string[];
+  steps(keys: string[], quiet?: boolean, op?: string): string[];
   /** studio:place/poses / a new list: the rule's places are the code's, not moves. */
   poses(poses: Array<{ key: string; pose: Pose }>): void;
   /** Send the level's `places` to the game page and lay these layouts out again (absent: all). */
@@ -163,7 +187,12 @@ export function createCodePlaceWire(d: CodePlaceWireDeps): CodePlaceWire {
   const t = d.t;
   // A knob being turned (the card's drag or a drag in the game): the layout's entry before it, for the one undo step.
   let liveFrom: { id: string; entry: PlacementPlace | null } | null = null;
+  // A run of key steps on one rule's object (studio-offsets): where it stood and its layout's entry at the first step.
+  let keyRun: { key: string; from: Pose; e0: PlacementPlace | null } | null = null;
+  // Several picked moved together (studio-offsets): per layout, its entry and its lead object's pose at the start.
+  const groupRun = new Map<string, { e0: PlacementPlace | null; lead: string; from: Pose }>();
   let guideSig = '';
+  let lastSel: string | null = null;
   let hovered: string[] = [];
   const unit = (u: string) => (u ? t(`hands.unit.${u}`) : '');
   const layoutOf = (key: string) => d.list().find((p) => p.keys.includes(key)) ?? null;
@@ -171,7 +200,8 @@ export function createCodePlaceWire(d: CodePlaceWireDeps): CodePlaceWire {
   const nth = (p: CodePlaceInfo, key: string) => Number(key.slice(p.id.length + 1));
 
   function setLive(id: string, next: PlacementPlace, card: boolean) {
-    if (!liveFrom || liveFrom.id !== id) liveFrom = { id, entry: d.store().get(id) };
+    // A new drag (or a knob turned on the card) is the next action: the last drag's four choices go (decision 1).
+    if (!liveFrom || liveFrom.id !== id) (choices.close(), (liveFrom = { id, entry: d.store().get(id) }));
     d.store().set(id, next);
     d.changed(card);
   }
@@ -180,6 +210,39 @@ export function createCodePlaceWire(d: CodePlaceWireDeps): CodePlaceWire {
     liveFrom = null;
     d.store().set(id, from);
     d.commit(id, from, next);
+    lastDrag = { id, from, to: d.store().get(id) };
+    litNew(id, from);
+  }
+  // studio-offsets: the last drag's step (for the four choices, which swap its end in the same ⌘Z), and the offset row
+  // made just now (it lights once on the card: decision 6, "a new row glows violet once").
+  let lastDrag: { id: string; from: PlacementPlace | null; to: PlacementPlace | null } | null = null;
+  let lit: { id: string; i: number } | null = null;
+  /** A row more than before: that one lights (the last: a new or turned row goes last, offset-model.ts). */
+  function litNew(id: string, from: PlacementPlace | null) {
+    const now = d.store().get(id)?.offsets ?? [];
+    const was = from?.offsets ?? [];
+    lit = now.length > was.length || (now.length && !was.some((o) => o.way === now[now.length - 1]!.way && o.how === now[now.length - 1]!.how)) ? { id, i: now.length - 1 } : lit && lit.id === id ? null : lit;
+  }
+  /** The frame row of `key` (the game page's rows; studio-offsets), or null: not a row. */
+  const rowOf = (p: CodePlaceInfo, key: string): FrameRow | null => {
+    const r = p.rows?.[nth(p, key) - 1];
+    return r && r.along && r.side ? { line: r.line, rank: r.rank, along: r.along, side: r.side, ...(r.mirror ? { mirror: true as const } : {}) } : null;
+  };
+  /**
+   * A move of a rule's object as its rule's offset (studio-offsets: a key step, a game's tool): the way and how far it
+   * went in its frame, kept as the way's last chosen row when that moves it, else All the same — as a drag would.
+   */
+  function asOffset(p: CodePlaceInfo, key: string, from: Pose, to: Pose, press: 'move' | 'rotate' | 'lift' | 'scale', e0: PlacementPlace | null): { e: PlacementPlace; a: OffsetAmount; how: 'same' | 'zigzag' | 'ramp' } | null {
+    const row = rowOf(p, key);
+    const a = dragAmount(press, row, from, to, d.dim() === '3d' ? 3 : 2);
+    if (noAmount(a)) return null;
+    const last = lastOf(e0?.offsets, a.way);
+    const how = row && last && movesRank(last, row.rank) ? last.how : 'same';
+    const offs = addOffset(e0?.offsets, a, how, row?.rank ?? 0);
+    if (!offs) return null;
+    const e: PlacementPlace = { ...(e0 ?? {}), offsets: offs };
+    if (!offs.length) delete e.offsets;
+    return { e, a, how };
   }
   const withKnob = (p: CodePlaceInfo, name: string, v: number): PlacementPlace => withKnobs(p, { [name]: v });
   const withKnobs = (p: CodePlaceInfo, set: Record<string, number>): PlacementPlace => {
@@ -260,6 +323,67 @@ export function createCodePlaceWire(d: CodePlaceWireDeps): CodePlaceWire {
     guide(true);
   }
 
+  // The four choices under a rule drag (offset-choices.ts): a pointer over one shows it in the draft; a choice swaps the
+  // drag's end in the same ⌘Z (main.ts retarget), else (the last step is no longer the drag's) it is a step of its own.
+  const choices = createOffsetChoices({
+    t, dim: () => d.dim(),
+    place: (id) => d.list().find((x) => x.id === id) ?? null,
+    name: (k) => nameOf(k),
+    pinOf: (pose) => pinOf(pose, d.dim()),
+    show: (id, e) => {
+      d.store().set(id, e);
+      d.changed(true);
+      layout([id]);
+    },
+    retarget: (id, e) => {
+      const from = lastDrag && lastDrag.id === id ? lastDrag.from : d.store().get(id);
+      if (!d.retarget?.(id, e)) d.commit(id, from, e);
+      else (d.store().set(id, e), d.changed(true), layout([id]));
+      lastDrag = { id, from, to: d.store().get(id) };
+      litNew(id, from);
+    },
+    ask: d.ask ? (draft) => d.ask!(draft) : undefined,
+    opened: (on) => d.send({ type: 'studio:place/choices', on }),
+    // Just this one: the choices' own line says "Placed Street lamps 5 by hand" (the plan's picture 4) — no second line.
+  });
+
+  /**
+   * The card's offset rows of layout `p` (decision 6): turning a row's number is live, then one ⌘Z; ⋯ Remove takes it
+   * off (the objects go back by that much: one ⌘Z, one Save count); ✦ puts "Make Street lamps' sideways a knob" in the
+   * chat box.
+   */
+  function offsetRows(p: CodePlaceInfo): HTMLElement | null {
+    const offs = entry(p.id).offsets ?? [];
+    const shine = lit && lit.id === p.id ? lit.i : -1;
+    lit = null;
+    return offsetRowsEl({
+      t, dim: d.dim(), offs, lit: shine,
+      set: (i, row, end) => {
+        const e = entry(p.id);
+        const list = (e.offsets ?? []).slice();
+        if (row) list[i] = row;
+        else list.splice(i, 1);
+        const next: PlacementPlace = { ...e, offsets: list };
+        if (!list.length) delete next.offsets;
+        if (!row) {
+          const was = e.offsets?.[i];
+          d.commit(p.id, d.store().get(p.id), next);
+          if (was) d.told(t('offset.removed', { name: p.name, what: offsetRowWords(t, was) }));
+          return;
+        }
+        if (!end) {
+          setLive(p.id, next, false);
+          layout([p.id]);
+        } else endLive(p.id, next);
+      },
+      ask: d.ask ? (i) => {
+        const r = entry(p.id).offsets?.[i];
+        if (r) d.ask!(t('offset.draftRow', { name: p.name, way: t(`offset.way.${r.way}`), what: r.way === 'move' ? r.v.join(', ') : `${offsetRowWords(t, r)} ${r.v}` }));
+      } : undefined,
+      menu: d.menu ? (at, rows) => d.menu!(at, rows) : undefined,
+    });
+  }
+
   function guide(force = false) {
     d.guided?.(force);
     const keys = [...(d.group().length > 1 ? d.group() : d.selected() ? [d.selected()!] : []), ...hovered];
@@ -269,6 +393,8 @@ export function createCodePlaceWire(d: CodePlaceWireDeps): CodePlaceWire {
     // over every object placed by hand, and spreads the ring of a pin it did not have. Before, nothing picked sent {}.
     const places = on ? d.store().result() ?? {} : {};
     const sel = d.selected();
+    // Another pick is the next action: the last drag's four choices go (studio-offsets, decision 1).
+    if (sel !== lastSel) (choices.close(), (lastSel = sel));
     const compare = compareMarks(ids);
     // Lit: the objects placed by hand among those the mouse is on (the card's count, their rows).
     const lit = hovered.filter((k) => {
@@ -341,7 +467,7 @@ export function createCodePlaceWire(d: CodePlaceWireDeps): CodePlaceWire {
       h('button', { type: 'button', class: 'link-btn rule-hand', title: t('rule.individuallyTip', { n: p.keys.length }), dataset: { action: 'rule-individually', part: 'rule-individually' },
         onclick: () => individually(p) }, t('rule.individually')),
       h('span', { class: 'muted rule-nth', text: t('rule.nth', { n: nth(p, key) }) }));
-    return h('div', { class: 'rule-block', dataset: { part: 'rule-layout', id: p.id } }, head, h('div', { class: 'rule-knobs' }, ...knobs), compareBlock(p), handsLine(p), foot,
+    return h('div', { class: 'rule-block', dataset: { part: 'rule-layout', id: p.id } }, head, h('div', { class: 'rule-knobs' }, ...knobs), offsetRows(p), compareBlock(p), handsLine(p), foot,
       unused ? h('p', { class: 'muted note-line', text: t('rule.unusedPins', { n: unused }) }) : null);
   }
 
@@ -356,7 +482,10 @@ export function createCodePlaceWire(d: CodePlaceWireDeps): CodePlaceWire {
       const pose = d.pose(k);
       if (pose && !pins[k]) pins[k] = pinOf(pose, d.dim());
     }
-    d.commit(p.id, d.store().get(p.id), { ...e, hand: true, pins });
+    // Where each stands now has its offsets in it: the file's offsets go (the coordinates say everything; decision 13).
+    const next: PlacementPlace = { ...e, hand: true, pins };
+    delete next.offsets;
+    d.commit(p.id, d.store().get(p.id), next);
     d.told(t('rule.individuallyDone', { name: p.name, n: p.keys.length }));
   }
 
@@ -383,12 +512,27 @@ export function createCodePlaceWire(d: CodePlaceWireDeps): CodePlaceWire {
       const p = layoutOf(key);
       if (!p) return false;
       if (ruled(p, key) && !alone) {
-        // Not ⌥: never out of its rule (studio-to-coords). The game page keeps a drag still already (bridge/code-place.ts);
-        // this is the rest — a key step, a game's tool, a drop to the floor: back where the rule puts it, and why.
-        if (end) {
+        // Not ⌥: never out of its rule (studio-to-coords). A drag in the game turns its rule already (bridge/code-place.ts);
+        // this is the rest — a key step, a game's tool, a drop to the floor: since studio-offsets the whole rule moves
+        // with it (an offset, live while a key is held, one ⌘Z), and the four choices open as after a drag.
+        if (!keyRun || keyRun.key !== key) keyRun = { key, from: d.pose(key) ?? pose, e0: d.store().get(p.id) };
+        const run = keyRun;
+        const r = asOffset(p, key, run.from, pose, press ?? 'move', run.e0);
+        if (!end) {
+          if (r) setLive(p.id, r.e, true);
           layout([p.id]);
-          sayHeld(p, PRESS_WAY[press ?? 'move']);
+          return true;
         }
+        keyRun = null;
+        if (!r) {
+          layout([p.id]);
+          return true;
+        }
+        if (!liveFrom || liveFrom.id !== p.id) liveFrom = { id: p.id, entry: run.e0 };
+        endLive(p.id, r.e);
+        layout([p.id]);
+        const row = rowOf(p, key);
+        choices.open({ id: p.id, key, way: r.a.way, d: r.a.d, rank: row?.rank ?? 0, row: !!row, did: r.how, pose }, run.e0, d.store().get(p.id));
         return true;
       }
       // While the drag goes on, the model follows the game (the card's numbers) without counting it as a move.
@@ -421,15 +565,34 @@ export function createCodePlaceWire(d: CodePlaceWireDeps): CodePlaceWire {
       const p = d.list().find((x) => x.id === m.id);
       if (p) sayHeld(p, m.way);
     },
-    steps(keys, quiet) {
-      const held = keys.filter((k) => {
+    offsets(m) {
+      const p = d.list().find((x) => x.id === m.id);
+      if (!p) return;
+      const e = entry(p.id);
+      const next: PlacementPlace = { ...e, offsets: structuredClone(m.offsets) };
+      if (!m.offsets.length) delete next.offsets;
+      if (!m.end) setLive(p.id, next, true);
+      else endLive(p.id, next);
+    },
+    dragged(m) {
+      // The drag's own step (place/knob or place/offsets end) came just before: its two ends are the choices' start.
+      if (!lastDrag || lastDrag.id !== m.id) return;
+      choices.open(m, lastDrag.from, lastDrag.to);
+    },
+    choices,
+    steps(keys, quiet, op) {
+      // One object: its step is its rule's offset (moved() above). Several: Move / Height step with the rest (their
+      // rule's offset, groupMoved); a turn, a size or End of a group stays — round the group's middle, or each to its
+      // own floor, is no offset of a rule.
+      const held = keys.length > 1 && op !== 'move' && op !== 'lift' ? keys.filter((k) => {
         const p = layoutOf(k);
         return !!p && ruled(p, k);
-      });
+      }) : [];
       if (held.length && !quiet) {
         const p = layoutOf(held[0]!)!;
-        d.told(t('rule.keys', { name: p.name }), [], false);
+        d.told(t('rule.heldGroup', { name: p.name }), [], false);
       }
+      if (keys.length) choices.close();
       return keys.filter((k) => !held.includes(k));
     },
     poses(poses) {
@@ -474,6 +637,11 @@ export function createCodePlaceWire(d: CodePlaceWireDeps): CodePlaceWire {
           out.push(t('rule.saved', { name: p.name, knob: def.label, v: `${knobNumber(k.v, def.step)}${unit(def.unit)}` }));
           said = true;
         }
+        // studio-offsets: "Street lamps Sideways · Zigzag width 1.5 m".
+        for (const o of e.offsets ?? []) {
+          out.push(t('offset.saved', { name: p.name, what: o.way === 'move' ? amountWords(t, 'move', o.v, d.dim()) : `${offsetRowWords(t, o)} ${knobNumber(o.v)}${o.way === 'turn' ? '°' : o.way === 'size' ? '×' : unit(d.dim() === '3d' ? 'm' : 'px')}` }));
+          said = true;
+        }
         if (!said) out.push(p.name);
       }
       return out;
@@ -482,6 +650,8 @@ export function createCodePlaceWire(d: CodePlaceWireDeps): CodePlaceWire {
       const rest: typeof poses = [];
       const next = new Map<string, PlacementPlace>();
       const back = new Set<string>();
+      // studio-offsets: per layout, where its lead object is now (its rule follows as an offset).
+      const shifts = new Map<string, Pose>();
       // The rule's objects ⌥ takes out of their rule now (told at the end, as one object's are).
       const first: Array<{ id: string; key: string }> = [];
       for (const x of poses) {
@@ -490,9 +660,15 @@ export function createCodePlaceWire(d: CodePlaceWireDeps): CodePlaceWire {
           rest.push(x);
           continue;
         }
-        // Not ⌥: a rule's object stays in its rule (the game page leaves them out of a group drag; a key step's group
-        // may still bring one) — laid out again where the rule puts it.
+        // Not ⌥: a rule's object stays in its rule. Since studio-offsets a group's Move / Height brings them (the game
+        // page keeps them in the drag): their rule moves with them as an offset (below); anything else — laid out again
+        // where the rule puts it.
         if (ruled(p, x.key) && !alone) {
+          if (!groupRun.has(p.id)) groupRun.set(p.id, { e0: d.store().get(p.id), lead: x.key, from: d.pose(x.key) ?? x.pose });
+          const g = groupRun.get(p.id)!;
+          // The lead: the picked one when it is this rule's (its move is what the person watched).
+          if (x.key === d.selected() && g.lead !== x.key) groupRun.set(p.id, { ...g, lead: x.key, from: d.pose(x.key) ?? x.from ?? x.pose });
+          if (x.key === groupRun.get(p.id)!.lead) shifts.set(p.id, x.pose);
           back.add(p.id);
           continue;
         }
@@ -502,11 +678,29 @@ export function createCodePlaceWire(d: CodePlaceWireDeps): CodePlaceWire {
         const e = next.get(p.id) ?? entry(p.id);
         next.set(p.id, { ...e, pins: { ...(e.pins ?? {}), [x.key]: pinOf(x.pose, d.dim()) } });
       }
+      // A rule's objects moved together with the rest: its offset — the lead's move on the ground and up (All the same:
+      // `move` and `up`, the world's own directions, so a group that holds both sides of a road moves as one).
+      const dim3 = d.dim() === '3d';
+      for (const [id, to] of shifts) {
+        const g = groupRun.get(id)!;
+        const z = dim3 ? 2 : 1;
+        let offs = g.e0?.offsets;
+        const dx = (to.p[0] ?? 0) - (g.from.p[0] ?? 0), dz = (to.p[z] ?? 0) - (g.from.p[z] ?? 0), dy = dim3 ? (to.p[1] ?? 0) - (g.from.p[1] ?? 0) : 0;
+        if (Math.hypot(dx, dz) > 1e-4) offs = addOffset(offs, { way: 'move', d: [dx, dz] }, 'same', 0) ?? offs;
+        if (Math.abs(dy) > 1e-4) offs = addOffset(offs, { way: 'up', d: dy }, 'same', 0) ?? offs;
+        const e: PlacementPlace = { ...(g.e0 ?? {}), ...(offs?.length ? { offsets: offs } : {}) };
+        if (!offs?.length) delete e.offsets;
+        if (!end) {
+          d.store().set(id, e);
+          layout([id]);
+        } else next.set(id, e);
+      }
       const changes = [...next].map(([id, to]) => {
-        const from = d.store().get(id);
+        const from = groupRun.get(id)?.e0 ?? d.store().get(id);
         d.store().set(id, to);
         return { kind: 'code-place' as const, key: id, from, to: d.store().get(id) };
       });
+      if (end) groupRun.clear();
       const again = new Set([...changes.map((c) => c.key), ...(end ? back : [])]);
       if (again.size) layout([...again]);
       // ⌥ took some out of their rule together: said as for one ("Placed Street lamps 2, Street lamps 3 by hand"), with

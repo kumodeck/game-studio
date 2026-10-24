@@ -679,8 +679,9 @@ if (isNum(a.s) && a.s !== 0) three ? o.scale.setScalar(a.s) : o.scale.set(a.s, a
 else if (Array.isArray(a.s) && a.s.every(isNum)) three ? o.scale.set(a.s[0], a.s[1], a.s[2] ?? a.s[0]) : o.scale.set(a.s[0], a.s[1]);
 }
 }
-function codePlaceAt(p, i, k, tr, level, n) {
-const g = { try: tr, rand: randOf(`${p.id}:${i}:${tr}`), level: level || null };
+function codePlaceAt(p, i, k, tr, level, n, seen) {
+const r = randOf(`${p.id}:${i}:${tr}`);
+const g = { try: tr, rand: seen ? () => ((seen.rand = true), r()) : r, level: level || null };
 let a;
 try {
 a = p.at(i, k, g);
@@ -689,6 +690,103 @@ warnOnce(`codePlace('${p.id}'): at failed (${e && e.message})`);
 return null;
 }
 return a && typeof a === 'object' && vecOf(a.p, n, false) ? a : null;
+}
+const OFFSET_WAYS = ['along', 'side', 'up', 'turn', 'size', 'move'];
+const OFFSET_HOWS = ['same', 'zigzag', 'ramp'];
+const MAX_OFFSETS = 8;
+function offsetsOf(v, where) {
+if (!Array.isArray(v)) return [];
+const out = [];
+for (const o of v.slice(0, MAX_OFFSETS)) {
+const ok = o && OFFSET_WAYS.includes(o.way) && OFFSET_HOWS.includes(o.how)
+&& (o.way === 'move' ? Array.isArray(o.v) && o.v.length === 2 && o.v.every(isNum) : isNum(o.v));
+if (ok) out.push(o);
+else warnOnce(`${where}: an offset needs a way (${OFFSET_WAYS.join(', ')}), a how (${OFFSET_HOWS.join(', ')}) and a number v`);
+}
+return out;
+}
+export function offsetFrame(spots, n, random) {
+if (random || !Array.isArray(spots)) return null;
+const pts = [];
+spots.forEach((q, i) => Array.isArray(q) && pts.push({ i, x: q[0], z: n === 3 ? q[2] : q[1] }));
+if (pts.length < 3) return null;
+const xs = pts.map((q) => q.x), zs = pts.map((q) => q.z);
+const tol = Math.max(1e-6, 0.02 * Math.hypot(Math.max(...xs) - Math.min(...xs), Math.max(...zs) - Math.min(...zs)));
+for (const [u, w] of [[0, 1], [0, 2], [1, 2]]) {
+const len = Math.hypot(pts[w].x - pts[u].x, pts[w].z - pts[u].z);
+if (len < tol) continue;
+let d = [(pts[w].x - pts[u].x) / len, (pts[w].z - pts[u].z) / len];
+const across = (q) => d[0] * q.z - d[1] * q.x;
+const c0 = across(pts[0]);
+let c1 = null;
+const row = pts.map((q) => {
+const c = across(q);
+if (Math.abs(c - c0) <= tol) return 0;
+if (c1 === null) c1 = c;
+return Math.abs(c - c1) <= tol ? 1 : -1;
+});
+if (row.includes(-1)) continue;
+const nb = row.filter((x) => x === 1).length;
+if (c1 !== null && (Math.min(nb, pts.length - nb) < 2 || Math.max(nb, pts.length - nb) < 3)) continue;
+const t = (q) => d[0] * q.x + d[1] * q.z;
+const rows = c1 === null ? [pts] : [pts.filter((_, j) => !row[j]), pts.filter((_, j) => row[j])];
+const lo = Math.min(...rows[0].map(t)), hi = Math.max(...rows[0].map(t));
+if (Math.abs(t(rows[0][0]) - hi) < Math.abs(t(rows[0][0]) - lo)) d = [-d[0], -d[1]];
+const nrm = [-d[1], d[0]];
+const cs = rows.map((r) => d[0] * r[0].z - d[1] * r[0].x);
+const mid = rows.length === 2 ? (cs[0] + cs[1]) / 2 : 0;
+const out = spots.map(() => null);
+rows.forEach((r, l) => {
+const sg = Math.abs(cs[l] - mid) > tol ? Math.sign(cs[l] - mid) : 1;
+const lo2 = Math.min(...r.map(t)), hi2 = Math.max(...r.map(t));
+const back = Math.abs(t(r[0]) - hi2) < Math.abs(t(r[0]) - lo2);
+const order = r.slice().sort((a, b) => (back ? t(b) - t(a) : t(a) - t(b)) || a.i - b.i);
+order.forEach((q, rank) => (out[q.i] = { l, r: rank, a: d.slice(), s: [nrm[0] * sg, nrm[1] * sg], m: l === 1 }));
+});
+return out;
+}
+return null;
+}
+export function offsetAt(offs, frame, i, n) {
+if (!offs || !offs.length) return null;
+const f = frame ? frame[i] : null;
+const p = n === 3 ? [0, 0, 0] : [0, 0];
+const z = n === 3 ? 2 : 1;
+let r = 0, s = 1;
+for (const o of offs) {
+if (!f && (o.how !== 'same' || o.way === 'along' || o.way === 'side')) continue;
+const k = o.how === 'zigzag' ? ((f.r % 2 === 1) === !!o.odd ? 1 : 0) : o.how === 'ramp' ? f.r : 1;
+if (o.way === 'size') s *= o.how === 'ramp' ? 1 + (o.v - 1) * k : k ? o.v : 1;
+else if (o.way === 'turn') r += (((f && f.m ? -1 : 1) * o.v * k) * Math.PI) / 180;
+else if (o.way === 'up') {
+if (n === 3) p[1] += o.v * k;
+} else if (o.way === 'move') (p[0] += o.v[0] * k), (p[z] += o.v[1] * k);
+else {
+const u = o.way === 'along' ? f.a : f.s;
+p[0] += u[0] * o.v * k;
+p[z] += u[1] * o.v * k;
+}
+}
+return { p, r, s: Math.max(0.01, s) };
+}
+function shiftAt(a, off, n) {
+if (!a || !off) return a;
+return { ...a, p: vecOf(a.p, n, false).map((v, j) => v + off.p[j]) };
+}
+const MADE = new WeakMap();
+function turnedAt(a, off, o, three) {
+if (!off || (!off.r && off.s === 1)) return a;
+const out = { ...a };
+const own = MADE.get(o) || { r: 0, s: 1 };
+if (off.r) {
+if (three && Array.isArray(a.r) && a.r.length === 3) out.r = [a.r[0], a.r[1] + off.r, a.r[2]];
+else out.r = (isNum(a.r) ? a.r : Array.isArray(a.r) && isNum(a.r[0]) ? a.r[0] : own.r) + off.r;
+}
+if (off.s !== 1) {
+const s = a.s !== undefined ? a.s : own.s;
+out.s = Array.isArray(s) ? s.map((v) => v * off.s) : (isNum(s) && s !== 0 ? s : 1) * off.s;
+}
+return out;
 }
 function placeCode(root, three, places, report, opts) {
 const all = codeList(CODE_PLACES);
@@ -712,6 +810,16 @@ if (o) o.visible = false;
 }
 }
 }
+function countOf(p, k) {
+let count = p.count;
+try {
+if (typeof count === 'function') count = count(k);
+} catch (e) {
+warnOnce(`codePlace('${p.id}'): count failed (${e && e.message})`);
+count = 0;
+}
+return isNum(count) ? Math.max(0, Math.min(MAX_PLACED, Math.floor(count))) : 0;
+}
 function layOut(p, f) {
 const { root, three, opts } = p.home;
 const n = three ? 3 : 2;
@@ -722,24 +830,26 @@ p.keys = [];
 p.skipped = [];
 p.spots = [];
 const k = knobValues(p.knobs, f.knobs);
-let count = p.count;
-try {
-if (typeof count === 'function') count = count(k);
-} catch (e) {
-warnOnce(`codePlace('${p.id}'): count failed (${e && e.message})`);
-count = 0;
-}
-count = isNum(count) ? Math.max(0, Math.min(MAX_PLACED, Math.floor(count))) : 0;
+const count = countOf(p, k);
+const seen = { rand: false };
+const first = [];
+for (let i = 0; i < count; i++) first.push(codePlaceAt(p, i, k, 0, level, n, seen));
+p.base = first.map((a) => (a ? vecOf(a.p, n, false) : null));
+p.frame = offsetFrame(p.base, n, seen.rand);
+p.random = seen.rand;
+p.fk = { sig: JSON.stringify(k), frame: p.frame };
+const offs = (p.offs = f.hand ? [] : offsetsOf(f.offsets, `codePlace('${p.id}')`));
 const tests = f.hand ? [] : avoidTests(p, f, n, { player: playerAt(root, three, opts), level });
 for (let i = 0; i < count; i++) {
 const key = `${p.id}-${i + 1}`;
 const pin = f.pins && f.pins[key] && Array.isArray(f.pins[key].p) ? f.pins[key] : null;
+const off = offsetAt(offs, p.frame, i, n);
 let at = null;
-if (pin || !tests.length) at = codePlaceAt(p, i, k, 0, level, n);
+if (pin || !tests.length) at = shiftAt(first[i], off, n);
 else {
 let prev = null;
 for (let tr = 0; tr < MAX_TRIES; tr++) {
-const a = codePlaceAt(p, i, k, tr, level, n);
+const a = shiftAt(tr ? codePlaceAt(p, i, k, tr, level, n) : first[i], off, n);
 if (!a) break;
 const q = vecOf(a.p, n, false);
 if (!tests.some((t) => t(q))) {
@@ -767,6 +877,7 @@ if (!o || !o.position) {
 p.skipped.push(key);
 continue;
 }
+MADE.set(o, { r: three ? o.rotation.y : o.rotation, s: three ? [o.scale.x, o.scale.y, o.scale.z] : [o.scale.x, o.scale.y] });
 if (three) {
 o.name = key;
 o.userData.studioKey = key;
@@ -777,7 +888,7 @@ o.studioKey = key;
 root.addChild(o);
 }
 }
-if (at) putCode(o, at, three);
+if (at) putCode(o, turnedAt(at, off, o, three), three);
 if (pin) put(o, pin, n, three);
 p.objs.push(o);
 p.keys.push(key);
@@ -791,17 +902,38 @@ if (!p || !p.home) return null;
 layOut(p, f && typeof f === 'object' ? f : {});
 return { keys: p.keys.slice(), skipped: p.skipped.slice() };
 }
-export function codeSpot(id, i, k) {
+function ruleAt(id, i, k) {
 const p = codeList(CODE_PLACES).get(id);
-const n = p && p.home && p.home.three ? 3 : 2;
-const a = p && codePlaceAt(p, i, k, 0, (p.home && p.home.opts && p.home.opts.level) || null, n);
-return a ? vecOf(a.p, n, false) : null;
+if (!p) return null;
+const n = p.home && p.home.three ? 3 : 2;
+const level = (p.home && p.home.opts && p.home.opts.level) || null;
+const a = codePlaceAt(p, i, k, 0, level, n);
+if (!a) return null;
+let off = null;
+if (p.offs && p.offs.length) {
+const sig = JSON.stringify(k);
+if (!p.fk || p.fk.sig !== sig) {
+const seen = { rand: false };
+const spots = [];
+for (let j = 0; j < countOf(p, k); j++) {
+const b = codePlaceAt(p, j, k, 0, level, n, seen);
+spots.push(b ? vecOf(b.p, n, false) : null);
+}
+p.fk = { sig, frame: offsetFrame(spots, n, seen.rand) };
+}
+off = offsetAt(p.offs, p.fk.frame, i, n);
+}
+return { a: shiftAt(a, off, n), off, o: p.objs[p.keys.indexOf(`${id}-${i + 1}`)] || null, n, three: n === 3 };
+}
+export function codeSpot(id, i, k) {
+const r = ruleAt(id, i, k);
+return r ? vecOf(r.a.p, r.n, false) : null;
 }
 export function codePose(id, i, k) {
-const p = codeList(CODE_PLACES).get(id);
-const n = p && p.home && p.home.three ? 3 : 2;
-const a = p && codePlaceAt(p, i, k, 0, (p.home && p.home.opts && p.home.opts.level) || null, n);
-if (!a) return null;
+const r = ruleAt(id, i, k);
+if (!r) return null;
+const n = r.n;
+const a = r.o ? turnedAt(r.a, r.off, r.o, r.three) : r.a;
 const out = { p: vecOf(a.p, n, false) };
 if (n === 3 && Array.isArray(a.r) && a.r.length === 3 && a.r.every(isNum)) (out.r = a.r[1]), (out.t = [a.r[0], a.r[2]]);
 else if (isNum(a.r)) out.r = a.r;

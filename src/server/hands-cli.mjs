@@ -26,7 +26,9 @@ import { agentFromEnv } from './which-ai.mjs';
 export const HANDS_FLAG_FIELDS = Object.freeze(['key', 'name', 'to', 'by', 'len', 'repeat', 'when', 'until', 'points', 'keys', 'ease', 'id', 'level',
   // Code motions and layouts (studio-code-base): --code spiral, --knobs '{"gap":4}', --pin '{"key":"hex-3","p":[…]}',
   // --unpin hex-3, --box '{"p":[…],"size":[…]}', --remove 0 | road.
-  'code', 'knobs', 'pin', 'unpin', 'box', 'remove']);
+  'code', 'knobs', 'pin', 'unpin', 'box', 'remove',
+  // studio-offsets: --offsets '[{"way":"side","how":"same","v":1}]' (a rule's shifts; '[]' takes them off).
+  'offsets']);
 // A flag of these alone is true; one followed by true / false / a [list] takes it (--hand false, place.code's
 // --replace '["lamp-1","lamp-2"]': the hand-placed objects it takes the place of).
 export const HANDS_FLAG_BOOLS = Object.freeze(['all', 'replace', 'deg', 'editor', 'hand', 'off']);

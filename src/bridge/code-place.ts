@@ -23,6 +23,16 @@
 //                 it again with ✦ when the drag ends where the rule cannot follow (place/held). WHY not move it and
 //                 make a pin as before: the same drag gave "the whole row changes" one way and "this one leaves the
 //                 rule" the other, without ⌥, and nobody saw it leave.
+//   offsets       studio-offsets (2026-10-24; the CRYSTAL FIELD try that day — a lamp dragged away from the road
+//                 "did nothing and said nothing" — and the answer "a rule's objects stay a rule however they are moved"). A
+//                 way with no knob no longer holds the object still: the drag adds an OFFSET to the whole rule from its first
+//                 step (every lamp follows; the chip "Sideways +1.0 m · all"), `places[id].offsets` (shell/offset-model.ts
+//                 does the sums, the loader the shifting). Move of a row tells along from side by the finger's first 8 px
+//                 (whichever it went further, in the dragged object's frame), then keeps that way for the drag (a knob's
+//                 way turns the knob, as before); the way's last chosen row turns when it moves this object (a zigzag of
+//                 its parity, a ramp past the nearest), else "All the same". When it ends, place/dragged tells the shell
+//                 what the four choices need (the way, how far, the rank). `place/held` is no longer sent for one object
+//                 (a group's turn / size still: they stay where the rule puts them).
 //   the line      the one line under the strip says, before a touch, which of the two a drag will do.
 //   placed by hand  studio-hand-marks (2026-10-24; the hand-marks plan §1, a play-test note of that day on v0.1.53: "on the
 //                 scene I can't tell which ones I placed by hand; nothing happens when one leaves its rule"). A rule's object put by hand (its pin) is sand, never orange (orange = what is picked, and
@@ -42,9 +52,10 @@
 // the others follow" (the choice (a) of 10/24) must work for any rule the AI writes — a row, a spiral of
 // lamps, a ring — and the editor only knows the rule by running it.
 // WHY SVG in a shadow root, as timeline-path.ts: the same look in every engine, out of reach of the game's CSS.
-import type { BridgeToShell, Lang, PlaceCompareMarks, PlacementPlace, PlaceWay, Pose, ShellToBridge, StudioAdapter } from '../contract.ts';
+import type { BridgeToShell, Lang, OffsetHow, OffsetWay, PlaceCompareMarks, PlacementPlace, PlaceOffset, PlaceWay, Pose, ShellToBridge, StudioAdapter } from '../contract.ts';
 import { codePose, knobValues, relayCodePlace } from '../loader/studio-placement.js';
 import { nativeSetTimeout } from '../core/native.ts';
+import { addOffset, dragAmount, lastOf, movesRank, noAmount, offsetsFull, snapAmount, type FrameRow, type OffsetAmount } from '../shell/offset-model.ts';
 import { kindOf } from './code-lists.ts';
 
 const VIOLET = '#a78bfa';
@@ -77,6 +88,9 @@ interface Entry {
   keys: string[];
   objs: Array<{ position?: unknown; parent?: unknown; geometry?: unknown; scale?: unknown } | null>;
   spots?: Array<number[] | null>;
+  /** studio-offsets: the offsets' frame of each number (loader offsetFrame; null = not a row), the skipped keys. */
+  frame?: Array<{ l: number; r: number; a: [number, number]; s: [number, number]; m: boolean } | null> | null;
+  skipped?: string[];
   home?: unknown;
 }
 
@@ -113,17 +127,55 @@ export const PLACE_WORDS: Record<Lang, {
     hand: '手で置いた',
   },
 };
+// studio-offsets (2026-10-24): the words of a drag that moves the whole rule (the chip while the finger is down, the line
+// before a touch). The ways as the card's offset rows say them; the shell's i18n.ts offset.* say the same.
+export const OFFSET_WORDS: Record<Lang, {
+  all: string; follow: string; others: string; way: Record<OffsetWay, string>; width: Record<'zigzag' | 'ramp', string>; skip: (n: number) => string; full: string;
+}> = {
+  en: {
+    all: 'all', follow: 'Drag to move them all', others: ' (other ways move them all)',
+    way: { along: 'Along', side: 'Sideways', up: 'Height', turn: 'Turn', size: 'Size', move: 'Position' },
+    width: { zigzag: 'Zigzag width', ramp: 'Each' },
+    skip: (n) => `${n} would be in a keep-out area, so not placed`,
+    full: 'Up to 8 offsets · ✦ to fold them into the rule',
+  },
+  ja: {
+    all: '全部', follow: 'ドラッグすると全部が付いてくる', others: '（ほかの向きは全部が付いてくる）',
+    way: { along: '並びに沿って', side: '横', up: '高さ', turn: '向き', size: '大きさ', move: '位置' },
+    width: { zigzag: 'ジグザグの幅', ramp: '1 個ごと' },
+    skip: (n) => `${n} 個は置かない所に入るので置きません`,
+    full: 'ずらしは 8 個まで · ✦ でルールにまとめる',
+  },
+};
 /** Narrower than this (css px), the line under the strip leaves the layout's name out (it was cut at 420 / 390). */
 export const NOTE_FULL_PX = 600;
 /**
  * The line under the strip for one object of a layout: what a drag with the tool does — the knobs it turns (`labels`),
- * or, with none for that way (`way`, default Move's), that the rule sets it. `narrow` = no name, `touch` = no ⌥ part.
+ * or, with none for that way, that every object follows (studio-offsets: a way with no knob is an offset of the whole
+ * rule; before, "the rule sets it" and nothing moved). `others` = the tool has a way without a knob besides (Move of a
+ * row with only a Gap knob: sideways moves them all). `narrow` = no name, `touch` = no ⌥ part.
  */
-export function placeNote(lang: Lang, name: string, n: number, labels: string | string[] | null, o: { narrow: boolean; touch: boolean; way?: PlaceWay }): string {
+export function placeNote(lang: Lang, name: string, n: number, labels: string | string[] | null, o: { narrow: boolean; touch: boolean; way?: PlaceWay; others?: boolean }): string {
   const w = PLACE_WORDS[lang] ?? PLACE_WORDS.en;
+  const ow = OFFSET_WORDS[lang] ?? OFFSET_WORDS.en;
   const ls = labels === null ? [] : Array.isArray(labels) ? labels : [labels];
-  const what = `${ls.length ? w.drag(ls) : w.fixed[o.way ?? 'move']}${o.touch ? '' : w.alone}`;
+  const what = `${ls.length ? `${w.drag(ls)}${o.others ? ow.others : ''}` : ow.follow}${o.touch ? '' : w.alone}`;
   return o.narrow ? what : `${w.head(name, n)}${what}`;
+}
+const SIGN = (v: number, dp: number) => `${v < 0 ? '−' : '+'}${Math.abs(v).toFixed(dp)}`;
+/**
+ * The chip while a drag shifts the whole rule (studio-offsets, the plan's first picture): "Sideways +1.0 m · all" (All the same:
+ * what this drag adds), "Sideways · Zigzag width 1.5 m" / "Sideways · Each 0.8 m" (the row it turns: its number now).
+ */
+export function offsetChip(lang: Lang, a: OffsetAmount, how: OffsetHow, row: PlaceOffset | null, three: boolean): string {
+  const w = OFFSET_WORDS[lang] ?? OFFSET_WORDS.en;
+  const u = three ? unitText(lang, 'm') : unitText(lang, 'px');
+  const dp = three ? 1 : 0;
+  const num = (v: number) => (a.way === 'turn' ? `${Math.round(v)}°` : a.way === 'size' ? `×${v.toFixed(2)}` : `${three ? Math.round(v * 100) / 100 : Math.round(v)}${u}`);
+  if (how !== 'same' && row && row.way !== 'move') return `${w.way[a.way]} · ${w.width[how]} ${num(row.v)}`;
+  if (a.way === 'move') return `${w.way.move} ${three ? 'X' : 'x'} ${SIGN(a.d[0], dp)} ${three ? 'Z' : 'y'} ${SIGN(a.d[1], dp)}${u} · ${w.all}`;
+  const said = a.way === 'turn' ? `${SIGN(a.d, 0)}°` : a.way === 'size' ? `×${a.d.toFixed(2)}` : `${SIGN(a.d, dp)}${u}`;
+  return `${w.way[a.way]} ${said} · ${w.all}`;
 }
 /** The chip while a drag does not move a rule's object that way: why, and (not on a finger) ⌥. */
 export function heldChip(lang: Lang, way: PlaceWay, touch: boolean): string {
@@ -313,19 +365,22 @@ export interface CodePlaceView {
   note(key: string, tool?: DragTool | null): string | null;
   /**
    * A drag of `key` with `tool` starts (input.ts moveHandle, its first step), before anything moves:
-   *   'knob'  it turns the layout's knobs for that way (the rest of the drag goes to dragTo / dragEnd)
-   *   'stop'  the rule has no knob for that way: nothing moves (stopChip while the finger is down, held at the end)
+   *   'knob'  the rule follows: the layout's knob for that way turns, or (studio-offsets) its offsets — every object
+   *           moves with it (the rest of the drag goes to dragTo / dragEnd)
    *   'free'  ⌥: just this one, an ordinary move the shell keeps as its pin (the moves say `alone`)
    *   null    not a rule's object (a hand one, a layout placed by hand, one already put by hand): an ordinary move
+   * ('stop' — nothing moves, the chip says why — is a group's turn / size now: input.ts startGroup.)
    */
   dragStart(key: string, alone: boolean, tool?: DragTool): 'knob' | 'stop' | 'free' | null;
   /**
    * Where an ordinary drag would put `key` (its whole pose): the layout laid out again with the knobs that bring it
-   * nearest; its pose, and the chip (the knobs' change, and why when the rule cannot follow that way).
+   * nearest, or with the offset that drag makes; its pose, and the chip (the knob's change, or "Sideways +1.0 m · all").
    */
   dragTo(key: string, want: Pose, tool?: DragTool): { pose: Pose; chip: string } | null;
-  /** The drag ended (keep false = cancelled: back to the knobs it had). The rule did not follow at the end: place/held. */
+  /** The drag ended (keep false = cancelled: back to what it had); then place/dragged for the four choices. */
   dragEnd(key: string, keep: boolean): void;
+  /** The four choices under a drag are open in the editor page (studio:place/choices): 1–4 and Esc are theirs. */
+  choosing(): boolean;
   /**
    * A keep-out box being drawn / dragged (studio-code-keepout; keep-out.ts): layout `id` laid out again with `entry` (the
    * draft's entry with the box) — its objects step out of the box as it grows, and where they stood before shows dashed
@@ -383,10 +438,14 @@ text.hand { fill: ${SAND_TEXT}; }
   // itself from a hand-placed one before it is touched" (the plan's need 2, n2-tell). Read once a frame (pickNear).
   let hoverId: string | null = null;
   let hoverAt: { x: number; y: number } | null = null;
-  // A drag that turns knobs: the layout, the tool, its knobs with their numbers before and now, where the objects stood
-  // before, the pose the object had, and the way the rule did not follow (null: it followed) at the last step.
-  let drag: { id: string; key: string; i: number; tool: DragTool; knobs: string[]; from: Record<string, number>; v: Record<string, number>;
-    before: Array<number[] | null>; start: Pose | null; lag: PlaceWay | null } | null = null;
+  // A drag of a rule's object (studio-code-knobs; studio-offsets): the layout, the tool, the dragged one's frame row, the
+  // layout's entry when it began (e0), where the objects stood before, the pose the object had; then, once the way is
+  // known (`mode`): the knobs it turns with their numbers before and now, or the offset it makes (`amount`, `how`).
+  let drag: { id: string; key: string; i: number; tool: DragTool; row: FrameRow | null; e0: PlacementPlace; before: Array<number[] | null>;
+    start: Pose | null; skip0: number; way: OffsetWay | null; mode: 'knob' | 'offset' | null; knobs: string[]; from: Record<string, number>;
+    v: Record<string, number>; amount: OffsetAmount | null; how: OffsetHow; offs: PlaceOffset[] | undefined } | null = null;
+  // The four choices under a drag are open in the editor page (studio:place/choices): its keys 1–4 and Esc.
+  let choices = false;
   // A keep-out box being drawn (studio-code-keepout): the layout and where its objects stood when it began.
   let moving: { id: string; before: Array<number[] | null> } | null = null;
   let drawn = '';
@@ -407,7 +466,18 @@ text.hand { fill: ${SAND_TEXT}; }
   const pinned = (p: Entry, key: string) => !!entryOf(p.id).pins?.[key];
   // The way a Move missed, unless the layout has a knob for it (then it is the end of that knob's range, not a way the
   // rule keeps: a gap at its largest).
-  const uncovered = (p: Entry, way: PlaceWay): PlaceWay | null => ((way === 'along' || way === 'side') && dragKnobs(p)[way] ? null : way);
+  /** `key`'s row in its layout's offsets frame (studio-offsets; loader offsetFrame), or null: not a row. */
+  const rowOf = (p: Entry, key: string): FrameRow | null => {
+    const f = p.frame?.[Number(key.slice(p.id.length + 1)) - 1];
+    return f ? { line: f.l, rank: f.r, along: [f.a[0], f.a[1]], side: [f.s[0], f.s[1]], ...(f.m ? { mirror: true as const } : {}) } : null;
+  };
+  /** How far (css px on screen; without a screen, world units × 100) a drag went from `from` to `to`. */
+  const went = (p: Entry, from: Pose, to: Pose): number => {
+    const a = d.adapter();
+    const s0 = a.toScreen?.(toScene(p, from.p)), s1 = a.toScreen?.(toScene(p, to.p));
+    if (s0 && s1) return Math.hypot(s1[0] - s0[0], s1[1] - s0[1]);
+    return Math.hypot(...to.p.map((v, j) => v - (from.p[j] ?? 0))) * (a.dim === '3d' ? 100 : 1);
+  };
   // A finger (no ⌥ key there): the words leave the ⌥ part out.
   const touch = () => !!win.matchMedia?.('(pointer: coarse)').matches;
 
@@ -760,6 +830,8 @@ text.hand { fill: ${SAND_TEXT}; }
         relay(msg.ids ?? [...list().keys()]);
         // After the relayout: each new one stands where it was put by hand, its ring spreads there.
         pulse(fresh);
+      } else if (msg.type === 'studio:place/choices') {
+        choices = !!msg.on;
       } else if (msg.type === 'studio:place/guide') {
         guide = { ids: msg.ids.slice(), sel: msg.sel };
         lit = (msg.lit ?? []).slice(0, 50);
@@ -788,84 +860,108 @@ text.hand { fill: ${SAND_TEXT}; }
       if (!p || entryOf(p.id).hand) return null;
       if (pinned(p, key)) return (PLACE_WORDS[d.lang()] ?? PLACE_WORDS.en).pinned(p.name);
       const t = tool ?? 'move';
+      const kn = dragKnobs(p);
+      // Move of a row with a knob one way only: the other way moves them all (studio-offsets).
+      const others = t === 'move' && !!rowOf(p, key) && !!kn.along !== !!kn.side;
       return placeNote(d.lang(), p.name, p.keys.length, toolKnobs(p, t).map((k) => p.knobs[k]!.label),
-        { narrow: win.innerWidth < NOTE_FULL_PX, touch: touch(), way: TOOL_WAY[t] });
+        { narrow: win.innerWidth < NOTE_FULL_PX, touch: touch(), way: TOOL_WAY[t], others });
     },
     dragStart(key, alone, tool = 'move') {
       drag = null;
       const p = layoutOf(key);
       if (!p || entryOf(p.id).hand || pinned(p, key)) return null;
       if (alone) return 'free';
-      const knobs = toolKnobs(p, tool);
-      if (!knobs.length) return 'stop';
-      const v = knobValues(p.knobs, entryOf(p.id).knobs) as Record<string, number>;
-      const from = Object.fromEntries(knobs.map((k) => [k, v[k]!]));
-      drag = { id: p.id, key, i: Number(key.slice(p.id.length + 1)) - 1, tool, knobs, from, v: { ...from },
-        before: (p.spots ?? []).map((q) => (q ? q.slice() : null)), start: d.adapter().anchor(key)?.pose ?? null, lag: null };
+      // Every way follows now (studio-offsets): a knob, or the rule's offsets. Which one is known at the first steps.
+      const e0 = structuredClone(entryOf(p.id));
+      drag = { id: p.id, key, i: Number(key.slice(p.id.length + 1)) - 1, tool, row: rowOf(p, key), e0,
+        before: (p.spots ?? []).map((q) => (q ? q.slice() : null)), start: d.adapter().anchor(key)?.pose ?? null, skip0: p.skipped?.length ?? 0,
+        way: null, mode: null, knobs: [], from: {}, v: {}, amount: null, how: 'same', offs: e0.offsets };
       return 'knob';
     },
     dragTo(key, want) {
       const p = drag && drag.key === key ? list().get(drag.id) : null;
-      if (!drag || !p) return null;
+      if (!drag || !p || !drag.start) return null;
       const dr = drag;
-      const k0 = knobValues(p.knobs, entryOf(p.id).knobs) as Record<string, number>;
-      const at = (k: Record<string, number>) => codePose(p.id, dr.i, k) as RulePose | null;
-      const gap = (k: Record<string, number>) => poseGap(dr.tool, at(k), want);
-      // Each knob in turn (Move: along, then side, three rounds — enough for a row's gap and its distance from the road,
-      // which do not pull against each other); the same steps as the card's knob after (shell/knob.ts snapKnob: a
-      // hundredth of its range, so a drag gives "4.5 m").
-      const k = { ...k0 };
-      for (let round = 0; round < (dr.knobs.length > 1 ? 3 : 1); round++) for (const name of dr.knobs) {
-        const def = p.knobs[name]!;
-        const [lo, hi] = knobRange(def);
-        const found = findBy((x) => gap({ ...k, [name]: x }), lo, hi, !!def.step && def.step >= 1);
-        if (found !== null) k[name] = found;
-      }
-      const next: Record<string, number> = {};
-      for (const name of dr.knobs) {
-        const def = p.knobs[name]!;
-        const [lo, hi] = knobRange(def);
-        const q = Math.pow(10, Math.floor(Math.log10(Math.max(1e-6, (hi - lo) / 100))));
-        next[name] = def.step && def.step >= 1 ? k[name]! : Math.round(k[name]! / q) * q;
-      }
-      if (dr.knobs.some((n) => Math.abs(next[n]! - dr.v[n]!) > 1e-9)) {
-        dr.v = next;
-        const e = entryOf(p.id);
-        const ks = { ...(e.knobs ?? {}) };
-        for (const n of dr.knobs) ks[n] = { v: next[n]! };
-        places = { ...places, [p.id]: { ...e, knobs: ks } };
-        relay([p.id]);
-        d.post({ type: 'studio:place/knob', id: p.id, knob: dr.knobs[0]!, v: next[dr.knobs[0]!]!, end: false, key, knobs: { ...next } });
-      } else if (offRule(at(dr.v), d.adapter().anchor(key)?.pose)) {
-        // The same numbers: the ordinary step has still moved this one object (input.ts drags it, then asks here) — back
-        // where the rule puts it. Before studio-to-coords it stayed under the finger until the drag ended (a lamp dragged
-        // sideways followed the finger, then jumped back on release).
-        relay([p.id]);
-      }
-      // Did the rule follow? What is left of the drag, against what it asked (on screen for Move / Height).
-      const now = at(dr.v);
-      const left = poseGap(dr.tool, now, want);
-      const asked = dr.start ? poseAsk(dr.tool, dr.start, want) : left;
-      let px: { left: number; asked: number } | undefined;
+      const start = drag.start;
       const a = d.adapter();
-      if ((dr.tool === 'move' || dr.tool === 'lift') && a.toScreen && now?.p) {
-        const sw = a.toScreen(toScene(p, want.p)), sn = a.toScreen(toScene(p, now.p)), s0 = dr.start ? a.toScreen(toScene(p, dr.start.p)) : null;
-        if (sw && sn) px = { left: Math.hypot(sw[0] - sn[0], sw[1] - sn[1]), asked: s0 ? Math.hypot(sw[0] - s0[0], sw[1] - s0[1]) : Infinity };
-      }
-      // Both of Move's knobs there and the rule still short: the end of a knob's range — the object stops at the edge,
-      // the chip shows the knob at its end (no "why": every way is the rule's to follow).
-      dr.lag = !ruleLags(dr.tool, left, asked, px) ? null
-        : dr.tool === 'move' ? (dr.knobs.length > 1 ? null : uncovered(p, moveWay(p.spots ?? [], dr.i, want.p.map((v, j) => v - (now?.p[j] ?? v)), kindOf(p as unknown as Record<string, unknown>) === 'line')))
-        : TOOL_WAY[dr.tool];
-      const pose = a.anchor(key)?.pose;
+      const n = a.dim === '3d' ? 3 : 2;
       const lang = d.lang();
-      const turned = dr.knobs.filter((n) => Math.abs(dr.v[n]! - dr.from[n]!) > 1e-9);
-      const said = (turned.length ? turned : dr.knobs.slice(0, 1)).map((n) => {
-        const def = p.knobs[n]!;
-        return `${def.label} ${knobText(dr.from[n]!, def.step)} → ${knobText(dr.v[n]!, def.step)}${unitText(lang, def.unit)}`;
-      });
-      const why = dr.lag ? heldChip(lang, dr.lag, touch()) : '';
-      return pose ? { pose, chip: !turned.length && why ? why : [...said, why].filter(Boolean).join(' · ') } : null;
+      // The way: Height / Turn / Size have one; Move of a row waits for the finger's first 8 px, then keeps the way it
+      // went further (along the row or away from it) for the whole drag — a hand's wobble does not flip it.
+      if (!dr.mode) {
+        const kn = dragKnobs(p);
+        if (dr.tool !== 'move') dr.way = dragAmount(dr.tool, dr.row, start, want, n).way;
+        else if (!dr.row || (kn.along && kn.side)) dr.way = dr.row ? 'along' : 'move';
+        else if (went(p, start, want) >= 8) dr.way = dragAmount('move', dr.row, start, want, n).way;
+        if (dr.way) {
+          // Move of a layout that is not a row, with a knob: that knob (as before). Of a row with both: both.
+          const ks = dr.tool === 'move' && (!dr.row || (kn.along && kn.side)) ? [kn.along, kn.side] : [kn[dr.way as KnobWay]];
+          dr.knobs = [...new Set(ks.filter((x): x is string => !!x))];
+          dr.mode = dr.knobs.length ? 'knob' : 'offset';
+          const k0 = knobValues(p.knobs, dr.e0.knobs) as Record<string, number>;
+          dr.from = Object.fromEntries(dr.knobs.map((k) => [k, k0[k]!]));
+          dr.v = { ...dr.from };
+        }
+      }
+      const k0 = knobValues(p.knobs, dr.e0.knobs) as Record<string, number>;
+      const at = (k: Record<string, number>) => codePose(p.id, dr.i, k) as RulePose | null;
+      let chip = '';
+      if (dr.mode === 'knob') {
+        const gap = (k: Record<string, number>) => poseGap(dr.tool, at(k), want);
+        // Each knob in turn (Move: along, then side, three rounds — enough for a row's gap and its distance from the road,
+        // which do not pull against each other); the same steps as the card's knob after (shell/knob.ts snapKnob: a
+        // hundredth of its range, so a drag gives "4.5 m").
+        const k = { ...k0 };
+        for (let round = 0; round < (dr.knobs.length > 1 ? 3 : 1); round++) for (const name of dr.knobs) {
+          const def = p.knobs[name]!;
+          const [lo, hi] = knobRange(def);
+          const found = findBy((x) => gap({ ...k, [name]: x }), lo, hi, !!def.step && def.step >= 1);
+          if (found !== null) k[name] = found;
+        }
+        const next: Record<string, number> = {};
+        for (const name of dr.knobs) {
+          const def = p.knobs[name]!;
+          const [lo, hi] = knobRange(def);
+          const q = Math.pow(10, Math.floor(Math.log10(Math.max(1e-6, (hi - lo) / 100))));
+          next[name] = def.step && def.step >= 1 ? k[name]! : Math.round(k[name]! / q) * q;
+        }
+        if (dr.knobs.some((nm) => Math.abs(next[nm]! - dr.v[nm]!) > 1e-9)) {
+          dr.v = next;
+          const ks = { ...(dr.e0.knobs ?? {}) };
+          for (const nm of dr.knobs) ks[nm] = { v: next[nm]! };
+          places = { ...places, [p.id]: { ...dr.e0, knobs: ks } };
+          relay([p.id]);
+          d.post({ type: 'studio:place/knob', id: p.id, knob: dr.knobs[0]!, v: next[dr.knobs[0]!]!, end: false, key, knobs: { ...next } });
+        } else if (offRule(at({ ...k0, ...dr.v }), a.anchor(key)?.pose)) relay([p.id]);
+        const turned = dr.knobs.filter((nm) => Math.abs(dr.v[nm]! - dr.from[nm]!) > 1e-9);
+        chip = (turned.length ? turned : dr.knobs.slice(0, 1)).map((nm) => {
+          const def = p.knobs[nm]!;
+          return `${def.label} ${knobText(dr.from[nm]!, def.step)} → ${knobText(dr.v[nm]!, def.step)}${unitText(lang, def.unit)}`;
+        }).join(' · ');
+      } else if (dr.mode === 'offset' && dr.way) {
+        // The offset this drag makes: how far the finger went that way (on a grid a hand can hit), kept as the way's
+        // last chosen row when it moves this object (a zigzag of its parity, a ramp past the nearest), else All the same.
+        const amt = snapAmount(dragAmount(dr.tool, dr.row, start, want, n, dr.way), n as 2 | 3);
+        const last = lastOf(dr.e0.offsets, dr.way);
+        dr.how = dr.row && last && movesRank(last, dr.row.rank) ? last.how : 'same';
+        const offs = noAmount(amt) ? dr.e0.offsets : addOffset(dr.e0.offsets, amt, dr.how, dr.row?.rank ?? 0) ?? dr.e0.offsets;
+        dr.amount = amt;
+        if (JSON.stringify(offs ?? []) !== JSON.stringify(dr.offs ?? [])) {
+          dr.offs = offs;
+          places = { ...places, [p.id]: { ...dr.e0, ...(offs?.length ? { offsets: offs } : {}) } };
+          if (!offs?.length) delete places[p.id]!.offsets;
+          relay([p.id]);
+          d.post({ type: 'studio:place/offsets', id: p.id, key, offsets: structuredClone(offs ?? []), end: false });
+        } else if (offRule(at(k0), a.anchor(key)?.pose)) relay([p.id]);
+        const row = dr.how === 'same' ? null : lastOf(offs, dr.way);
+        // Eight rows already and this drag would need a ninth (decision 6): it says so, and nothing moves.
+        chip = noAmount(amt) ? '' : offsetsFull(dr.e0.offsets, amt, dr.how, dr.row?.rank ?? 0) ? (OFFSET_WORDS[lang] ?? OFFSET_WORDS.en).full : offsetChip(lang, amt, dr.how, row, n === 3);
+      } else if (offRule(at(k0), a.anchor(key)?.pose)) relay([p.id]);
+      // A keep-out area leaves some out where the drag puts them (decision 11): said in the chip.
+      const more = (p.skipped?.length ?? 0) - dr.skip0;
+      if (more > 0) chip = [chip, (OFFSET_WORDS[lang] ?? OFFSET_WORDS.en).skip(more)].filter(Boolean).join(' · ');
+      const pose = a.anchor(key)?.pose;
+      return pose ? { pose, chip } : null;
     },
     preview(id, entry) {
       const p = list().get(id);
@@ -889,19 +985,35 @@ text.hand { fill: ${SAND_TEXT}; }
       drag = null;
       drawn = '';
       if (!dr || dr.key !== key) return;
-      const changed = dr.knobs.some((n) => dr.v[n] !== dr.from[n]);
+      const p = list().get(dr.id);
+      if (!dr.mode) {
+        // It never went far enough to have a way: where the rule puts it.
+        if (p) relay([dr.id]);
+        return;
+      }
+      const changed = dr.mode === 'knob' ? dr.knobs.some((nm) => dr.v[nm] !== dr.from[nm]) : JSON.stringify(dr.offs ?? []) !== JSON.stringify(dr.e0.offsets ?? []);
       if (!keep && changed) {
-        const e = entryOf(dr.id);
-        const ks = { ...(e.knobs ?? {}) };
-        for (const n of dr.knobs) ks[n] = { v: dr.from[n]! };
-        places = { ...places, [dr.id]: { ...e, knobs: ks } };
+        places = { ...places, [dr.id]: structuredClone(dr.e0) };
         relay([dr.id]);
       }
-      const end = keep ? dr.v : dr.from;
-      d.post({ type: 'studio:place/knob', id: dr.id, knob: dr.knobs[0]!, v: end[dr.knobs[0]!]!, end: true, key, knobs: { ...end } });
-      // The finger let go where the rule could not follow (a lamp dragged away from the road): the shell says why.
-      if (keep && dr.lag) d.post({ type: 'studio:place/held', id: dr.id, key, way: dr.lag });
+      if (dr.mode === 'knob') {
+        const end = keep ? dr.v : dr.from;
+        d.post({ type: 'studio:place/knob', id: dr.id, knob: dr.knobs[0]!, v: end[dr.knobs[0]!]!, end: true, key, knobs: { ...end } });
+      } else d.post({ type: 'studio:place/offsets', id: dr.id, key, offsets: structuredClone((keep ? dr.offs : dr.e0.offsets) ?? []), end: true });
+      // What the four choices under it need (the shell shows them): the way, how far this object went that way (where it
+      // stands now against where it stood: a knob's drag too), its rank, what the drag did.
+      const pose = d.adapter().anchor(key)?.pose;
+      if (keep && changed && p && pose && dr.start && dr.way) {
+        const n = d.adapter().dim === '3d' ? 3 : 2;
+        const amt = dr.mode === 'offset' && dr.amount ? dr.amount : dragAmount(dr.tool, dr.row, dr.start, pose, n, dr.knobs.length > 1 ? undefined : dr.way);
+        d.post({ type: 'studio:place/dragged', id: dr.id, key, way: amt.way, d: amt.d, rank: dr.row?.rank ?? 0, row: !!dr.row,
+          did: dr.mode === 'knob' ? 'knob' : dr.how, ...(dr.mode === 'knob' ? { knob: dr.knobs[0]! } : {}), pose,
+          ...((p.skipped?.length ?? 0) > dr.skip0 ? { skipped: (p.skipped?.length ?? 0) - dr.skip0 } : {}) });
+      }
       d.markDirty();
+    },
+    choosing() {
+      return choices;
     },
     stopChip(key, way) {
       void key;

@@ -245,8 +245,10 @@ test('the line under the strip: the words chosen on 10/24; shorter in a narrow w
   assert.equal(placeNote('en', 'hex', 4, 'Gap', { narrow: false, touch: false }), 'hex ×4 (rule): Drag to adjust Gap · ⌥-drag to move one');
   assert.equal(placeNote('ja', '六角形', 4, '間', { narrow: true, touch: false }), '動かすと間が変わる · ⌥+ドラッグで 1 個だけ');
   assert.equal(placeNote('ja', '六角形', 4, '間', { narrow: true, touch: true }), '動かすと間が変わる');
-  // studio-to-coords: no knob for that way = the rule keeps it (never "moving one places it individually" any more).
-  assert.equal(placeNote('en', 'crystal', 12, null, { narrow: false, touch: false }), 'crystal ×12 (rule): Position is set by the rule · ⌥-drag to move one');
+  // studio-offsets (it was studio-to-coords' "set by the rule": nothing moved): no knob for that way = every object
+  // follows (the rule's offset); a row with a knob one way only says the other ways move them all.
+  assert.equal(placeNote('en', 'crystal', 12, null, { narrow: false, touch: false }), 'crystal ×12 (rule): Drag to move them all · ⌥-drag to move one');
   assert.equal(placeNote('ja', '街灯', 12, ['間', '道からの距離'], { narrow: true, touch: false }), '動かすと間・道からの距離が変わる · ⌥+ドラッグで 1 個だけ');
-  assert.equal(placeNote('ja', '街灯', 12, null, { narrow: true, touch: true, way: 'up' }), '高さはルールで決まっています');
+  assert.equal(placeNote('ja', '街灯', 12, null, { narrow: true, touch: true, way: 'up' }), 'ドラッグすると全部が付いてくる');
+  assert.equal(placeNote('ja', '街灯', 10, '間', { narrow: true, touch: false, others: true }), '動かすと間が変わる（ほかの向きは全部が付いてくる） · ⌥+ドラッグで 1 個だけ');
 });

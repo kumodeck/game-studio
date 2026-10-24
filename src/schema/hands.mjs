@@ -34,7 +34,9 @@ export const HANDS_OPS = Object.freeze({
   // timeline / in the layout's card with its knobs, one ⌘Z away, like any of the AI's changes.
   'motion.code': { need: ['code', 'name'], may: ['key', 'when', 'until', 'replace', 'level'] },
   'place.code': { need: ['id'], may: ['replace', 'level'] },
-  'place.set': { need: ['id'], may: ['knobs', 'pin', 'unpin', 'hand', 'level'] },
+  // `offsets` (studio-offsets, 2026-10-24): the rule's shifts as the person's drags make them ([] takes them off) — "move
+  // every lamp 1 m further from the road" without writing code; on Save the AI writes them into the rule and sends [].
+  'place.set': { need: ['id'], may: ['knobs', 'pin', 'unpin', 'hand', 'offsets', 'level'] },
   'place.avoid': { need: ['id'], may: ['code', 'box', 'name', 'knobs', 'off', 'remove', 'level'] },
   'object.move': { need: ['key'], may: ['to', 'by', 'level'] },
   'object.turn': { need: ['key'], may: ['to', 'by', 'deg', 'level'] },
@@ -146,6 +148,11 @@ function readHandsOp(op, at, errors) {
     if (typeof op.unpin !== 'string' || (op.unpin !== '*' && !KEY_RE.test(op.unpin))) fail('"unpin" must be the key of one of the layout\'s objects ("hex-3"), or "*" for all of them');
     else out.unpin = op.unpin;
   }
+  if (has('offsets')) {
+    const o = readHandsOffsets(op.offsets);
+    if (o.error) fail(`"offsets": ${o.error}`);
+    else out.offsets = o.offsets;
+  }
   if (has('box')) {
     const b = op.box;
     const ok = b && typeof b === 'object' && handsVec(b.p) && handsVec(b.size, b.p.length) && b.size.every((x) => x >= 0) && Object.keys(b).every((k) => k === 'p' || k === 'size');
@@ -193,7 +200,7 @@ function readHandsOp(op, at, errors) {
   }
   if (op.do === 'motion.set' && ['repeat', 'len', 'when', 'until', 'knobs', 'off'].every((f) => !has(f))) fail('needs one of "repeat", "len", "when", "until", "knobs", "off"');
   if (op.do === 'motion.set' && has('off') && !has('key')) fail('"off" is per object: give "key" (the object whose motion is switched off / on)');
-  if (op.do === 'place.set' && ['knobs', 'pin', 'unpin', 'hand'].every((f) => !has(f))) fail('needs one of "knobs", "pin", "unpin", "hand"');
+  if (op.do === 'place.set' && ['knobs', 'pin', 'unpin', 'hand', 'offsets'].every((f) => !has(f))) fail('needs one of "knobs", "pin", "unpin", "hand", "offsets"');
   if (op.do === 'place.avoid') {
     if (has('remove') && (has('code') || has('box'))) fail('"remove" alone (which area), or "code" / "box" to add or change one');
     else if (!has('remove') && has('code') === has('box')) fail('needs "code" (a codeAvoid id in the game\'s code) or "box" (an area: { p, size }), one of them');
@@ -422,7 +429,8 @@ export function handsSaid(op, x = {}) {
     }
     case 'place.code': return op.replace ? `put codePlace('${op.id}') in place of ${op.replace.join(', ')} (hidden until your code stops making them)${x.keys ? `: ${x.keys} objects` : ''}`
       : `showed codePlace('${op.id}')${x.keys !== undefined ? ` (${x.keys} objects)` : ''} in the editor — nothing to write: the code places it`;
-    case 'place.set': return `set codePlace('${op.id}'): ${[op.knobs ? handsKnobWords(op.knobs) : '', op.pin ? `${op.pin.key} by hand at [${op.pin.p.join(', ')}]` : '', op.unpin === '*' ? 'every object placed by hand back on the formula' : op.unpin ? `${op.unpin} back on the formula` : '', op.hand !== undefined ? (op.hand ? 'every object by hand' : 'back on the formula') : ''].filter(Boolean).join(', ')}`;
+    case 'place.set': return `set codePlace('${op.id}'): ${[op.knobs ? handsKnobWords(op.knobs) : '', op.pin ? `${op.pin.key} by hand at [${op.pin.p.join(', ')}]` : '', op.unpin === '*' ? 'every object placed by hand back on the formula' : op.unpin ? `${op.unpin} back on the formula` : '', op.hand !== undefined ? (op.hand ? 'every object by hand' : 'back on the formula') : '',
+      op.offsets ? (op.offsets.length ? `offsets ${op.offsets.map((o) => `${o.way} ${o.how} ${Array.isArray(o.v) ? `[${o.v.join(', ')}]` : o.v}${o.odd ? ' (odd)' : ''}`).join(', ')}` : 'no offsets (back on the formula)') : ''].filter(Boolean).join(', ')}`;
     case 'place.avoid': return op.remove !== undefined ? `took keep-out area ${JSON.stringify(op.remove)} off codePlace('${op.id}')`
       : `${x.changed ? 'changed' : 'added'} the keep-out area ${op.code ? `codeAvoid('${op.code}')` : `box at [${op.box.p.join(', ')}]`} on codePlace('${op.id}')${op.knobs ? ` (${handsKnobWords(op.knobs)})` : ''}${op.off !== undefined ? (op.off ? ', switched off' : ', switched on') : ''}`;
     case 'object.move': return `moved ${op.key} to [${(x.pose?.p ?? op.to ?? []).join(', ')}]`;
@@ -699,6 +707,27 @@ function handsFileCode(f, op, w) {
   return { name: m.name, replaced, when };
 }
 
+const HANDS_OFFSET_WAYS = ['along', 'side', 'up', 'turn', 'size', 'move'];
+const HANDS_OFFSET_HOWS = ['same', 'zigzag', 'ramp'];
+/**
+ * place.set's `offsets` (studio-offsets, 2026-10-24; CONTRACT.md §1.12 "Offsets"): the rule's whole list of shifts,
+ * ≤ 8 — [{ way, how, v, odd? }] as placement.json keeps them; [] = none. { offsets } or { error }.
+ */
+export function readHandsOffsets(v) {
+  if (!Array.isArray(v) || v.length > 8) return { error: 'must be a list of at most 8 offsets ([] takes them off): [{ "way": "side", "how": "same", "v": 1 }]' };
+  const out = [];
+  for (const o of v) {
+    if (!o || typeof o !== 'object' || Array.isArray(o) || !Object.keys(o).every((k) => ['way', 'how', 'v', 'odd'].includes(k))) return { error: 'each is { "way", "how", "v", "odd"? }' };
+    if (!HANDS_OFFSET_WAYS.includes(o.way)) return { error: `"way" is one of ${HANDS_OFFSET_WAYS.join(', ')} (along / side: a row's; move: [x, z] on the ground for a layout that is not a row)` };
+    if (!HANDS_OFFSET_HOWS.includes(o.how)) return { error: `"how" is one of ${HANDS_OFFSET_HOWS.join(', ')}` };
+    if (o.way === 'move' ? !(o.how === 'same' && handsVec(o.v, 2)) : !handsNum(o.v) || (o.way === 'size' && o.v <= 0)) return { error: o.way === 'move' ? 'a move is "same" with v = [x, z] (2D [x, y])' : `"v" is a number (m / px; ° for turn; a factor above 0 for size)` };
+    if (o.odd !== undefined && (o.odd !== true || o.how !== 'zigzag')) return { error: '"odd": true is a zigzag\'s only (the odd ranks move; leave it out for the even)' };
+    const r = (x) => Math.round(x * 10000) / 10000 + 0;
+    out.push({ way: o.way, how: o.how, v: Array.isArray(o.v) ? o.v.map(r) : r(o.v), ...(o.odd ? { odd: true } : {}) });
+  }
+  return { offsets: out };
+}
+
 /** "lamp-3" is one of codePlace('lamp')'s objects (it names them "<id>-<n>", from 1). */
 export const handsPlaceKey = (id, key) => key.startsWith(`${id}-`) && /^[1-9][0-9]{0,3}$/.test(key.slice(id.length + 1));
 
@@ -734,6 +763,10 @@ function handsFilePlace(w, op, dim) {
       if (!e.pins?.[op.unpin]) return { error: `${op.unpin} is not put by hand (it follows the formula already)` };
       delete e.pins[op.unpin];
       if (!Object.keys(e.pins).length) delete e.pins;
+    }
+    if (op.offsets) {
+      if (op.offsets.length) e.offsets = structuredClone(op.offsets);
+      else delete e.offsets;
     }
     return {};
   }

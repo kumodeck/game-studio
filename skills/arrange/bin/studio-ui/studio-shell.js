@@ -1,4 +1,4 @@
-/* KUMODeck Game Studio 0.1.55 — MIT License — built file, edit src/ instead */
+/* KUMODeck Game Studio 0.1.56 — MIT License — built file, edit src/ instead */
 (() => {
 const __defs = [];
 const __cache = [];
@@ -1081,6 +1081,12 @@ const MSG_PREFIX = 'studio:';
      
                                                                                                                                                                            
      
+                                                                                                                       
+                                                                                                                      
+                                                                                                     
+     
+                                                 
+     
                                                                                                                     
                                                                                                                      
                                                                                                                          
@@ -1379,6 +1385,22 @@ const MSG_PREFIX = 'studio:';
                                                                                                                           
      
                                                                          
+     
+                                                                                                                         
+                                                                                                                    
+                    
+     
+                                                                                                   
+     
+                                                                                                                          
+                                                                                                                       
+                                                                                                                     
+                                                                                                                     
+                                                                                                                     
+                                                                                      
+     
+                                                                                                                                      
+                                                                            
                                                                                                                                                                                                   
                                                                                                    
      
@@ -2216,7 +2238,23 @@ const RESULT_FILES                         = {
                            
                                                                                                                   
                   
+     
+                                                                                                                        
+                                                                                                                          
+     
+                          
  
+/**
+ * One offset of a rule layout (CONTRACT.md §1.12 "Offsets"). `way`: along / side (a row's: along it, away from the middle
+ * line of its two rows), up, turn (°; mirrored on the second row), size (× a factor), move (not a row: the ground [x, z],
+ * 2D [x, y]). `how`: same (every object v), zigzag (every other: the odd ranks when `odd`, else the even), ramp (v × the
+ * rank; size 1 + (v − 1) × rank). `v` = the number the card shows.
+ */
+                                                                           
+                                                   
+                         
+                                                                              
+                                                      
                             
                                                                        
                                                                     
@@ -2258,9 +2296,16 @@ const RESULT_FILES                         = {
                                          
      
                                                                                                                          
-                                                                                                       
+                                                                                                                        
+                                                        
      
-                            
+                                      
+     
+                                                                                                                      
+                                                                                                                      
+                                                                                                                        
+     
+                                                                                                                                           
                                                                                          
                   
  
@@ -2844,6 +2889,11 @@ const LIMITS = Object.freeze({
   maxPlaces: 64,
   maxAvoid: 16,
   maxPins: 500,
+  // `places[id].offsets` (studio-offsets, 2026-10-24): a rule's shifts made by dragging (decision 6: the card's rows; 8
+  // is past what a person keeps apart — beyond, ✦ folds them into the rule). A turn of ±3600° is ten turns: far beyond
+  // a lamp turned to the road; a size like an object's. Numbers round like a knob's (1e-4).
+  maxOffsets: 8,
+  maxOffsetTurn: 3600,
 });
 
 /**
@@ -3126,13 +3176,14 @@ function readWorld(data, dim, fail, objectsOptional = false) {
 const pinKeyOf = (id, key) => key.startsWith(`${id}-`) && /^[1-9][0-9]{0,3}$/.test(key.slice(id.length + 1));
 
 /**
- * `places` (studio-code-base, 2026-10-24; CONTRACT.md §1.12, §4.1): { "<codePlace id>": { knobs?, pins?, hand?, avoid?,
+ * `places` (studio-code-base, 2026-10-24; CONTRACT.md §1.12, §4.1): { "<codePlace id>": { knobs?, pins?, hand?, avoid?, offsets?,
  * from? } }, only what the person changed — the layout itself (how many, where, the formula) is the game's code.
  *   knobs  { gap: { v: 4, was: 6 } }: the numbers turned on the card (was = the code's number, for the AI to find)
  *   pins   { "hex-3": { p, r?, s? } }: "just this one" put by hand (⌥ drag), over the formula
  *   hand   true: "Place by hand" — every object is a pin (no knobs, no formula, until the AI writes it as a list)
  *   avoid  [{ box: { p, size }, name? } | { code, knobs? }, + off?]: the layout's keep-out areas, in order
  *   from   ["lamp-1", …]: hand-placed objects this layout replaced ("✦ To code"); hidden until the AI removes them
+ *   offsets  [{ way, how, v, odd? }]: a drag the code has no knob for, kept as a rule (studio-offsets; readOffsets)
  * An entry with nothing left is not written (same content, same bytes).
  */
 function readPlaces(v, dim, fail) {
@@ -3155,7 +3206,7 @@ function readPlaces(v, dim, fail) {
       fail(where, 'must be an object');
       continue;
     }
-    onlyFields(e, ['knobs', 'pins', 'hand', 'avoid', 'from'], where, fail);
+    onlyFields(e, ['knobs', 'pins', 'hand', 'avoid', 'from', 'offsets'], where, fail);
     const o = {};
     if (e.knobs !== undefined) {
       const k = readKnobs(e.knobs, `${where}.knobs`, fail);
@@ -3199,6 +3250,10 @@ function readPlaces(v, dim, fail) {
       const a = readAvoid(e.avoid, dim, `${where}.avoid`, fail);
       if (a.length) o.avoid = a;
     }
+    if (e.offsets !== undefined) {
+      const of = readOffsets(e.offsets, dim, `${where}.offsets`, fail);
+      if (of.length) o.offsets = of;
+    }
     if (e.from !== undefined) {
       // The hand-placed objects may have had the layout's own keys ("lamp-1" … replaced by codePlace('lamp')): the
       // loader then hides only the ones it did not make itself.
@@ -3207,6 +3262,48 @@ function readPlaces(v, dim, fail) {
     }
     if (Object.keys(o).length) out[id] = o;
   }
+  return out;
+}
+
+const OFFSET_WAYS = ['along', 'side', 'up', 'turn', 'size', 'move'];
+const OFFSET_HOWS = ['same', 'zigzag', 'ramp'];
+
+/**
+ * A layout's offsets (studio-offsets, 2026-10-24; CONTRACT.md §1.12 "Offsets"): [{ way, how, v, odd? }], in order, ≤ 8.
+ *   way  along · side · up · turn (°) · size (× a factor) · move (not a row: the ground [x, z], 2D [x, y]; only "same")
+ *   how  same · zigzag (`odd: true` = the odd ranks) · ramp
+ *   v    the card's number (m / px, °, a factor; move: two numbers)
+ * Only which way, how and how much — never a place per object (those would not follow a count turned up, as pins don't).
+ */
+function readOffsets(v, dim, where, fail) {
+  const list = optionalArray(v, where, LIMITS.maxOffsets, fail);
+  const bound = dim === '3d' ? LIMITS.maxCoord3d : LIMITS.maxCoord2d;
+  const out = [];
+  list.forEach((o, i) => {
+    const w = `${where}[${i}]`;
+    if (!isObject(o)) return fail(w, 'must be an object');
+    onlyFields(o, ['way', 'how', 'v', 'odd'], w, fail);
+    if (!OFFSET_WAYS.includes(o.way)) return fail(`${w}.way`, `must be one of ${OFFSET_WAYS.join(', ')}`);
+    if (!OFFSET_HOWS.includes(o.how)) return fail(`${w}.how`, `must be one of ${OFFSET_HOWS.join(', ')}`);
+    if (o.way === 'move') {
+      if (o.how !== 'same') return fail(`${w}.how`, 'a move (a layout that is not a row) is "same" only');
+      if (!Array.isArray(o.v) || o.v.length !== 2) return fail(`${w}.v`, `must be [x, ${dim === '3d' ? 'z' : 'y'}] (the ground)`);
+      const xy = o.v.map((x, k) => readNumber(x, -bound, bound, `${w}.v[${k}]`, fail));
+      if (xy.some((x) => x === null)) return;
+      out.push({ way: 'move', how: 'same', v: xy.map((x) => round(x, LIMITS.stepKnob)) });
+      return;
+    }
+    const [lo, hi] = o.way === 'turn' ? [-LIMITS.maxOffsetTurn, LIMITS.maxOffsetTurn] : o.way === 'size' ? [LIMITS.minScale, LIMITS.maxScale] : [-bound, bound];
+    const n = readNumber(o.v, lo, hi, `${w}.v`, fail);
+    if (n === null) return;
+    const e = { way: o.way, how: o.how, v: round(n, LIMITS.stepKnob) };
+    if (o.odd !== undefined) {
+      if (o.odd !== true) fail(`${w}.odd`, 'must be true when present (leave it out: the even ranks)');
+      else if (o.how !== 'zigzag') fail(`${w}.odd`, 'only a zigzag has odd');
+      else e.odd = true;
+    }
+    out.push(e);
+  });
   return out;
 }
 
@@ -9278,8 +9375,9 @@ __defs[19] = function (__exports) {
 //       at(i, k, g) — `places.hex` in the file: knobs, pins ("just this one" by hand, over the formula), hand (all by
 //       hand), avoid (keep-out areas), from (hand-placed objects it replaced: hidden). Placed with or without a file.
 //       `drag` = the knob each way a person drags one of its objects turns: 'gap' (moving it), or by way
-//       { along, side, up, turn, size } (studio-to-coords, 2026-10-24). A way with no knob does not move (the editor
-//       says why); only ⌥ puts one object by hand.
+//       { along, side, up, turn, size } (studio-to-coords, 2026-10-24). A way with no knob is taken by the file's
+//       `offsets` (studio-offsets, 2026-10-24: "how it is shifted and by how much", over at(), before the keep-out
+//       areas and the pins — see offsetFrame); only ⌥ puts one object by hand.
 //   codeAvoid('road', { name, after, knobs, test(p, k, g), show })   a keep-out condition: a layout's place that tests
 //       true is tried again (g.try + 1, up to 30 times); a place that never gets out (a row) is left out (skipped).
 // report.places = { hex: { keys, skipped } } (a game makes physics bodies for them after applyPlacement, as for the rest).
@@ -10061,7 +10159,8 @@ function codeMotion(id, def) {
  *          nothing and said nothing, and lifted it left the rule): { along: 'gap', side: 'offset', up: 'height',
  *          turn: 'angle', size: 'scale' } — along / side = moving it along the row / away from it (both are Move's: the
  *          editor looks for the numbers that bring it nearest the finger), up = Height, turn = Turn, size = Size. A way
- *          with no knob does not move the object (the editor says why); ⌥ is the one way to put one by hand
+ *          with no knob is the editor's offset (studio-offsets: every object follows, `places[id].offsets`); ⌥ is the
+ *          one way to put one by hand
  *   avoid  codeAvoid ids on from the start (the person can switch them off)
  */
 function codePlace(id, def) {
@@ -10230,9 +10329,13 @@ function putCode(o, a, three) {
   }
 }
 
-/** One layout's place for number i on try `tr` (at() answers { p, r?, s? }), or null when at() gives nothing usable. */
-function codePlaceAt(p, i, k, tr, level, n) {
-  const g = { try: tr, rand: randOf(`${p.id}:${i}:${tr}`), level: level || null };
+/**
+ * One layout's place for number i on try `tr` (at() answers { p, r?, s? }), or null when at() gives nothing usable.
+ * `seen.rand` is set when at() read its seeded random (a scatter: never a row, studio-offsets).
+ */
+function codePlaceAt(p, i, k, tr, level, n, seen) {
+  const r = randOf(`${p.id}:${i}:${tr}`);
+  const g = { try: tr, rand: seen ? () => ((seen.rand = true), r()) : r, level: level || null };
   let a;
   try {
     a = p.at(i, k, g);
@@ -10241,6 +10344,153 @@ function codePlaceAt(p, i, k, tr, level, n) {
     return null;
   }
   return a && typeof a === 'object' && vecOf(a.p, n, false) ? a : null;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Offsets (studio-offsets, 2026-10-24; CONTRACT.md §1.12 "Offsets", §4.1 `places[id].offsets`). The CRYSTAL FIELD try of
+// CRYSTAL FIELD that day: a lamp of a row dragged away from the road "did nothing and said nothing" (the code had no knob
+// that way). The answer: a rule's objects stay a rule however they are moved — a drag the code has no knob for adds an
+// OFFSET to the whole rule ("every lamp 1 m further from the road", "every other one", "a little more each one"), and
+// the file keeps only which way, how and how much ({ way, how, v }), the way knobs keep { v, was }. WHY not a pin each:
+// pins are coordinates, so a lamp the count adds would not get it ("the rule stays the rule" was the whole point).
+// Order (decision 8): at(i, k) → offsets → keep-out areas (tested where the offsets put it) → pins (a hand wins).
+//   way  along · side (a row: along it / away from the middle line of its two rows) · up · turn (degrees; the second row
+//        mirrored) · size (× a factor) · move (the ground [x, z] — 2D [x, y] — for a layout that is not a row)
+//   how  same (every object v) · zigzag (every other one: the ones whose rank is odd when `odd`, else even) · ramp
+//        (v × its rank: "further each one" — size: 1 + (v − 1) × rank)
+// Only `same` works without a row (a scatter, a ring, a grid): along / side / zigzag / ramp wait in the file until it is
+// a row again (decision 13: a count of 2 has no row).
+
+const OFFSET_WAYS = ['along', 'side', 'up', 'turn', 'size', 'move'];
+const OFFSET_HOWS = ['same', 'zigzag', 'ramp'];
+// A rule's rows of offsets at most (decision 6: the card's rows; beyond, ✦ folds them into the rule).
+const MAX_OFFSETS = 8;
+
+/** The file's offsets that this loader can play (a bad one is said once and left out); [] = none. */
+function offsetsOf(v, where) {
+  if (!Array.isArray(v)) return [];
+  const out = [];
+  for (const o of v.slice(0, MAX_OFFSETS)) {
+    const ok = o && OFFSET_WAYS.includes(o.way) && OFFSET_HOWS.includes(o.how)
+      && (o.way === 'move' ? Array.isArray(o.v) && o.v.length === 2 && o.v.every(isNum) : isNum(o.v));
+    if (ok) out.push(o);
+    else warnOnce(`${where}: an offset needs a way (${OFFSET_WAYS.join(', ')}), a how (${OFFSET_HOWS.join(', ')}) and a number v`);
+  }
+  return out;
+}
+
+/**
+ * The frame offsets are measured in (decision 3), from the places the rule gives BEFORE any offset (so shifting or
+ * zigzagging never changes it): one straight row, or two parallel rows (a road's two sides written as ONE codePlace with
+ * `(i % 2 ? 1 : -1) * k.side`, as CRYSTAL FIELD and the real AI's answer do). For each number: { l: its row (0 = the
+ * row of number 1), r: its rank in its row (0 = the end number 1's row starts at — "lamp 1's end", decision 4), a: along
+ * [x, z] (the same for both rows: along is never mirrored), s: side [x, z] (away from the middle line of the two rows,
+ * so both sides leave the road; one row: away from the root's origin, else to the left of along), m: true on the second
+ * row (its turn is mirrored) }. 3D ground = x, z; 2D = x, y. null = not a row (fewer than 3 places, a scatter — at()
+ * read its random — a ring, a grid…). WHY rank by row and not the number: with `i % 2` sides, every other NUMBER is one
+ * whole side, and "every other lamp" would never zigzag (the second check asked for).
+ */
+function offsetFrame(spots, n, random) {
+  if (random || !Array.isArray(spots)) return null;
+  const pts = [];
+  spots.forEach((q, i) => Array.isArray(q) && pts.push({ i, x: q[0], z: n === 3 ? q[2] : q[1] }));
+  if (pts.length < 3) return null;
+  const xs = pts.map((q) => q.x), zs = pts.map((q) => q.z);
+  // Within 2 % of the layout's size of a line (the card's "Line" tells a row the same way: code-lists.ts kindOf).
+  const tol = Math.max(1e-6, 0.02 * Math.hypot(Math.max(...xs) - Math.min(...xs), Math.max(...zs) - Math.min(...zs)));
+  // Two of the first three are on the same row (two rows at most): their direction is the rows'.
+  for (const [u, w] of [[0, 1], [0, 2], [1, 2]]) {
+    const len = Math.hypot(pts[w].x - pts[u].x, pts[w].z - pts[u].z);
+    if (len < tol) continue;
+    let d = [(pts[w].x - pts[u].x) / len, (pts[w].z - pts[u].z) / len];
+    const across = (q) => d[0] * q.z - d[1] * q.x;
+    const c0 = across(pts[0]);
+    let c1 = null;
+    const row = pts.map((q) => {
+      const c = across(q);
+      if (Math.abs(c - c0) <= tol) return 0;
+      if (c1 === null) c1 = c;
+      return Math.abs(c - c1) <= tol ? 1 : -1;
+    });
+    if (row.includes(-1)) continue;
+    const nb = row.filter((x) => x === 1).length;
+    // Two rows: 3 + 2 at least (2 + 2 could pair either way round).
+    if (c1 !== null && (Math.min(nb, pts.length - nb) < 2 || Math.max(nb, pts.length - nb) < 3)) continue;
+    const t = (q) => d[0] * q.x + d[1] * q.z;
+    const rows = c1 === null ? [pts] : [pts.filter((_, j) => !row[j]), pts.filter((_, j) => row[j])];
+    // Along points away from the end of number 1's row (its first number is nearer that end).
+    const lo = Math.min(...rows[0].map(t)), hi = Math.max(...rows[0].map(t));
+    if (Math.abs(t(rows[0][0]) - hi) < Math.abs(t(rows[0][0]) - lo)) d = [-d[0], -d[1]];
+    // Side: n = d turned a quarter (across() measures along it); its sign per row.
+    const nrm = [-d[1], d[0]];
+    const cs = rows.map((r) => d[0] * r[0].z - d[1] * r[0].x);
+    const mid = rows.length === 2 ? (cs[0] + cs[1]) / 2 : 0;
+    const out = spots.map(() => null);
+    rows.forEach((r, l) => {
+      const sg = Math.abs(cs[l] - mid) > tol ? Math.sign(cs[l] - mid) : 1;
+      const lo2 = Math.min(...r.map(t)), hi2 = Math.max(...r.map(t));
+      // Each row counts from its own first number's end (the second row's lamp 2 may stand at the far end).
+      const back = Math.abs(t(r[0]) - hi2) < Math.abs(t(r[0]) - lo2);
+      const order = r.slice().sort((a, b) => (back ? t(b) - t(a) : t(a) - t(b)) || a.i - b.i);
+      order.forEach((q, rank) => (out[q.i] = { l, r: rank, a: d.slice(), s: [nrm[0] * sg, nrm[1] * sg], m: l === 1 }));
+    });
+    return out;
+  }
+  return null;
+}
+
+/**
+ * What the offsets add to number i of a frame (offsetFrame's, null = not a row): { p: added place (n long), r: added
+ * turn (radians), s: size factor }, or null for none. Order does not matter (adding and multiplying), so the card can
+ * keep the row turned last at the end.
+ */
+function offsetAt(offs, frame, i, n) {
+  if (!offs || !offs.length) return null;
+  const f = frame ? frame[i] : null;
+  const p = n === 3 ? [0, 0, 0] : [0, 0];
+  const z = n === 3 ? 2 : 1;
+  let r = 0, s = 1;
+  for (const o of offs) {
+    if (!f && (o.how !== 'same' || o.way === 'along' || o.way === 'side')) continue;
+    const k = o.how === 'zigzag' ? ((f.r % 2 === 1) === !!o.odd ? 1 : 0) : o.how === 'ramp' ? f.r : 1;
+    if (o.way === 'size') s *= o.how === 'ramp' ? 1 + (o.v - 1) * k : k ? o.v : 1;
+    else if (o.way === 'turn') r += (((f && f.m ? -1 : 1) * o.v * k) * Math.PI) / 180;
+    else if (o.way === 'up') {
+      if (n === 3) p[1] += o.v * k;
+    } else if (o.way === 'move') (p[0] += o.v[0] * k), (p[z] += o.v[1] * k);
+    else {
+      const u = o.way === 'along' ? f.a : f.s;
+      p[0] += u[0] * o.v * k;
+      p[z] += u[1] * o.v * k;
+    }
+  }
+  return { p, r, s: Math.max(0.01, s) };
+}
+
+/** at()'s answer with an offset's place added (the keep-out test and the guide's rings use the place). */
+function shiftAt(a, off, n) {
+  if (!a || !off) return a;
+  return { ...a, p: vecOf(a.p, n, false).map((v, j) => v + off.p[j]) };
+}
+
+/**
+ * at()'s answer with an offset's turn and size too, for putting it on `o`: what at() leaves out is the object's own
+ * (as make() made it: `made`), so a turn offset on a rule without `r` turns it from where it stood.
+ */
+const MADE = new WeakMap();
+function turnedAt(a, off, o, three) {
+  if (!off || (!off.r && off.s === 1)) return a;
+  const out = { ...a };
+  const own = MADE.get(o) || { r: 0, s: 1 };
+  if (off.r) {
+    if (three && Array.isArray(a.r) && a.r.length === 3) out.r = [a.r[0], a.r[1] + off.r, a.r[2]];
+    else out.r = (isNum(a.r) ? a.r : Array.isArray(a.r) && isNum(a.r[0]) ? a.r[0] : own.r) + off.r;
+  }
+  if (off.s !== 1) {
+    const s = a.s !== undefined ? a.s : own.s;
+    out.s = Array.isArray(s) ? s.map((v) => v * off.s) : (isNum(s) && s !== 0 ? s : 1) * off.s;
+  }
+  return out;
 }
 
 /**
@@ -10273,10 +10523,23 @@ function placeCode(root, three, places, report, opts) {
   }
 }
 
+/** How many objects a layout puts with the knob values `k` (0–200). */
+function countOf(p, k) {
+  let count = p.count;
+  try {
+    if (typeof count === 'function') count = count(k);
+  } catch (e) {
+    warnOnce(`codePlace('${p.id}'): count failed (${e && e.message})`);
+    count = 0;
+  }
+  return isNum(count) ? Math.max(0, Math.min(MAX_PLACED, Math.floor(count))) : 0;
+}
+
 /**
  * One layout's objects, number by number: the formula's place (tried again out of the keep-out areas), then the pin.
  * An object of the same key made before is kept and only moved (the editor turning a knob in place: relayCodePlace);
- * new numbers are made, numbers that are gone are taken out. p.spots = each number's formula place (null: none).
+ * new numbers are made, numbers that are gone are taken out. p.spots = each number's place (the formula with its
+ * offsets: where "Reset to rule" puts it; null: none), p.base = the formula's alone, p.frame = offsetFrame of p.base.
  */
 function layOut(p, f) {
   const { root, three, opts } = p.home;
@@ -10288,25 +10551,30 @@ function layOut(p, f) {
   p.skipped = [];
   p.spots = [];
   const k = knobValues(p.knobs, f.knobs);
-  let count = p.count;
-  try {
-    if (typeof count === 'function') count = count(k);
-  } catch (e) {
-    warnOnce(`codePlace('${p.id}'): count failed (${e && e.message})`);
-    count = 0;
-  }
-  count = isNum(count) ? Math.max(0, Math.min(MAX_PLACED, Math.floor(count))) : 0;
+  const count = countOf(p, k);
+  // The rule's places before any offset (try 0): the offsets' frame is made from them (studio-offsets), and the editor
+  // reads them (p.base, p.frame: a drag's way and rank, `--do list`'s line / rank / offset).
+  const seen = { rand: false };
+  const first = [];
+  for (let i = 0; i < count; i++) first.push(codePlaceAt(p, i, k, 0, level, n, seen));
+  p.base = first.map((a) => (a ? vecOf(a.p, n, false) : null));
+  p.frame = offsetFrame(p.base, n, seen.rand);
+  p.random = seen.rand;
+  p.fk = { sig: JSON.stringify(k), frame: p.frame };
+  const offs = (p.offs = f.hand ? [] : offsetsOf(f.offsets, `codePlace('${p.id}')`));
   // Keep-out areas move what the formula places; what a hand put ("just this one", "Place by hand") stays put.
   const tests = f.hand ? [] : avoidTests(p, f, n, { player: playerAt(root, three, opts), level });
   for (let i = 0; i < count; i++) {
     const key = `${p.id}-${i + 1}`;
     const pin = f.pins && f.pins[key] && Array.isArray(f.pins[key].p) ? f.pins[key] : null;
+    // The same offset on every try (its frame is the rule's first places): a scatter tried again keeps its shift.
+    const off = offsetAt(offs, p.frame, i, n);
     let at = null;
-    if (pin || !tests.length) at = codePlaceAt(p, i, k, 0, level, n);
+    if (pin || !tests.length) at = shiftAt(first[i], off, n);
     else {
       let prev = null;
       for (let tr = 0; tr < MAX_TRIES; tr++) {
-        const a = codePlaceAt(p, i, k, tr, level, n);
+        const a = shiftAt(tr ? codePlaceAt(p, i, k, tr, level, n) : first[i], off, n);
         if (!a) break;
         const q = vecOf(a.p, n, false);
         if (!tests.some((t) => t(q))) {
@@ -10335,6 +10603,8 @@ function layOut(p, f) {
         p.skipped.push(key);
         continue;
       }
+      // Its own turn and size as make() left them: a turn / size offset on a rule that does not give them starts there.
+      MADE.set(o, { r: three ? o.rotation.y : o.rotation, s: three ? [o.scale.x, o.scale.y, o.scale.z] : [o.scale.x, o.scale.y] });
       if (three) {
         o.name = key;
         o.userData.studioKey = key;
@@ -10345,7 +10615,7 @@ function layOut(p, f) {
         root.addChild(o);
       }
     }
-    if (at) putCode(o, at, three);
+    if (at) putCode(o, turnedAt(at, off, o, three), three);
     if (pin) put(o, pin, n, three);
     p.objs.push(o);
     p.keys.push(key);
@@ -10365,12 +10635,40 @@ function relayCodePlace(id, f) {
   return { keys: p.keys.slice(), skipped: p.skipped.slice() };
 }
 
-/** Number i's formula place with the knob values `k` (the editor's drag looks for a knob with it), or null. */
-function codeSpot(id, i, k) {
+/**
+ * Number i's rule answer with the knob values `k` and the offsets it was last laid out with (studio-offsets: a knob's
+ * look-up then measures where the object really goes), or null: { a (at()'s, shifted), off, o (its object) }.
+ */
+function ruleAt(id, i, k) {
   const p = codeList(CODE_PLACES).get(id);
-  const n = p && p.home && p.home.three ? 3 : 2;
-  const a = p && codePlaceAt(p, i, k, 0, (p.home && p.home.opts && p.home.opts.level) || null, n);
-  return a ? vecOf(a.p, n, false) : null;
+  if (!p) return null;
+  const n = p.home && p.home.three ? 3 : 2;
+  const level = (p.home && p.home.opts && p.home.opts.level) || null;
+  const a = codePlaceAt(p, i, k, 0, level, n);
+  if (!a) return null;
+  let off = null;
+  if (p.offs && p.offs.length) {
+    // The frame for these knobs (a count or a gap being looked for changes the places it is made from); kept for the
+    // same numbers, as a look-up asks ~35 times a step.
+    const sig = JSON.stringify(k);
+    if (!p.fk || p.fk.sig !== sig) {
+      const seen = { rand: false };
+      const spots = [];
+      for (let j = 0; j < countOf(p, k); j++) {
+        const b = codePlaceAt(p, j, k, 0, level, n, seen);
+        spots.push(b ? vecOf(b.p, n, false) : null);
+      }
+      p.fk = { sig, frame: offsetFrame(spots, n, seen.rand) };
+    }
+    off = offsetAt(p.offs, p.fk.frame, i, n);
+  }
+  return { a: shiftAt(a, off, n), off, o: p.objs[p.keys.indexOf(`${id}-${i + 1}`)] || null, n, three: n === 3 };
+}
+
+/** Number i's place with the knob values `k` and its offsets (the editor's drag looks for a knob with it), or null. */
+function codeSpot(id, i, k) {
+  const r = ruleAt(id, i, k);
+  return r ? vecOf(r.a.p, r.n, false) : null;
 }
 
 /**
@@ -10380,10 +10678,10 @@ function codeSpot(id, i, k) {
  * 2026-10-24); what at() leaves out stays out (the object keeps its own).
  */
 function codePose(id, i, k) {
-  const p = codeList(CODE_PLACES).get(id);
-  const n = p && p.home && p.home.three ? 3 : 2;
-  const a = p && codePlaceAt(p, i, k, 0, (p.home && p.home.opts && p.home.opts.level) || null, n);
-  if (!a) return null;
+  const r = ruleAt(id, i, k);
+  if (!r) return null;
+  const n = r.n;
+  const a = r.o ? turnedAt(r.a, r.off, r.o, r.three) : r.a;
   const out = { p: vecOf(a.p, n, false) };
   if (n === 3 && Array.isArray(a.r) && a.r.length === 3 && a.r.every(isNum)) (out.r = a.r[1]), (out.t = [a.r[0], a.r[2]]);
   else if (isNum(a.r)) out.r = a.r;
@@ -10735,6 +11033,8 @@ __def(__exports, "codeMotion", () => codeMotion);
 __def(__exports, "codePlace", () => codePlace);
 __def(__exports, "codeAvoid", () => codeAvoid);
 __def(__exports, "codeRound", () => codeRound);
+__def(__exports, "offsetFrame", () => offsetFrame);
+__def(__exports, "offsetAt", () => offsetAt);
 __def(__exports, "relayCodePlace", () => relayCodePlace);
 __def(__exports, "codeSpot", () => codeSpot);
 __def(__exports, "codePose", () => codePose);
@@ -16128,6 +16428,8 @@ const en = {
   'hands.place.unpinAll': '{n} placed by hand back to rule',
   'hands.place.hand': 'converted to coordinates',
   'hands.place.unhand': 'back to rule',
+  'hands.place.offsets': 'offsets {what}',
+  'hands.place.noOffsets': 'offsets taken off',
   'hands.place.avoid': '{Ai} added “{what}” to {name}’s keep-out areas',
   'hands.place.avoidSet': '{Ai} changed “{what}” in {name}’s keep-out areas',
   'hands.place.avoidOff': '{Ai} turned off “{what}” in {name}’s keep-out areas',
@@ -16181,7 +16483,45 @@ const en = {
   'rule.layout': 'Rule',
   'rule.layoutWhat': '{kind} · {n}',
   'rule.kind.line': 'Line',
+  'rule.kind.lines': 'Line (both sides)',
   'rule.kind.scatter': 'Scatter',
+  // studio-offsets (2026-10-24): a rule's objects moved any way stay a rule — the four choices under a drag, the card's
+  // offset rows, the receipt. Words of the plan; the English is the
+  // leader's to check with Gemini.
+  'offset.title': 'Offsets',
+  'offset.way.along': 'Along',
+  'offset.way.side': 'Sideways',
+  'offset.way.up': 'Height',
+  'offset.way.turn': 'Turn',
+  'offset.way.size': 'Size',
+  'offset.way.move': 'Position',
+  'offset.same': 'All the same',
+  'offset.zigzag': 'Zigzag',
+  'offset.ramp': 'Ramp',
+  'offset.one': 'Just this one',
+  'offset.knob': 'Change {knob}',
+  'offset.toKnob': 'Make this way a knob',
+  'offset.toKnobTip': 'Puts a request in the chat box: {ai} adds a knob for this way to the rule (nothing is sent)',
+  'offset.sameTip': 'Every object of the rule moves the same',
+  'offset.zigzagTip': 'Every other one moves (the ones like this one); the others stay',
+  'offset.rampTip': 'A little more each one, from the nearest',
+  'offset.rampNear': 'Ramps start from the nearest one: drag one further along',
+  'offset.oneTip': 'Only this one, by hand (as ⌥-drag); the others stay with the rule',
+  'offset.keyTip': '{tip} · key {n}',
+  'offset.lead': '{obj} · {what}',
+  'offset.oneDone': 'Placed {obj} by hand',
+  'offset.row.same': '{way} · All the same',
+  'offset.row.zigzag': '{way} · Zigzag width',
+  'offset.row.ramp': '{way} · Ramp, each',
+  'offset.rowTip': 'An offset you made by dragging: it is part of the rule (a new object gets it too)',
+  'offset.remove': 'Remove',
+  'offset.more': 'More',
+  'offset.removed': 'Removed {what} from {name}',
+  'offset.limit': 'Up to 8 offsets · ✦ to fold them into the rule',
+  'offset.draft': 'Add a knob to the {name} rule for its {way} offset',
+  'offset.draftRow': 'Add a knob to the {name} rule for its {way} offset ({what})',
+  'offset.saved': '{name} {what}',
+  'offset.keys': '{name} moved, all of them (an offset of the rule)',
   'rule.nth': 'No. {n}',
   'rule.knobTip': 'Drag left or right · click to type',
   'rule.individually': 'Convert to coordinates',
@@ -17048,6 +17388,8 @@ const ja                               = {
   'hands.place.unpinAll': '手で置いた物 {n} 個をルールに戻す',
   'hands.place.hand': '座標に',
   'hands.place.unhand': 'ルールに戻す',
+  'hands.place.offsets': 'ずらし {what}',
+  'hands.place.noOffsets': 'ずらしを外しました',
   'hands.place.avoid': '{ai}が「{name}」の置かない所に「{what}」を足しました',
   'hands.place.avoidSet': '{ai}が「{name}」の置かない所「{what}」を変えました',
   'hands.place.avoidOff': '{ai}が「{name}」の置かない所「{what}」をオフにしました',
@@ -17094,7 +17436,42 @@ const ja                               = {
   'rule.layout': 'ルール',
   'rule.layoutWhat': '{kind} · {n} 個',
   'rule.kind.line': '直線',
+  'rule.kind.lines': '直線（両側）',
   'rule.kind.scatter': 'ランダム',
+  'offset.title': 'ずらし',
+  'offset.way.along': '並びに沿って',
+  'offset.way.side': '横',
+  'offset.way.up': '高さ',
+  'offset.way.turn': '向き',
+  'offset.way.size': '大きさ',
+  'offset.way.move': '位置',
+  'offset.same': '全部同じ',
+  'offset.zigzag': 'ジグザグ',
+  'offset.ramp': 'だんだん',
+  'offset.one': 'この 1 個だけ',
+  'offset.knob': '{knob}を変える',
+  'offset.toKnob': 'この向きをつまみに',
+  'offset.toKnobTip': '下の欄に頼みを入れます。{ai} がこの向きのつまみをルールに足します（送るのはあなた）',
+  'offset.sameTip': 'ルールの物が全部同じだけ動きます',
+  'offset.zigzagTip': '1 個おきに動きます（この物と同じ側）。ほかはそのまま',
+  'offset.rampTip': '手前から 1 個ごとに少しずつ',
+  'offset.rampNear': '手前が基準なので、奥の物を動かしてください',
+  'offset.oneTip': 'この 1 個だけ手で置きます（⌥+ドラッグと同じ）。ほかはルールのまま',
+  'offset.keyTip': '{tip} · キー {n}',
+  'offset.lead': '{obj} · {what}',
+  'offset.oneDone': '{obj} を手で置きました',
+  'offset.row.same': '{way} · 全部同じ',
+  'offset.row.zigzag': '{way} · ジグザグの幅',
+  'offset.row.ramp': '{way} · だんだん 1 個ごと',
+  'offset.rowTip': 'ドラッグで足したずらしです。ルールの一部なので、増えた物にも付きます',
+  'offset.remove': '消す',
+  'offset.more': 'その他',
+  'offset.removed': '{name}の{what}を消しました',
+  'offset.limit': 'ずらしは 8 個まで · ✦ でルールにまとめる',
+  'offset.draft': '{name}の{way}を、ルールのつまみにして',
+  'offset.draftRow': '{name}の{way}（{what}）を、ルールのつまみにして',
+  'offset.saved': '{name} {what}',
+  'offset.keys': '{name}を全部動かしました（ルールのずらし）',
   'rule.nth': '{n} 番目',
   'rule.knobTip': '左右にドラッグ · 押すと入力',
   'rule.individually': '座標にする',
@@ -22775,6 +23152,464 @@ __def(__exports, "receipt", () => receipt);
 };
 __defs[59] = function (__exports) {
 'use strict';
+// offset-model.ts
+
+// Offsets of a rule layout (studio-offsets, 2026-10-24; CONTRACT.md §1.12 "Offsets", the plan's decisions 1–8 and 12–13
+// of the plan). Pure logic, no DOM: the game page's drag (bridge/code-place.ts) and the
+// editor's four choices, card rows and key steps (code-place-wire.ts, offset-choices.ts) do the same sums.
+//
+// WHY (the CRYSTAL FIELD try of 10/24): a lamp of a row dragged away from the road "did nothing and said
+// nothing" — the code had no knob that way. "A rule's objects stay a rule however they are moved": a drag the code has no
+// knob for becomes an OFFSET of the whole rule — which way, how and how much ({ way, how, v }, like a knob's { v, was }),
+// never a place per object (a lamp the count adds would not get it, as a pin does not).
+//
+// The loader does the shifting (loader/studio-placement.js offsetAt). This adds a drag to the list:
+//   a drag of the object of rank r0, `d` that way  →  same: v += d · zigzag: v += d on the rows with r0's parity
+//   (odd = r0 is odd) · ramp: v += d / r0 (the nearest, rank 0, cannot start a ramp) · size: × instead of +.
+// The same way and how are ONE row (a second sideways "All the same" adds to it — decision 6), and the row turned goes
+// last: the next drag that way turns the row chosen last (decision 8). The order does not change the result.
+                                                                              
+
+/** A rule's object in the offsets' frame (the loader's offsetFrame, as code-lists.ts sends it). */
+                           
+               
+               
+                          
+                         
+                
+ 
+/** A drag's amount: `d` is the offset's own number (m / px, °, a size factor; move: the ground [x, z] or 2D [x, y]). */
+                                                                                                                 
+
+/** A rule's rows at most (decision 6; placement.json refuses a ninth — schema LIMITS.maxOffsets). */
+const MAX_OFFSETS = 8;
+/** The file's rounding (1e-4, like a knob), -0 as 0. */
+const round4 = (v        ) => Math.round(v * 10000) / 10000 + 0;
+const wrap = (a        ) => Math.atan2(Math.sin(a), Math.cos(a));
+const sizeOf = (s                               ) => (typeof s === 'number' ? Math.abs(s) || 1 : Array.isArray(s) && s.length ? s.reduce((a, b) => a + Math.abs(b), 0) / s.length || 1 : 1);
+
+/** Does a row of this way and how do nothing (back to 0, or ×1)? */
+function empty(o             )          {
+  if (o.way === 'move') return Math.abs(o.v[0]) < 1e-4 && Math.abs(o.v[1]) < 1e-4;
+  return o.way === 'size' ? Math.abs(o.v - 1) < 1e-4 : Math.abs(o.v) < 1e-4;
+}
+
+/** Is `o` the row a drag of rank `rank` that way, this how, goes into (a zigzag's row is its parity's)? */
+function sameRow(o             , way           , how           , rank        )          {
+  if (o.way !== way || o.how !== how) return false;
+  return how !== 'zigzag' || !!(o                  ).odd === (rank % 2 === 1);
+}
+
+/** Does this row move the object of rank `rank` (a zigzag of the other parity, a ramp at rank 0: no)? */
+function movesRank(o             , rank        )          {
+  if (o.how === 'zigzag') return !!(o                  ).odd === (rank % 2 === 1);
+  return o.how !== 'ramp' || rank > 0;
+}
+
+/** The row of `way` chosen last (the end of the list), or null: a drag that way turns it next (decision 8). */
+function lastOf(offs                           , way           )                     {
+  for (let i = (offs?.length ?? 0) - 1; i >= 0; i--) if (offs [i] .way === way) return offs [i] ;
+  return null;
+}
+
+/**
+ * The offsets after a drag of the object of rank `rank` by `a` (its way's number), kept as `how`: merged into the same
+ * row, or a new one, which then goes last; a row back to nothing is taken out. null = `how` cannot say this drag (a
+ * ramp from the nearest one: decision 5, "ramps start from the nearest"; move is "same" only).
+ */
+function addOffset(offs                           , a              , how           , rank        )                       {
+  if (how === 'ramp' && rank < 1) return null;
+  if (a.way === 'move' && how !== 'same') return null;
+  const list = (offs ?? []).map((o) => structuredClone(o));
+  const at = list.findIndex((o) => sameRow(o, a.way, how, rank));
+  const old = at >= 0 ? list.splice(at, 1)[0]  : null;
+  let row             ;
+  if (a.way === 'move') {
+    const v = (old?.v                                ) ?? [0, 0];
+    row = { way: 'move', how: 'same', v: [round4(v[0] + a.d[0]), round4(v[1] + a.d[1])] };
+  } else {
+    const was = old ? (old.v          ) : a.way === 'size' ? 1 : 0;
+    let v        ;
+    if (a.way === 'size') {
+      // × a factor: the ramp's 1 + (v − 1) × rank for this one, times the drag's factor, then back to its v.
+      v = how === 'ramp' ? 1 + ((1 + (was - 1) * rank) * a.d - 1) / rank : was * a.d;
+    } else v = was + (how === 'ramp' ? a.d / rank : a.d);
+    row = { way: a.way, how, v: round4(v), ...(how === 'zigzag' && rank % 2 === 1 ? { odd: true          } : {}) };
+  }
+  // A ninth row would not save: the drag cannot make it (the line says "Up to 8 offsets · ✦ to fold them into the rule").
+  if (!old && list.length >= MAX_OFFSETS) return null;
+  if (!empty(row)) list.push(row);
+  return list;
+}
+
+/** Would `a` as `how` need a new row on a rule that has MAX_OFFSETS already? */
+const offsetsFull = (offs                           , a              , how           , rank        ) =>
+  (offs?.length ?? 0) >= MAX_OFFSETS && !(offs ?? []).some((o) => sameRow(o, a.way, how, rank));
+
+/**
+ * How far a drag of `tool` from `from` to `to` went in the offsets' terms: Move of a row = along or side (whichever is
+ * bigger, unless `way` is given), in the frame of the object dragged (`row`); Move of what is not a row = the ground
+ * [x, z] (2D [x, y]); Height = up; Turn = ° round the up axis (mirrored on a row's second line, so the row's v turns the
+ * dragged one as dragged); Size = the factor. `n` = 3 (3D) or 2.
+ */
+function dragAmount(tool                                      , row                 , from      , to      , n       , way            )               {
+  if (tool === 'lift') return { way: 'up', d: (to.p[1] ?? 0) - (from.p[1] ?? 0) };
+  if (tool === 'rotate') return { way: 'turn', d: ((row?.mirror ? -1 : 1) * wrap((to.r ?? 0) - (from.r ?? 0)) * 180) / Math.PI };
+  if (tool === 'scale') return { way: 'size', d: sizeOf(to.s) / sizeOf(from.s) };
+  const z = n === 3 ? 2 : 1;
+  const dx = (to.p[0] ?? 0) - (from.p[0] ?? 0), dz = (to.p[z] ?? 0) - (from.p[z] ?? 0);
+  if (!row || way === 'move') return { way: 'move', d: [dx, dz] };
+  const da = dx * row.along[0] + dz * row.along[1];
+  const ds = dx * row.side[0] + dz * row.side[1];
+  const w = way === 'along' || way === 'side' ? way : Math.abs(da) >= Math.abs(ds) ? 'along' : 'side';
+  return { way: w, d: w === 'along' ? da : ds };
+}
+
+/** The amount on a grid a hand can hit (a drag's live number): 3D 0.1 m, 2D 1 px, 1°, ×0.01. */
+function snapAmount(a              , n       )               {
+  const q = n === 3 ? 0.1 : 1;
+  const s = (v        , step        ) => round4(Math.round(v / step) * step);
+  if (a.way === 'move') return { way: 'move', d: [s(a.d[0], q), s(a.d[1], q)] };
+  return { way: a.way, d: s(a.d, a.way === 'turn' ? 1 : a.way === 'size' ? 0.01 : q) };
+}
+
+/** Is a drag's amount nothing (it did not go that way)? */
+const noAmount = (a              ) => (a.way === 'move' ? Math.abs(a.d[0]) < 1e-4 && Math.abs(a.d[1]) < 1e-4 : a.way === 'size' ? Math.abs(a.d - 1) < 1e-4 : Math.abs(a.d) < 1e-4);
+
+/**
+ * The offset this row adds to the object of rank `rank`, in its way's number (the card's dot picture and `--do list`):
+ * same → v; zigzag → v or 0; ramp → v × rank (size: 1 + (v − 1) × rank).
+ */
+function rowAt(o             , rank        )                            {
+  if (o.way === 'move') return o.v;
+  if (o.how === 'zigzag') return movesRank(o, rank) ? o.v : o.way === 'size' ? 1 : 0;
+  if (o.how === 'ramp') return o.way === 'size' ? 1 + (o.v - 1) * rank : o.v * rank;
+  return o.v;
+}
+
+__def(__exports, "MAX_OFFSETS", () => MAX_OFFSETS);
+__def(__exports, "round4", () => round4);
+__def(__exports, "sameRow", () => sameRow);
+__def(__exports, "movesRank", () => movesRank);
+__def(__exports, "lastOf", () => lastOf);
+__def(__exports, "addOffset", () => addOffset);
+__def(__exports, "offsetsFull", () => offsetsFull);
+__def(__exports, "dragAmount", () => dragAmount);
+__def(__exports, "snapAmount", () => snapAmount);
+__def(__exports, "noAmount", () => noAmount);
+__def(__exports, "rowAt", () => rowAt);
+};
+__defs[60] = function (__exports) {
+'use strict';
+// offset-choices.ts
+
+// The four choices under a rule drag, and the card's offset rows (studio-offsets, 2026-10-24; the plan's decisions 1, 5,
+// 6 and its first picture).
+//
+// WHY (the CRYSTAL FIELD try that day): "a lamp dragged away from the road did nothing" — now every lamp follows
+// from the drag's first step (bridge/code-place.ts), and when the finger lets go, the line where Studio always speaks
+// (over the ask field) offers how the rest should have followed: All the same (or the code knob's name) · Zigzag ·
+// Ramp · Just this one, and ✦ Make this way a knob. Nothing has to be pressed (the drag did the first); a pointer over
+// one shows that shape in place; a press (or key 1–4) swaps it IN THE SAME ⌘Z (undo.ts retarget); Esc or the next
+// action closes them. Ramp is dim when the nearest one was dragged ("ramps start from the nearest"); a layout that is
+// not a row has All the same and Just this one only (zigzag and ramp need an order). NOT beside the object: there it
+// hid the front of the row the person wants to see (tried in the plan's mock).
+//
+// The card's rows (decision 6): each offset under the code's knobs — its dot picture, "Sideways · Zigzag width", a
+// number box (the knobs' part: drag left / right, press to type), ✦ and ⋯ Remove. Violet like the knobs (both are the
+// rule); the dot picture alone tells the editor's from the code's. A new row lights once.
+                                                                                                                  
+const { h } = __require(16);
+const { knobEl } = __require(25);
+const { addOffset } = __require(59);
+
+                                                                         
+                                                       
+
+const SVG = 'http://www.w3.org/2000/svg';
+/**
+ * The small picture of how five objects are shifted (the plan's first picture): all the same, every other one, a little more
+ * each one, just one. Drawn in currentColor (violet on the card, the line's colour in the choices).
+ */
+function offsetPic(kind                   )                {
+  const svg = document.createElementNS(SVG, 'svg')                 ;
+  svg.setAttribute('viewBox', '0 0 30 12');
+  svg.setAttribute('width', '30');
+  svg.setAttribute('height', '12');
+  svg.setAttribute('aria-hidden', 'true');
+  svg.classList.add('off-pic');
+  for (let i = 0; i < 5; i++) {
+    const y = kind === 'same' ? 6 : kind === 'zigzag' ? (i % 2 ? 3 : 9) : kind === 'ramp' ? 10 - i * 2 : i === 2 ? 3 : 9;
+    const c = document.createElementNS(SVG, 'circle');
+    c.setAttribute('cx', String(3 + i * 6));
+    c.setAttribute('cy', String(y));
+    c.setAttribute('r', kind === 'one' && i === 2 ? '2.4' : '1.8');
+    c.setAttribute('fill', 'currentColor');
+    if (kind === 'one' && i !== 2) c.setAttribute('opacity', '.45');
+    svg.append(c);
+  }
+  return svg;
+}
+
+/** What studio:place/dragged told (contract BridgeToShell): the four choices are made from it. */
+                          
+             
+              
+                 
+                               
+               
+               
+                          
+                
+             
+                   
+ 
+
+                                    
+       
+             
+                                          
+                                                                  
+                            
+                                               
+                         
+                                                                                                                      
+                                                   
+                                                                                              
+                                                       
+                                                                                                     
+                            
+                                                                                                                    
+                            
+                                                                                          
+                             
+ 
+
+                  
+                                          
+                
+                         
+              
+                                                                                                       
+                               
+ 
+
+/**
+ * Each choice keeps its key whatever is offered (a layout that is not a row has 1 and 4 only): the hand learns "4 = just
+ * this one" once (the plan: keys 1–4 for the four).
+ */
+const KEY_OF                               = { first: 1, zigzag: 2, ramp: 3, one: 4 };
+
+                                
+                  
+                                                                          
+                                                                                
+                
+                    
+                                                                                                        
+                             
+ 
+
+/** "Sideways +1.0 m" / "Turn +15°" / "Size ×1.20" / "Position X +1.0 Z −0.5 m": what a drag did, for the line. */
+function amountWords(t   , way           , d                           , dim     )         {
+  const u = t(`hands.unit.${dim === '3d' ? 'm' : 'px'}`);
+  const dp = dim === '3d' ? 1 : 0;
+  const sg = (v        ) => `${v < 0 ? '−' : '+'}${Math.abs(v).toFixed(dp)}`;
+  if (Array.isArray(d)) return `${t('offset.way.move')} ${dim === '3d' ? 'X' : 'x'} ${sg(d[0])} ${dim === '3d' ? 'Z' : 'y'} ${sg(d[1])}${u}`;
+  if (way === 'turn') return `${t('offset.way.turn')} ${d < 0 ? '−' : '+'}${Math.abs(Math.round(d))}°`;
+  if (way === 'size') return `${t('offset.way.size')} ×${d.toFixed(2)}`;
+  return `${t(`offset.way.${way}`)} ${sg(d)}${u}`;
+}
+
+const tidy = (e                )                        => {
+  const o = structuredClone(e);
+  if (!o.offsets?.length) delete o.offsets;
+  if (o.pins && !Object.keys(o.pins).length) delete o.pins;
+  return Object.keys(o).length ? o : null;
+};
+
+function createOffsetChoices(d                   )                {
+  const t = d.t;
+  // Made when first asked for (main.ts puts it in the news card): the wire's tests run without a page.
+  let made                     = null;
+  const box = () => (made ??= h('div', { class: 'offset-choices', role: 'group', 'aria-label': t('offset.title'), dataset: { part: 'offset-choices' }, hidden: true }));
+  let state                                                                                       = null;
+
+  /** The four for this drag (decision 1, 5): from the layout's entry before it (`e0`) and what the drag did (`now`). */
+  function choicesFor(m         , e0                       , now                       )           {
+    const base = e0 ?? {};
+    const amt = { way: m.way, d: m.d }                ;
+    const withHow = (how           )                        => {
+      const offs = addOffset(base.offsets, amt, how, m.rank);
+      return offs ? tidy({ ...base, offsets: offs }) : null;
+    };
+    const p = d.place(m.id);
+    const knob = m.did === 'knob' && m.knob && p?.knobs[m.knob] ? p.knobs[m.knob] .label : null;
+    const list           = [knob
+      ? { id: 'first', label: t('offset.knob', { knob }), pic: 'same', tip: t('offset.sameTip'), entry: now }
+      : { id: 'first', label: t('offset.same'), pic: 'same', tip: t('offset.sameTip'), entry: m.did === 'same' ? now : withHow('same') }];
+    // Zigzag and ramp need an order (a row); a move of what is not a row is "same" only.
+    if (m.row && m.way !== 'move') {
+      list.push({ id: 'zigzag', label: t('offset.zigzag'), pic: 'zigzag', tip: t('offset.zigzagTip'), entry: m.did === 'zigzag' ? now : withHow('zigzag') });
+      list.push({ id: 'ramp', label: t('offset.ramp'), pic: 'ramp', tip: m.rank < 1 ? t('offset.rampNear') : t('offset.rampTip'), entry: m.did === 'ramp' ? now : m.rank < 1 ? null : withHow('ramp') });
+    }
+    // A choice that would need a ninth row (decision 6): dim, and its tooltip says why (a ramp from the nearest one
+    // keeps its own why).
+    for (const c of list) if (!c.entry && !(c.id === 'ramp' && m.rank < 1)) c.tip = t('offset.limit');
+    list.push({ id: 'one', label: t('offset.one'), pic: 'one', tip: t('offset.oneTip'),
+      entry: tidy({ ...base, pins: { ...(base.pins ?? {}), [m.key]: d.pinOf(m.pose) } }) });
+    return list;
+  }
+
+  function render() {
+    if (typeof document === 'undefined') return;
+    const el = box();
+    el.replaceChildren();
+    if (!state) {
+      el.hidden = true;
+      return;
+    }
+    const s = state;
+    el.hidden = false;
+    el.append(h('span', { class: 'oc-lead', dataset: { part: 'offset-lead' }, text: s.lead }));
+    s.list.forEach((c, i) => {
+      const b = h('button', {
+        type: 'button', class: `oc-btn${i === s.on ? ' on' : ''}${c.entry ? '' : ' dim'}`, 'aria-pressed': String(i === s.on),
+        'aria-disabled': c.entry ? undefined : 'true', title: t('offset.keyTip', { tip: c.tip, n: KEY_OF[c.id] }), dataset: { part: `offset-${c.id}`, n: String(KEY_OF[c.id]) },
+        onclick: () => pick(i),
+        onpointerenter: () => peek(i),
+        onpointerleave: () => peek(null),
+      }, offsetPic(c.pic), h('span', { text: c.label }), h('kbd', { text: String(KEY_OF[c.id]) }));
+      el.append(b);
+    });
+    if (d.ask) {
+      const p = d.place(s.m.id);
+      el.append(h('button', { type: 'button', class: 'oc-ask', title: t('offset.toKnobTip'), dataset: { part: 'offset-ask' },
+        onclick: () => {
+          const name = p?.name ?? s.m.id;
+          const draft = t('offset.draft', { name, way: t(`offset.way.${s.m.way}`) });
+          close();
+          d.ask (draft);
+        } }, `✦ ${t('offset.toKnob')}`));
+    }
+  }
+
+  /** A pointer over a choice: that shape in place (the draft only); off it: back to the one chosen. */
+  function peek(i               ) {
+    if (!state || state.peek === i) return;
+    const c = i === null ? null : state.list[i];
+    if (c && !c.entry) return;
+    state.peek = i;
+    d.show(state.m.id, (c ?? state.list[state.on] ).entry);
+  }
+
+  function pick(i        )          {
+    const s = state;
+    const c = s?.list[i];
+    if (!s || !c || !c.entry) return false;
+    s.peek = null;
+    if (i !== s.on) {
+      s.on = i;
+      d.retarget(s.m.id, c.entry);
+      if (c.id === 'one') {
+        s.lead = t('offset.oneDone', { obj: d.name(s.m.key) });
+        d.pinned?.(s.m.key);
+      } else s.lead = t('offset.lead', { obj: d.name(s.m.key), what: amountWords(t, s.m.way, s.m.d, d.dim()) });
+    }
+    d.show(s.m.id, c.entry);
+    render();
+    return true;
+  }
+
+  function close() {
+    if (!state) return;
+    const s = state;
+    state = null;
+    // A pointer was over one: back to the one chosen.
+    if (s.peek !== null) d.show(s.m.id, s.list[s.on] .entry);
+    render();
+    d.opened(false);
+  }
+
+  return {
+    get el() {
+      return box();
+    },
+    open(m, e0, now) {
+      const list = choicesFor(m, e0, now);
+      const on = Math.max(0, list.findIndex((c) => (m.did === 'knob' || m.did === 'same' ? c.id === 'first' : c.id === m.did)));
+      state = { m, list, on, peek: null, lead: t('offset.lead', { obj: d.name(m.key), what: amountWords(t, m.way, m.d, d.dim()) }) };
+      render();
+      d.opened(true);
+    },
+    close,
+    isOpen: () => !!state,
+    choose: (n) => {
+      const i = state ? state.list.findIndex((c) => KEY_OF[c.id] === n) : -1;
+      return i >= 0 && pick(i);
+    },
+  };
+}
+
+/** The card's words for an offset row: "Sideways · Zigzag width". */
+const offsetRowWords = (t   , o             ) => t(`offset.row.${o.how}`, { way: t(`offset.way.${o.way}`) });
+
+                                 
+       
+           
+                      
+                                                         
+              
+                                                                  
+                                                              
+                        
+                                            
+                                                                                        
+ 
+
+/**
+ * The card's offset rows under the rule's knobs (decision 6). A number box like a knob's (the same part): a way's
+ * number in m / px, °, × (size); a move's two numbers (X and Z). ⋯ → Remove: the objects go back by that much.
+ */
+function offsetRowsEl(o                )                     {
+  if (!o.offs.length) return null;
+  const t = o.t;
+  const u = (w           ) => (w === 'turn' ? '°' : w === 'size' ? '×' : t(`hands.unit.${o.dim === '3d' ? 'm' : 'px'}`));
+  const span = (w           , how           ) => (w === 'turn' ? 90 : w === 'size' ? 1 : o.dim === '3d' ? (how === 'ramp' ? 1 : 5) : 200);
+  const rows = o.offs.map((r, i) => {
+    const boxes = r.way === 'move'
+      ? (['X', o.dim === '3d' ? 'Z' : 'Y']         ).map((ax, j) => knobEl({
+        label: ax, unit: u('move'), v: r.v[j] , min: r.v[j]  - span('move', 'same'), max: r.v[j]  + span('move', 'same'), tip: t('rule.knobTip'), part: `offset-row-${i}-${j}`,
+        set: (v, end) => {
+          const nv                   = [r.v[0], r.v[1]];
+          nv[j] = Math.round(v * 10000) / 10000;
+          o.set(i, { ...r, v: nv }, end);
+        },
+      }))
+      : [knobEl({
+        label: offsetRowWords(t, r), unit: u(r.way), v: r.v,
+        min: r.way === 'size' ? Math.max(0.01, r.v - span(r.way, r.how)) : r.v - span(r.way, r.how), max: r.v + span(r.way, r.how),
+        tip: t('rule.knobTip'), part: `offset-row-${i}`,
+        set: (v, end) => o.set(i, { ...r, v: Math.round(v * 10000) / 10000 }               , end),
+      })];
+    const more = h('button', { type: 'button', class: 'icon-btn off-more', title: t('offset.more'), 'aria-label': t('offset.more'), dataset: { part: `offset-row-${i}-more` },
+      onclick: (e       ) => o.menu?.(e.currentTarget               , [{ id: 'offset-remove', label: t('offset.remove'), run: () => o.set(i, null, true) }]) }, '⋯');
+    return h('div', { class: `off-row${i === o.lit ? ' lit' : ''}`, title: t('offset.rowTip'), dataset: { part: 'offset-row', way: r.way, how: r.how } },
+      offsetPic(r.how), h('span', { class: 'off-words', text: offsetRowWords(t, r) }), h('span', { class: 'off-boxes' }, ...boxes),
+      o.ask ? h('button', { type: 'button', class: 'icon-btn off-ask', title: t('offset.toKnob'), 'aria-label': t('offset.toKnob'), dataset: { part: `offset-row-${i}-ask` }, onclick: () => o.ask (i) }, '✦') : null,
+      o.menu ? more : null);
+  });
+  return h('div', { class: 'off-rows', dataset: { part: 'offset-rows' } }, ...rows);
+}
+
+__def(__exports, "offsetPic", () => offsetPic);
+__def(__exports, "amountWords", () => amountWords);
+__def(__exports, "createOffsetChoices", () => createOffsetChoices);
+__def(__exports, "offsetRowWords", () => offsetRowWords);
+__def(__exports, "offsetRowsEl", () => offsetRowsEl);
+};
+__defs[61] = function (__exports) {
+'use strict';
 // code-place-wire.ts
 
 // The game's code layouts in the editor page (studio-code-knobs, 2026-10-24; the plan's step 2:
@@ -22797,6 +23632,14 @@ __defs[59] = function (__exports) {
 // { v, was }, pins, hand. Every change is one ⌘Z and one Save count per layout (the plan's decision 16); the game page
 // lays the layout out again IN PLACE (studio:place/layout) — the first step reloaded the game for each number.
 //
+// studio-offsets (2026-10-24; the CRYSTAL FIELD try of 10/24: "a lamp dragged away from the road did nothing and said
+// nothing", and the answer "a rule's objects stay a rule however they are moved"): a drag a way the code has no knob for
+// shifts the whole rule (studio:place/offsets, live then one ⌘Z, like a knob), and when it ends the four choices open
+// over the ask field (offset-choices.ts; studio:place/dragged). The card lists the offsets under the knobs. A key step
+// of one object, and Move / Height of several picked, are offsets too (All the same, one ⌘Z with the rest); only a
+// group's turn / size still leaves a rule's objects where they are (it turns round the group's middle, which no offset
+// can say), with why.
+//
 // studio-code-torule (2026-10-24, need 3 — the other way round): after the AI swapped a layout in for hand-placed
 // objects (✦ Turn into a rule), the card's Layout has "◉ Compare with original" and "Max deviation: lamp-3 (0.6 m)",
 // and the guide sends where those hand objects stood (orange dots and thin lines in the game) — until Save.
@@ -22811,10 +23654,12 @@ __defs[59] = function (__exports) {
 //   - the list: [✋ 2] on the rule's heading, [✋ Placed by hand] on a row (picked: [✋] and Back to rule)
 //   - the moment one leaves: "✋ Placed Crystal 9 by hand (the rest stay on the rule) · Back to rule · ⌘Z" (`told`'s
 //     hand form) while its ring spreads violet → sand in the game (bridge/code-place.ts)
-                                                                                                                           
+                                                                                                                                        
 const { h } = __require(16);
 const { knobEl, knobNumber } = __require(25);
 const { turnKnobs } = __require(33);
+const { amountWords, createOffsetChoices, offsetRowWords, offsetRowsEl } = __require(60);
+const { addOffset, dragAmount, lastOf, movesRank, noAmount } = __require(59);
 const { roundPose } = __require(31);
 const { gapText, placeGaps } = __require(52);
 
@@ -22833,6 +23678,13 @@ const { gapText, placeGaps } = __require(52);
                                
                                                                                              
                                                                                    
+     
+                                                                                                                       
+                                                                                                              
+     
+                                                            
+                                                                              
+                                                                                        
      
                                                                                                                          
                                                                                
@@ -22897,11 +23749,18 @@ const { gapText, placeGaps } = __require(52);
                                                                                                        
                                                                                                                    
                                                             
+                                                                                                                     
+                                                                         
+                                                                                            
+                            
+                                                                                                              
+                         
      
-                                                                                                                      
-                                                         
+                                                                                                                     
+                                                                                                                  
+                                                                                                                       
      
-                                                   
+                                                                
                                                                                       
                                                          
                                                                                                   
@@ -22942,7 +23801,12 @@ function createCodePlaceWire(d                   )                {
   const t = d.t;
   // A knob being turned (the card's drag or a drag in the game): the layout's entry before it, for the one undo step.
   let liveFrom                                                      = null;
+  // A run of key steps on one rule's object (studio-offsets): where it stood and its layout's entry at the first step.
+  let keyRun                                                                = null;
+  // Several picked moved together (studio-offsets): per layout, its entry and its lead object's pose at the start.
+  const groupRun = new Map                                                                 ();
   let guideSig = '';
+  let lastSel                = null;
   let hovered           = [];
   const unit = (u        ) => (u ? t(`hands.unit.${u}`) : '');
   const layoutOf = (key        ) => d.list().find((p) => p.keys.includes(key)) ?? null;
@@ -22950,7 +23814,8 @@ function createCodePlaceWire(d                   )                {
   const nth = (p               , key        ) => Number(key.slice(p.id.length + 1));
 
   function setLive(id        , next                , card         ) {
-    if (!liveFrom || liveFrom.id !== id) liveFrom = { id, entry: d.store().get(id) };
+    // A new drag (or a knob turned on the card) is the next action: the last drag's four choices go (decision 1).
+    if (!liveFrom || liveFrom.id !== id) (choices.close(), (liveFrom = { id, entry: d.store().get(id) }));
     d.store().set(id, next);
     d.changed(card);
   }
@@ -22959,6 +23824,39 @@ function createCodePlaceWire(d                   )                {
     liveFrom = null;
     d.store().set(id, from);
     d.commit(id, from, next);
+    lastDrag = { id, from, to: d.store().get(id) };
+    litNew(id, from);
+  }
+  // studio-offsets: the last drag's step (for the four choices, which swap its end in the same ⌘Z), and the offset row
+  // made just now (it lights once on the card: decision 6, "a new row glows violet once").
+  let lastDrag                                                                                = null;
+  let lit                                   = null;
+  /** A row more than before: that one lights (the last: a new or turned row goes last, offset-model.ts). */
+  function litNew(id        , from                       ) {
+    const now = d.store().get(id)?.offsets ?? [];
+    const was = from?.offsets ?? [];
+    lit = now.length > was.length || (now.length && !was.some((o) => o.way === now[now.length - 1] .way && o.how === now[now.length - 1] .how)) ? { id, i: now.length - 1 } : lit && lit.id === id ? null : lit;
+  }
+  /** The frame row of `key` (the game page's rows; studio-offsets), or null: not a row. */
+  const rowOf = (p               , key        )                  => {
+    const r = p.rows?.[nth(p, key) - 1];
+    return r && r.along && r.side ? { line: r.line, rank: r.rank, along: r.along, side: r.side, ...(r.mirror ? { mirror: true          } : {}) } : null;
+  };
+  /**
+   * A move of a rule's object as its rule's offset (studio-offsets: a key step, a game's tool): the way and how far it
+   * went in its frame, kept as the way's last chosen row when that moves it, else All the same — as a drag would.
+   */
+  function asOffset(p               , key        , from      , to      , press                                      , e0                       )                                                                                 {
+    const row = rowOf(p, key);
+    const a = dragAmount(press, row, from, to, d.dim() === '3d' ? 3 : 2);
+    if (noAmount(a)) return null;
+    const last = lastOf(e0?.offsets, a.way);
+    const how = row && last && movesRank(last, row.rank) ? last.how : 'same';
+    const offs = addOffset(e0?.offsets, a, how, row?.rank ?? 0);
+    if (!offs) return null;
+    const e                 = { ...(e0 ?? {}), offsets: offs };
+    if (!offs.length) delete e.offsets;
+    return { e, a, how };
   }
   const withKnob = (p               , name        , v        )                 => withKnobs(p, { [name]: v });
   const withKnobs = (p               , set                        )                 => {
@@ -23039,6 +23937,67 @@ function createCodePlaceWire(d                   )                {
     guide(true);
   }
 
+  // The four choices under a rule drag (offset-choices.ts): a pointer over one shows it in the draft; a choice swaps the
+  // drag's end in the same ⌘Z (main.ts retarget), else (the last step is no longer the drag's) it is a step of its own.
+  const choices = createOffsetChoices({
+    t, dim: () => d.dim(),
+    place: (id) => d.list().find((x) => x.id === id) ?? null,
+    name: (k) => nameOf(k),
+    pinOf: (pose) => pinOf(pose, d.dim()),
+    show: (id, e) => {
+      d.store().set(id, e);
+      d.changed(true);
+      layout([id]);
+    },
+    retarget: (id, e) => {
+      const from = lastDrag && lastDrag.id === id ? lastDrag.from : d.store().get(id);
+      if (!d.retarget?.(id, e)) d.commit(id, from, e);
+      else (d.store().set(id, e), d.changed(true), layout([id]));
+      lastDrag = { id, from, to: d.store().get(id) };
+      litNew(id, from);
+    },
+    ask: d.ask ? (draft) => d.ask (draft) : undefined,
+    opened: (on) => d.send({ type: 'studio:place/choices', on }),
+    // Just this one: the choices' own line says "Placed Street lamps 5 by hand" (the plan's picture 4) — no second line.
+  });
+
+  /**
+   * The card's offset rows of layout `p` (decision 6): turning a row's number is live, then one ⌘Z; ⋯ Remove takes it
+   * off (the objects go back by that much: one ⌘Z, one Save count); ✦ puts "Make Street lamps' sideways a knob" in the
+   * chat box.
+   */
+  function offsetRows(p               )                     {
+    const offs = entry(p.id).offsets ?? [];
+    const shine = lit && lit.id === p.id ? lit.i : -1;
+    lit = null;
+    return offsetRowsEl({
+      t, dim: d.dim(), offs, lit: shine,
+      set: (i, row, end) => {
+        const e = entry(p.id);
+        const list = (e.offsets ?? []).slice();
+        if (row) list[i] = row;
+        else list.splice(i, 1);
+        const next                 = { ...e, offsets: list };
+        if (!list.length) delete next.offsets;
+        if (!row) {
+          const was = e.offsets?.[i];
+          d.commit(p.id, d.store().get(p.id), next);
+          if (was) d.told(t('offset.removed', { name: p.name, what: offsetRowWords(t, was) }));
+          return;
+        }
+        if (!end) {
+          setLive(p.id, next, false);
+          layout([p.id]);
+        } else endLive(p.id, next);
+      },
+      ask: d.ask ? (i) => {
+        const r = entry(p.id).offsets?.[i];
+        if (r) d.ask (t('offset.draftRow', { name: p.name, way: t(`offset.way.${r.way}`), what: r.way === 'move' ? r.v.join(', ') : `${offsetRowWords(t, r)} ${r.v}` }));
+      } : undefined,
+      menu: d.menu ? (at, rows) => d.menu (at, rows) : undefined,
+    });
+  }
+
   function guide(force = false) {
     d.guided?.(force);
     const keys = [...(d.group().length > 1 ? d.group() : d.selected() ? [d.selected() ] : []), ...hovered];
@@ -23048,6 +24007,8 @@ function createCodePlaceWire(d                   )                {
     // over every object placed by hand, and spreads the ring of a pin it did not have. Before, nothing picked sent {}.
     const places = on ? d.store().result() ?? {} : {};
     const sel = d.selected();
+    // Another pick is the next action: the last drag's four choices go (studio-offsets, decision 1).
+    if (sel !== lastSel) (choices.close(), (lastSel = sel));
     const compare = compareMarks(ids);
     // Lit: the objects placed by hand among those the mouse is on (the card's count, their rows).
     const lit = hovered.filter((k) => {
@@ -23120,7 +24081,7 @@ function createCodePlaceWire(d                   )                {
       h('button', { type: 'button', class: 'link-btn rule-hand', title: t('rule.individuallyTip', { n: p.keys.length }), dataset: { action: 'rule-individually', part: 'rule-individually' },
         onclick: () => individually(p) }, t('rule.individually')),
       h('span', { class: 'muted rule-nth', text: t('rule.nth', { n: nth(p, key) }) }));
-    return h('div', { class: 'rule-block', dataset: { part: 'rule-layout', id: p.id } }, head, h('div', { class: 'rule-knobs' }, ...knobs), compareBlock(p), handsLine(p), foot,
+    return h('div', { class: 'rule-block', dataset: { part: 'rule-layout', id: p.id } }, head, h('div', { class: 'rule-knobs' }, ...knobs), offsetRows(p), compareBlock(p), handsLine(p), foot,
       unused ? h('p', { class: 'muted note-line', text: t('rule.unusedPins', { n: unused }) }) : null);
   }
 
@@ -23135,7 +24096,10 @@ function createCodePlaceWire(d                   )                {
       const pose = d.pose(k);
       if (pose && !pins[k]) pins[k] = pinOf(pose, d.dim());
     }
-    d.commit(p.id, d.store().get(p.id), { ...e, hand: true, pins });
+    // Where each stands now has its offsets in it: the file's offsets go (the coordinates say everything; decision 13).
+    const next                 = { ...e, hand: true, pins };
+    delete next.offsets;
+    d.commit(p.id, d.store().get(p.id), next);
     d.told(t('rule.individuallyDone', { name: p.name, n: p.keys.length }));
   }
 
@@ -23162,12 +24126,27 @@ function createCodePlaceWire(d                   )                {
       const p = layoutOf(key);
       if (!p) return false;
       if (ruled(p, key) && !alone) {
-        // Not ⌥: never out of its rule (studio-to-coords). The game page keeps a drag still already (bridge/code-place.ts);
-        // this is the rest — a key step, a game's tool, a drop to the floor: back where the rule puts it, and why.
-        if (end) {
+        // Not ⌥: never out of its rule (studio-to-coords). A drag in the game turns its rule already (bridge/code-place.ts);
+        // this is the rest — a key step, a game's tool, a drop to the floor: since studio-offsets the whole rule moves
+        // with it (an offset, live while a key is held, one ⌘Z), and the four choices open as after a drag.
+        if (!keyRun || keyRun.key !== key) keyRun = { key, from: d.pose(key) ?? pose, e0: d.store().get(p.id) };
+        const run = keyRun;
+        const r = asOffset(p, key, run.from, pose, press ?? 'move', run.e0);
+        if (!end) {
+          if (r) setLive(p.id, r.e, true);
           layout([p.id]);
-          sayHeld(p, PRESS_WAY[press ?? 'move']);
+          return true;
         }
+        keyRun = null;
+        if (!r) {
+          layout([p.id]);
+          return true;
+        }
+        if (!liveFrom || liveFrom.id !== p.id) liveFrom = { id: p.id, entry: run.e0 };
+        endLive(p.id, r.e);
+        layout([p.id]);
+        const row = rowOf(p, key);
+        choices.open({ id: p.id, key, way: r.a.way, d: r.a.d, rank: row?.rank ?? 0, row: !!row, did: r.how, pose }, run.e0, d.store().get(p.id));
         return true;
       }
       // While the drag goes on, the model follows the game (the card's numbers) without counting it as a move.
@@ -23200,15 +24179,34 @@ function createCodePlaceWire(d                   )                {
       const p = d.list().find((x) => x.id === m.id);
       if (p) sayHeld(p, m.way);
     },
-    steps(keys, quiet) {
-      const held = keys.filter((k) => {
+    offsets(m) {
+      const p = d.list().find((x) => x.id === m.id);
+      if (!p) return;
+      const e = entry(p.id);
+      const next                 = { ...e, offsets: structuredClone(m.offsets) };
+      if (!m.offsets.length) delete next.offsets;
+      if (!m.end) setLive(p.id, next, true);
+      else endLive(p.id, next);
+    },
+    dragged(m) {
+      // The drag's own step (place/knob or place/offsets end) came just before: its two ends are the choices' start.
+      if (!lastDrag || lastDrag.id !== m.id) return;
+      choices.open(m, lastDrag.from, lastDrag.to);
+    },
+    choices,
+    steps(keys, quiet, op) {
+      // One object: its step is its rule's offset (moved() above). Several: Move / Height step with the rest (their
+      // rule's offset, groupMoved); a turn, a size or End of a group stays — round the group's middle, or each to its
+      // own floor, is no offset of a rule.
+      const held = keys.length > 1 && op !== 'move' && op !== 'lift' ? keys.filter((k) => {
         const p = layoutOf(k);
         return !!p && ruled(p, k);
-      });
+      }) : [];
       if (held.length && !quiet) {
         const p = layoutOf(held[0] ) ;
-        d.told(t('rule.keys', { name: p.name }), [], false);
+        d.told(t('rule.heldGroup', { name: p.name }), [], false);
       }
+      if (keys.length) choices.close();
       return keys.filter((k) => !held.includes(k));
     },
     poses(poses) {
@@ -23253,6 +24251,11 @@ function createCodePlaceWire(d                   )                {
           out.push(t('rule.saved', { name: p.name, knob: def.label, v: `${knobNumber(k.v, def.step)}${unit(def.unit)}` }));
           said = true;
         }
+        // studio-offsets: "Street lamps Sideways · Zigzag width 1.5 m".
+        for (const o of e.offsets ?? []) {
+          out.push(t('offset.saved', { name: p.name, what: o.way === 'move' ? amountWords(t, 'move', o.v, d.dim()) : `${offsetRowWords(t, o)} ${knobNumber(o.v)}${o.way === 'turn' ? '°' : o.way === 'size' ? '×' : unit(d.dim() === '3d' ? 'm' : 'px')}` }));
+          said = true;
+        }
         if (!said) out.push(p.name);
       }
       return out;
@@ -23261,6 +24264,8 @@ function createCodePlaceWire(d                   )                {
       const rest               = [];
       const next = new Map                        ();
       const back = new Set        ();
+      // studio-offsets: per layout, where its lead object is now (its rule follows as an offset).
+      const shifts = new Map              ();
       // The rule's objects ⌥ takes out of their rule now (told at the end, as one object's are).
       const first                                     = [];
       for (const x of poses) {
@@ -23269,9 +24274,15 @@ function createCodePlaceWire(d                   )                {
           rest.push(x);
           continue;
         }
-        // Not ⌥: a rule's object stays in its rule (the game page leaves them out of a group drag; a key step's group
-        // may still bring one) — laid out again where the rule puts it.
+        // Not ⌥: a rule's object stays in its rule. Since studio-offsets a group's Move / Height brings them (the game
+        // page keeps them in the drag): their rule moves with them as an offset (below); anything else — laid out again
+        // where the rule puts it.
         if (ruled(p, x.key) && !alone) {
+          if (!groupRun.has(p.id)) groupRun.set(p.id, { e0: d.store().get(p.id), lead: x.key, from: d.pose(x.key) ?? x.pose });
+          const g = groupRun.get(p.id) ;
+          // The lead: the picked one when it is this rule's (its move is what the person watched).
+          if (x.key === d.selected() && g.lead !== x.key) groupRun.set(p.id, { ...g, lead: x.key, from: d.pose(x.key) ?? x.from ?? x.pose });
+          if (x.key === groupRun.get(p.id) .lead) shifts.set(p.id, x.pose);
           back.add(p.id);
           continue;
         }
@@ -23281,11 +24292,29 @@ function createCodePlaceWire(d                   )                {
         const e = next.get(p.id) ?? entry(p.id);
         next.set(p.id, { ...e, pins: { ...(e.pins ?? {}), [x.key]: pinOf(x.pose, d.dim()) } });
       }
+      // A rule's objects moved together with the rest: its offset — the lead's move on the ground and up (All the same:
+      // `move` and `up`, the world's own directions, so a group that holds both sides of a road moves as one).
+      const dim3 = d.dim() === '3d';
+      for (const [id, to] of shifts) {
+        const g = groupRun.get(id) ;
+        const z = dim3 ? 2 : 1;
+        let offs = g.e0?.offsets;
+        const dx = (to.p[0] ?? 0) - (g.from.p[0] ?? 0), dz = (to.p[z] ?? 0) - (g.from.p[z] ?? 0), dy = dim3 ? (to.p[1] ?? 0) - (g.from.p[1] ?? 0) : 0;
+        if (Math.hypot(dx, dz) > 1e-4) offs = addOffset(offs, { way: 'move', d: [dx, dz] }, 'same', 0) ?? offs;
+        if (Math.abs(dy) > 1e-4) offs = addOffset(offs, { way: 'up', d: dy }, 'same', 0) ?? offs;
+        const e                 = { ...(g.e0 ?? {}), ...(offs?.length ? { offsets: offs } : {}) };
+        if (!offs?.length) delete e.offsets;
+        if (!end) {
+          d.store().set(id, e);
+          layout([id]);
+        } else next.set(id, e);
+      }
       const changes = [...next].map(([id, to]) => {
-        const from = d.store().get(id);
+        const from = groupRun.get(id)?.e0 ?? d.store().get(id);
         d.store().set(id, to);
         return { kind: 'code-place'         , key: id, from, to: d.store().get(id) };
       });
+      if (end) groupRun.clear();
       const again = new Set([...changes.map((c) => c.key), ...(end ? back : [])]);
       if (again.size) layout([...again]);
       // ⌥ took some out of their rule together: said as for one ("Placed Street lamps 2, Street lamps 3 by hand"), with
@@ -23319,7 +24348,7 @@ function createCodePlaceWire(d                   )                {
 
 __def(__exports, "createCodePlaceWire", () => createCodePlaceWire);
 };
-__defs[60] = function (__exports) {
+__defs[62] = function (__exports) {
 'use strict';
 // keep-out-model.ts
 
@@ -23528,7 +24557,7 @@ __def(__exports, "changedRows", () => changedRows);
 __def(__exports, "rowKey", () => rowKey);
 __def(__exports, "inBox", () => inBox);
 };
-__defs[61] = function (__exports) {
+__defs[63] = function (__exports) {
 'use strict';
 // keep-out-wire.ts
 
@@ -23559,7 +24588,7 @@ const { h } = __require(16);
 const { icon } = __require(21);
 const { knobEl } = __require(25);
                                                    
-const { MAX_AVOID, addBox, canRemove, changedRows, copyRowTo, knobRow, knobsNow, nextBoxName, removeRow, rowKey, rowsOf, setBox, switchRow } = __require(60);
+const { MAX_AVOID, addBox, canRemove, changedRows, copyRowTo, knobRow, knobsNow, nextBoxName, removeRow, rowKey, rowsOf, setBox, switchRow } = __require(62);
 
                                                                          
                                    
@@ -23853,7 +24882,7 @@ function createKeepOutWire(d                 )              {
 
 __def(__exports, "createKeepOutWire", () => createKeepOutWire);
 };
-__defs[62] = function (__exports) {
+__defs[64] = function (__exports) {
 'use strict';
 // palette.ts
 
@@ -24159,7 +25188,7 @@ __def(__exports, "SUGGEST_MIN", () => SUGGEST_MIN);
 __def(__exports, "suggests", () => suggests);
 __def(__exports, "createPalette", () => createPalette);
 };
-__defs[63] = function (__exports) {
+__defs[65] = function (__exports) {
 'use strict';
 // thumb-fit.ts
 
@@ -24260,7 +25289,7 @@ function fitPicture(src        , out = OUT)                  {
 __def(__exports, "FIT_MARGIN", () => FIT_MARGIN);
 __def(__exports, "fitPicture", () => fitPicture);
 };
-__defs[64] = function (__exports) {
+__defs[66] = function (__exports) {
 'use strict';
 // undo.ts
 
@@ -24382,6 +25411,19 @@ class UndoStack {
     return e;
   }
 
+  /**
+   * The last step's change of a code layout now ends at `to` instead (studio-offsets, 2026-10-24: the four choices
+   * under a rule drag — All the same / Zigzag / Ramp / Just this one — swap what the drag did IN THE SAME ⌘Z; decision
+   * 1: choosing again adds no step). false = the last step is not that layout's (then the caller pushes a new one).
+   */
+  retarget(key        , to                       )          {
+    const c = this.done[this.done.length - 1]?.changes.find((x) => x.kind === 'code-place' && x.key === key)                                                       ;
+    if (!c) return false;
+    c.to = to ? structuredClone(to) : null;
+    this.undone.length = 0;
+    return true;
+  }
+
   /** What Undo / Redo would change next, without changing it (their tooltips name it). */
   peekUndo()                   {
     return this.done[this.done.length - 1] ?? null;
@@ -24445,7 +25487,7 @@ __def(__exports, "poseChange", () => poseChange);
 __def(__exports, "UndoStack", () => UndoStack);
 __def(__exports, "sharedMotion", () => sharedMotion);
 };
-__defs[65] = function (__exports) {
+__defs[67] = function (__exports) {
 'use strict';
 // ../schema/hands.mjs
 
@@ -24485,7 +25527,9 @@ const HANDS_OPS = Object.freeze({
   // timeline / in the layout's card with its knobs, one ⌘Z away, like any of the AI's changes.
   'motion.code': { need: ['code', 'name'], may: ['key', 'when', 'until', 'replace', 'level'] },
   'place.code': { need: ['id'], may: ['replace', 'level'] },
-  'place.set': { need: ['id'], may: ['knobs', 'pin', 'unpin', 'hand', 'level'] },
+  // `offsets` (studio-offsets, 2026-10-24): the rule's shifts as the person's drags make them ([] takes them off) — "move
+  // every lamp 1 m further from the road" without writing code; on Save the AI writes them into the rule and sends [].
+  'place.set': { need: ['id'], may: ['knobs', 'pin', 'unpin', 'hand', 'offsets', 'level'] },
   'place.avoid': { need: ['id'], may: ['code', 'box', 'name', 'knobs', 'off', 'remove', 'level'] },
   'object.move': { need: ['key'], may: ['to', 'by', 'level'] },
   'object.turn': { need: ['key'], may: ['to', 'by', 'deg', 'level'] },
@@ -24597,6 +25641,11 @@ function readHandsOp(op, at, errors) {
     if (typeof op.unpin !== 'string' || (op.unpin !== '*' && !KEY_RE.test(op.unpin))) fail('"unpin" must be the key of one of the layout\'s objects ("hex-3"), or "*" for all of them');
     else out.unpin = op.unpin;
   }
+  if (has('offsets')) {
+    const o = readHandsOffsets(op.offsets);
+    if (o.error) fail(`"offsets": ${o.error}`);
+    else out.offsets = o.offsets;
+  }
   if (has('box')) {
     const b = op.box;
     const ok = b && typeof b === 'object' && handsVec(b.p) && handsVec(b.size, b.p.length) && b.size.every((x) => x >= 0) && Object.keys(b).every((k) => k === 'p' || k === 'size');
@@ -24644,7 +25693,7 @@ function readHandsOp(op, at, errors) {
   }
   if (op.do === 'motion.set' && ['repeat', 'len', 'when', 'until', 'knobs', 'off'].every((f) => !has(f))) fail('needs one of "repeat", "len", "when", "until", "knobs", "off"');
   if (op.do === 'motion.set' && has('off') && !has('key')) fail('"off" is per object: give "key" (the object whose motion is switched off / on)');
-  if (op.do === 'place.set' && ['knobs', 'pin', 'unpin', 'hand'].every((f) => !has(f))) fail('needs one of "knobs", "pin", "unpin", "hand"');
+  if (op.do === 'place.set' && ['knobs', 'pin', 'unpin', 'hand', 'offsets'].every((f) => !has(f))) fail('needs one of "knobs", "pin", "unpin", "hand", "offsets"');
   if (op.do === 'place.avoid') {
     if (has('remove') && (has('code') || has('box'))) fail('"remove" alone (which area), or "code" / "box" to add or change one');
     else if (!has('remove') && has('code') === has('box')) fail('needs "code" (a codeAvoid id in the game\'s code) or "box" (an area: { p, size }), one of them');
@@ -24873,7 +25922,8 @@ function handsSaid(op, x = {}) {
     }
     case 'place.code': return op.replace ? `put codePlace('${op.id}') in place of ${op.replace.join(', ')} (hidden until your code stops making them)${x.keys ? `: ${x.keys} objects` : ''}`
       : `showed codePlace('${op.id}')${x.keys !== undefined ? ` (${x.keys} objects)` : ''} in the editor — nothing to write: the code places it`;
-    case 'place.set': return `set codePlace('${op.id}'): ${[op.knobs ? handsKnobWords(op.knobs) : '', op.pin ? `${op.pin.key} by hand at [${op.pin.p.join(', ')}]` : '', op.unpin === '*' ? 'every object placed by hand back on the formula' : op.unpin ? `${op.unpin} back on the formula` : '', op.hand !== undefined ? (op.hand ? 'every object by hand' : 'back on the formula') : ''].filter(Boolean).join(', ')}`;
+    case 'place.set': return `set codePlace('${op.id}'): ${[op.knobs ? handsKnobWords(op.knobs) : '', op.pin ? `${op.pin.key} by hand at [${op.pin.p.join(', ')}]` : '', op.unpin === '*' ? 'every object placed by hand back on the formula' : op.unpin ? `${op.unpin} back on the formula` : '', op.hand !== undefined ? (op.hand ? 'every object by hand' : 'back on the formula') : '',
+      op.offsets ? (op.offsets.length ? `offsets ${op.offsets.map((o) => `${o.way} ${o.how} ${Array.isArray(o.v) ? `[${o.v.join(', ')}]` : o.v}${o.odd ? ' (odd)' : ''}`).join(', ')}` : 'no offsets (back on the formula)') : ''].filter(Boolean).join(', ')}`;
     case 'place.avoid': return op.remove !== undefined ? `took keep-out area ${JSON.stringify(op.remove)} off codePlace('${op.id}')`
       : `${x.changed ? 'changed' : 'added'} the keep-out area ${op.code ? `codeAvoid('${op.code}')` : `box at [${op.box.p.join(', ')}]`} on codePlace('${op.id}')${op.knobs ? ` (${handsKnobWords(op.knobs)})` : ''}${op.off !== undefined ? (op.off ? ', switched off' : ', switched on') : ''}`;
     case 'object.move': return `moved ${op.key} to [${(x.pose?.p ?? op.to ?? []).join(', ')}]`;
@@ -25150,6 +26200,27 @@ function handsFileCode(f, op, w) {
   return { name: m.name, replaced, when };
 }
 
+const HANDS_OFFSET_WAYS = ['along', 'side', 'up', 'turn', 'size', 'move'];
+const HANDS_OFFSET_HOWS = ['same', 'zigzag', 'ramp'];
+/**
+ * place.set's `offsets` (studio-offsets, 2026-10-24; CONTRACT.md §1.12 "Offsets"): the rule's whole list of shifts,
+ * ≤ 8 — [{ way, how, v, odd? }] as placement.json keeps them; [] = none. { offsets } or { error }.
+ */
+function readHandsOffsets(v) {
+  if (!Array.isArray(v) || v.length > 8) return { error: 'must be a list of at most 8 offsets ([] takes them off): [{ "way": "side", "how": "same", "v": 1 }]' };
+  const out = [];
+  for (const o of v) {
+    if (!o || typeof o !== 'object' || Array.isArray(o) || !Object.keys(o).every((k) => ['way', 'how', 'v', 'odd'].includes(k))) return { error: 'each is { "way", "how", "v", "odd"? }' };
+    if (!HANDS_OFFSET_WAYS.includes(o.way)) return { error: `"way" is one of ${HANDS_OFFSET_WAYS.join(', ')} (along / side: a row's; move: [x, z] on the ground for a layout that is not a row)` };
+    if (!HANDS_OFFSET_HOWS.includes(o.how)) return { error: `"how" is one of ${HANDS_OFFSET_HOWS.join(', ')}` };
+    if (o.way === 'move' ? !(o.how === 'same' && handsVec(o.v, 2)) : !handsNum(o.v) || (o.way === 'size' && o.v <= 0)) return { error: o.way === 'move' ? 'a move is "same" with v = [x, z] (2D [x, y])' : `"v" is a number (m / px; ° for turn; a factor above 0 for size)` };
+    if (o.odd !== undefined && (o.odd !== true || o.how !== 'zigzag')) return { error: '"odd": true is a zigzag\'s only (the odd ranks move; leave it out for the even)' };
+    const r = (x) => Math.round(x * 10000) / 10000 + 0;
+    out.push({ way: o.way, how: o.how, v: Array.isArray(o.v) ? o.v.map(r) : r(o.v), ...(o.odd ? { odd: true } : {}) });
+  }
+  return { offsets: out };
+}
+
 /** "lamp-3" is one of codePlace('lamp')'s objects (it names them "<id>-<n>", from 1). */
 const handsPlaceKey = (id, key) => key.startsWith(`${id}-`) && /^[1-9][0-9]{0,3}$/.test(key.slice(id.length + 1));
 
@@ -25185,6 +26256,10 @@ function handsFilePlace(w, op, dim) {
       if (!e.pins?.[op.unpin]) return { error: `${op.unpin} is not put by hand (it follows the formula already)` };
       delete e.pins[op.unpin];
       if (!Object.keys(e.pins).length) delete e.pins;
+    }
+    if (op.offsets) {
+      if (op.offsets.length) e.offsets = structuredClone(op.offsets);
+      else delete e.offsets;
     }
     return {};
   }
@@ -25341,10 +26416,11 @@ __def(__exports, "handsPose", () => handsPose);
 __def(__exports, "handsCopyKey", () => handsCopyKey);
 __def(__exports, "handsSaid", () => handsSaid);
 __def(__exports, "applyHandsToFile", () => applyHandsToFile);
+__def(__exports, "readHandsOffsets", () => readHandsOffsets);
 __def(__exports, "handsPlaceKey", () => handsPlaceKey);
 __def(__exports, "handsAvoid", () => handsAvoid);
 };
-__defs[66] = function (__exports) {
+__defs[68] = function (__exports) {
 'use strict';
 // ai-hands.ts
 
@@ -25362,8 +26438,8 @@ __defs[66] = function (__exports) {
 //
 // Pure of the DOM: every effect goes through HandsDeps (main.ts wires them), so test/ai-hands.test.ts runs it with
 // stand-ins.
-                                                                                                                                                                                                                              
-const { HANDS_MAKE_WHEN, handsAvoid, handsClip, handsMotion, handsPose, handsSaid, readHandsInput } = __require(65);
+                                                                                                                                                                                                                                           
+const { HANDS_MAKE_WHEN, handsAvoid, handsClip, handsMotion, handsPose, handsSaid, readHandsInput } = __require(67);
 const { roundKnob, turnKnobs } = __require(33);
 const { CODE_LEN } = __require(34);
 const { MOTION_SAMPLES, gapText, motionGap, placeGaps, timeText } = __require(52);
@@ -25545,6 +26621,7 @@ function createAiHands(d           ) {
     const e = p ? d.place(p.id) : null;
     if (!p || e?.hand || e?.pins?.[key]) return null;
     return `${key} is placed by codePlace('${p.id}') (its rule) and stays in it: change the rule's numbers with place.set --knobs, `
+      + `move the whole rule with place.set --offsets (every object: [{"way":"side","how":"same","v":1}]), `
       + `put just this one by hand with place.set --pin, or turn the whole layout into coordinates with place.set --hand`;
   };
 
@@ -25745,6 +26822,13 @@ function createAiHands(d           ) {
           delete e.pins;
           parts.push(d.t('hands.place.unhand'));
         }
+        // studio-offsets: the rule's shifts as a whole list ([] = none) — what the person's drags make; on Save the AI
+        // writes them into the rule and sends [] (the code is the truth).
+        if (op.offsets) {
+          if (op.offsets.length) e.offsets = structuredClone(op.offsets);
+          else delete e.offsets;
+          parts.push(op.offsets.length ? d.t('hands.place.offsets', { what: op.offsets.map((o             ) => `${d.t(`offset.way.${o.way}`)} · ${d.t(`offset.${o.how}`)} ${Array.isArray(o.v) ? o.v.join(', ') : o.v}`).join(', ') }) : d.t('hands.place.noOffsets'));
+        }
         d.setPlace(op.id, e);
         return { words: { name: info.name, what: parts.join(', ') } };
       }
@@ -25878,7 +26962,14 @@ function createAiHands(d           ) {
     const ps = d.codePlaces();
     const places            = ps.map((p) => {
       const e = d.place(p.id) ?? {};
+      // studio-offsets: its offsets and each object's row / rank / what they add (the editor counts the ranks, so the
+      // AI writing them into at() on Save does not count them itself: 01-decisions.md 9).
+      const objects = p.rows?.some(Boolean) ? p.keys.map((k) => {
+        const r = p.rows [Number(k.slice(p.id.length + 1)) - 1];
+        return r ? { key: k, line: r.line, rank: r.rank, ...(r.offset ? { offset: r.offset } : {}) } : { key: k };
+      }) : null;
       return { id: p.id, name: p.name, keys: p.keys, knobs: knobsOut(p.knobs, e.knobs), ...(p.drag ? { drag: p.drag } : {}), ...(e.pins ? { pins: Object.keys(e.pins) } : {}), ...(e.hand ? { hand: true } : {}),
+        ...(p.kind ? { kind: p.kind } : {}), ...(e.offsets ? { offsets: e.offsets } : {}), ...(objects ? { objects } : {}),
         avoid: [...p.avoid.filter((a) => !(e.avoid ?? []).some((x) => 'code' in x && x.code === a)).map((a) => ({ code: a })), ...(e.avoid ?? [])].map((a) => {
           if ('box' in a) return a;
           const c = d.codeAvoids().find((x) => x.code === a.code);
@@ -25954,7 +27045,7 @@ function createAiHands(d           ) {
 
 __def(__exports, "createAiHands", () => createAiHands);
 };
-__defs[67] = function (__exports) {
+__defs[69] = function (__exports) {
 'use strict';
 // tooltip.ts
 
@@ -26074,7 +27165,7 @@ function installTooltips(root             )                                    {
 
 __def(__exports, "installTooltips", () => installTooltips);
 };
-__defs[68] = function (__exports) {
+__defs[70] = function (__exports) {
 'use strict';
 // shortcuts.ts
 
@@ -26157,7 +27248,7 @@ function createShortcutSheet(d                   ) {
 
 __def(__exports, "createShortcutSheet", () => createShortcutSheet);
 };
-__defs[69] = function (__exports) {
+__defs[71] = function (__exports) {
 'use strict';
 // context-menu.ts
 
@@ -26420,7 +27511,7 @@ function createContextMenu(d                 ) {
 __def(__exports, "placeMenu", () => placeMenu);
 __def(__exports, "createContextMenu", () => createContextMenu);
 };
-__defs[70] = function (__exports) {
+__defs[72] = function (__exports) {
 'use strict';
 // levels.ts
 
@@ -26840,7 +27931,7 @@ __def(__exports, "slugOf", () => slugOf);
 __def(__exports, "levelIdOf", () => levelIdOf);
 __def(__exports, "Levels", () => Levels);
 };
-__defs[71] = function (__exports) {
+__defs[73] = function (__exports) {
 'use strict';
 // check-note.ts
 
@@ -26879,7 +27970,7 @@ function checkNoteId(check                        , items                       
 
 __def(__exports, "checkNoteId", () => checkNoteId);
 };
-__defs[72] = function (__exports) {
+__defs[74] = function (__exports) {
 'use strict';
 // level-switch.ts
 
@@ -27053,7 +28144,7 @@ function createLevelSwitch(d                 ) {
 __def(__exports, "makeRows", () => makeRows);
 __def(__exports, "createLevelSwitch", () => createLevelSwitch);
 };
-__defs[73] = function (__exports) {
+__defs[75] = function (__exports) {
 'use strict';
 // context-rows.ts
 
@@ -27251,7 +28342,7 @@ function contextRows(place          , f          )           {
 
 __def(__exports, "contextRows", () => contextRows);
 };
-__defs[74] = function (__exports) {
+__defs[76] = function (__exports) {
 'use strict';
 // safe-save.ts
 
@@ -27362,7 +28453,7 @@ function createSafeSave(deps                              ) {
 __def(__exports, "bigChanges", () => bigChanges);
 __def(__exports, "createSafeSave", () => createSafeSave);
 };
-__defs[75] = function (__exports) {
+__defs[77] = function (__exports) {
 'use strict';
 // unsaved-guard.ts
 
@@ -27519,7 +28610,7 @@ __def(__exports, "lostBy", () => lostBy);
 __def(__exports, "playAsks", () => playAsks);
 __def(__exports, "createUnsavedGuard", () => createUnsavedGuard);
 };
-__defs[76] = function (__exports) {
+__defs[78] = function (__exports) {
 'use strict';
 // layer-switch.ts
 
@@ -27589,7 +28680,7 @@ function createLayerSwitch(choose                        , togglePeek           
 
 __def(__exports, "createLayerSwitch", () => createLayerSwitch);
 };
-__defs[77] = function (__exports) {
+__defs[79] = function (__exports) {
 'use strict';
 // ui-layer.ts
 
@@ -27678,7 +28769,7 @@ __def(__exports, "uiEntries", () => uiEntries);
 __def(__exports, "withLooks", () => withLooks);
 __def(__exports, "withUi", () => withUi);
 };
-__defs[78] = function (__exports) {
+__defs[80] = function (__exports) {
 'use strict';
 // ui-card.ts
 
@@ -27827,7 +28918,7 @@ function createUiCard(d            ) {
 
 __def(__exports, "createUiCard", () => createUiCard);
 };
-__defs[79] = function (__exports) {
+__defs[81] = function (__exports) {
 'use strict';
 // ui-screens.ts
 
@@ -27890,7 +28981,7 @@ function createUiScreens(d               ) {
 
 __def(__exports, "createUiScreens", () => createUiScreens);
 };
-__defs[80] = function (__exports) {
+__defs[82] = function (__exports) {
 'use strict';
 // ui-style-model.ts
 
@@ -28103,7 +29194,7 @@ __def(__exports, "validLook", () => validLook);
 __def(__exports, "validTheme", () => validTheme);
 __def(__exports, "UiStyleModel", () => UiStyleModel);
 };
-__defs[81] = function (__exports) {
+__defs[83] = function (__exports) {
 'use strict';
 // ui-theme.ts
 
@@ -28193,7 +29284,7 @@ function createUiTheme(d             ) {
 
 __def(__exports, "createUiTheme", () => createUiTheme);
 };
-__defs[82] = function (__exports) {
+__defs[84] = function (__exports) {
 'use strict';
 // ui-wire.ts
 
@@ -28209,11 +29300,11 @@ __defs[82] = function (__exports) {
 //     end of editing) and here only to draw the card — never saved. A new game page starts without them.
                                                                                                                                                     
                                                    
-const { createUiCard } = __require(78);
-const { withLooks } = __require(77);
-const { createUiScreens } = __require(79);
-const { UiStyleModel, validLook, validTheme } = __require(80);
-const { createUiTheme } = __require(81);
+const { createUiCard } = __require(80);
+const { withLooks } = __require(79);
+const { createUiScreens } = __require(81);
+const { UiStyleModel, validLook, validTheme } = __require(82);
+const { createUiTheme } = __require(83);
                                                    
 
                              
@@ -28408,7 +29499,7 @@ function createUiWire(d            ) {
 
 __def(__exports, "createUiWire", () => createUiWire);
 };
-__defs[83] = function (__exports) {
+__defs[85] = function (__exports) {
 'use strict';
 // sheet-fold.ts
 
@@ -28485,7 +29576,7 @@ __def(__exports, "barPress", () => barPress);
 __def(__exports, "FOLD_DRAG", () => FOLD_DRAG);
 __def(__exports, "gripEnd", () => gripEnd);
 };
-__defs[84] = function (__exports) {
+__defs[86] = function (__exports) {
 'use strict';
 // main.ts
 
@@ -28534,30 +29625,30 @@ const { CODE_LEN, motionLibrary } = __require(34);
 const { attachWorld, roundLib } = __require(35);
 const { icon, setButton } = __require(21);
 const { receipt } = __require(58);
-const { createCodePlaceWire } = __require(59);
-const { createKeepOutWire } = __require(61);
-const { createPalette } = __require(62);
-const { fitPicture } = __require(63);
+const { createCodePlaceWire } = __require(61);
+const { createKeepOutWire } = __require(63);
+const { createPalette } = __require(64);
+const { fitPicture } = __require(65);
 const { PlacementModel } = __require(36);
-const { UndoStack, poseChange, sharedMotion } = __require(64);
-const { createAiHands } = __require(66);
+const { UndoStack, poseChange, sharedMotion } = __require(66);
+const { createAiHands } = __require(68);
 const { MOTION_SAMPLES, RuleCompare, gapText, motionGap, timeText } = __require(52);
 const { copyKey, groupLayerMoves, groupLayerPossible, sameKind } = __require(48);
 const { displayName, forgetNames, noteItems, useGivenNames, useNameLang } = __require(14);
 const { keyOf, tipText } = __require(49);
-const { installTooltips } = __require(67);
-const { createShortcutSheet } = __require(68);
-const { createContextMenu } = __require(69);
-const { Levels, worldOf } = __require(70);
-const { checkNoteId } = __require(71);
-const { createLevelSwitch, makeRows } = __require(72);
-const { contextRows } = __require(73);
-const { bigChanges, createSafeSave } = __require(74);
-const { createUnsavedGuard, lostBy, playAsks } = __require(75);
-const { createLayerSwitch } = __require(76);
-const { uiAsPlacement, uiEntries, withUi } = __require(77);
-const { createUiWire } = __require(82);
-const { barPress, FOLD_DRAG, gripEnd, readFold, writeFold } = __require(83);
+const { installTooltips } = __require(69);
+const { createShortcutSheet } = __require(70);
+const { createContextMenu } = __require(71);
+const { Levels, worldOf } = __require(72);
+const { checkNoteId } = __require(73);
+const { createLevelSwitch, makeRows } = __require(74);
+const { contextRows } = __require(75);
+const { bigChanges, createSafeSave } = __require(76);
+const { createUnsavedGuard, lostBy, playAsks } = __require(77);
+const { createLayerSwitch } = __require(78);
+const { uiAsPlacement, uiEntries, withUi } = __require(79);
+const { createUiWire } = __require(84);
+const { barPress, FOLD_DRAG, gripEnd, readFold, writeFold } = __require(85);
 
                                                                         
 
@@ -29444,7 +30535,10 @@ function start(host            ) {
   // replaced "Call your AI" (2026-10-19 → 10-23), which copied a word to the clipboard without saying why — the
   // quietest "nothing happened" of all. The word ("look") is still there, as a chip that copies on a press and says so.
   const openHelp = h('div', { class: 'ai-open-help', dataset: { part: 'ai-open' }, hidden: true });
-  const caption = h('div', { class: 'ai-caption', hidden: true }, toastEl, aiLine, openHelp, playNote);
+  // studio-offsets: the four choices under a rule drag sit in the same card, over the toast (code-place-wire.ts), made
+  // once the wire exists (below): a stand-in here keeps their place.
+  const choicesSlot = h('div', { class: 'offset-slot' });
+  const caption = h('div', { class: 'ai-caption', hidden: true }, choicesSlot, toastEl, aiLine, openHelp, playNote);
   // The narrow bar's line for the presence words (above the field; the field keeps its whole width for the words).
   const presenceRow = h('div', { class: 'presence-row', hidden: true });
   // The web demo (host.offline) has nothing in the ask box's place: the slot stays empty and hidden (see renderAll).
@@ -29731,6 +30825,19 @@ function start(host            ) {
     dim: () => worldDim,
     send: (m) => send(m),
     commit: (id, from, to) => setPlace(id, from, to),
+    // studio-offsets: the four choices under a rule drag swap the drag's end in the same ⌘Z (undo.ts retarget).
+    retarget: (id, to) => {
+      if (!undo.retarget(id, to)) return false;
+      worldModel.places.set(id, to);
+      placesChanged();
+      return true;
+    },
+    menu: (at, rows) => {
+      const r = at.getBoundingClientRect();
+      ctxMenu.show(rows, r.right, r.bottom + 4, { place: 'card', label: t('offset.title') });
+      const m = ctxMenu.el.getBoundingClientRect();
+      ctxMenu.el.style.left = `${Math.max(8, Math.round(r.right - m.width))}px`;
+    },
     changed: (card) => {
       if (card) placementPanel.render();
       renderButtons();
@@ -29769,6 +30876,11 @@ function start(host            ) {
     setCompareOn: (on) => setCompareShown(on),
     guided: (force) => keepOut.sync(force),
   });
+  choicesSlot.replaceWith(codePlaces.choices.el);
+  // A press anywhere in the editor page but the choices themselves is the next action: they close (studio-offsets).
+  document.addEventListener('pointerdown', (e) => {
+    if (codePlaces.choices.isOpen() && !codePlaces.choices.el.contains(e.target        )) codePlaces.choices.close();
+  }, true);
   // Keep-out areas under a rule layout's block (studio-code-keepout, 2026-10-24; keep-out-wire.ts): the list, the boxes
   // drawn on the ground (bridge/keep-out.ts), the conditions' knobs and ◇, "✦ Describe with text".
   const keepOut = createKeepOutWire({
@@ -32026,6 +33138,13 @@ function start(host            ) {
         if (m.end) keepSoon();
         break;
       // …or went a way its rule keeps (studio-to-coords): nothing moved — why, ⌥, and ✦ to ask for that knob.
+      // studio-offsets: a drag shifted a rule (live, then one ⌘Z), and the four choices for how the rest follow.
+      case 'studio:place/offsets':
+        codePlaces.offsets(m);
+        break;
+      case 'studio:place/dragged':
+        if (editLayer === 'world') codePlaces.dragged(m);
+        break;
       case 'studio:place/held':
         if (editLayer === 'world') codePlaces.held(m);
         break;
@@ -32342,6 +33461,8 @@ function start(host            ) {
 
   // ----- actions -----
   function doUndo() {
+    // The four choices of a rule drag are about the step ⌘Z takes back: they go first (studio-offsets).
+    codePlaces.choices.close();
     // Nothing else left to undo right after New level / Duplicate: ⌘Z takes the level back (addLevel).
     if (!undo.canUndo && levelMade) return unmakeLevel();
     const e = undo.undo();
@@ -32349,6 +33470,7 @@ function start(host            ) {
     renderButtons();
   }
   function doRedo() {
+    codePlaces.choices.close();
     const e = undo.redo();
     if (e) applyEntry(e, 'redo');
     renderButtons();
@@ -33122,6 +34244,16 @@ function start(host            ) {
       keySheet.hide();
       return true;
     }
+    // The four choices under a rule drag (studio-offsets): 1–4 choose, Esc closes them; any other key is the next action
+    // (they close, the key does its own job).
+    if (codePlaces.choices.isOpen()) {
+      if (!mod && !e.shift && ['1', '2', '3', '4'].includes(k)) {
+        codePlaces.choices.choose(Number(k));
+        return true;
+      }
+      codePlaces.choices.close();
+      if (!mod && k === 'escape') return true;
+    }
     // "+ Draw a box" on (studio-code-keepout): Esc stops it first (the pick stays).
     if (!mod && k === 'escape' && keepOut.stopDraw()) return true;
     // The timeline's keys (K sets a key; Delete / ⌘C / ⌘V / Space / ← → when the plate was the last thing pressed).
@@ -33282,7 +34414,7 @@ function start(host            ) {
   function sendStep(s                                                                                                   , hold         ) {
     const picked = group.length > 1 ? group.slice() : selected ? [selected] : [];
     // A held key repeats: the why is said once, at the first press.
-    const keys = editLayer === 'world' ? codePlaces.steps(picked, hold) : picked;
+    const keys = editLayer === 'world' ? codePlaces.steps(picked, hold, s.op) : picked;
     if (!keys.length) return;
     const key = keys.includes(selected ) ? selected  : keys[0] ;
     send({ type: 'studio:placement/step', key, ...s, hold, keys: keys.length > 1 ? keys : undefined });
@@ -34103,7 +35235,7 @@ function start(host            ) {
 
 __def(__exports, "start", () => start);
 };
-__defs[85] = function (__exports) {
+__defs[87] = function (__exports) {
 'use strict';
 // host-local.ts
 
@@ -34303,19 +35435,19 @@ function createLocalHost(base         = LOCAL_PATHS.api)             {
 
 __def(__exports, "createLocalHost", () => createLocalHost);
 };
-__defs[86] = function (__exports) {
+__defs[88] = function (__exports) {
 'use strict';
 // local.ts
 
 // Entry of studio-shell.js: the shell page served by the local server
 // (skills/arrange/bin/studio.mjs), talking to it through createLocalHost().
 // The browser-only web demo has its own entry (src/hosts/browser/main.ts).
-const { start } = __require(84);
-const { createLocalHost } = __require(85);
+const { start } = __require(86);
+const { createLocalHost } = __require(87);
 
 start(createLocalHost());
 
 
 };
-__require(86);
+__require(88);
 })();

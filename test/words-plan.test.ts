@@ -64,7 +64,8 @@ test('no retired word in any string a person sees (en)', () => {
 
 // "Key" means the keyboard's key only; the timeline's mark is a point (the word list; Gemini: "keyframe" is a high bar,
 // and "When key pressed" already used "key" for the keyboard, in both languages).
-const KEYBOARD = new Set(['tl.sel.deleteTip', 'tl.when.keyPress', 'tl.when.keyTip', 'tl.when.short.key', 'tl.when.key']);
+// offset.keyTip (studio-offsets): "key 1" — the four choices under a rule drag are chosen with the keyboard's 1–4.
+const KEYBOARD = new Set(['tl.sel.deleteTip', 'tl.when.keyPress', 'tl.when.keyTip', 'tl.when.short.key', 'tl.when.key', 'offset.keyTip']);
 test('“key” / キー is only ever a keyboard key', () => {
   for (const lang of ['en', 'ja'] as Lang[]) {
     const bad = shown(lang).filter(([k, s]) => !k.startsWith('keys.') && !KEYBOARD.has(k) && !k.startsWith('library:ex')

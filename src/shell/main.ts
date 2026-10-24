@@ -990,7 +990,10 @@ export function start(host: StudioHost) {
   // replaced "Call your AI" (2026-10-19 → 10-23), which copied a word to the clipboard without saying why — the
   // quietest "nothing happened" of all. The word ("look") is still there, as a chip that copies on a press and says so.
   const openHelp = h('div', { class: 'ai-open-help', dataset: { part: 'ai-open' }, hidden: true });
-  const caption = h('div', { class: 'ai-caption', hidden: true }, toastEl, aiLine, openHelp, playNote);
+  // studio-offsets: the four choices under a rule drag sit in the same card, over the toast (code-place-wire.ts), made
+  // once the wire exists (below): a stand-in here keeps their place.
+  const choicesSlot = h('div', { class: 'offset-slot' });
+  const caption = h('div', { class: 'ai-caption', hidden: true }, choicesSlot, toastEl, aiLine, openHelp, playNote);
   // The narrow bar's line for the presence words (above the field; the field keeps its whole width for the words).
   const presenceRow = h('div', { class: 'presence-row', hidden: true });
   // The web demo (host.offline) has nothing in the ask box's place: the slot stays empty and hidden (see renderAll).
@@ -1277,6 +1280,19 @@ export function start(host: StudioHost) {
     dim: () => worldDim,
     send: (m) => send(m),
     commit: (id, from, to) => setPlace(id, from, to),
+    // studio-offsets: the four choices under a rule drag swap the drag's end in the same ⌘Z (undo.ts retarget).
+    retarget: (id, to) => {
+      if (!undo.retarget(id, to)) return false;
+      worldModel.places.set(id, to);
+      placesChanged();
+      return true;
+    },
+    menu: (at, rows) => {
+      const r = at.getBoundingClientRect();
+      ctxMenu.show(rows, r.right, r.bottom + 4, { place: 'card', label: t('offset.title') });
+      const m = ctxMenu.el.getBoundingClientRect();
+      ctxMenu.el.style.left = `${Math.max(8, Math.round(r.right - m.width))}px`;
+    },
     changed: (card) => {
       if (card) placementPanel.render();
       renderButtons();
@@ -1315,6 +1331,11 @@ export function start(host: StudioHost) {
     setCompareOn: (on) => setCompareShown(on),
     guided: (force) => keepOut.sync(force),
   });
+  choicesSlot.replaceWith(codePlaces.choices.el);
+  // A press anywhere in the editor page but the choices themselves is the next action: they close (studio-offsets).
+  document.addEventListener('pointerdown', (e) => {
+    if (codePlaces.choices.isOpen() && !codePlaces.choices.el.contains(e.target as Node)) codePlaces.choices.close();
+  }, true);
   // Keep-out areas under a rule layout's block (studio-code-keepout, 2026-10-24; keep-out-wire.ts): the list, the boxes
   // drawn on the ground (bridge/keep-out.ts), the conditions' knobs and ◇, "✦ Describe with text".
   const keepOut = createKeepOutWire({
@@ -3572,6 +3593,13 @@ export function start(host: StudioHost) {
         if (m.end) keepSoon();
         break;
       // …or went a way its rule keeps (studio-to-coords): nothing moved — why, ⌥, and ✦ to ask for that knob.
+      // studio-offsets: a drag shifted a rule (live, then one ⌘Z), and the four choices for how the rest follow.
+      case 'studio:place/offsets':
+        codePlaces.offsets(m);
+        break;
+      case 'studio:place/dragged':
+        if (editLayer === 'world') codePlaces.dragged(m);
+        break;
       case 'studio:place/held':
         if (editLayer === 'world') codePlaces.held(m);
         break;
@@ -3888,6 +3916,8 @@ export function start(host: StudioHost) {
 
   // ----- actions -----
   function doUndo() {
+    // The four choices of a rule drag are about the step ⌘Z takes back: they go first (studio-offsets).
+    codePlaces.choices.close();
     // Nothing else left to undo right after New level / Duplicate: ⌘Z takes the level back (addLevel).
     if (!undo.canUndo && levelMade) return unmakeLevel();
     const e = undo.undo();
@@ -3895,6 +3925,7 @@ export function start(host: StudioHost) {
     renderButtons();
   }
   function doRedo() {
+    codePlaces.choices.close();
     const e = undo.redo();
     if (e) applyEntry(e, 'redo');
     renderButtons();
@@ -4668,6 +4699,16 @@ export function start(host: StudioHost) {
       keySheet.hide();
       return true;
     }
+    // The four choices under a rule drag (studio-offsets): 1–4 choose, Esc closes them; any other key is the next action
+    // (they close, the key does its own job).
+    if (codePlaces.choices.isOpen()) {
+      if (!mod && !e.shift && ['1', '2', '3', '4'].includes(k)) {
+        codePlaces.choices.choose(Number(k));
+        return true;
+      }
+      codePlaces.choices.close();
+      if (!mod && k === 'escape') return true;
+    }
     // "+ Draw a box" on (studio-code-keepout): Esc stops it first (the pick stays).
     if (!mod && k === 'escape' && keepOut.stopDraw()) return true;
     // The timeline's keys (K sets a key; Delete / ⌘C / ⌘V / Space / ← → when the plate was the last thing pressed).
@@ -4828,7 +4869,7 @@ export function start(host: StudioHost) {
   function sendStep(s: Omit<Extract<ShellToBridge, { type: 'studio:placement/step' }>, 'type' | 'key' | 'hold' | 'keys'>, hold: boolean) {
     const picked = group.length > 1 ? group.slice() : selected ? [selected] : [];
     // A held key repeats: the why is said once, at the first press.
-    const keys = editLayer === 'world' ? codePlaces.steps(picked, hold) : picked;
+    const keys = editLayer === 'world' ? codePlaces.steps(picked, hold, s.op) : picked;
     if (!keys.length) return;
     const key = keys.includes(selected!) ? selected! : keys[0]!;
     send({ type: 'studio:placement/step', key, ...s, hold, keys: keys.length > 1 ? keys : undefined });

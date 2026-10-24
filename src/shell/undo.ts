@@ -116,6 +116,19 @@ export class UndoStack {
     return e;
   }
 
+  /**
+   * The last step's change of a code layout now ends at `to` instead (studio-offsets, 2026-10-24: the four choices
+   * under a rule drag — All the same / Zigzag / Ramp / Just this one — swap what the drag did IN THE SAME ⌘Z; decision
+   * 1: choosing again adds no step). false = the last step is not that layout's (then the caller pushes a new one).
+   */
+  retarget(key: string, to: PlacementPlace | null): boolean {
+    const c = this.done[this.done.length - 1]?.changes.find((x) => x.kind === 'code-place' && x.key === key) as Extract<Change, { kind: 'code-place' }> | undefined;
+    if (!c) return false;
+    c.to = to ? structuredClone(to) : null;
+    this.undone.length = 0;
+    return true;
+  }
+
   /** What Undo / Redo would change next, without changing it (their tooltips name it). */
   peekUndo(): UndoEntry | null {
     return this.done[this.done.length - 1] ?? null;

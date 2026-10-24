@@ -134,7 +134,7 @@ export interface InputDeps {
    * studio-to-coords: a way with no knob does not move it (why on the chip, then place/held); several picked, a rule's
    * objects stay where the rule puts them unless ⌥. Absent = none (the UI layer, pause-move).
    */
-  codePlace?: Pick<CodePlaceView, 'note' | 'dragStart' | 'dragTo' | 'dragEnd' | 'stopChip' | 'held' | 'ruled'>;
+  codePlace?: Pick<CodePlaceView, 'note' | 'dragStart' | 'dragTo' | 'dragEnd' | 'stopChip' | 'held' | 'ruled' | 'choosing'>;
 }
 
 export interface InputHandle {
@@ -595,7 +595,10 @@ export function attachInput(deps: InputDeps): InputHandle {
     // A rule layout's objects among them (studio-to-coords, 2026-10-24: "a rule's object stays a rule however you touch
     // it"): they stay where the rule puts them and the rest move; the chip says why. ⌥ = they move too, each put by hand
     // (the moves say `alone`). All of them a rule's: nothing moves (a 'stop' drag of the picked one, the group's why).
-    const ruled = free ? [] : state.group.filter((k) => deps.codePlace?.ruled(k));
+    // studio-offsets (2026-10-24): Move and Height move them with the rest — the editor page turns their moves into
+    // their rule's offset (All the same: the ground and the height, one ⌘Z with the others), so the whole rule follows.
+    // A turn / size of the group goes round its middle, which no rule offset can say: those still stay.
+    const ruled = free || handle === 'move' || handle === 'lift' ? [] : state.group.filter((k) => deps.codePlace?.ruled(k));
     const movers = state.group.filter((k) => !ruled.includes(k));
     if (ruled.length && !movers.length) {
       const pose = adapter.anchor(state.selected!)?.pose;
@@ -1395,6 +1398,9 @@ export function attachInput(deps: InputDeps): InputHandle {
       spaceHeld = true;
       return;
     }
+    // The four choices under a rule drag are open in the editor page (studio-offsets): 1–4 choose, Esc closes them —
+    // the editor page has the key already (core/key above); not the strip's tools, not "pick nothing" too.
+    if (deps.codePlace?.choosing() && !e.shiftKey && (e.key === 'Escape' || ['1', '2', '3', '4'].includes(e.key))) return;
     if (e.key === 'Escape') {
       if (handles.menuOpen()) menu(null);
       else if (tool) chooseTool(null, 'key');

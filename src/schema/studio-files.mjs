@@ -98,6 +98,11 @@ export const LIMITS = Object.freeze({
   maxPlaces: 64,
   maxAvoid: 16,
   maxPins: 500,
+  // `places[id].offsets` (studio-offsets, 2026-10-24): a rule's shifts made by dragging (decision 6: the card's rows; 8
+  // is past what a person keeps apart — beyond, ✦ folds them into the rule). A turn of ±3600° is ten turns: far beyond
+  // a lamp turned to the road; a size like an object's. Numbers round like a knob's (1e-4).
+  maxOffsets: 8,
+  maxOffsetTurn: 3600,
 });
 
 /**
@@ -380,13 +385,14 @@ function readWorld(data, dim, fail, objectsOptional = false) {
 const pinKeyOf = (id, key) => key.startsWith(`${id}-`) && /^[1-9][0-9]{0,3}$/.test(key.slice(id.length + 1));
 
 /**
- * `places` (studio-code-base, 2026-10-24; CONTRACT.md §1.12, §4.1): { "<codePlace id>": { knobs?, pins?, hand?, avoid?,
+ * `places` (studio-code-base, 2026-10-24; CONTRACT.md §1.12, §4.1): { "<codePlace id>": { knobs?, pins?, hand?, avoid?, offsets?,
  * from? } }, only what the person changed — the layout itself (how many, where, the formula) is the game's code.
  *   knobs  { gap: { v: 4, was: 6 } }: the numbers turned on the card (was = the code's number, for the AI to find)
  *   pins   { "hex-3": { p, r?, s? } }: "just this one" put by hand (⌥ drag), over the formula
  *   hand   true: "Place by hand" — every object is a pin (no knobs, no formula, until the AI writes it as a list)
  *   avoid  [{ box: { p, size }, name? } | { code, knobs? }, + off?]: the layout's keep-out areas, in order
  *   from   ["lamp-1", …]: hand-placed objects this layout replaced ("✦ To code"); hidden until the AI removes them
+ *   offsets  [{ way, how, v, odd? }]: a drag the code has no knob for, kept as a rule (studio-offsets; readOffsets)
  * An entry with nothing left is not written (same content, same bytes).
  */
 function readPlaces(v, dim, fail) {
@@ -409,7 +415,7 @@ function readPlaces(v, dim, fail) {
       fail(where, 'must be an object');
       continue;
     }
-    onlyFields(e, ['knobs', 'pins', 'hand', 'avoid', 'from'], where, fail);
+    onlyFields(e, ['knobs', 'pins', 'hand', 'avoid', 'from', 'offsets'], where, fail);
     const o = {};
     if (e.knobs !== undefined) {
       const k = readKnobs(e.knobs, `${where}.knobs`, fail);
@@ -453,6 +459,10 @@ function readPlaces(v, dim, fail) {
       const a = readAvoid(e.avoid, dim, `${where}.avoid`, fail);
       if (a.length) o.avoid = a;
     }
+    if (e.offsets !== undefined) {
+      const of = readOffsets(e.offsets, dim, `${where}.offsets`, fail);
+      if (of.length) o.offsets = of;
+    }
     if (e.from !== undefined) {
       // The hand-placed objects may have had the layout's own keys ("lamp-1" … replaced by codePlace('lamp')): the
       // loader then hides only the ones it did not make itself.
@@ -461,6 +471,48 @@ function readPlaces(v, dim, fail) {
     }
     if (Object.keys(o).length) out[id] = o;
   }
+  return out;
+}
+
+const OFFSET_WAYS = ['along', 'side', 'up', 'turn', 'size', 'move'];
+const OFFSET_HOWS = ['same', 'zigzag', 'ramp'];
+
+/**
+ * A layout's offsets (studio-offsets, 2026-10-24; CONTRACT.md §1.12 "Offsets"): [{ way, how, v, odd? }], in order, ≤ 8.
+ *   way  along · side · up · turn (°) · size (× a factor) · move (not a row: the ground [x, z], 2D [x, y]; only "same")
+ *   how  same · zigzag (`odd: true` = the odd ranks) · ramp
+ *   v    the card's number (m / px, °, a factor; move: two numbers)
+ * Only which way, how and how much — never a place per object (those would not follow a count turned up, as pins don't).
+ */
+function readOffsets(v, dim, where, fail) {
+  const list = optionalArray(v, where, LIMITS.maxOffsets, fail);
+  const bound = dim === '3d' ? LIMITS.maxCoord3d : LIMITS.maxCoord2d;
+  const out = [];
+  list.forEach((o, i) => {
+    const w = `${where}[${i}]`;
+    if (!isObject(o)) return fail(w, 'must be an object');
+    onlyFields(o, ['way', 'how', 'v', 'odd'], w, fail);
+    if (!OFFSET_WAYS.includes(o.way)) return fail(`${w}.way`, `must be one of ${OFFSET_WAYS.join(', ')}`);
+    if (!OFFSET_HOWS.includes(o.how)) return fail(`${w}.how`, `must be one of ${OFFSET_HOWS.join(', ')}`);
+    if (o.way === 'move') {
+      if (o.how !== 'same') return fail(`${w}.how`, 'a move (a layout that is not a row) is "same" only');
+      if (!Array.isArray(o.v) || o.v.length !== 2) return fail(`${w}.v`, `must be [x, ${dim === '3d' ? 'z' : 'y'}] (the ground)`);
+      const xy = o.v.map((x, k) => readNumber(x, -bound, bound, `${w}.v[${k}]`, fail));
+      if (xy.some((x) => x === null)) return;
+      out.push({ way: 'move', how: 'same', v: xy.map((x) => round(x, LIMITS.stepKnob)) });
+      return;
+    }
+    const [lo, hi] = o.way === 'turn' ? [-LIMITS.maxOffsetTurn, LIMITS.maxOffsetTurn] : o.way === 'size' ? [LIMITS.minScale, LIMITS.maxScale] : [-bound, bound];
+    const n = readNumber(o.v, lo, hi, `${w}.v`, fail);
+    if (n === null) return;
+    const e = { way: o.way, how: o.how, v: round(n, LIMITS.stepKnob) };
+    if (o.odd !== undefined) {
+      if (o.odd !== true) fail(`${w}.odd`, 'must be true when present (leave it out: the even ranks)');
+      else if (o.how !== 'zigzag') fail(`${w}.odd`, 'only a zigzag has odd');
+      else e.odd = true;
+    }
+    out.push(e);
+  });
   return out;
 }
 

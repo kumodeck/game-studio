@@ -12,7 +12,7 @@
 //
 // Pure of the DOM: every effect goes through HandsDeps (main.ts wires them), so test/ai-hands.test.ts runs it with
 // stand-ins.
-import type { CodeAvoidInfo, CodeKnob, CodeMotionInfo, CodePlaceInfo, Dim, Item, KnobValue, LibraryMotion, Motion, MotionClip, MotionKey, MotionRepeat, MotionUntil, MotionWhen, PlacementPlace, Pose } from '../contract.ts';
+import type { CodeAvoidInfo, CodeKnob, CodeMotionInfo, CodePlaceInfo, Dim, Item, KnobValue, LibraryMotion, Motion, MotionClip, MotionKey, MotionRepeat, MotionUntil, MotionWhen, PlacementPlace, PlaceOffset, Pose } from '../contract.ts';
 import { HANDS_MAKE_WHEN, handsAvoid, handsClip, handsMotion, handsPose, handsSaid, readHandsInput } from '../schema/hands.mjs';
 import { roundKnob, turnKnobs } from './code-places.ts';
 import { CODE_LEN } from './motion-library.ts';
@@ -195,6 +195,7 @@ export function createAiHands(d: HandsDeps) {
     const e = p ? d.place(p.id) : null;
     if (!p || e?.hand || e?.pins?.[key]) return null;
     return `${key} is placed by codePlace('${p.id}') (its rule) and stays in it: change the rule's numbers with place.set --knobs, `
+      + `move the whole rule with place.set --offsets (every object: [{"way":"side","how":"same","v":1}]), `
       + `put just this one by hand with place.set --pin, or turn the whole layout into coordinates with place.set --hand`;
   };
 
@@ -395,6 +396,13 @@ export function createAiHands(d: HandsDeps) {
           delete e.pins;
           parts.push(d.t('hands.place.unhand'));
         }
+        // studio-offsets: the rule's shifts as a whole list ([] = none) — what the person's drags make; on Save the AI
+        // writes them into the rule and sends [] (the code is the truth).
+        if (op.offsets) {
+          if (op.offsets.length) e.offsets = structuredClone(op.offsets);
+          else delete e.offsets;
+          parts.push(op.offsets.length ? d.t('hands.place.offsets', { what: op.offsets.map((o: PlaceOffset) => `${d.t(`offset.way.${o.way}`)} · ${d.t(`offset.${o.how}`)} ${Array.isArray(o.v) ? o.v.join(', ') : o.v}`).join(', ') }) : d.t('hands.place.noOffsets'));
+        }
         d.setPlace(op.id, e);
         return { words: { name: info.name, what: parts.join(', ') } };
       }
@@ -528,7 +536,14 @@ export function createAiHands(d: HandsDeps) {
     const ps = d.codePlaces();
     const places: unknown[] = ps.map((p) => {
       const e = d.place(p.id) ?? {};
+      // studio-offsets: its offsets and each object's row / rank / what they add (the editor counts the ranks, so the
+      // AI writing them into at() on Save does not count them itself: 01-decisions.md 9).
+      const objects = p.rows?.some(Boolean) ? p.keys.map((k) => {
+        const r = p.rows![Number(k.slice(p.id.length + 1)) - 1];
+        return r ? { key: k, line: r.line, rank: r.rank, ...(r.offset ? { offset: r.offset } : {}) } : { key: k };
+      }) : null;
       return { id: p.id, name: p.name, keys: p.keys, knobs: knobsOut(p.knobs, e.knobs), ...(p.drag ? { drag: p.drag } : {}), ...(e.pins ? { pins: Object.keys(e.pins) } : {}), ...(e.hand ? { hand: true } : {}),
+        ...(p.kind ? { kind: p.kind } : {}), ...(e.offsets ? { offsets: e.offsets } : {}), ...(objects ? { objects } : {}),
         avoid: [...p.avoid.filter((a) => !(e.avoid ?? []).some((x) => 'code' in x && x.code === a)).map((a) => ({ code: a })), ...(e.avoid ?? [])].map((a) => {
           if ('box' in a) return a;
           const c = d.codeAvoids().find((x) => x.code === a.code);

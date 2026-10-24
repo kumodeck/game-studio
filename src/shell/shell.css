@@ -1970,6 +1970,43 @@ li.obj[aria-selected="true"] .hand-mark .hand-tag { padding: 0 4px; }
 .toast.hand { color: var(--studio-hand-text); }
 .toast.hand > svg.icon { width: 14px; height: 14px; margin-right: 4px; vertical-align: -2px; stroke-width: 1.4px; }
 .toast .toast-tail { color: var(--text-2); }
+/* studio-offsets (2026-10-24): the four choices under a rule drag, in the line where Studio speaks (over the ask field;
+   the plan's first picture): the object and what the drag did, then All the same / Zigzag / Ramp / Just this one — each with
+   its dot picture and key — and ✦ Make this way a knob on the right. The one chosen is ringed in violet (the rule's
+   colour: all four keep the rule, even Just this one is about the rule's object); a dim one cannot say this drag. */
+/* The four and ✦ on one line; what the drag did ("Street lamps 3 · Sideways +1.5 m", "Placed Street lamps 5 by hand")
+   on the line over them — in the plan's picture it sat before them, but beside four words and ✦ the ask bar's width
+   left it "Str…" (the first screen pictures of 10/24), and it is the line that says what happened. */
+.offset-choices { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; min-width: 0; }
+.offset-choices[hidden] { display: none; }
+.oc-lead { flex: 0 0 100%; min-width: 0; color: var(--text-2); font-size: var(--fs-s); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.oc-btn { flex: none; display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 6px; border-radius: 6px; background: var(--raise); color: var(--text);
+  font-size: var(--fs-s); white-space: nowrap; box-shadow: inset 0 0 0 1px var(--line-2); }
+.oc-btn .off-pic { color: var(--ai-text); flex: none; width: 22px; }
+.oc-btn kbd { min-width: 12px; height: 13px; padding: 0 2px; border-radius: 3px; background: var(--raise-2); color: var(--text-2); font: 9px/13px inherit; text-align: center; }
+.oc-btn:hover { background: var(--raise-2); }
+.oc-btn.on { background: var(--ai-soft); color: var(--ai-text); box-shadow: inset 0 0 0 1.5px var(--ai); }
+.oc-btn.dim { opacity: .45; cursor: default; }
+.oc-ask { flex: none; margin-left: auto; height: 24px; padding: 0 6px; border-radius: 6px; background: var(--ai-soft); color: var(--ai-text); font-size: var(--fs-s); white-space: nowrap; }
+.oc-ask:hover { box-shadow: inset 0 0 0 1px var(--ai); }
+/* The card's offset rows under the rule's knobs (decision 6): picture · words · number box · ✦ · ⋯, violet like the knobs. */
+.off-rows { display: grid; gap: 4px; }
+/* The card is narrow (~220 px inside the rule's frame): the words may take two lines rather than lose their end
+   ("Sideways · Ramp, each"). */
+.off-row { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto auto auto; align-items: center; gap: 4px; padding: 2px 2px; border-radius: 6px; }
+.off-row .off-pic { color: var(--ai-text); width: 22px; }
+.off-words { color: var(--text-2); font-size: var(--fs-s); line-height: 1.25; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.off-boxes { display: inline-flex; gap: 4px; }
+.off-row .knob { display: inline-flex; grid-template-columns: none; }
+.off-row .knob-l { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+.off-row .knob-box { min-width: 52px; height: 24px; padding: 0 6px; }
+.off-row .off-ask { color: var(--ai-text); }
+.off-row .off-ask, .off-row .off-more { width: 18px; height: 22px; min-height: 22px; padding: 0; }
+.off-row.lit { animation: off-lit 1.2s var(--ease) 1; }
+@keyframes off-lit { 0% { background: var(--ai-soft); box-shadow: inset 0 0 0 1.5px var(--ai); } 100% { background: transparent; box-shadow: none; } }
+@media (prefers-reduced-motion: reduce) { .off-row.lit { animation: none; background: var(--ai-soft); } }
+.shell[data-layout="phone"][data-fold="min"] .ai-caption > .offset-choices:not([hidden]) { display: flex; }
+/* Phone: the same, the four may take two lines (no ⌥ there: Just this one is the way in). */
 /* Phone / side window: the same parts in the sheet; the knobs' names a little wider (as the numbers' labels, .fields). */
 .shell[data-layout="phone"] .knob { grid-template-columns: 56px minmax(0, 1fr); }
 .shell[data-layout="phone"] .knob-box { max-width: none; }

@@ -48,12 +48,23 @@
 //           hand · All back to rule", the list's [✋ 2] → the hand one's card (grey, white numbers, its rule's block
 //           under them) → the count under the mouse lights both → nothing picked: a small hand tag over each → Save, All
 //           back to rule: none, Save · 1 → ⌘Z: two → the AI's place.set --unpin '*' and ⌘Z → ▶ Play: no mark at all.
+//   offsets (the first theme; studio-offsets, 2026-10-24 — the check asked for that day, "a rule's objects stay a rule
+//           however they are moved": the four of 1024-rule-offsets.md with drags and the four choices only) street lamps
+//           as CRYSTAL FIELD has them: both sides of the road in ONE codePlace (`i % 2` the side), Count (each side) and
+//           Gap, the distance from the road fixed in the code, `drag: { along: 'gap' }`. A first-time maker: (1) drags
+//           lamp 5 1 m away from the road — every lamp follows from the first step, both sides (the chip "Sideways +1.0 m
+//           · all"), the four open under it; (2) drags lamp 3 1.5 m out, a pointer over Zigzag shows it, key 2 keeps it
+//           (every other lamp, both sides); (3) drags the farthest lamp 3.2 m out and presses Ramp (a fan); (4) drags lamp
+//           5 and presses Just this one (key 4: a pin, the others back); then Count 5 → 6 (the new lamps get the same
+//           shape), ⌘Z once each (every step back exactly), ⌘⇧Z, Save, the page read again (the same places). Never "it
+//           did not move", never "one left the rule by itself"; `--do list` gives the ranks.
 // Pictures (`--shots <dir>`): 2-<lang>-<theme>-<step>.png (the plan's step-2 pictures), 3-… (step 3), 4-… (step 4),
-// c-<lang>-<theme>-<step>.png (to coords), h-<lang>-<theme>-<step>.png (hand marks).
+// c-<lang>-<theme>-<step>.png (to coords), h-<lang>-<theme>-<step>.png (hand marks),
+// o-<lang>-<theme>-<step>.png (offsets: the plan's first picture, its four).
 // `--before`: only the first keep-out picture, and the hand marks' "before" pictures (run with the previous version's UI:
 // `--ui <dir>`).
 //
-//   node test/studio-code-place.browser.mjs [--lang en|ja] [--themes dark,light] [--width 1280] [--only layout,motion,plain,keepout,torule,coords,hands] [--shots <dir>] [--before]
+//   node test/studio-code-place.browser.mjs [--lang en|ja] [--themes dark,light] [--width 1280] [--only layout,motion,plain,keepout,torule,coords,hands,offsets] [--shots <dir>] [--before]
 // Exit 1 on a failure.
 import { copyFileSync, cpSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -76,7 +87,7 @@ const LANG = take('--lang', 'ja');
 const THEMES = take('--themes', 'dark,light').split(',').filter((x) => x === 'dark' || x === 'light');
 const WIDTH = Number(take('--width', '1280'));
 const PHONE = WIDTH < 500;
-const ONLY = take('--only', 'layout,motion,plain,keepout,torule,coords,hands').split(',');
+const ONLY = take('--only', 'layout,motion,plain,keepout,torule,coords,hands,offsets').split(',');
 const BEFORE = args.includes('--before');
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const W = LANG === 'ja'
@@ -216,6 +227,35 @@ const COORDS = `
     });
 `;
 
+// Offsets (studio-offsets): the CRYSTAL FIELD lamps — both sides of the road in ONE codePlace, as the CRYSTAL FIELD game and
+// the real AI write them; Count is each side's, Gap along the road; how far from the road is the code's (5.6 m).
+const OFFSETS = `
+    const makeLamp = () => {
+      const lamp = new THREE.Group();
+      const pole = new THREE.Mesh(new THREE.CylinderGeometry(.08, .1, 3.2, 8), glow(0x8a7cff, .6));
+      pole.position.y = 1.6;
+      const bulb = new THREE.Mesh(new THREE.SphereGeometry(.32, 16, 12), glow(0xffd9a0, 2));
+      bulb.position.y = 3.3;
+      lamp.add(pole, bulb);
+      return lamp;
+    };
+    codePlace('lamp-row', {
+      name: ${JSON.stringify(LAMP_NAME)},
+      knobs: { n: { v: 5, label: ${JSON.stringify(LANG === 'ja' ? '本数（片側）' : 'Count (each side)')}, unit: '', min: 1, max: 10, step: 1 }, gap: { v: 6, label: ${JSON.stringify(LANG === 'ja' ? '間' : 'Gap')}, unit: 'm', min: 2, max: 15 } },
+      count: (k) => k.n * 2,
+      make: () => makeLamp(),
+      at: (i, k) => ({ p: [(i % 2 ? 1 : -1) * 5.6, 0, -4 - Math.floor(i / 2) * k.gap] }),
+      drag: { along: 'gap' },
+    });
+    // CRYSTAL FIELD's crystals: scattered off the road, no knob to drag (one dragged = all of them, the plan's Q1 (a)).
+    codePlace('crystal', {
+      name: ${JSON.stringify(LANG === 'ja' ? 'クリスタル' : 'Crystals')},
+      count: 6,
+      make: () => new THREE.Mesh(new THREE.OctahedronGeometry(.45), glow(0x6ff0ff, 1.4)),
+      at: (i, k, g) => ({ p: [(g.rand() < .5 ? -1 : 1) * (8 + g.rand() * 4), 1.1, -2 - g.rand() * 24] }),
+    });
+`;
+
 /**
  * Neon Run in a temporary folder: `rules` = with the hexagons as a rule layout and the pillar's rule motion; 'keepout' =
  * the crystals; 'torule' = the hand lamps and the ship's hand motion; 'coords' = the two rows of rule lamps.
@@ -224,7 +264,12 @@ function makeGame(theme, rules) {
   const root = mkdtempSync(join(tmpdir(), 'studio-code-knobs-'));
   cpSync(join(PKG, 'test/neon-run'), root, { recursive: true });
   copyFileSync(join(PKG, 'skills/arrange/bin/studio-placement.js'), join(root, 'studio-placement.js'));
-  if (rules === 'coords') {
+  if (rules === 'offsets') {
+    const html = readFileSync(join(root, 'index.html'), 'utf8')
+      .replace("import { applyPlacement } from './studio-placement.js';", "import { applyPlacement, codePlace } from './studio-placement.js';")
+      .replace("    await applyPlacement(scene, './placement.json');", `${OFFSETS}\n    await applyPlacement(scene, './placement.json');`);
+    writeFileSync(join(root, 'index.html'), html);
+  } else if (rules === 'coords') {
     const html = readFileSync(join(root, 'index.html'), 'utf8')
       .replace("import { applyPlacement } from './studio-placement.js';", "import { applyPlacement, codePlace } from './studio-placement.js';")
       .replace("    await applyPlacement(scene, './placement.json');", `${COORDS}\n    await applyPlacement(scene, './placement.json');`);
@@ -877,11 +922,11 @@ async function toCoords(theme) {
   const srv = await startStudioServer({ root, kumo: { home: join(root, '.no-kumo-home'), env: {} }, uiDir: UI, log: () => {}, env: {} });
   const browser = await launch();
   const C = LANG === 'ja'
-    ? { note: '動かすと間が変わる', noteWay: '動かすと間・道からの距離が変わる', side: '横の位置はルールで決まっています', up: '高さはルールで決まっています', turn: '向きはルールで決まっています',
-      heldSide: '街灯の横の位置はルールで決まっています · ⌥+ドラッグでこの 1 個だけ', ask: '✦', draft: '街灯を横にも動かせるようにして', pinned: '街灯 3 を手で置きました（ほかはルールのまま）', reset: 'ルールに戻す',
+    ? { note: '動かすと間が変わる', noteWay: '動かすと間・道からの距離が変わる', side: '横の位置はルールで決まっています', up: '高さ +', turn: '向き ', chipSide: '横 +',
+      heldSide: '街灯の横の位置はルールで決まっています · ⌥+ドラッグでこの 1 個だけ', ask: '✦', draft: '街灯の横を、ルールのつまみにして', pinned: '街灯 3 を手で置きました（ほかはルールのまま）', reset: 'ルールに戻す',
       hand: '手で置いた', keys: '街灯はルールで並んでいます', group: '街灯はルールで並んでいるので、まとめては動きません', gap: '間' }
-    : { note: 'Drag to adjust Gap', noteWay: 'Drag to adjust Gap, From the road ·', side: 'Sideways position is set by the rule', up: 'Height is set by the rule', turn: 'Angle is set by the rule',
-      heldSide: 'Street lamps: sideways position is set by the rule · ⌥-drag to move just this one', ask: '✦', draft: 'Let me move Street lamps sideways too', pinned: 'Placed Street lamps 3 by hand (the rest stay on the rule)', reset: 'Back to rule',
+    : { note: 'Drag to adjust Gap', noteWay: 'Drag to adjust Gap, From the road ·', side: 'Sideways position is set by the rule', up: 'Height +', turn: 'Turn ', chipSide: 'Sideways +',
+      heldSide: 'Street lamps: sideways position is set by the rule · ⌥-drag to move just this one', ask: '✦', draft: 'Add a knob to the Street lamps rule for its Sideways offset', pinned: 'Placed Street lamps 3 by hand (the rest stay on the rule)', reset: 'Back to rule',
       hand: 'By hand', keys: 'Street lamps is laid out by a rule', group: 'Street lamps is laid out by a rule, so it doesn’t move as a group', gap: 'Gap' };
   try {
     const page = await newPage(browser, { width: WIDTH, height: PHONE ? 844 : 800, mobile: PHONE, cdnCache: process.env.STUDIO_CDN_CACHE });
@@ -948,41 +993,51 @@ async function toCoords(theme) {
     await noneOut('forward');
     await shot('2-forward');
 
-    // ---- 3. left / right (away from the road): nothing moves, and it says why (while dragging, then the line with ✦) ----
+    // ---- 3. left / right (away from the road): since studio-offsets the whole row follows (an offset), the four
+    // choices open under it, and their ✦ asks for the knob (a draft in the chat box) ----
     a3 = await at('lamp-row-3');
     await drag(a3, { x: a3.x - 160, y: a3.y }, 0, async () => {
       chip = await inUi('.chip');
       await shot('3-side-chip');
     });
     const r3 = await rows('lamp-row');
-    check(JSON.stringify(r3) === JSON.stringify(r2), `sideways: every lamp where it was (${JSON.stringify(r3.map((q) => q[0]))})`);
-    check(chip.includes(C.side), `while dragging, the chip says why: "${chip}"`);
-    check((await toast()).includes(C.heldSide), `after, the line says it again: "${await toast()}"`);
-    const acts = await toastActs();
-    check(acts.length === 1 && acts[0].startsWith(C.ask) && acts[0].includes(C.draft), `…with ✦: ${JSON.stringify(acts)}`);
+    const sideV = (await place('lamp-row'))?.offsets?.[0];
+    check(sideV?.way === 'side' && sideV.how === 'same' && sideV.v > 0.3, `sideways: the row's offset (${JSON.stringify(sideV)})`);
+    check(r3.every((q) => Math.abs(q[0] - r3[0][0]) < 0.02) && r3[0][0] < -5.9, `…every lamp with it (${JSON.stringify(r3.map((q) => q[0]))})`);
+    check(chip.includes(C.chipSide), `while dragging, the chip: "${chip}"`);
+    check(await page.eval(`!document.querySelector('[data-part=offset-choices]')?.hidden`), 'the four choices under it');
     await noneOut('sideways');
     await shot('3-side-told');
-    await page.eval(`document.querySelector('.toast.on [data-part=toast-act]')?.click()`);
+    await page.eval(`document.querySelector('[data-part=offset-ask]')?.click()`);
     await sleep(400);
     check((await page.eval(`document.querySelector('.ask-input')?.value ?? ''`)) === C.draft, `✦: the draft in the chat box ("${await page.eval(`document.querySelector('.ask-input')?.value ?? ''`)}"), nothing sent`);
     await shot('3-side-ask');
     await blurAsk();
+    await page.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'z', code: 'KeyZ', modifiers: 4, windowsVirtualKeyCode: 90 });
+    await page.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'z', code: 'KeyZ', modifiers: 4, windowsVirtualKeyCode: 90 });
+    await sleep(700);
+    check(!(await place('lamp-row'))?.offsets, `⌘Z: the offset back (${JSON.stringify((await place('lamp-row'))?.offsets)})`);
 
-    // ---- 4. up / down (Height) and a turn (Turn): nothing moves, why ----
+    // ---- 4. up / down (Height) and a turn (Turn): the whole row goes up / turns with it (offsets), ⌘Z each ----
     await pick('lamp-row-3');
     for (const [tool, want, dy, dx] of [['lift', C.up, -110, 0], ['rotate', C.turn, 0, 120]]) {
       const b = await strip(tool);
       check(!!b, `the strip has ${tool}`);
       if (!b) continue;
-      const before = await rows('lamp-row');
       await drag(b, { x: b.x + dx, y: b.y + dy }, 0, async () => {
         chip = await inUi('.chip');
         if (tool === 'lift') await shot('4-up-chip');
       });
-      check(JSON.stringify(await rows('lamp-row')) === JSON.stringify(before), `${tool}: every lamp where it was`);
+      const rr = await rows('lamp-row');
+      const o = (await place('lamp-row'))?.offsets?.[0];
+      const col = tool === 'lift' ? 1 : 3;
+      check(!!o && o.way === (tool === 'lift' ? 'up' : 'turn') && rr.every((q) => Math.abs(q[col] - rr[0][col]) < 0.02) && Math.abs(rr[0][col]) > 0.05, `${tool}: every lamp with it (${JSON.stringify(o)}; ${JSON.stringify(rr.map((q) => q[col]))})`);
       check(chip.includes(want), `${tool}: the chip "${chip}"`);
-      check((await toast()).includes(want.replace(/^./, (c) => c.toLowerCase())) || (await toast()).includes(want), `${tool}: the line "${await toast()}"`);
       await noneOut(tool);
+      await page.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'z', code: 'KeyZ', modifiers: 4, windowsVirtualKeyCode: 90 });
+      await page.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'z', code: 'KeyZ', modifiers: 4, windowsVirtualKeyCode: 90 });
+      await sleep(700);
+      check(!(await place('lamp-row'))?.offsets, `${tool}: ⌘Z back`);
     }
 
     // ---- 5. ⌥ + Height: just that one by hand — told, marked, and Reset to rule puts it back ----
@@ -1003,24 +1058,35 @@ async function toCoords(theme) {
     await sleep(900);
     check(!(await place('lamp-row'))?.pins?.length && (await rows('lamp-row'))[2][1] === 0, 'Reset to rule: back in its row');
 
-    // ---- 6. an arrow key, and the whole row dragged together: the rule keeps them ----
+    // ---- 6. an arrow key, and the whole row dragged together: the whole rule moves (studio-offsets), never a pin ----
     await pick('lamp-row-2');
     const r6 = await rows('lamp-row');
     await page.eval(`document.activeElement?.blur?.()`);
     await page.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'ArrowLeft', code: 'ArrowLeft', windowsVirtualKeyCode: 37 });
     await page.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'ArrowLeft', code: 'ArrowLeft', windowsVirtualKeyCode: 37 });
+    await sleep(900);
+    const r6b = await rows('lamp-row');
+    check(r6b.every((q, i) => Math.abs((q[0] - r6[i][0]) - (r6b[0][0] - r6[0][0])) < 0.02 && Math.abs((q[2] - r6[i][2]) - (r6b[0][2] - r6[0][2])) < 0.02) && JSON.stringify(r6b) !== JSON.stringify(r6),
+      `an arrow key: every lamp the same step (${JSON.stringify(r6b.map((q) => q[0]))})`);
+    check(!!(await place('lamp-row'))?.offsets, `…as the rule's offset (${JSON.stringify((await place('lamp-row'))?.offsets)})`);
+    await page.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'z', code: 'KeyZ', modifiers: 4, windowsVirtualKeyCode: 90 });
+    await page.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'z', code: 'KeyZ', modifiers: 4, windowsVirtualKeyCode: 90 });
     await sleep(700);
-    check(JSON.stringify(await rows('lamp-row')) === JSON.stringify(r6), 'an arrow key: every lamp where it was');
-    check((await toast()).includes(C.keys), `…and why: "${await toast()}"`);
+    check(JSON.stringify(await rows('lamp-row')) === JSON.stringify(r6), '⌘Z: back');
     await page.eval(`studioShell.actions.selectMany(${JSON.stringify(['lamp-row-1', 'lamp-row-2', 'lamp-row-3', 'lamp-row-4', 'lamp-row-5'])}, 'lamp-row-3')`);
     await sleep(800);
     await fold();
     const g6 = await at('lamp-row-3');
     await drag(g6, { x: g6.x + 120, y: g6.y + 30 });
-    check(JSON.stringify(await rows('lamp-row')) === JSON.stringify(r6), 'the whole row dragged: every lamp where it was');
-    check((await toast()).includes(C.group), `…and why: "${await toast()}"`);
+    const r6c = await rows('lamp-row');
+    const mv = (await place('lamp-row'))?.offsets?.find((o) => o.way === 'move');
+    check(!!mv && r6c.every((q, i) => Math.abs(q[0] - r6[i][0] - mv.v[0]) < 0.03 && Math.abs(q[2] - r6[i][2] - mv.v[1]) < 0.03), `the whole row dragged: every lamp with it (${JSON.stringify(mv)})`);
     await noneOut('keys and the group');
     await shot('6-group');
+    await page.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'z', code: 'KeyZ', modifiers: 4, windowsVirtualKeyCode: 90 });
+    await page.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'z', code: 'KeyZ', modifiers: 4, windowsVirtualKeyCode: 90 });
+    await sleep(700);
+    check(!(await place('lamp-row'))?.offsets, '⌘Z: back');
 
     // ---- 7. the right row (a knob for each way): sideways = From the road, Height = its height, for all of them ----
     await pick('lamp-way-3');
@@ -1250,6 +1316,315 @@ async function handMarks(theme) {
   }
 }
 
+/**
+ * Offsets (studio-offsets, 2026-10-24): the four checks asked for, with drags and the four choices only, then Count 5 → 6,
+ * ⌘Z once each, Save and the page read again (see the top). Fails on any "it did not move" or "one left by itself".
+ */
+async function offsets(theme) {
+  console.log(`${LANG} ${theme} ${WIDTH} offsets`);
+  const root = makeGame(theme, 'offsets');
+  const srv = await startStudioServer({ root, kumo: { home: join(root, '.no-kumo-home'), env: {} }, uiDir: UI, log: () => {}, env: {} });
+  const browser = await launch();
+  const O = LANG === 'ja'
+    ? { note: '（ほかの向きは全部が付いてくる）', chip: '横 +1.0 m · 全部', same: '全部同じ', zig: 'ジグザグ', ramp: 'だんだん', one: 'この 1 個だけ', rowSame: '横 · 全部同じ', rowZig: '横 · ジグザグの幅', rowRamp: '横 · だんだん 1 個ごと', oneDone: '街灯 5 を手で置きました', ask: '街灯の横を、ルールのつまみにして', count: '本数（片側）' }
+    : { note: '(other ways move them all)', chip: 'Sideways +1.0 m · all', same: 'All the same', zig: 'Zigzag', ramp: 'Ramp', one: 'Just this one', rowSame: 'Sideways · All the same', rowZig: 'Sideways · Zigzag width', rowRamp: 'Sideways · Ramp, each', oneDone: 'Placed Street lamps 5 by hand', ask: 'Add a knob to the Street lamps rule for its Sideways offset', count: 'Count (each side)' };
+  try {
+    const page = await newPage(browser, { width: WIDTH, height: PHONE ? 844 : 800, mobile: PHONE, cdnCache: process.env.STUDIO_CDN_CACHE });
+    const shot = async (what) => SHOTS && writeFileSync(join(SHOTS, `o-${LANG}-${theme}${PHONE ? '-phone' : ''}-${what}.png`), await page.screenshot());
+    const ai = (ops) => askEditor({ origin: srv.origin, stopToken: srv.stopToken }, ops, 'claude');
+    const place = async () => (await ai([{ do: 'list' }])).results?.[0]?.list?.places?.find((p) => p.id === 'lamp-row');
+    // Every lamp's place (x, y, z), in number order.
+    const rows = () => page.eval(`JSON.stringify([...${GW}[Symbol.for('game-studio.codePlaces')].get('lamp-row').objs].map((o) => [o.position.x, o.position.y, o.position.z].map((v) => Math.round(v * 100) / 100 + 0)))`).then((x) => JSON.parse(x));
+    const xs = async () => (await rows()).map((q) => q[0]);
+    const card = () => page.eval(`(() => { const f = document.querySelector('[data-part=card] details.fine'); if (f && !f.open) f.open = true; return document.querySelector('[data-part=card]')?.innerText ?? ''; })()`);
+    const fold = async () => (await page.eval(`(() => { const f = document.querySelector('[data-part=card] details.fine'); if (f && f.open && ${PHONE}) f.open = false; return 1; })()`), await sleep(300));
+    const inUi = (cls) => page.eval(`(() => { const h = [...${GW}.document.querySelectorAll('[data-studio-ui]')].map((x) => x.shadowRoot?.querySelector(${JSON.stringify(cls)})).find((n) => n && n.style.display !== 'none'); return h ? h.textContent : ''; })()`);
+    const choices = () => page.eval(`(() => { const c = document.querySelector('[data-part=offset-choices]'); if (!c || c.hidden) return 'null';
+      return JSON.stringify({ text: c.innerText.replace(/\\s+/g, ' '), on: c.querySelector('.oc-btn.on')?.dataset.part ?? null, dim: [...c.querySelectorAll('.oc-btn.dim')].map((b) => b.dataset.part) }); })()`).then((x) => JSON.parse(x));
+    const saveN = () => page.eval(`document.querySelector('[data-part=save]')?.textContent ?? ''`);
+    // Where a world point is on the page.
+    const scr = async (p) => JSON.parse(await page.eval(`(() => { const f = document.querySelector('iframe.game:not(.leaving)').getBoundingClientRect(); const s = ${DBG}.toScreen(${JSON.stringify(p)});
+      return s ? JSON.stringify({ x: f.left + s[0], y: f.top + s[1] }) : 'null'; })()`));
+    const footOf = async (key) => JSON.parse(await page.eval(`JSON.stringify(${DBG}.anchor(${JSON.stringify(key)}).pose.p)`));
+    /** A drag of `key` by [dx, dz] metres on the ground: pressed on its pole (a third of its height), released over the ground point it moves to. */
+    const dragBy = async (key, dx, dz, mid = null, keyMods = 0) => {
+      const f = await footOf(key);
+      const a = await scr([f[0], 1.1, f[2]]);
+      // The adapter moves the foot by what the finger did on screen AT THE FOOT (dragOnSurface): the finger's travel is
+      // the foot's screen step for [dx, dz], from wherever it pressed.
+      const s0 = await scr([f[0], 0, f[2]]), s1 = await scr([f[0] + dx, 0, f[2] + dz]);
+      const b = { x: a.x + s1.x - s0.x, y: a.y + s1.y - s0.y };
+      check(await page.eval(`document.elementFromPoint(${a.x}, ${a.y})?.tagName === 'IFRAME'`), `the press on ${key} is on the game`);
+      await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: a.x, y: a.y, modifiers: keyMods });
+      await page.send('Input.dispatchMouseEvent', { type: 'mousePressed', x: a.x, y: a.y, button: 'left', buttons: 1, clickCount: 1, modifiers: keyMods });
+      for (let i = 1; i <= 16; i++) {
+        await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: a.x + ((b.x - a.x) * i) / 16, y: a.y + ((b.y - a.y) * i) / 16, button: 'left', buttons: 1, modifiers: keyMods });
+        await sleep(30);
+        // "Every lamp follows from the drag's first step" (decision 1): half way, the far side's lamp 2 has moved too.
+        if (i === 8 && mid) await mid();
+      }
+      await page.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: b.x, y: b.y, button: 'left', buttons: 0, clickCount: 1, modifiers: keyMods });
+      await sleep(700);
+    };
+    /**
+     * As a person does it: drag `key` that way ([dx, dz]: the direction on the ground) watching the chip, and let go
+     * when it says `target` ("Sideways +1.0 m"). WHY not a fixed travel: the editor moves the foot by the finger's
+     * screen step at the foot and leans it toward the ground under the pointer (adapter dragOnSurface), so a finger's
+     * metre is not the lamp's — the chip is what the person reads (an ⌥ move of the same travel went 0.77 m).
+     */
+    const dragUntil = async (key, dx, dz, target, mid = null) => {
+      const f = await footOf(key);
+      const a = await scr([f[0], 1.1, f[2]]);
+      const s0 = await scr([f[0], 0, f[2]]), s1 = await scr([f[0] + dx, 0, f[2] + dz]);
+      const per = { x: s1.x - s0.x, y: s1.y - s0.y };
+      check(await page.eval(`document.elementFromPoint(${a.x}, ${a.y})?.tagName === 'IFRAME'`), `the press on ${key} is on the game`);
+      await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: a.x, y: a.y });
+      await page.send('Input.dispatchMouseEvent', { type: 'mousePressed', x: a.x, y: a.y, button: 'left', buttons: 1, clickCount: 1 });
+      let at = a, said = '', midDone = false;
+      for (let t = 0.05; t <= target * 3; t += 0.05) {
+        at = { x: a.x + per.x * t, y: a.y + per.y * t };
+        await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: at.x, y: at.y, button: 'left', buttons: 1 });
+        await sleep(25);
+        said = await inUi('.chip');
+        const m = said.match(/[+−-]\d+(\.\d+)?/);
+        const v = m ? Math.abs(parseFloat(m[0].replace('−', '-'))) : 0;
+        if (!midDone && mid && v >= target / 2) (midDone = true), await mid();
+        if (v >= target - 0.04) break;
+      }
+      await page.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: at.x, y: at.y, button: 'left', buttons: 0, clickCount: 1 });
+      await sleep(700);
+      return said;
+    };
+    const pick = async (key) => {
+      await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 5, y: 5 });
+      await page.eval(`studioShell.actions.select(${JSON.stringify(key)})`);
+      await sleep(800);
+      await fold();
+    };
+    const key = async (k, modifiers = 0, code = k) => {
+      await page.send('Input.dispatchKeyEvent', { type: 'keyDown', key: k, code, modifiers, windowsVirtualKeyCode: k.toUpperCase().charCodeAt(0) });
+      await page.send('Input.dispatchKeyEvent', { type: 'keyUp', key: k, code, modifiers, windowsVirtualKeyCode: k.toUpperCase().charCodeAt(0) });
+      await sleep(500);
+    };
+    const near = (a, b, e = 0.06) => a.length === b.length && a.every((v, i) => Math.abs(v - b[i]) <= e);
+    /** The lamps' x by the rule: 5.6 m from the road, each side's rank (number order: left, right, left …) and `f(rank)` out. */
+    const want = (n, f) => Array.from({ length: n * 2 }, (_, i) => (i % 2 ? 1 : -1) * (5.6 + f(Math.floor(i / 2))));
+    const noPins = async (what) => {
+      const p = await place();
+      check(!p?.pins?.length && !p?.hand, `${what}: no lamp left the rule by itself (pins ${JSON.stringify(p?.pins ?? [])})`);
+    };
+    await page.goto(srv.url);
+    await page.waitFor(`document.querySelectorAll('.obj').length > 0 && !!${GW}?.__gameStudio?._debug && !!${GW}[Symbol.for('game-studio.codePlaces')]?.get('lamp-row')?.objs?.length`, 90000);
+    await sleep(1500);
+    const r0 = await rows();
+    check(near(r0.map((q) => q[0]), want(5, () => 0)), `the rule as written: ${JSON.stringify(r0.map((q) => q[0]))}`);
+    const steps = [];
+
+    // ---- (1) the whole row 1 m away from the road: drag lamp 5 (left, the third) 1 m out — everything follows ----
+    await pick('lamp-row-5');
+    check((await inUi('.note')).includes(O.note), `before a touch, the line: "${await inUi('.note')}"`);
+    let chip = '', midX = null;
+    const said1 = await dragUntil('lamp-row-5', -1, 0, 1.0, async () => {
+      chip = await inUi('.chip');
+      midX = await xs();
+    });
+    check(said1 === O.chip, `let go when the chip said "${O.chip}" ("${said1}")`);
+    check(!!midX && midX[1] > 5.65, `while dragging, the other side has moved already (lamp 2 at x ${midX?.[1]})`);
+    check(chip.startsWith(LANG === 'ja' ? '横 +' : 'Sideways +') && chip.includes(LANG === 'ja' ? '· 全部' : '· all'), `the chip: "${chip}"`);
+    let p = await place();
+    check(JSON.stringify(p?.offsets) === JSON.stringify([{ way: 'side', how: 'same', v: 1 }]), `offsets: ${JSON.stringify(p?.offsets)}`);
+    check(near(await xs(), want(5, () => 1)), `(1) every lamp 1 m further from the road, both sides: ${JSON.stringify(await xs())}`);
+    await noPins('(1)');
+    let ch = await choices();
+    check(!!ch && ch.on === 'offset-first' && ch.text.includes(O.same) && ch.text.includes(O.zig) && ch.text.includes(O.ramp) && ch.text.includes(O.one), `the four under it, All the same chosen: ${JSON.stringify(ch)}`);
+    const c1 = await card();
+    check(c1.includes(O.rowSame), `the card's offset row: "${c1.replace(/\n/g, ' / ').slice(0, 160)}"`);
+    check((await saveN()).includes('1'), `Save · 1 ("${await saveN()}")`);
+    await shot('1-side');
+    steps.push(structuredClone(p.offsets));
+
+    // ---- (2) every other lamp: drag lamp 3 (rank 1) 1.5 m out; a pointer over Zigzag shows it; key 2 keeps it ----
+    await pick('lamp-row-3');
+    const said2 = await dragUntil('lamp-row-3', -1, 0, 1.5);
+    check(said2.includes('+1.5'), `the chip: "${said2}"`);
+    ch = await choices();
+    check(!!ch, 'the four again');
+    const zb = JSON.parse(await page.eval(`(() => { const b = document.querySelector('[data-part=offset-zigzag]'); if (!b) return 'null'; const r = b.getBoundingClientRect(); return JSON.stringify({ x: r.left + r.width / 2, y: r.top + r.height / 2 }); })()`));
+    await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: zb.x, y: zb.y });
+    await sleep(700);
+    const peek = await xs();
+    check(near(peek, want(5, (r) => 1 + (r % 2 ? 1.5 : 0))), `a pointer over Zigzag shows it in place: ${JSON.stringify(peek)}`);
+    await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: zb.x, y: zb.y - 200 });
+    await sleep(700);
+    check(near(await xs(), want(5, () => 2.5)), `off it: back to what the drag did (all 2.5 m): ${JSON.stringify(await xs())}`);
+    await key('2', 0, 'Digit2');
+    p = await place();
+    check(JSON.stringify(p?.offsets) === JSON.stringify([{ way: 'side', how: 'same', v: 1 }, { way: 'side', how: 'zigzag', v: 1.5, odd: true }]), `(2) zigzag kept: ${JSON.stringify(p?.offsets)}`);
+    check(near(await xs(), want(5, (r) => 1 + (r % 2 ? 1.5 : 0))), `(2) every other lamp out, both sides, none toward the road: ${JSON.stringify(await xs())}`);
+    ch = await choices();
+    check(ch?.on === 'offset-zigzag', `Zigzag lit: ${JSON.stringify(ch)}`);
+    check((await card()).includes(O.rowZig), 'the card: the zigzag width row');
+    await noPins('(2)');
+    await shot('2-zigzag');
+    steps.push(structuredClone(p.offsets));
+
+    // ---- (3) a fan: the farthest lamp (lamp 9, rank 4) 3.2 m out, then Ramp (pressed) ----
+    await pick('lamp-row-9');
+    const said3 = await dragUntil('lamp-row-9', -1, 0, 3.2);
+    check(said3.includes('+3.2'), `the chip: "${said3}"`);
+    ch = await choices();
+    check(!!ch && !ch.dim.includes('offset-ramp'), `Ramp can be chosen (not the nearest): ${JSON.stringify(ch)}`);
+    await page.eval(`document.querySelector('[data-part=offset-ramp]')?.click()`);
+    await sleep(700);
+    p = await place();
+    const ramp = p?.offsets?.find((o) => o.how === 'ramp');
+    check(!!ramp && Math.abs(ramp.v - 0.8) < 0.03, `(3) ramp 0.8 m each: ${JSON.stringify(p?.offsets)}`);
+    const fan = await xs();
+    check(near(fan, want(5, (r) => 1 + (r % 2 ? 1.5 : 0) + r * (ramp?.v ?? 0.8))), `(3) a fan, both sides: ${JSON.stringify(fan)}`);
+    check((await card()).includes(O.rowRamp), 'the card: the ramp row');
+    await noPins('(3)');
+    await shot('3-ramp');
+    steps.push(structuredClone(p.offsets));
+    // The nearest one cannot start a ramp: dim.
+    await pick('lamp-row-1');
+    await dragUntil('lamp-row-1', -1, 0, 0.5);
+    ch = await choices();
+    check(!!ch && ch.dim.includes('offset-ramp'), `dragging the nearest: Ramp dim (${JSON.stringify(ch?.dim)})`);
+    await key('Escape', 0, 'Escape');
+    check((await choices()) === null, 'Esc closes them');
+    await key('z', 4, 'KeyZ');
+    p = await place();
+    check(JSON.stringify(p?.offsets) === JSON.stringify(steps[2]), `⌘Z: that drag back (${JSON.stringify(p?.offsets)})`);
+
+    // ---- (4) just one: drag lamp 5 and press 4 — it alone by hand, the rest back where the rule puts them ----
+    await pick('lamp-row-5');
+    const before4 = await xs();
+    await dragBy('lamp-row-5', -1.2, 0.8);
+    await key('4', 0, 'Digit4');
+    p = await place();
+    check(p?.pins?.length === 1 && p.pins[0] === 'lamp-row-5' && JSON.stringify(p.offsets) === JSON.stringify(steps[2]), `(4) lamp 5 alone by hand (pins ${JSON.stringify(p?.pins)}, offsets as before)`);
+    const after4 = await xs();
+    check(after4.every((v, i) => i === 4 || Math.abs(v - before4[i]) < 0.06) && Math.abs(after4[4] - before4[4]) > 0.5, `(4) the others where they were: ${JSON.stringify(after4)}`);
+    ch = await choices();
+    check(ch?.on === 'offset-one' && ch.text.includes(O.oneDone), `the line says it: ${JSON.stringify(ch)}`);
+    check(!(await page.eval(`document.querySelector('.toast.on')?.textContent ?? ''`)), 'said once (no second line under it)');
+    await shot('4-one');
+
+    // ---- Count 5 → 6 on the card: the new lamps (11, 12: rank 5) get the same shape ----
+    await pick('lamp-row-3');
+    const nBox = `[data-part=rule-knob-n]`;
+    await page.eval(`document.querySelector(${JSON.stringify(nBox)})?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))`);
+    await sleep(300);
+    await page.eval(`(() => { const i = document.querySelector('[data-part=rule-knob-n-in]'); if (!i) return 0; i.value = '6'; i.dispatchEvent(new Event('input', { bubbles: true })); i.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); return 1; })()`);
+    await sleep(1200);
+    const six = await xs();
+    check(six.length === 12, `Count 6: 12 lamps (${six.length})`);
+    const r5 = (ramp?.v ?? 0.8) * 5;
+    check(near(six.slice(10), [-(5.6 + 1 + 1.5 + r5), 5.6 + 1 + 1.5 + r5]), `the new lamps 11 and 12 (rank 5): zigzag and fan too: ${JSON.stringify(six.slice(10))}`);
+    p = await place();
+    check(p?.pins?.length === 1, `still only lamp 5 by hand (${JSON.stringify(p?.pins)})`);
+    // `--do list`: each lamp's row, rank and what its offsets add (the AI does not count ranks itself).
+    const lamp12 = p?.objects?.find((o) => o.key === 'lamp-row-12');
+    check(!!lamp12 && lamp12.line === 1 && lamp12.rank === 5 && Math.abs(lamp12.offset?.[0] - (1 + 1.5 + r5)) < 0.06, `--do list: lamp-row-12 ${JSON.stringify(lamp12)}`);
+    await shot('5-count6');
+
+    // ---- ⌘Z once each: Count, Just this one, Ramp, Zigzag, the first drag — every step back exactly ----
+    const back = [
+      (q) => q?.knobs?.n?.v === 5 && q?.pins?.length === 1,
+      (q) => !q?.pins?.length && JSON.stringify(q?.offsets) === JSON.stringify(steps[2]),
+      (q) => JSON.stringify(q?.offsets) === JSON.stringify(steps[1]),
+      (q) => JSON.stringify(q?.offsets) === JSON.stringify(steps[0]),
+      (q) => !q?.offsets,
+    ];
+    await page.eval(`document.activeElement?.blur?.()`);
+    for (const [i, ok] of back.entries()) {
+      await key('z', 4, 'KeyZ');
+      await sleep(400);
+      const q = await place();
+      check(ok(q), `⌘Z ${i + 1}: ${JSON.stringify({ offsets: q?.offsets, pins: q?.pins, n: q?.knobs?.n })}`);
+    }
+    check(near(await xs(), want(5, () => 0)), `all the way back: the rule as written ${JSON.stringify(await xs())}`);
+    for (let i = 0; i < back.length; i++) await key('z', 12, 'KeyZ');
+    await sleep(800);
+    p = await place();
+    check(p?.offsets?.length === 3 && p?.pins?.length === 1 && (await xs()).length === 12, `⌘⇧Z: all of it again (${JSON.stringify(p?.offsets)})`);
+    const placesBefore = await rows();
+
+    // ---- Save, and the game read again: the same places ----
+    await page.eval(`document.querySelector('[data-part=save]')?.click()`);
+    await sleep(1500);
+    const saved = JSON.parse(readFileSync(join(root, 'placement.json'), 'utf8'));
+    const e = saved.places?.['lamp-row'];
+    check(e?.offsets?.length === 3 && !!e?.pins?.['lamp-row-5'] && e?.knobs?.n?.v === 6 && !Object.keys(saved.objects ?? {}).some((k) => k.startsWith('lamp-')), `placement.json: ${JSON.stringify(e)}`);
+    await page.goto(srv.url);
+    await page.waitFor(`document.querySelectorAll('.obj').length > 0 && !!${GW}?.__gameStudio?._debug && !!${GW}[Symbol.for('game-studio.codePlaces')]?.get('lamp-row')?.objs?.length`, 90000);
+    await sleep(1500);
+    check(JSON.stringify(await rows()) === JSON.stringify(placesBefore), 'read again: every lamp where it was');
+    await pick('lamp-row-3');
+    const c9 = await card();
+    check(c9.includes(O.rowSame) && c9.includes(O.rowZig) && c9.includes(O.rowRamp), `the card after reading again: "${c9.replace(/\n/g, ' / ').slice(0, 200)}"`);
+    await shot('6-reload');
+
+    // ---- along the road, where the code has a knob (Gap): the first choice is the knob; Zigzag puts Gap back and
+    // shifts every other lamp along instead ("every other one forward or back", the request's own example) ----
+    const gap0 = (await place())?.knobs?.gap?.v;
+    const z0 = (await rows()).map((q) => q[2]);
+    await pick('lamp-row-3');
+    const f3 = await footOf('lamp-row-3');
+    const a3 = await scr([f3[0], 1.1, f3[2]]), t3 = await scr([f3[0], 1.1, f3[2] + 2]);
+    await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: a3.x, y: a3.y });
+    await page.send('Input.dispatchMouseEvent', { type: 'mousePressed', x: a3.x, y: a3.y, button: 'left', buttons: 1, clickCount: 1 });
+    for (let i = 1; i <= 16; i++) {
+      await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: a3.x + ((t3.x - a3.x) * i) / 16, y: a3.y + ((t3.y - a3.y) * i) / 16, button: 'left', buttons: 1 });
+      await sleep(30);
+    }
+    await page.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: t3.x, y: t3.y, button: 'left', buttons: 0, clickCount: 1 });
+    await sleep(700);
+    const gap1 = (await place())?.knobs?.gap?.v;
+    check(typeof gap1 === 'number' && gap1 !== gap0, `along: the Gap knob turned (${gap0} → ${gap1})`);
+    ch = await choices();
+    check(ch?.on === 'offset-first' && ch.text.includes(LANG === 'ja' ? '間を変える' : 'Change Gap'), `the first choice is the knob: ${JSON.stringify(ch)}`);
+    await key('2', 0, 'Digit2');
+    p = await place();
+    const along = p?.offsets?.find((o) => o.way === 'along');
+    check((p?.knobs?.gap?.v ?? 6) === (gap0 ?? 6) && along?.how === 'zigzag', `Zigzag: Gap back to ${gap0 ?? 6}, every other lamp along instead (${JSON.stringify(along)})`);
+    const z1 = (await rows()).map((q) => q[2]);
+    check(z1.some((v, i) => Math.abs(v - z0[i]) > 0.3) && z1.some((v, i) => Math.abs(v - z0[i]) < 0.01), `…some lamps moved along, the others not (${JSON.stringify(z1)})`);
+    await key('z', 4, 'KeyZ');
+    check(JSON.stringify((await rows()).map((q) => q[2])) === JSON.stringify(z0), '⌘Z: back');
+
+    // ---- the crystals (scattered, no knob): one dragged = all of them the same way; only All the same and Just this one ----
+    const cr = () => page.eval(`JSON.stringify([...${GW}[Symbol.for('game-studio.codePlaces')].get('crystal').objs].map((o) => [o.position.x, o.position.z].map((v) => Math.round(v * 100) / 100 + 0)))`).then((x) => JSON.parse(x));
+    const cz0 = await cr();
+    await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 5, y: 5 });
+    await page.eval(`studioShell.actions.select('crystal-2')`);
+    await sleep(800);
+    const fc = await footOf('crystal-2');
+    const ac = await scr(fc), tc = await scr([fc[0] + 1.5, fc[1], fc[2] + 1]);
+    await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: ac.x, y: ac.y });
+    await page.send('Input.dispatchMouseEvent', { type: 'mousePressed', x: ac.x, y: ac.y, button: 'left', buttons: 1, clickCount: 1 });
+    for (let i = 1; i <= 16; i++) {
+      await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: ac.x + ((tc.x - ac.x) * i) / 16, y: ac.y + ((tc.y - ac.y) * i) / 16, button: 'left', buttons: 1 });
+      await sleep(30);
+    }
+    await page.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: tc.x, y: tc.y, button: 'left', buttons: 0, clickCount: 1 });
+    await sleep(700);
+    const cz1 = await cr();
+    const dv = [cz1[0][0] - cz0[0][0], cz1[0][1] - cz0[0][1]];
+    check(Math.hypot(...dv) > 0.3 && cz1.every((q, i) => Math.abs(q[0] - cz0[i][0] - dv[0]) < 0.02 && Math.abs(q[1] - cz0[i][1] - dv[1]) < 0.02), `a crystal dragged: all six the same way (${JSON.stringify(dv)})`);
+    const cp = (await ai([{ do: 'list' }])).results?.[0]?.list?.places?.find((x) => x.id === 'crystal');
+    check(cp?.offsets?.length === 1 && cp.offsets[0].way === 'move' && !cp.pins, `crystal: one move offset, no pin (${JSON.stringify(cp?.offsets)})`);
+    ch = await choices();
+    check(!!ch && ch.text.includes(O.same) && ch.text.includes(O.one) && !ch.text.includes(O.zig) && !ch.text.includes(O.ramp), `not a row: All the same and Just this one only (${JSON.stringify(ch)})`);
+    const k4 = await page.eval(`document.querySelector('[data-part=offset-one] kbd')?.textContent ?? ''`);
+    check(k4 === '4', `…Just this one keeps its key 4 (${k4})`);
+    await shot('7-crystal');
+  } finally {
+    await browser.close();
+    await srv.close();
+  }
+}
+
 for (const [i, theme] of THEMES.entries()) {
   if (ONLY.includes('layout') || ONLY.includes('motion')) await run(theme, i === 0);
   if (i === 0 && ONLY.includes('plain')) await plain(theme);
@@ -1257,6 +1632,7 @@ for (const [i, theme] of THEMES.entries()) {
   if (i === 0 && ONLY.includes('torule')) await toRule(theme);
   if (i === 0 && ONLY.includes('coords')) await toCoords(theme);
   if (i === 0 && ONLY.includes('hands')) await handMarks(theme);
+  if (i === 0 && ONLY.includes('offsets')) await offsets(theme);
 }
 console.log(failed ? `${failed} failed` : 'all passed');
 process.exit(failed ? 1 : 0);

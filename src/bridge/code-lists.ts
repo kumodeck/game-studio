@@ -64,6 +64,34 @@ export function codePlacesOf(win: Win): CodePlaceInfo[] {
       ...(drag ? { drag } : {}),
       avoid: Array.isArray(p.avoid) ? (p.avoid as string[]).slice() : [],
       ...(kindOf(p) ? { kind: kindOf(p)! } : {}),
+      ...(rowsOf(p) ? { rows: rowsOf(p)! } : {}),
+    };
+  });
+}
+
+type Frame = Array<{ l: number; r: number; a: number[]; s: number[]; m: boolean } | null> | null | undefined;
+const r4 = (v: number) => Math.round(v * 10000) / 10000 + 0;
+/**
+ * studio-offsets (2026-10-24): each number's place in the offsets' frame (the loader's p.frame: its row, its rank, the
+ * row's along and side on the ground, mirrored) and what its offsets add now (p.spots − p.base) — for the editor's
+ * four choices, the card's dot pictures and `--do list` (the AI does not count ranks itself). Null: not a row and no
+ * offset (a loader before offsets has neither).
+ */
+export function rowsOf(p: Entry): CodePlaceInfo['rows'] | null {
+  const frame = p.frame as Frame;
+  const base = Array.isArray(p.base) ? (p.base as Array<number[] | null>) : null;
+  const spots = Array.isArray(p.spots) ? (p.spots as Array<number[] | null>) : [];
+  const offs = Array.isArray(p.offs) && (p.offs as unknown[]).length > 0;
+  if (!frame && !offs) return null;
+  return spots.map((q, i) => {
+    const f = frame?.[i] ?? null;
+    const b = base?.[i] ?? null;
+    if (!f && !(offs && q && b)) return null;
+    const off = offs && q && b ? q.map((v, j) => r4(v - b[j]!)) : null;
+    return {
+      line: f ? f.l : 0, rank: f ? f.r : 0,
+      ...(f ? { along: [r4(f.a[0]!), r4(f.a[1]!)] as [number, number], side: [r4(f.s[0]!), r4(f.s[1]!)] as [number, number], ...(f.m ? { mirror: true as const } : {}) } : {}),
+      ...(off && off.some((v) => v !== 0) ? { offset: off } : {}),
     };
   });
 }
@@ -74,9 +102,13 @@ export function codePlacesOf(win: Win): CodePlaceInfo[] {
  * is on one straight line (three or more objects), else nothing (the card says the layout's name). WHY by running at()
  * and not a field the AI writes: the editor learns it from the rule itself, so it can never say "Line" of a ring.
  */
-export function kindOf(p: Entry): 'line' | 'scatter' | null {
+export function kindOf(p: Entry): 'line' | 'lines' | 'scatter' | null {
   if (typeof p.at !== 'function') return null;
-  const spots = Array.isArray(p.spots) ? (p.spots as Array<number[] | null>) : [];
+  // The rule's own places (studio-offsets: before its offsets — a zigzag is still a line); a loader before offsets: spots.
+  const spots = Array.isArray(p.base) ? (p.base as Array<number[] | null>) : Array.isArray(p.spots) ? (p.spots as Array<number[] | null>) : [];
+  // Two parallel rows (a road's two sides as one codePlace, studio-offsets): the loader's frame says so.
+  const frame = p.frame as Frame;
+  if (p.random !== true && frame && frame.some((f) => f && f.l === 1)) return 'lines';
   const k = Object.fromEntries(Object.entries(knobs(p.knobs)).map(([n, x]) => [n, x.v]));
   let random = false;
   const at = p.at as (i: number, k: Record<string, number>, g: Record<string, unknown>) => unknown;

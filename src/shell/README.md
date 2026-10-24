@@ -238,3 +238,15 @@ turns the knob for each way a drag goes (`drag: { along, side, up, turn, size }`
 "Convert to coordinates" is the one button for both: a layout's objects become one coordinate each, a rule motion's
 shape becomes points (offsets from where the object stands, so they go with it). `test/to-coords.test.ts`,
 `test/studio-code-place.browser.mjs --only coords`.
+
+Offsets (studio-offsets, 2026-10-24; the CRYSTAL FIELD try of 10/24: "a lamp dragged away from the road did nothing and said
+nothing" — and the answer "a rule's objects stay a rule however they are moved"). A drag of a rule's object a way its code
+has no knob for shifts the whole rule: `places[id].offsets` (`{ way, how, v }`, CONTRACT.md §1.12 "Offsets"), shifted by
+the loader. `offset-model.ts` (pure): a drag added to the rows (merged per way and how, the row turned goes last, ≤ 8), the
+four choices' shapes, how far a drag went in the dragged object's frame — shared with the game page's drag
+(`bridge/code-place.ts`). `offset-choices.ts`: the four choices over the ask field when a drag ends (All the same / Zigzag
+/ Ramp / Just this one, keys 1–4, a pointer over one shows it, a press swaps it in the same ⌘Z: `undo.ts` retarget) and
+the card's offset rows under the knobs. `code-place-wire.ts` wires them (studio:place/offsets, studio:place/dragged); a
+key step of one rule's object and Move / Height of several picked are offsets too. `test/offset-model.test.ts`,
+`test/offsets.test.mjs` (the loader, placement.json, `--do place.set --offsets`), `test/studio-code-place.browser.mjs
+--only offsets`.

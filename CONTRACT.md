@@ -622,14 +622,47 @@ keep-out area belongs to the layout it is drawn for, not to the whole level.
   FIELD try of that day — a lamp dragged away from the road did nothing and said nothing; lifted, it silently became a
   pin). `drag` names the knob each way a person drags one of its objects turns: `'gap'` (Move, as before) or
   `{ along, side, up, turn, size }` — Move turns `along` and `side` together (the numbers that bring the object nearest
-  the finger), Height `up`, Turn `turn`, Size `size`. A way with no knob does not move it: the chip says why while the
-  finger is down ("Sideways position is set by the rule · ⌥ for just this one") and, when the drag ends where the rule
-  cannot follow, `studio:place/held { id, key, way }` makes the editor say it again with ✦ (a draft asking for that knob).
-  Only ⌥ (Ctrl) puts one object by hand (`placement/moved` `alone: true` → its pin), told "Placed Street lamps 3 by hand ·
+  the finger), Height `up`, Turn `turn`, Size `size`. A way with no knob is taken by the editor's **offsets** (below,
+  studio-offsets; before them it did not move and `studio:place/held { id, key, way }` said why — now only the AI's
+  `object.move` is refused). Only ⌥ (Ctrl) puts one object by hand (`placement/moved` `alone: true` → its pin), told "Placed Street lamps 3 by hand ·
   ⌘Z · Reset to rule" and marked **Hand-placed** on the card and in the list. A key step, a game's tool, a group drag or
   the AI's `object.move` never take one out of its rule (put back / left out / refused with the `place.set` ways).
   **Convert to coordinates** (the card's button, it was "Place individually") turns the whole layout into coordinates
   (`hand: true`, every object's pin; one ⌘Z) — where each stands now, as before.
+- **Offsets** (studio-offsets, 2026-10-24; the CRYSTAL FIELD try that day: "a lamp dragged away from the road
+  did nothing and said nothing" — and the answer "a rule's objects stay a rule however they are moved"). A drag of one
+  object of a rule a way its code has no knob for moves EVERY object of the rule with it, from the first step (the chip
+  "Sideways +1.0 m · all"): the layout's `places[id].offsets` (§4.1) gets a row `{ way, how, v }`, laid out over
+  `at()` — **at(i, k) → offsets → keep-out areas (tested where the offsets put it) → pins** (a hand still wins; Reset to
+  rule goes back to the place with the offsets). The loader's frame (`offsetFrame`) comes from the rule's places before
+  any offset: one straight row, or two parallel rows (a road's two sides as ONE codePlace, `i % 2` the side) — `along`
+  the rows (the same for both), `side` away from the middle line of the two rows (so both sides leave the road; one
+  row: away from the root's origin), `up`, `turn` (°, mirrored on the second row), `size` (× a factor). The **rank** of
+  an object is its place in its own row counted from the end of number 1's row (never the number: with `i % 2` sides
+  every other number is a whole side). `how`: `same` (v for all), `zigzag` (every other one: the odd ranks with
+  `odd: true`, else the even — never ±: the neighbour would move toward the road), `ramp` (v × rank, size 1 + (v − 1) ×
+  rank: "a little more each one"; a count turned up keeps the slope). Not a row (a scatter — at() read its random —, a
+  ring, a grid, fewer than 3 places): `move` ([x, z]; 2D [x, y]) and `up` / `turn` / `size` with `same` only; the other
+  rows wait in the file until it is a row again. On release the line over the ask field offers the **four**: All the
+  same (or the code knob's name when the way has one: "Change Gap") · Zigzag · Ramp · Just this one (a pin, as ⌥) —
+  dot pictures, keys 1–4, a pointer over one shows that shape in place, a press swaps it **in the same ⌘Z**, Esc or the
+  next action closes them; Ramp is dim when the nearest one was dragged ("ramps start from the nearest"); a layout that
+  is not a row has All the same and Just this one only — and **✦ Make this way a knob** (stage 2: a draft in the chat
+  box; the AI's side is stage 3). The card lists each row under the code's knobs (its dot picture, "Sideways · Zigzag
+  width", a number box, ✦, ⋯ Remove; violet as the knobs, lit once when new); the same way and how are one row (a
+  second "All the same" sideways adds to it), ≤ 8 (a drag that would need a ninth says "Up to 8 offsets · ✦ to fold them
+  into the rule" and moves nothing); the next drag that way turns the row chosen last when it moves the dragged one (a
+  zigzag of its parity, a ramp past the nearest), else All the same. A key step of one rule's object is its rule's
+  offset too (the four open after it). Several picked: Move / Height (a drag or the keys) move a rule's objects with
+  the rest as its `move` / `up` offset (the lead's step on the ground and up; one ⌘Z with the others' moves); a group's
+  turn / size / End still leaves them where the rule puts them, with why (`studio:place/held` `group`: round the
+  group's middle, or each to its own floor, is no offset of a rule). "Convert to coordinates" writes where each stands
+  with its offsets and drops them. Bridge → shell: `studio:place/offsets { id, key,
+  offsets, end }` (live, then one undo step, as place/knob) and `studio:place/dragged { id, key, way, d, rank, row, did,
+  knob?, pose, skipped? }` (what the four need). `--do place.set --offsets '[…]'` replaces a rule's offsets (`[]` takes
+  them off); `--do list` gives each layout's `offsets` and each object's `line` / `rank` / `offset`. On Save the AI
+  writes them into the rule (SKILL.md) and takes them out of the file (`place.set --offsets '[]'` in the same `--do`):
+  the code is the truth, the file only holds them until then.
 - **✦ Turn into a rule** (studio-code-torule, 2026-10-24; the other way round: hand → rule). Several hand-placed objects
   picked: the card's "✦ Turn into a rule"; a motion of points: its row's ⋯ / right-click "✦ Turn into a rule…". Either
   puts the draft "Turn into a close rule" in the chat box (nothing is sent; the request then has `intent: "to-code"`,
@@ -1459,7 +1492,10 @@ Validated by one module, `src/schema` (`validatePlacement`, `validateLibrary`,
     "crystal": { "avoid": [ { "name": "Box 1", "box": { "p": [-8.6, 0, -17], "size": [3.2, 2, 5] } },
                             { "code": "road", "off": true },
                             { "code": "near-player", "knobs": { "r": { "v": 6, "was": 5 } } } ] },
-    "lamp":    { "from": ["lamp-1", "lamp-2", "lamp-3"] }
+    "lamp":    { "from": ["lamp-1", "lamp-2", "lamp-3"] },
+    "lamp-row": { "knobs": { "gap": { "v": 4.6, "was": 6 } },
+                  "offsets": [ { "way": "side", "how": "same", "v": 1 }, { "way": "side", "how": "zigzag", "v": 1.5, "odd": true } ] },
+    "crystals": { "offsets": [ { "way": "move", "how": "same", "v": [1.2, -0.5] } ] }
   }
   ```
 
@@ -1468,6 +1504,11 @@ Validated by one module, `src/schema` (`validatePlacement`, `validateLibrary`,
   `avoid`: ≤ 16, in order; each a `box` (3D `p` = the middle of its bottom, `size` = [w, h, d] ≥ 0; 2D `p` = its
   middle, `size` = [w, h] px; `name?` ≤ 40) or a `code` (a `codeAvoid` id, once each, `knobs?`), either with `off:
   true`. `from`: object keys, each once (the hand-placed objects it replaced; they may have the layout's own keys).
+  `offsets` (studio-offsets, §1.12): ≤ 8, in order (the order does not change the result); each `{ way, how, v, odd? }`
+  — `way` along · side · up · turn · size · move, `how` same · zigzag · ramp (`move`: same only, `v` = [x, z] / 2D [x,
+  y]), `v` a number (m / px; ° for turn, ±3600; a factor for size, 0.0001–10000), rounded to 1e-4; `odd: true` only on a
+  zigzag. Which way, how and how much only — never a place per object. Until Save: the AI writes them into the rule
+  and takes them out.
   Absent = nothing changed (the file keeps its bytes).
 
 ### 4.2 library.json

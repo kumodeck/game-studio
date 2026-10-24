@@ -111,30 +111,45 @@ function shell() {
   const w = createCodePlaceWire({
     t: (k, v) => translate('en', k, { ai: 'Claude', ...v }), list: () => [info], store: () => model.places, codePoses: (p) => model.codePoses(p), pose: (k) => model.pose(k), dim: () => '3d',
     send: (m) => sent.push(m as never), commit, changed: () => {}, selected: () => 'lamp-row-3', group: () => [], editing: () => true,
+    // studio-offsets: the four choices swap the last step's end (main.ts does the same with undo.ts retarget).
+    retarget: (id, to) => {
+      if (!undo.retarget(id, to)) return false;
+      model.places.set(id, to);
+      return true;
+    },
     told: (text, actions, u = true, hand = false) => told.push({ text, acts: (actions ?? []).map((a) => a.label), undo: u, hand, run: (actions ?? []).map((a) => () => a.run()) }),
     name: (k) => items.find((i) => i.key === k)?.label ?? k, ask: (draft) => asked.push(draft),
   });
   return { model, undo, w, sent, told, asked };
 }
 
-test('the shell: without ⌥ a rule\'s object never leaves its rule — put back, told why, ✦ asks for the knob', () => {
+test('the shell: without ⌥ a rule\'s object never leaves its rule — a key step moves the whole rule (an offset), ✦ asks for the knob', () => {
+  // studio-offsets (2026-10-24): to coords put a lifted lamp back and said why; the answer asked for that day was "a
+  // rule's objects stay a rule however they are moved" — the whole row goes up with it (`offsets`), never a pin.
   const s = shell();
-  // A lift / a key step / a game's tool moved lamp 3 (the game page keeps a drag still already; this is the rest).
+  // A lift / a key step / a game's tool moved lamp 3 (a drag in the game turns the rule itself: bridge/code-place.ts).
   assert.equal(s.w.moved('lamp-row-3', { p: [4.8, 3.2, -22] }, false, false, 'lift'), true, 'taken: not an object move');
   assert.equal(s.w.moved('lamp-row-3', { p: [4.8, 3.2, -22] }, true, false, 'lift'), true);
-  assert.equal(s.model.places.get('lamp-row'), null, 'no pin (the CRYSTAL FIELD file had lamp-row-3 and -5 as pins)');
-  assert.equal(s.undo.size, 0, 'nothing to undo');
+  assert.deepEqual(s.model.places.get('lamp-row'), { offsets: [{ way: 'up', how: 'same', v: 3.2 }] }, 'every lamp 3.2 m up — no pin (the CRYSTAL FIELD file had lamp-row-3 and -5 as pins)');
+  assert.equal(s.undo.size, 1, 'one ⌘Z');
   assert.deepEqual(s.model.result().objects, {}, 'never an object entry');
-  assert.ok(s.sent.some((m) => m.type === 'studio:place/layout' && m.ids?.includes('lamp-row')), 'laid out again where the rule puts it');
-  const said = s.told.at(-1)!;
-  assert.equal(said.text, 'Street lamps: height is set by the rule · ⌥-drag to move just this one');
-  assert.equal(said.undo, false, 'no "⌘Z undoes it": nothing was done');
-  assert.deepEqual(said.acts, ['✦ Ask Claude: “Let me change the height of Street lamps too”']);
-  said.run[0]!();
-  assert.deepEqual(s.asked, ['Let me change the height of Street lamps too'], '✦ puts the draft in the chat box (nothing sent)');
-  // The game page's place/held (a drag it kept still): the same line for that way.
+  assert.ok(s.sent.some((m) => m.type === 'studio:place/layout' && m.ids?.includes('lamp-row')), 'laid out again with it');
+  assert.ok(s.w.choices.isOpen(), 'the four choices are open (as after a drag)');
+  assert.ok(s.sent.some((m) => m.type === 'studio:place/choices' && (m as { on?: boolean }).on), 'the game page knows (its 1–4 and Esc are theirs)');
+  // Just this one (key 4; not a row here, so 1 and 4 only): the same ⌘Z ends at the pin instead.
+  assert.equal(s.w.choices.choose(2), false, 'no zigzag without a row');
+  assert.equal(s.w.choices.choose(4), true);
+  assert.equal(s.undo.size, 1, 'choosing again adds no step');
+  assert.deepEqual(s.model.places.get('lamp-row'), { pins: { 'lamp-row-3': { p: [4.8, 3.2, -22] } } }, 'Just this one: the others back, lamp 3 by hand');
+  s.w.choices.close();
+  // The game page's place/held (a group's turn it kept still): its line with ✦.
   s.w.held({ id: 'lamp-row', key: 'lamp-row-3', way: 'side' });
-  assert.equal(s.told.at(-1)!.text, 'Street lamps: sideways position is set by the rule · ⌥-drag to move just this one');
+  const said = s.told.at(-1)!;
+  assert.equal(said.text, 'Street lamps: sideways position is set by the rule · ⌥-drag to move just this one');
+  assert.equal(said.undo, false, 'no "⌘Z undoes it": nothing was done');
+  assert.deepEqual(said.acts, ['✦ Ask Claude: “Let me move Street lamps sideways too”']);
+  said.run[0]!();
+  assert.deepEqual(s.asked, ['Let me move Street lamps sideways too'], '✦ puts the draft in the chat box (nothing sent)');
 });
 
 test('the shell: ⌥ = just this one by hand, told with Back to rule; marked Placed by hand on the card and in the list', () => {
@@ -165,20 +180,26 @@ test('the shell: ⌥ = just this one by hand, told with Back to rule; marked Pla
   assert.deepEqual(s.model.places.get('lamp-row')?.pins ?? {}, {});
 });
 
-test('the shell: a group keeps a rule\'s objects (⌥ moves them by hand); key steps leave them and say why once', () => {
+test('the shell: a group moves a rule\'s objects as its offset (⌥ by hand); a group\'s turn keeps them and says why once', () => {
+  // studio-offsets: several picked and moved = their rule moves with them, All the same (the ground and the height:
+  // `move` / `up`), in the same undo step as the others' moves.
   const s = shell();
   const r = s.w.groupMoved([{ key: 'crate', pose: { p: [1, 0, 0] }, from: { p: [0, 0, 0] } }, { key: 'lamp-row-2', pose: { p: [5.8, 0, -14] }, from: { p: [4.8, 0, -14] } }], true, false);
   assert.deepEqual(r.rest.map((x) => x.key), ['crate'], 'the crate moves');
-  assert.deepEqual(r.changes, [], 'the lamp: no pin');
-  assert.ok(s.sent.some((m) => m.type === 'studio:place/layout'), 'the lamp laid out again where the rule puts it');
+  assert.equal(r.changes.length, 1, 'the lamps: their rule\'s offset, in the same undo step');
+  assert.deepEqual(r.changes[0]!.to, { offsets: [{ way: 'move', how: 'same', v: [1, 0] }] }, 'every lamp 1 m the same way — no pin');
+  assert.ok(s.sent.some((m) => m.type === 'studio:place/layout'), 'the whole row laid out again');
   const r2 = s.w.groupMoved([{ key: 'lamp-row-2', pose: { p: [5.8, 0, -14] }, from: { p: [4.8, 0, -14] } }], true, true);
   assert.equal(r2.changes.length, 1, '⌥: its pin, in the same undo step as the others');
-  assert.deepEqual(s.w.steps(['crate', 'lamp-row-1']), ['crate']);
-  assert.match(s.told.at(-1)!.text, /Street lamps is laid out by a rule: drag one/);
+  assert.ok(r2.changes[0]!.to?.pins?.['lamp-row-2'], '…a pin');
+  // Key steps of several: Move / Height go with the rest; a turn / size / End keeps a rule's objects, said once.
+  assert.deepEqual(s.w.steps(['crate', 'lamp-row-1'], false, 'move'), ['crate', 'lamp-row-1']);
+  assert.deepEqual(s.w.steps(['crate', 'lamp-row-1'], false, 'rotate'), ['crate']);
+  assert.match(s.told.at(-1)!.text, /Street lamps is laid out by a rule, so it doesn’t move as a group/);
   const n = s.told.length;
-  assert.deepEqual(s.w.steps(['lamp-row-1'], true), [], 'a held key: quiet');
+  assert.deepEqual(s.w.steps(['crate', 'lamp-row-1'], true, 'rotate'), ['crate'], 'a held key: quiet');
   assert.equal(s.told.length, n);
-  assert.deepEqual(s.w.steps(['lamp-row-2']), ['lamp-row-2'], 'one put by hand steps');
+  assert.deepEqual(s.w.steps(['lamp-row-2']), ['lamp-row-2'], 'one object steps (its rule\'s offset, or its pin)');
 });
 
 test('the shell: a drag that turned two knobs at once is one undo step (Move: along and side)', () => {
