@@ -3,16 +3,16 @@
 // language a run (`--lang en|ja`), dark by default (`--themes dark,light`):
 //   0. the lighthouse's motion made and saved (the strip's Motion → Make a motion → two moves → Done → Save): "a motion
 //      that is already there". Done turns ● Rec motion off with it (studio-done-stops-rec, 2026-10-24, a review's answer):
-//      the line says "… is made · Save puts it in the game · ✦ Have Claude rebuild it as a formula", no "Recording";
+//      the line says "… is made · Save puts it in the game · ✦ Have Claude convert it to rules", no "Recording";
 //      after Save, ● turned back on (the plate's ●): the line says "● Recording · press ● when you're done";
 //   1. the review's check 1: one point of its path dragged (the bridge's own timeline/point, as at a drag's end) → "lighthouse’s
 //      motion changed · Save puts it in the game · ● Recording · press ● when you're done", the top bar's Save ringed in the
-//      line's orange; the line's ● → Rec motion off → "… · ✦ Have Claude rebuild it as a formula";
+//      line's orange; the line's ● → Rec motion off → "… · ✦ Have Claude convert it to rules";
 //   2. check 2: the key picked on the timeline, its ease → Steady: the line still there;
 //   3. check 3: the timeline folded (⌄): the line still there (over the field, nothing of the plate on screen);
 //   4. check 4: Save → the line gone, the AI line "Saved: lighthouse’s motion";
 //   5. another object picked after a change: "Not saved: lighthouse’s motion · Save puts it in the game" (its name picks it back);
-//   6. ✦ Ask: three rows — "Have Claude rebuild this motion as a formula / Have this motion changed… / Have another motion
+//   6. ✦ Ask: three rows — "Have Claude convert this motion to rules / Have this motion changed… / Have another motion
 //      added…", each with its grey example; each pressed puts a different draft in the field (nothing sent);
 //   7. no page errors.
 // Pictures (`--shots <dir>`): <after|before>-<lang>-<theme>-<0a-done|0-rec|1-drag|1b-rec-off|1c-save-a|2-ease|3-folded|4-saved|5-other|6-menu|6a-fix|6b-add>.png
@@ -60,14 +60,14 @@ const NOTE = `(() => { const n = document.querySelector('[data-part=motion-note]
   return [...n.children].map((c) => { const x = c.cloneNode(true); x.querySelectorAll('.mn-rec-off').forEach((b) => b.replaceWith('●')); return x.textContent.replace(/\\s+/g, ' ').trim(); })
     .filter(Boolean).join(' '); })()`;
 const W = LANG === 'ja'
-  ? { changed: (m) => `${m}を変えました`, made: (m) => `${m}ができました`, save: '保存するとゲームに入ります', rec: '記録中 · 終わったら ● を押す', rule: 'Claude に式で作り直してもらう',
+  ? { changed: (m) => `${m}を変えました`, made: (m) => `${m}ができました`, save: '保存するとゲームに入ります', rec: '記録中 · 終わったら ● を押す', rule: 'Claude にルールベースに変換してもらう',
     other: (m) => `保存していない動き: ${m}`, kept: /^保存しました: (.+)/,
-    menu: ['この動きを Claude に式で作り直してもらう', 'この動きを直してもらう…', '別の動きを足してもらう…'], subs: ['半径・速さなどをカードで変えられるように', '例：もっとゆっくり・高く跳ねる', '例：近づいたら回る'],
-    drafts: ['式で作り直して', 'この動きを直して:', '別の動きを足して:'], saveA: '保存' }
-  : { changed: (m) => `${m} changed`, made: (m) => `${m} is made`, save: 'Save puts it in the game', rec: 'Recording · press ● when you’re done', rule: 'Have Claude rebuild it as a formula',
+    menu: ['この動きを Claude にルールベースに変換してもらう', 'この動きを直してもらう…', '別の動きを足してもらう…'], subs: ['半径・速さなどをカードで変えられるように', '例：もっとゆっくり・高く跳ねる', '例：近づいたら回る'],
+    drafts: ['ルールベースに変換して', 'この動きを直して:', '別の動きを足して:'], saveA: '保存' }
+  : { changed: (m) => `${m} changed`, made: (m) => `${m} is made`, save: 'Save puts it in the game', rec: 'Recording · press ● when you’re done', rule: 'Have Claude convert it to rules',
     other: (m) => `Not saved: ${m}`, kept: /^Saved: (.+)/,
-    menu: ['Have Claude rebuild this motion as a formula', 'Have this motion changed…', 'Have another motion added…'], subs: ['then change radius, speed… on the card', 'e.g. slower, bounce higher', 'e.g. spin when you get close'],
-    drafts: ['Rebuild it as a formula', 'Change this motion:', 'Add another motion:'], saveA: 'Save' };
+    menu: ['Have Claude convert this motion to rules', 'Have this motion changed…', 'Have another motion added…'], subs: ['then change radius, speed… on the card', 'e.g. slower, bounce higher', 'e.g. spin when you get close'],
+    drafts: ['Convert it to rules', 'Change this motion:', 'Add another motion:'], saveA: 'Save' };
 
 async function open(browser, theme) {
   const root = mkdtempSync(join(tmpdir(), 'studio-motion-next-2-'));

@@ -81,7 +81,7 @@ test('✦ Turn into a rule on the line: a motion of points; pressed, it asks lik
 
 test('the words: "rule" and "as a formula" (never "knob"), the receipt names what got in', () => {
   const vars = { ai: 'Claude', Ai: 'Claude', name: '街灯 5 の動き' };
-  assert.equal(translate('ja', 'toRule.place', vars), 'Claudeに式で作り直してもらう');
+  assert.equal(translate('ja', 'toRule.place', vars), 'Claudeにルールベースに変換してもらう');
   // "code" stays off the menu's tip; tl.ruleTip may say "the game's code" (studio-words-formula 10/25: the review's (c) tip says
   // what the AI rewrites — "a formula in the game's code").
   for (const k of ['tl.ruleTip', 'tl.askMenuTip']) {
@@ -90,7 +90,7 @@ test('the words: "rule" and "as a formula" (never "knob"), the receipt names wha
   }
   assert.doesNotMatch(translate('ja', 'tl.askMenuTip', vars), /コード/);
   assert.doesNotMatch(translate('en', 'tl.askMenuTip', vars), /\bcode\b/i);
-  assert.equal(translate('ja', 'tl.ruleTip', vars), 'Claudeがこの動きをゲームのコードの式に書き直します。見た目は同じで、半径や速さなどの欄がカードに出ます（送るのはあなた）');
+  assert.equal(translate('ja', 'tl.ruleTip', vars), 'Claudeがこの動きをプロシージャル（式で動く）にします。見た目は同じで、半径や速さなどの欄がカードに出ます（送るのはあなた）');
   const t = (k: string, v?: Record<string, string | number>) => translate('ja', k, { ...vars, ...v });
   assert.equal(receipt({ phase: 'done', things: [{ kind: 'motion', name: '街灯 5 の動き' }], total: 1, vars, t })?.head, '保存しました: 街灯 5 の動き · ゲームに入りました');
   assert.equal(receipt({ phase: 'working', things: [{ kind: 'motion', name: '街灯 5 の動き' }], total: 1, vars, t })?.head, '保存しました: 街灯 5 の動き', 'pressed: the same first words');

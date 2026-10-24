@@ -6,7 +6,7 @@
 // head where the eye does not go, and another pick or a fold took it away.
 // Now ONE line, over the ask field (the dock, main.ts), where it is seen with the plate open, slim or folded:
 //   - the picked object's motion has changes not saved → "gate’s motion changed · Save puts it in the game · ✦ Have
-//     Claude rebuild it as a formula" (studio-words-formula 10/25; "… is made" for a motion new since the last save), for as long as that is so;
+//     Claude convert it to rules" (studio-words-formula → studio-words-convert → studio-words-rulebased 10/25; "… is made" for a motion new since the last save), for as long as that is so;
 //   - ● Rec motion on (the plate open, a move adds a point) → "● Recording · press ● when you're done" (the second ● is a
 //     button: Rec motion off), in place of the ✦ part — finish first, then the next step;
 //   - another object picked, or none → "Not saved: gate’s motion (+1) · Save puts it in the game" (the name picks it);
@@ -46,7 +46,7 @@ export type Note = {
   /** here = the motion on screen changed; elsewhere = another object's did; null = no change to speak of (rec only). */
   change: { where: 'here' | 'elsewhere'; motion: NoteMotion; more: number } | null;
   rec: boolean;
-  /** ✦ Have {ai} rebuild it as a formula: the changed motion here is points (two or more), not recording, an AI here. */
+  /** ✦ Have {ai} convert it to rules: the changed motion here is points (two or more), not recording, an AI here. */
   rule: boolean;
 } | null;
 

@@ -1704,7 +1704,8 @@ export interface StudioRequestInput {
   /**
    * "ask" only: what the words are for, when a button said so. 'avoid' = a keep-out area for `places` (studio-code-keepout).
    * 'to-code' (studio-code-torule, 2026-10-24; the plan's need 3: "turn what I placed / moved by hand into a formula") =
-   * the words came from ✦ Turn into a rule — the AI writes the nearest rule for these hand-placed objects (`objects`,
+   * the words came from ✦ Turn into a rule (on screen now ✦ Have {ai} convert it to rules,
+   * studio-words-rulebased 10/25; the intent is unchanged) — the AI writes the nearest rule for these hand-placed objects (`objects`,
    * with where each stands now) or this motion of points (`motions`, with its `keys`) and puts it in their place itself
    * (`--do place.code --replace` / `motion.code --replace`); the editor measures how close it came. When no rule comes
    * close (half the object's size; a tenth of the path's), it replaces nothing and says so in one line. Absent =

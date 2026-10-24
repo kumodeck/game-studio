@@ -235,10 +235,10 @@ test('✦ Write into the rule: the request carries the way, every offset and eac
   assert.deepEqual(ra.place.offsets, [{ way: 'side', how: 'same', v: 1 }]);
   assert.deepEqual(ra.place.objects![1], { key: 'lamp-row-2', line: 1, rank: 0, offset: [1, 0, 0] });
   assert.equal(c.w.ruleAsk('lamp', 'side'), null);
-  assert.equal(translate('ja', 'offset.toKnob', { ai: 'Claude' }), 'Claudeに式で作り直してもらう', 'the screen never says つまみ for the rule\'s numbers (studio-words-formula 10/25: who does it, what comes out)');
-  assert.equal(translate('en', 'offset.toKnob', { ai: 'Claude' }), 'Have Claude rebuild it as a formula');
-  assert.equal(translate('ja', 'offset.draft', { name: '街灯', way: '横' }), '街灯の横のずらしを、式で作り直して');
-  assert.equal(translate('en', 'offset.draft', { name: 'Street lamps', way: 'Sideways' }), 'Rebuild the Sideways offset of Street lamps as a formula');
+  assert.equal(translate('ja', 'offset.toKnob', { ai: 'Claude' }), 'Claudeにルールベースに変換してもらう', 'the screen never says つまみ for the rule\'s numbers (studio-words-formula 10/25: who does it, what comes out)');
+  assert.equal(translate('en', 'offset.toKnob', { ai: 'Claude' }), 'Have Claude convert it to rules');
+  assert.equal(translate('ja', 'offset.draft', { name: '街灯', way: '横' }), '街灯の横のずらしを、ルールベースに変換して');
+  assert.equal(translate('en', 'offset.draft', { name: 'Street lamps', way: 'Sideways' }), 'Convert the Sideways offset of Street lamps to rules');
 });
 
 test('Add jitter from the card\'s ⋯: one ⌘Z, the way\'s own row with its seed, said in a line; not twice, not past eight', () => {

@@ -48,13 +48,19 @@ const JA_RETIRED = ['場面', 'ワールド', 'オブジェクト', '写す', '�
   // studio-words-rule (2026-10-24, the review's choice (a)): a thing to press says its result; the word rule only on tags and headings.
   'ルールにする', '近いルールにして', 'ルールに戻す', 'ルールに書き込む', '元の配置',
   // studio-words-formula (2026-10-25, the review's (c): "I don't get what it means") → "{ai} rebuild it as a formula".
-  '数字で調整できるようにする'];
+  '数字で調整できるようにする',
+  // studio-words-convert (2026-10-25, the review: "rebuild" sounds like the content is remade) → "convert it to a formula".
+  '作り直してもらう',
+  // studio-words-rulebased (2026-10-25, the review: "an engineer's word") → "{ai} convert it to rules".
+  '式に変換してもらう'];
 const EN_RETIRED: RegExp[] = [/\bplacement\b/i, /\badapter\b/i, /\bclips?\b/i, /\bRows\b/, /\bTracks\b/, /\bcues?\b/i, /Auto key/i,
   /Held still/, /Make movable/, /Drop to floor/, /On Game Start/, /On Tap \/ Click/, /When Near/, /After Delay/, /On Key Press/,
   /After Previous Move/, /On Collision/, /On Signal/, /Set Up/, /\bAsk AI\b/, /Ask my AI/, /Drawn in code/, /Not on anything yet/,
   /thing changed/, /Copy of/, /keyframe/i, /Put in layout/,
   /Turn into a (close )?rule/, /back to rule/i, /back on the rule/, /Write into the rule/,
-  /adjustable with numbers/i]; // studio-words-formula (2026-10-25) → "Have {ai} rebuild it as a formula"
+  /adjustable with numbers/i, // studio-words-formula (2026-10-25) → "Have {ai} rebuild it as a formula"
+  /rebuild it as a formula/i, // studio-words-convert (2026-10-25, the review) → "Have {ai} convert it to a formula"
+  /convert it to a formula/i]; // studio-words-rulebased (2026-10-25, the review) → "Have {ai} convert it to rules"
 // Words handed to the AI as they are (the person copies or sends them): the adapter is the AI's word.
 const TO_THE_AI = new Set(['status.noAdapterHint', 'status.adapterError']);
 

@@ -215,12 +215,12 @@ test('the words: "rule", never "code" on screen; the glossary\'s (chosen on 10/2
     assert.doesNotMatch(translate('en', k, vars), /\bcode\b/i, `en ${k}`);
     assert.doesNotMatch(translate('ja', k, vars), /コード/, `ja ${k}`);
   }
-  assert.equal(translate('ja', 'toRule.place', vars), 'Claudeに式で作り直してもらう', 'the ✦ is the spark icon before it (studio-words-formula: who does it and what comes out, not 「数字で調整できるようにする」)');
-  assert.equal(translate('ja', 'toRule.motion', vars), 'この動きを Claudeに式で作り直してもらう');
-  assert.equal(translate('ja', 'toRule.draft'), '式で作り直して');
-  assert.equal(translate('en', 'toRule.place', vars), 'Have Claude rebuild it as a formula');
-  assert.equal(translate('en', 'toRule.motion', vars), 'Have Claude rebuild this motion as a formula');
-  assert.equal(translate('en', 'toRule.draft'), 'Rebuild it as a formula');
+  assert.equal(translate('ja', 'toRule.place', vars), 'Claudeにルールベースに変換してもらう', 'the ✦ is the spark icon before it (studio-words-formula: who does it and what comes out, not 「数字で調整できるようにする」)');
+  assert.equal(translate('ja', 'toRule.motion', vars), 'この動きを Claudeにルールベースに変換してもらう');
+  assert.equal(translate('ja', 'toRule.draft'), 'ルールベースに変換して');
+  assert.equal(translate('en', 'toRule.place', vars), 'Have Claude convert it to rules');
+  assert.equal(translate('en', 'toRule.motion', vars), 'Have Claude convert this motion to rules');
+  assert.equal(translate('en', 'toRule.draft'), 'Convert it to rules');
   assert.equal(translate('ja', 'toRule.compare'), '元の位置と比べる');
   assert.equal(translate('en', 'toRule.compare'), 'Compare with original');
   assert.equal(translate('ja', 'toRule.maxPlace', vars), '最大のずれ: lamp-3（0.6 m）');

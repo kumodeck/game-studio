@@ -1,4 +1,4 @@
-/* KUMODeck Game Studio 0.1.67 — MIT License — built file, edit src/ instead */
+/* KUMODeck Game Studio 0.1.68 — MIT License — built file, edit src/ instead */
 (() => {
 const __defs = [];
 const __cache = [];
@@ -1720,7 +1720,8 @@ function isStudioMessage(x         )                     {
      
                                                                                                                              
                                                                                                                          
-                                                                                                                      
+                                                                                           
+                                                                                                                                      
                                                                                                                         
                                                                                                                        
                                                                                                                  
@@ -17665,22 +17666,25 @@ const en = {
   'tl.askShort': 'AI',
   'tl.ask': 'Ask {ai}',
   'tl.askTip': 'Ask {ai} about “{name}” in the chat box below',
-  // The line's "✦ Have {ai} rebuild it as a formula" (the words of toRule.place; "✦ Turn into a rule" until studio-words-rule,
+  // The line's "✦ Have {ai} convert it to rules" (the words of toRule.place; "✦ Turn into a rule" until studio-words-rule,
   // 2026-10-24, then "✦ Make it adjustable with numbers" until studio-words-formula, 2026-10-25 — the review: "I don't get
   // what 'adjustable with numbers' means", answer (c)): beside Preview / Repeat / When, for a motion of points. The same
   // words as the line over the ask field. {ai} = the AI's name now (Claude / Codex): WHO does it is said on the button.
-  'tl.ruleTip': '{ai} rewrites this motion as a formula in the game’s code. It looks the same, and boxes for radius, speed and so on show on the card (you send it)',
+  // studio-words-rulebased (10/25, the review: "what is the word an engineer would get?" → "convert it to rules"; the tip says
+  // the motion is made procedural (driven by a formula), so the result is named without the word "code"). Pairs with the
+  // card's "Rule" and the reverse "points".
+  'tl.ruleTip': '{ai} makes this motion procedural (driven by a formula). It looks the same, and boxes for radius, speed and so on show on the card (you send it)',
   // ----- studio-motion-next-2 (2026-10-24; a hands-on review of v0.1.58) -----
   // One block (another member works on i18n the same day). The things to PRESS say the result, not "rule" ("rule" says
   // nothing of what gets better — the review): mnext2.toNumbers is the one place for that result, in ✦ Ask's menu and on
   // the line over the ask field. studio-words-rule (2026-10-24, the review's choice (a)): every thing to press says its result
   // ("adjustable with numbers", "Revert"); "Rule" stays only as a tag and a card heading (plan/04-words.md 15).
-  // studio-words-formula (2026-10-25, the review's (c)): "adjustable with numbers" → "Have {ai} rebuild it as a formula" (says who
+  // studio-words-formula (2026-10-25, the review's (c)): "adjustable with numbers" → "Have {ai} rebuild it as a formula" → studio-words-convert (10/25, the review: "rebuild" sounds like remaking it; "convert") "Have {ai} convert it to a formula" → studio-words-rulebased (10/25, the review) "Have {ai} convert it to rules" (says who
   // does it and what comes out); the gray second line says what you get (boxes on the card). The intent sent is unchanged.
   // ✦ Ask's menu, by what the person wants done to the motion on screen (each row only puts its own draft in the box):
-  'tl.askMenuTip': 'Ask {ai}: rebuild it as a formula, change it, or add another motion',
-  'mnext2.toNumbers': 'Have {ai} rebuild it as a formula',
-  'mnext2.toNumbersMenu': 'Have {ai} rebuild this motion as a formula',
+  'tl.askMenuTip': 'Ask {ai}: convert it to rules, change it, or add another motion',
+  'mnext2.toNumbers': 'Have {ai} convert it to rules',
+  'mnext2.toNumbersMenu': 'Have {ai} convert this motion to rules',
   'mnext2.toNumbersSub': 'then change radius, speed… on the card',
   'mnext2.fix': 'Have this motion changed…',
   'mnext2.fixSub': 'e.g. slower, bounce higher',
@@ -18519,8 +18523,8 @@ const en = {
   'offset.knob': 'Change {knob}',
   // studio-writeback (2026-10-24): "✦ Write into the rule" — it was "Make this way a knob", and the person who asked did not know
   // what a "knob" was. The rule's numbers have no group name on screen (glossary: each by its own name).
-  'offset.toKnob': 'Have {ai} rebuild it as a formula',
-  'offset.toKnobTip': '{ai} rewrites this offset as a formula in the game’s code. It looks the same, and boxes for how far and so on show on the card (you send it)',
+  'offset.toKnob': 'Have {ai} convert it to rules',
+  'offset.toKnobTip': '{ai} makes this offset procedural (driven by a formula). It looks the same, and boxes for how far and so on show on the card (you send it)',
   'offset.sameTip': 'Every object of the rule moves the same',
   'offset.zigzagTip': 'Every other one moves (the ones like this one); the others stay',
   'offset.rampTip': 'A little more each one, from the nearest',
@@ -18536,9 +18540,9 @@ const en = {
   'offset.remove': 'Remove',
   'offset.more': 'More',
   'offset.removed': 'Removed {what} from {name}',
-  'offset.limit': 'Up to 8 offsets · ✦ to fold them into a formula',
-  'offset.draft': 'Rebuild the {way} offset of {name} as a formula',
-  'offset.draftRow': 'Rebuild the {way} offset of {name} ({what}) as a formula',
+  'offset.limit': 'Up to 8 offsets · ✦ to convert them to rules',
+  'offset.draft': 'Convert the {way} offset of {name} to rules',
+  'offset.draftRow': 'Convert the {way} offset of {name} ({what}) to rules',
   'offset.chipRule': '{name} (rule)',
   'offset.askPh': 'e.g. as the distance from the road',
   'offset.saved': '{name} {what}',
@@ -18612,10 +18616,10 @@ const en = {
   // ("rule", never "code" on screen) and Gemini's of that day (G7 "✦ Turn into a rule", G13 "Compare with original ·
   // Max deviation"). The AI writes the rule and swaps it in itself; the editor measures how close it came. The ✦ of the
   // glossary's "✦ Turn into a rule" is the spark icon the button / menu row draws before the words (as "Ask … to name it…").
-  'toRule.place': 'Have {ai} rebuild it as a formula',
-  'toRule.placeTip': '{ai} rewrites how these {n} are laid out as a formula in the game’s code (a row, a grid, a circle, a scatter). It looks the same, and boxes for how many, how far apart and so on show on the card (you send it)',
-  'toRule.motion': 'Have {ai} rebuild this motion as a formula',
-  'toRule.draft': 'Rebuild it as a formula',
+  'toRule.place': 'Have {ai} convert it to rules',
+  'toRule.placeTip': '{ai} makes how these {n} are laid out procedural (driven by a formula: a row, a grid, a circle, a scatter). It looks the same, and boxes for how many, how far apart and so on show on the card (you send it)',
+  'toRule.motion': 'Have {ai} convert this motion to rules',
+  'toRule.draft': 'Convert it to rules',
   'toRule.compare': 'Compare with original',
   'toRule.compareMotion': 'Compare with original',
   'toRule.compareTip': 'Shows where it was by hand (orange) beside the rule. Gone when you save',
@@ -18814,11 +18818,11 @@ const ja                               = {
   'tl.askShort': 'AI',
   'tl.ask': '{ai}に頼む',
   'tl.askTip': '下のチャットの欄で「{name}」について {ai}に頼む',
-  'tl.ruleTip': '{ai}がこの動きをゲームのコードの式に書き直します。見た目は同じで、半径や速さなどの欄がカードに出ます（送るのはあなた）',
+  'tl.ruleTip': '{ai}がこの動きをプロシージャル（式で動く）にします。見た目は同じで、半径や速さなどの欄がカードに出ます（送るのはあなた）',
   // ----- studio-motion-next-2 (2026-10-24): what is pressed says the result; mnext2.toNumbers is the one place -----
-  'tl.askMenuTip': '{ai}に頼む: 式で作り直す・直す・別の動きを足す',
-  'mnext2.toNumbers': '{ai}に式で作り直してもらう',
-  'mnext2.toNumbersMenu': 'この動きを {ai}に式で作り直してもらう',
+  'tl.askMenuTip': '{ai}に頼む: ルールベースに変換する・直す・別の動きを足す',
+  'mnext2.toNumbers': '{ai}にルールベースに変換してもらう',
+  'mnext2.toNumbersMenu': 'この動きを {ai}にルールベースに変換してもらう',
   'mnext2.toNumbersSub': '半径・速さなどをカードで変えられるように',
   'mnext2.fix': 'この動きを直してもらう…',
   'mnext2.fixSub': '例：もっとゆっくり・高く跳ねる',
@@ -19534,8 +19538,8 @@ const ja                               = {
   'offset.ramp': 'だんだん',
   'offset.one': 'この 1 個だけ',
   'offset.knob': '{knob}を変える',
-  'offset.toKnob': '{ai}に式で作り直してもらう',
-  'offset.toKnobTip': '{ai}がこのずらしをゲームのコードの式に書き直します。見た目は同じで、ずらす幅などの欄がカードに出ます（送るのはあなた）',
+  'offset.toKnob': '{ai}にルールベースに変換してもらう',
+  'offset.toKnobTip': '{ai}がこのずらしをプロシージャル（式で動く）にします。見た目は同じで、ずらす幅などの欄がカードに出ます（送るのはあなた）',
   'offset.sameTip': 'ルールの物が全部同じだけ動きます',
   'offset.zigzagTip': '1 個おきに動きます（この物と同じ側）。ほかはそのまま',
   'offset.rampTip': '手前から 1 個ごとに少しずつ',
@@ -19551,9 +19555,9 @@ const ja                               = {
   'offset.remove': '消す',
   'offset.more': 'その他',
   'offset.removed': '{name}の{what}を消しました',
-  'offset.limit': 'ずらしは 8 個まで · ✦ で式にまとめる',
-  'offset.draft': '{name}の{way}のずらしを、式で作り直して',
-  'offset.draftRow': '{name}の{way}のずらし（{what}）を、式で作り直して',
+  'offset.limit': 'ずらしは 8 個まで · ✦ でルールベースに変換する',
+  'offset.draft': '{name}の{way}のずらしを、ルールベースに変換して',
+  'offset.draftRow': '{name}の{way}のずらし（{what}）を、ルールベースに変換して',
   'offset.chipRule': '{name}（ルール）',
   'offset.askPh': '例: 道からの距離として',
   'offset.saved': '{name} {what}',
@@ -19618,10 +19622,10 @@ const ja                               = {
   'rule.edit': '動きのルール「{name}」を変えています',
   'rule.saved': '{name}の{knob} → {v}',
   // studio-motion-next (2026-10-24): the review's own words for it, the same verb form as rule.points ("to coordinates").
-  'toRule.place': '{ai}に式で作り直してもらう',
-  'toRule.placeTip': '{ai}がこの {n} 個の並びをゲームのコードの式（列・格子・円・ランダム）に書き直します。見た目は同じで、数や間隔などの欄がカードに出ます（送るのはあなた）',
-  'toRule.motion': 'この動きを {ai}に式で作り直してもらう',
-  'toRule.draft': '式で作り直して',
+  'toRule.place': '{ai}にルールベースに変換してもらう',
+  'toRule.placeTip': '{ai}がこの {n} 個の並び（列・格子・円・ランダム）をプロシージャル（式で動く）にします。見た目は同じで、数や間隔などの欄がカードに出ます（送るのはあなた）',
+  'toRule.motion': 'この動きを {ai}にルールベースに変換してもらう',
+  'toRule.draft': 'ルールベースに変換して',
   'toRule.compare': '元の位置と比べる',
   'toRule.compareMotion': '元の動きと比べる',
   'toRule.compareTip': '手で決めていた形（橙）を、ルールと並べて見せます。保存すると消えます',
@@ -24786,7 +24790,7 @@ function createTimeline(d              , makePanel                             =
    * hands-on review of v0.1.58 on studio-motion-next's "Turn this motion into a rule / Make a new motion for me / Ask anything":
    * "'rule' says nothing of what gets better" and "the last two differ only in the draft's first sentence — and 'Ask
    * anything' is the field right above"). Each row puts ITS OWN draft in the chat box with this motion's chip, nothing sent:
-   *   - Have {ai} rebuild this motion as a formula (then change radius, speed… on the card; "adjustable with numbers" until
+   *   - Have {ai} convert this motion to rules (then change radius, speed… on the card; "adjustable with numbers" until
    *     studio-words-formula 10/25 — the review didn't get it): the line's ✦ Turn into a rule (draft "Turn into a close
    *     rule", the request marked to-code) — only for a motion of points, as that button;
    *   - Have this motion changed… (e.g. slower, bounce higher): draft "Change this motion: ", the person writes on;
@@ -25176,7 +25180,7 @@ function createTimeline(d              , makePanel                             =
     noteIn,
     /** The dock's ● (studio-motion-next-2): Rec motion off, as Fine-tune's ● does. */
     recOff: () => acts.auto(false),
-    /** The dock's ✦ Have {ai} rebuild it as a formula (studio-motion-next-2; words: studio-words-formula): the plate's ✦ Turn into a rule, on the motion on screen. */
+    /** The dock's ✦ Have {ai} convert it to rules (studio-motion-next-2; words: studio-words-formula, studio-words-convert, studio-words-rulebased): the plate's ✦ Turn into a rule, on the motion on screen. */
     toRuleHere: () => toRuleOf(shown() ? head() : d.picked()),
     /** The game page is new (reload, back from Play, another level): it shows places; send the poses again. */
     reset() {
@@ -25286,7 +25290,7 @@ __defs[58] = function (__exports) {
 // head where the eye does not go, and another pick or a fold took it away.
 // Now ONE line, over the ask field (the dock, main.ts), where it is seen with the plate open, slim or folded:
 //   - the picked object's motion has changes not saved → "gate’s motion changed · Save puts it in the game · ✦ Have
-//     Claude rebuild it as a formula" (studio-words-formula 10/25; "… is made" for a motion new since the last save), for as long as that is so;
+//     Claude convert it to rules" (studio-words-formula → studio-words-convert → studio-words-rulebased 10/25; "… is made" for a motion new since the last save), for as long as that is so;
 //   - ● Rec motion on (the plate open, a move adds a point) → "● Recording · press ● when you're done" (the second ● is a
 //     button: Rec motion off), in place of the ✦ part — finish first, then the next step;
 //   - another object picked, or none → "Not saved: gate’s motion (+1) · Save puts it in the game" (the name picks it);
@@ -25326,7 +25330,7 @@ const { icon } = __require(21);
                                                                                                                         
                                                                                    
                
-                                                                                                                         
+                                                                                                                     
                 
          
 

@@ -1530,7 +1530,7 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
    * hands-on review of v0.1.58 on studio-motion-next's "Turn this motion into a rule / Make a new motion for me / Ask anything":
    * "'rule' says nothing of what gets better" and "the last two differ only in the draft's first sentence — and 'Ask
    * anything' is the field right above"). Each row puts ITS OWN draft in the chat box with this motion's chip, nothing sent:
-   *   - Have {ai} rebuild this motion as a formula (then change radius, speed… on the card; "adjustable with numbers" until
+   *   - Have {ai} convert this motion to rules (then change radius, speed… on the card; "adjustable with numbers" until
    *     studio-words-formula 10/25 — the review didn't get it): the line's ✦ Turn into a rule (draft "Turn into a close
    *     rule", the request marked to-code) — only for a motion of points, as that button;
    *   - Have this motion changed… (e.g. slower, bounce higher): draft "Change this motion: ", the person writes on;
@@ -1920,7 +1920,7 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
     noteIn,
     /** The dock's ● (studio-motion-next-2): Rec motion off, as Fine-tune's ● does. */
     recOff: () => acts.auto(false),
-    /** The dock's ✦ Have {ai} rebuild it as a formula (studio-motion-next-2; words: studio-words-formula): the plate's ✦ Turn into a rule, on the motion on screen. */
+    /** The dock's ✦ Have {ai} convert it to rules (studio-motion-next-2; words: studio-words-formula, studio-words-convert, studio-words-rulebased): the plate's ✦ Turn into a rule, on the motion on screen. */
     toRuleHere: () => toRuleOf(shown() ? head() : d.picked()),
     /** The game page is new (reload, back from Play, another level): it shows places; send the poses again. */
     reset() {

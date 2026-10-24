@@ -4,10 +4,10 @@
 // Lantern Cove, PC 1280×800, the stand-in AI watching (test/ai-feel/fake-agent.mjs), one language a run (`--lang en|ja`),
 // dark by default (`--themes dark,light`):
 //   1. the lighthouse: the strip's Motion → Make a motion → two moves → Done: over the ask field, "<motion> is made · Save
-//      puts it in the game · Recording · press ● when you're done", its ● → "… · ✦ Have Claude rebuild it as a formula"
+//      puts it in the game · Recording · press ● when you're done", its ● → "… · ✦ Have Claude convert it to rules"
 //      (studio-motion-next-2: the one line over the field; it was under the plate's line); on the plate's line, beside
 //      Preview / Repeat / When, "✦ Turn into a rule" (the same row);
-//   2. ✦ Ask Claude: a menu — "Have Claude rebuild this motion as a formula / Have this motion changed… / Have another motion
+//   2. ✦ Ask Claude: a menu — "Have Claude convert this motion to rules / Have this motion changed… / Have another motion
 //      added…" (studio-motion-next-2's words; Esc closes it);
 //   3. Save (the top bar): "Saved: <motion>" → the AI has it in: "✓ Saved: <motion> · In the game" (with the timeline open,
 //      the chip beside the ask field: "✓ In the game: <motion>", the result first); the line over the field gone;
@@ -56,10 +56,10 @@ const LINE = `(() => { const l = document.querySelector('.ai-line'); return l &&
 // studio-motion-next-2 (2026-10-24): the next step is the one line over the ask field now (motion-note.ts; the plate's .tl-next
 // is gone), and ✦ Ask's rows say the result. Its parts are read as test/studio-motion-next-2.browser.mjs reads them.
 const W = LANG === 'ja'
-  ? { made: /^(.+)ができました$/, rule: 'Claude に式で作り直してもらう', btn: 'Claude に式で作り直してもらう', menu: ['この動きを Claude に式で作り直してもらう', 'この動きを直してもらう…', '別の動きを足してもらう…'],
-    kept: /^保存しました: (.+)/, in: /保存しました: (.+) · ゲームに入りました/, draft: '式で作り直して' }
-  : { made: /^(.+) is made$/, rule: 'Have Claude rebuild it as a formula', btn: 'Have Claude rebuild it as a formula', menu: ['Have Claude rebuild this motion as a formula', 'Have this motion changed…', 'Have another motion added…'],
-    kept: /^Saved: (.+)/, in: /Saved: (.+) · In the game/, draft: 'Rebuild it as a formula' };
+  ? { made: /^(.+)ができました$/, rule: 'Claude にルールベースに変換してもらう', btn: 'Claude にルールベースに変換してもらう', menu: ['この動きを Claude にルールベースに変換してもらう', 'この動きを直してもらう…', '別の動きを足してもらう…'],
+    kept: /^保存しました: (.+)/, in: /保存しました: (.+) · ゲームに入りました/, draft: 'ルールベースに変換して' }
+  : { made: /^(.+) is made$/, rule: 'Have Claude convert it to rules', btn: 'Have Claude convert it to rules', menu: ['Have Claude convert this motion to rules', 'Have this motion changed…', 'Have another motion added…'],
+    kept: /^Saved: (.+)/, in: /Saved: (.+) · In the game/, draft: 'Convert it to rules' };
 
 async function open(browser, theme) {
   const root = mkdtempSync(join(tmpdir(), 'studio-motion-next-'));
