@@ -54,7 +54,7 @@ const check = (ok, what) => {
 const TL = `window.__studioTimeline`;
 const ROOT = `document.querySelector('iframe.game, iframe').contentDocument.querySelector('[data-studio-ui]').shadowRoot`;
 const WORDS = LANG === 'ja'
-  ? { when: 'いつ動く？', sel: '選択中: 1', toNext: '進み方', ease: 'なめらかに（自然な加減速）', turns: '通り道', smooth: '丸くなめらかに', del: '消す',
+  ? { when: 'いつ動く？', sel: '選択中: 1', toNext: '進み方', ease: 'なめらかに（自然な加減速）', turns: '通り道', smooth: '丸くなめらかに', del: '削除',
     made: /^✓ 0〜1 秒の動きができました/, done: '終わる', motion: '動き', make: '＋ 動きを作る', off: 'この物から外す' }
   : { when: 'When does it move?', sel: '1 selected', toNext: 'Pace', ease: 'Smooth (slow start & stop)', turns: 'Path', smooth: 'Smooth curve', del: 'Delete',
     made: /^✓ Moves 0–1 s\./, done: 'Done', motion: 'Motion', make: '+ Make a motion', off: 'Take it off this object' };
@@ -156,6 +156,10 @@ async function run(size, theme) {
     }
     // ---- 2. a key picked: the picked keys' row ----
     await select('rowboat');
+    await sleep(500);
+    // The phone: the boat is under the plate, and the pick folds it to its line (studio-fix-0143 ⑨ B — the keys are not
+    // drawn then). Fine-tune on the folded line brings the rows back, as a person does.
+    await page.eval(`document.querySelector('.timeline.slim [data-part=tl-fine-btn]')?.click()`);
     await sleep(500);
     const k15 = await keyAt('rowboat', 1.5);
     check(!!k15, `${tag}: the boat's 1.5 s key is on the plate`);

@@ -112,8 +112,11 @@ async function run(size) {
     } else await press('[data-part=card] [data-part=motion-more]');
     const m1 = await menu();
     await shot('1-menu');
-    check(m1?.place === 'card-motion' && m1.rows.length === 2 && m1.rows[0].label === W.detach && m1.rows[1].label === W.del, `the motion's menu: "${W.detach}" and "${W.del}" (${JSON.stringify(m1)})`);
-    check(!!m1 && !m1.rows[0].danger && m1.rows[1].danger && m1.rows[1].color !== m1.rows[0].color, `"${W.del}" is red, "${W.detach}" is not`);
+    // The last two rows (a row above them since studio-code-torule / studio-motion-next: "Make this motion adjustable
+    // with numbers", ✦ Turn into a rule — the menu's other rows are not what this test is about).
+    const [mDetach, mDel] = m1?.rows?.slice(-2) ?? [];
+    check(m1?.place === 'card-motion' && mDetach?.label === W.detach && mDel?.label === W.del, `the motion's menu: "${W.detach}" and "${W.del}" last (${JSON.stringify(m1)})`);
+    check(!!mDel && !mDetach.danger && mDel.danger && mDel.color !== mDetach.color && m1.rows.filter((r) => r.danger).length === 1, `"${W.del}" is red, "${W.detach}" is not`);
 
     // ---- key: Delete with the menu open ----
     await key(page, 'Delete');

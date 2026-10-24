@@ -24,6 +24,15 @@ export interface UiThemeDeps {
   set(name: string, value: string | null, live?: boolean): void;
 }
 
+/** A selector for the same button in rows drawn again: the head by its data-*, a ↺ by its row's name too (null = none). */
+const sameButton = (b: HTMLElement): string | null => {
+  const ds = Object.entries(b.dataset);
+  if (!ds.length) return null;
+  const own = 'button' + ds.map(([k, v]) => `[data-${k.replace(/[A-Z]/g, (c) => '-' + c.toLowerCase())}="${CSS.escape(v ?? '')}"]`).join('');
+  const row = b.closest<HTMLElement>('[data-part=theme-row]')?.dataset.name;
+  return row ? `[data-part=theme-row][data-name="${CSS.escape(row)}"] ${own}` : own;
+};
+
 export function createUiTheme(d: UiThemeDeps) {
   let open = false;
   let el: HTMLElement | null = null;
@@ -74,13 +83,26 @@ export function createUiTheme(d: UiThemeDeps) {
 
   return {
     render,
-    /** New values came: the rows again in place, unless one is being typed in or picked. */
+    /**
+     * New values came: the rows again in place, unless one is being typed in or picked.
+     *
+     * Only an <input> holds the rows back (a text field being typed in, a swatch whose colour picker is open). A button
+     * of the fold does not (studio-tests-0165, 2026-10-25 — the same as ui-card.ts's refresh, fixed in studio-fix-0164):
+     * Chrome gives a button the focus when the mouse presses it, so ↺ pressed with the mouse put the game's own colour
+     * back but its row kept the changed value and the ↺ (the fold's head pressed with the mouse held every later change
+     * back the same way). The focused button is found again in the new rows by its data-* (the head; a ↺ by its row),
+     * so a keyboard's Tab goes on from it; a ↺ that went (the value is the game's own again) leaves no focus.
+     */
     refresh() {
-      if (!el || !el.isConnected || el.contains(document.activeElement)) return;
+      if (!el || !el.isConnected) return;
+      const a = document.activeElement;
+      if (a instanceof HTMLInputElement && el.contains(a)) return;
+      const again = a instanceof HTMLButtonElement && el.contains(a) ? sameButton(a) : null;
       const old = el;
       const next = render();
       if (next) old.replaceWith(next);
       else old.remove();
+      if (again && next) (next.querySelector(again) as HTMLElement | null)?.focus({ preventScroll: true });
     },
   };
 }

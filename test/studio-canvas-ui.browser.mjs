@@ -35,7 +35,8 @@
 //            the game draws it (the UI layer shows the 2D world as Play does); the score dragged to the top middle
 //   theme    the same Pixi game: the Theme under the list has the code's two rows by their labels; a colour changed there
 //            recolours the parts that use it in one frame; ⌘Z; Save → `theme` in the file; the AI writes it into
-//            codeTheme() and sends ui.theme --clear → no `theme` left, the same colour, nothing to save
+//            codeTheme() and sends ui.theme --clear → no `theme` left, the same colour, nothing to save; ↺ on a row pressed
+//            with the mouse draws the rows again (studio-tests-0165: a focused button held them back)
 //   edges    examples/three-hud (HTML UI): the score dragged to the top right — the same line and words while held, and
 //            the file's ui.score has from top-right / at (what the AI's CSS keeps it to on Save)
 //
@@ -747,6 +748,22 @@ async function theme(lang) {
       await page.eval(`studioShell.actions.save()`);
       await sleep(1500);
       assert.deepEqual(file(g.root)?.theme, { '--note': { v: '#ffd166', was: '#8fc6d4' } });
+    });
+    await run('T2b. ↺ on the Note row pressed with the mouse: the game\'s own colour, and the rows drawn again (the field says it, no ↺); ⌘Z: both back', async () => {
+      // studio-tests-0165 (2026-10-25): the rows were held back while anything in the fold had the focus, and Chrome gives
+      // a button the focus when the mouse presses it — so ↺ recoloured the game but its row kept "#ffd166" and the ↺
+      // (the same as ui-card.ts's refresh, fixed in studio-fix-0164). .click() gives no focus, so a real mouse here.
+      const row = (name) => page.eval(`(() => { const r = document.querySelector('[data-part=theme-row][data-name="${name}"]'); return JSON.stringify({ v: r?.querySelector('input[data-part=theme-text]')?.value, back: !!r?.querySelector('[data-action=theme-back]') }); })()`).then(JSON.parse);
+      assert.deepEqual(await row('--note'), { v: '#ffd166', back: true }, 'the row before: the changed colour and its ↺');
+      const at = JSON.parse(await page.eval(`(() => { const b = document.querySelector('[data-part=theme-row][data-name="--note"] [data-action=theme-back]'); b.scrollIntoView({ block: 'nearest' }); const r = b.getBoundingClientRect(); return JSON.stringify({ x: r.left + r.width / 2, y: r.top + r.height / 2 }); })()`));
+      await page.click(at.x, at.y);
+      await sleep(500);
+      assert.match(await fill('note'), /8fc6d4/i, '↺: the game\'s own colour');
+      assert.deepEqual(await row('--note'), { v: '#8fc6d4', back: false }, '↺: the row drawn again — the game\'s colour, no ↺');
+      await key(page, 'z', MOD);
+      await sleep(500);
+      assert.match(await fill('note'), /ffd166/i, '⌘Z: the changed colour again');
+      assert.deepEqual(await row('--note'), { v: '#ffd166', back: true }, '⌘Z: the row again, with its ↺');
     });
     await run('T3. the AI writes it into codeTheme() and sends ui.theme --clear: no `theme` in the file, the same colour, nothing to save', async () => {
       writeFileSync(join(g.root, 'game.js'), readFileSync(join(g.root, 'game.js'), 'utf8').replace(`note: { v: '#8fc6d4', label: 'Note' }`, `note: { v: '#ffd166', label: 'Note' }`));

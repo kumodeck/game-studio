@@ -1682,7 +1682,10 @@ button.shelf-file.to:hover { background: var(--raise-2); }
 .timeline.narrow .tl-head > .tl-play { width: var(--h); padding: 0; justify-content: center; }
 .timeline.narrow .tl-head > .tl-try-this { display: none; }
 .timeline.narrow .tl-head > .tl-fine-btn { order: 3; margin-left: auto; }
-.timeline.narrow .tl-head > .tl-ask { order: 3; }
+/* ✦ AI on the first row, after Repeat (studio-tests-0165, 2026-10-25): at the end of the second row it fell to a third
+   row of its own on a phone in Japanese (the ringed "when" menu's words and Fine-tune's left no room — 3 rows),
+   while the first row (▶ · Repeat [▾]) had room for it. In English it fitted either way. */
+.timeline.narrow .tl-head > .tl-ask { order: 0; }
 /* studio-ui-lead2: "✦ AI" (a phone's light screen showed only a pale square: the spark alone, 13 px, in the soft tint). */
 .timeline.narrow .tl-head > .tl-ask { padding: 0 10px 0 8px; gap: 4px; }
 .tl-ask-s { display: none; }

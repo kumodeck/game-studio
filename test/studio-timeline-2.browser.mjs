@@ -139,7 +139,17 @@ async function run(size, theme) {
       check(/motion|動き/i.test(await page.eval(UNDO)), `one undo step ("${(await page.eval(UNDO)).split('\n')[0]}")`);
       check((await page.eval(`(document.querySelector('[data-part=tl-point]') || {}).value`)) === 'custom', 'Point ▾: Bent by hand');
       // 3. The line: a "+" under the mouse, a click = a key there.
-      const mid = await j(ALONG(0.2));
+      // A place on the line's first half that the mouse can reach: since studio-motion-next-2 (2026-10-24) the dock's line
+      // over the ask field ("Row changed…", while a change is not saved — the handle above) is taller and covers the
+      // bottom of the game, where 0.2 of the boat's line was (the click went to the dock: 3 keys).
+      let mid = null;
+      for (const f of [0.2, 0.25, 0.15, 0.3, 0.1, 0.35, 0.4]) {
+        const at = await j(ALONG(f));
+        if (at && (await page.eval(`document.elementFromPoint(${at.x}, ${at.y})?.tagName === 'IFRAME'`))) {
+          mid = at;
+          break;
+        }
+      }
       if (mid) await page.click(mid.x, mid.y);
       await sleep(600);
       const t0 = (await motion('rowboat'))?.clips?.[0]?.keys?.p?.length;
@@ -223,6 +233,9 @@ async function run(size, theme) {
       // (no motion) picked, its row's "+" links the boat; the crate's new motion is a scene of the two; K keys the crate.
       await page.eval(`studioShell.actions.select('crate')`);
       await sleep(800);
+      // The crate is under the plate: the pick folds it to its line (studio-fix-0143 ⑨ B); Fine-tune there brings the rows back.
+      await page.eval(`document.querySelector('.timeline.slim [data-part=tl-fine-btn]')?.click()`);
+      await sleep(400);
       // The row's "+" shows with Fine-tune open (studio-motion-line, plan step 4, 2026-10-23).
       await page.eval(`document.querySelector('[data-part=tl-fine]:not([hidden])') || document.querySelector('[data-part=tl-fine-btn]')?.click()`);
       await sleep(400);

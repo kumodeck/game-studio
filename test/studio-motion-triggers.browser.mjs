@@ -105,6 +105,12 @@ async function run(size, theme) {
     // The strip is one line since studio-motion-panel: Starts on it, Stops and every cue to Try in Fine-tune (⋯ until
     // studio-motion-line, plan step 4, 2026-10-23: a sheet in the plate; opened first).
     const openMore = async () => {
+      // A pick of an object under the plate folds it to its line (studio-fix-0143 ⑨ B): Fine-tune there brings the rows
+      // back first (the sheet stays as it was), so a second press opens it.
+      if (await page.eval(`!!document.querySelector('.timeline.slim')`)) {
+        await page.eval(`document.querySelector('[data-part=tl-fine-btn]').click()`);
+        await sleep(300);
+      }
       if (await j(`JSON.stringify(!!document.querySelector('[data-part=tl-fine]:not([hidden])'))`)) return;
       await page.eval(`(document.querySelector('[data-part=tl-fine-btn]') || { click() {} }).click()`);
       await sleep(300);
@@ -201,7 +207,11 @@ async function run(size, theme) {
         ask: !!document.querySelector('[data-part=tl-ask]') }); })()`);
       check(line && lineRows <= 2 && !line.second && !line.when, `the strip: no second "when" row, no words field, two rows at most (${lineRows} rows, ${line?.h}px)`);
       check(line?.tryThis === 'key:KeyE' && line.ask, `▷ by Starts tries E (${line?.tryThis}); ✦ Ask AI is on the line`);
+      // ✦ Ask AI is a menu since studio-motion-next-2 (2026-10-24): each row puts its own draft in the chat box with the
+      // chip. "Have this motion changed…" — the person's words then replace the draft below.
       await page.eval(`document.querySelector('[data-part=tl-ask]').click()`);
+      await sleep(400);
+      await page.eval(`document.querySelector('[data-part=context-menu] .ctx-row[data-action="ctx-tl-ask-fix"]').click()`);
       await sleep(600);
       const asked = await j(`JSON.stringify({ chip: (document.querySelector('[data-part=ask] .ask-chip') || {}).textContent || '', focus: document.activeElement === document.querySelector('[data-part=ask] input'),
         ph: (document.querySelector('[data-part=ask] input') || {}).placeholder || '' })`);
@@ -291,8 +301,15 @@ async function run(size, theme) {
       const p1 = await boat();
       check(!!p0 && JSON.stringify(p0.p) === JSON.stringify(p1.p), 'Play: the boat waits for E');
       await page.eval(`(() => { const w = ${WIN}; w.dispatchEvent(new w.KeyboardEvent('keydown', { code: 'KeyE', key: 'e', bubbles: true })); return true; })()`);
-      await sleep(700);
-      const p2 = await boat();
+      // Up to 3 s for the first frame that moves it (studio-tests-0165): headless Lantern Cove draws a frame every ~200 ms
+      // while the editor is open, and a fixed 700 ms sometimes read the pose before the loader's first moved frame (8.50
+      // both times — measured: it moves at 200 ms on one run, after 700 ms on another).
+      let p2 = null;
+      for (let k = 0; k < 30; k++) {
+        await sleep(100);
+        p2 = await boat();
+        if (p2 && JSON.stringify(p2.p) !== JSON.stringify(p1.p)) break;
+      }
       check(!!p2 && JSON.stringify(p2.p) !== JSON.stringify(p1.p), `Play: E — the loader starts it (${p2?.p?.map((x) => x.toFixed(2))})`);
     } else {
       // Pictures. 1: the boat waits for the pier's area (the box in the game, the row's chip).
@@ -315,6 +332,8 @@ async function run(size, theme) {
       await page.eval(`document.querySelector('[data-part=tl-fine-btn].on')?.click()`);
       await sleep(200);
       await page.eval(`document.querySelector('[data-part=tl-ask]')?.click()`);
+      await sleep(400);
+      await page.eval(`document.querySelector('[data-part=context-menu] .ctx-row[data-action="ctx-tl-ask-fix"]')?.click()`);
       await sleep(500);
       await page.eval(`(() => { const i = document.querySelector('[data-part=ask] input'); i.value = ${JSON.stringify(LANG === 'ja' ? 'プレイヤーが近づいたら動き出して' : 'Start it when the player walks up')}; i.dispatchEvent(new Event('input', { bubbles: true })); return true; })()`);
       await sleep(300);

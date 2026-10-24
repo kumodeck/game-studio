@@ -38,6 +38,12 @@ const SHOTS = take('--shots') ? resolve(take('--shots')) : null;
 if (SHOTS) mkdirSync(SHOTS, { recursive: true });
 const UI = resolve(take('--ui', join(PKG, 'skills/arrange/bin/studio-ui')));
 const LANG = take('--lang', 'en');
+// The words the checks read, in each language (studio-tests-0165, 2026-10-25: the checks had the English only, so
+// `--lang ja` failed on the words alone — shell/i18n.ts tl.make.drag, lib.motion.newFor / dragTip / pickFirst,
+// motion.pickFirst, motion.drag.onto).
+const W = LANG === 'ja'
+  ? { drag: /ドラッグしてください（Esc でやめる）/, newFor: /crate に/, dragTip: /物にドラッグすると付きます/, pickFirst: /物を選んでから/, pickToMake: /物を選ぶと、その物の動きを作ります/, onto: /“Hop” を crate に付ける/ }
+  : { drag: /Drag .+ \(Esc to cancel\)/, newFor: /for crate/, dragTip: /drag one onto an object/, pickFirst: /Pick an object first/, pickToMake: /Pick an object to make its motion/, onto: /Attach “Hop” to crate/ };
 const ONLY = take('--only', 'pc,side,phone').split(',');
 const THEMES = take('--themes', 'light,dark').split(',');
 const CHECKS = !args.includes('--no-checks');
@@ -111,8 +117,19 @@ async function run(size, theme) {
     /** The picked object's Motion button in the game's strip (the one way in, motion-tool.ts), then a row of its menu. */
     const strip = async (...rows) => {
       await page.waitFor(`!!${ROOT}.querySelector('[data-studio-motion]:not([hidden])')`, 15000).catch(() => {});
-      const b = await j(`(() => { const o = document.querySelector('iframe.game, iframe').getBoundingClientRect(); const b = ${ROOT}.querySelector('[data-studio-motion]');
+      const at = () => j(`(() => { const o = document.querySelector('iframe.game, iframe').getBoundingClientRect(); const b = ${ROOT}.querySelector('[data-studio-motion]');
         if (!b || b.hidden || !b.getBoundingClientRect().width) return null; const r = b.getBoundingClientRect(); return JSON.stringify({ x: o.left + r.left + r.width / 2, y: o.top + r.top + r.height / 2 }); })()`);
+      // Where the button stays (studio-tests-0165, 2026-10-25): on the phone the strip moves for a moment after the card
+      // changes (Fine-tune closed — measured 156 → 422 px within 200 ms), and a tap at the first place hit the game's
+      // canvas (the lighthouse picked again, no menu). Read until two reads 250 ms apart agree (2 s at most).
+      let b = await at();
+      for (let k = 0; k < 8 && b; k++) {
+        await sleep(250);
+        const b2 = await at();
+        const same = !!b2 && Math.abs(b2.x - b.x) < 1 && Math.abs(b2.y - b.y) < 1;
+        b = b2;
+        if (same) break;
+      }
       if (!b) return false;
       await tapAt(b);
       for (const a of rows) {
@@ -213,7 +230,7 @@ async function run(size, theme) {
       // studio-no-presets: "Make a motion" is making (its own line says the step); the first-time three steps are gone
       // since studio-motion-line (plan step 4, 2026-10-23: the line says the next step).
       const line = await page.eval(`document.querySelector('[data-part=tl-first]')?.textContent || ''`);
-      check(made && st.open && !(await coach()) && /Drag .+ \(Esc to cancel\)/.test(line), `Make a motion opens the timeline on the crate, its one line ("${line}")`);
+      check(made && st.open && !(await coach()) && W.drag.test(line), `Make a motion opens the timeline on the crate, its one line ("${line}")`);
       check(!(await state()).clip, 'nothing made yet (the first move makes it)');
       await page.eval(`(document.activeElement?.blur?.(), window.focus(), document.body.focus())`);
       await page.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
@@ -227,19 +244,19 @@ async function run(size, theme) {
       await select('crate');
       await toLibrary();
       const first = await j(`(() => { const t = document.querySelector('.gsl-grid > .gsl-tile'); return t ? JSON.stringify({ part: t.dataset.part, text: t.textContent }) : null; })()`);
-      check(first?.part === 'motion-new' && /for crate/.test(first.text), `the Motion filter starts with + New motion ("${first?.text}")`);
+      check(first?.part === 'motion-new' && W.newFor.test(first.text), `the Motion filter starts with + New motion ("${first?.text}")`);
       const count = await page.eval(`(document.querySelector('.gsl-count') || {}).textContent || ''`);
-      check(/drag one onto an object/.test(count), `the count line says the hand ("${count}")`);
+      check(W.dragTip.test(count), `the count line says the hand ("${count}")`);
       await page.eval(`studioShell.actions.select(null)`);
       await sleep(700);
       const none = await page.eval(`(document.querySelector('[data-part=motion-new]') || {}).textContent || ''`);
-      check(/Pick an object first/.test(none), `nothing picked: "${none}"`);
+      check(W.pickFirst.test(none), `nothing picked: "${none}"`);
       await page.eval(`document.querySelector('[data-part=motion-new]').click()`);
       await sleep(900);
       const onScene = await page.eval(`document.querySelector('[data-part=assets-page]').hidden`);
       // (`askLine`: a second `const line` in this block was a syntax error since studio-no-presets — the test never ran; studio-ui-lead 2026-10-23.)
       const askLine = await page.eval(`(() => { const a = document.querySelector('[data-part=ask]'); return (a && a.textContent) + ' ' + ((document.querySelector('.toast') || {}).textContent || ''); })()`);
-      check(onScene && /Pick an object to make its motion/.test(askLine), `the Scene, and one line: "${(askLine.match(/Pick an object[^.]*/) || [''])[0]}"`);
+      check(onScene && W.pickToMake.test(askLine), `the Scene, and one line: "${(askLine.match(W.pickToMake) || [''])[0]}"`);
       const lh = await objectAt('lighthouse');
       await page.click(lh.x, lh.y);
       await sleep(1000);
@@ -257,7 +274,7 @@ async function run(size, theme) {
       check(!usageBob.includes('crate') && !(await j(`JSON.stringify(document.querySelector('[data-part=assets-page]').hidden)`)), `Esc: nothing attached, the Library is back (${usageBob.join(', ')})`);
       const d2 = await hold('Hop', 'crate');
       check(d2?.drag === 'motion' && Number(d2.fade) < 0.2, `the Library fades while held (opacity ${d2?.fade})`);
-      check(/Attach “Hop” to crate/.test(d2?.tag || ''), `over the crate: "${d2?.tag}"`);
+      check(W.onto.test(d2?.tag || ''), `over the crate: "${d2?.tag}"`);
       const onCrate = await j(`JSON.stringify(${TL}.usage('Hop').map((u) => u.key))`);
       check(onCrate.includes('crate'), `let go: Hop is on the crate (${onCrate.join(', ')})`);
       const a = await after();

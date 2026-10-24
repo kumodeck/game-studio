@@ -120,7 +120,10 @@ async function run(size, theme) {
     // Since studio-motion-line (plan step 4, 2026-10-23) the row's "+" shows only with Fine-tune open (⋯'s rows moved
     // there; "+ Link an object" is one of them): open it first, as a person does to link.
     if (full) check(!(await j(PLATE('[data-part=tl-link]'))), `${tag}: no "+" on the row while Fine-tune is closed`);
-    const openFine = async () => (await j(`JSON.stringify(!!document.querySelector('[data-part=tl-fine]:not([hidden])'))`)) || (await press('[data-part=tl-fine-btn]'));
+    // A pick of an object under the plate folds it to its line (studio-fix-0143 ⑨ B — the buoy sits under it at every
+    // size): Fine-tune on the folded line brings the rows back, as a person does. Until then the rows are not drawn.
+    const unfold = async () => (await page.eval(`!!document.querySelector('.timeline.slim')`)) && (await press('[data-part=tl-fine-btn]'));
+    const openFine = async () => (await unfold(), (await j(`JSON.stringify(!!document.querySelector('[data-part=tl-fine]:not([hidden])'))`)) || (await press('[data-part=tl-fine-btn]')));
     await openFine();
     check(!!(await j(PLATE('[data-part=tl-link]'))), `${tag}: Fine-tune open — the row's "+" (Link an object; studio-ui-lead2: it was a row under the rows)`);
 
@@ -173,11 +176,13 @@ async function run(size, theme) {
       // 5. The buoy picked: the same rows, itself first.
       await page.eval(`studioShell.actions.select('buoy')`);
       await sleep(800);
+      await unfold();
       // studio-ui-lead2: the same rows in the same order, the buoy lit where it is (not moved to the top).
       check(JSON.stringify(await rows()) === '["crate","barrel","buoy"]' && !!(await j(PLATE('[data-part=timeline] .tl-name.picked[data-row=buoy]'))),
         `the buoy picked: its linked rows come along, in the same order, the buoy lit (${JSON.stringify(await rows())})`);
       await page.eval(`studioShell.actions.select('crate')`);
       await sleep(800);
+      await unfold();
       // 6. × on the barrel.
       await page.eval(`document.querySelector('[data-part=tl-leave][data-key=barrel]').click()`);
       await sleep(600);

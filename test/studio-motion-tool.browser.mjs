@@ -88,11 +88,25 @@ function helpers(page, size, theme) {
   const j = async (expr) => JSON.parse((await page.eval(expr)) || 'null');
   const shot = async (what) => SHOTS && writeFileSync(join(SHOTS, `${BEFORE ? 'before' : 'after'}-${size.id}-${theme}-${what}.png`), await page.screenshot());
   /** An element in the strip's shadow root, in the editor page's px, or null when hidden. */
-  const inStrip = (sel) => j(`(() => { const o = document.querySelector('iframe.game, iframe').getBoundingClientRect();
+  const readStrip = (sel) => j(`(() => { const o = document.querySelector('iframe.game, iframe').getBoundingClientRect();
     const b = ${ROOT}.querySelector(${JSON.stringify(sel)});
     if (!b || b.hidden || !b.getBoundingClientRect().width) return null; const r = b.getBoundingClientRect();
     return JSON.stringify({ x: o.left + r.left + r.width / 2, y: o.top + r.top + r.height / 2, l: o.left + r.left, t: o.top + r.top, w: r.width, h: r.height,
       cls: b.className, title: b.title || '', expanded: b.getAttribute('aria-expanded') }); })()`);
+  // Where it stays (studio-tests-0165, 2026-10-25 — the phone's flaky runs): after a pick the camera glides to the object
+  // and the strip goes with it (studio-motion-flow measured 156 → 422 px within 200 ms on the phone), so a tap at the
+  // first place read sometimes hit the game's canvas (a pick, no menu). Read until two reads 250 ms apart agree (2 s at most).
+  const inStrip = async (sel) => {
+    let b = await readStrip(sel);
+    for (let k = 0; k < 8 && b; k++) {
+      await sleep(250);
+      const b2 = await readStrip(sel);
+      const same = !!b2 && Math.abs(b2.x - b.x) < 1 && Math.abs(b2.y - b.y) < 1;
+      b = b2;
+      if (same) break;
+    }
+    return b;
+  };
   const select = async (k) => {
     await page.eval(`studioShell.actions.select(${JSON.stringify(k)})`);
     await sleep(1100);
