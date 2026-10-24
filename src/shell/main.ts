@@ -38,6 +38,7 @@ import {
   type StudioHost,
   type StudioRequestInput,
   type RequestMotion,
+  type RequestPlace,
   type StudioStatus,
   type LibraryFileUse,
   type LevelInfo,
@@ -80,6 +81,7 @@ import { attachWorld, roundLib } from './motion-model.ts';
 import { icon, setButton } from './icons.ts';
 import { receipt, type SavedThing } from './save-receipt.ts';
 import { createCodePlaceWire } from './code-place-wire.ts';
+import { createKeepOutWire } from './keep-out-wire.ts';
 import { createPalette, type PaletteRow } from './palette.ts';
 import { fitPicture } from './thumb-fit.ts';
 import { PlacementModel } from './placement-model.ts';
@@ -1287,7 +1289,56 @@ export function start(host: StudioHost) {
     compare: (id) => ruleCompare.place(levelNow(), id, worldModel.places.get(id)?.from),
     compareOn: () => ruleCompare.show,
     setCompareOn: (on) => setCompareShown(on),
+    guided: (force) => keepOut.sync(force),
   });
+  // Keep-out areas under a rule layout's block (studio-code-keepout, 2026-10-24; keep-out-wire.ts): the list, the boxes
+  // drawn on the ground (bridge/keep-out.ts), the conditions' knobs and ◇, "✦ Describe with text".
+  const keepOut = createKeepOutWire({
+    t,
+    list: () => codePlaceList,
+    avoids: () => codeAvoidList,
+    store: () => worldModel.places,
+    send: (m) => send(m),
+    commit: (id, from, to) => setPlace(id, from, to),
+    layout: (ids) => codePlaces.layout(ids),
+    changed: (card) => {
+      if (card) placementPanel.render();
+      renderButtons();
+    },
+    told: (text) => showToast(phone() ? t('hands.undoTouch', { text }) : t('hands.undo', { text, key: keyOf('undo', isMac()) }), 6000),
+    selected: () => (editLayer === 'world' && group.length <= 1 ? selected : null),
+    editing: () => editing && !playing && editLayer === 'world',
+    ask: host.offline ? undefined : (id) => {
+      keepOutAsk = selected ? { id, key: selected } : null;
+      focusAsk();
+    },
+    menu: (at, rows) => {
+      const r = at.getBoundingClientRect();
+      ctxMenu.show(rows, r.right, r.bottom + 4, { place: 'card', label: t('keepout.title') });
+      const m = ctxMenu.el.getBoundingClientRect();
+      ctxMenu.el.style.left = `${Math.max(8, Math.round(r.right - m.width))}px`;
+    },
+  });
+  // "✦ Describe with text" was pressed for this layout while this object was picked: the ask is about its keep-out areas
+  // (the chips "crystal ×12" "Keep-out areas", `places` + `intent: 'avoid'` in the request) until the pick moves on.
+  let keepOutAsk: { id: string; key: string } | null = null;
+  const keepOutAskNow = () => {
+    if (keepOutAsk && (editLayer !== 'world' || selected !== keepOutAsk.key || !codePlaces.layoutOf(keepOutAsk.key))) keepOutAsk = null;
+    return keepOutAsk;
+  };
+  /** The card's rule block for `k`: the layout's (code-place-wire.ts), then its keep-out areas / "Inside a keep-out area". */
+  function ruleCard(k: string) {
+    const c = codePlaces.card(k);
+    if (!c) return null;
+    if (!c.numbers) {
+      const b = keepOut.block(k);
+      if (b) c.els.push(b);
+    } else {
+      const line = keepOut.pinnedLine(k);
+      if (line && c.els[0]) c.els[0].append(line);
+    }
+    return c;
+  }
   /** One change of a code layout's `places` entry: one undo step, laid out in the game (studio-code-base's setPlace). */
   function setPlace(id: string, from: PlacementPlace | null, to: PlacementPlace | null) {
     worldModel.places.set(id, to);
@@ -1380,7 +1431,7 @@ export function start(host: StudioHost) {
       // ✦ Turn into a rule (studio-code-torule): the words were for the hand's shape on screen — the AI swaps a rule in.
       const toRule = toRuleNow(keys);
       if (toRule) toRuleAsk = null;
-      return askAi({ kind: 'ask', text, objects: requestObjects(keys), ...(files.length ? { assets: files } : {}), ...requestMotions(toRule === 'motion'), ...(toRule ? { intent: 'to-code' as const } : {}) });
+      return askAi({ kind: 'ask', text, objects: requestObjects(keys), ...(files.length ? { assets: files } : {}), ...requestMotions(toRule === 'motion'), ...(toRule ? { intent: 'to-code' as const } : requestPlaces()) });
     },
     answering: () => answering(),
     // The field's one placeholder (studio-words-plan, 2026-10-23): "Ask Claude…" whether or not Claude is there — the
@@ -1392,6 +1443,11 @@ export function start(host: StudioHost) {
     assets: () => (libraryShown() ? filePick : []),
     // …or, in the Scene, the motion "Ask AI" was pressed on (the chip reads "crate · Hop", motion-ask.ts).
     motions: () => (libraryShown() ? libraryMotions.picked() : motionAsk.now() ? [motionAsk.now()!.name] : []),
+    // "✦ Describe with text" under keep-out areas (studio-code-keepout): the chips "crystal ×12" "Keep-out areas".
+    askTopic: () => {
+      const at = libraryShown() ? null : keepOutAskNow();
+      return at ? { chip: keepOut.chip(at.id), tag: t('keepout.chip'), ph: t('keepout.askPh') } : null;
+    },
     showInLibrary: libraryTool ? () => showInLibrary() : undefined,
     unhold: (keys) => send({ type: 'studio:placement/unhold', keys }),
     // The card's ⋯ (studio-card-doors): the same menu plate as right-click, opened under the button, its right edge on
@@ -1407,7 +1463,7 @@ export function start(host: StudioHost) {
     // studio-motion-delete (2026-10-24): the Motion row's right-click / ⋯ menu — the ⋯'s plate like cardMenu's (under it,
     // right edges together), a right-click's at the pointer; it holds Delete back (that key deletes the OBJECT).
     // A code layout's object (studio-code-knobs): the card's Layout and knobs, or "Manually overridden"; the list's tag.
-    layout: (k) => (editLayer === 'world' ? codePlaces.card(k) : null),
+    layout: (k) => (editLayer === 'world' ? ruleCard(k) : null),
     ruleTag: (k) => (editLayer === 'world' ? codePlaces.listTag(k) : null),
     ruleRows: (k) => (editLayer === 'world' ? codePlaces.rows(k) : []),
     // ✦ Turn into a rule (studio-code-torule): several hand-placed objects picked → the draft in the chat box.
@@ -1578,6 +1634,16 @@ export function start(host: StudioHost) {
     menuOpen: () => ctxMenu.isOpen() && app.dataset.menu === 'motion',
     frame: () => iframe,
   });
+
+  /**
+   * "✦ Describe with text" under a layout's keep-out areas (studio-code-keepout): the layout and its areas, and what the
+   * words are for — so "not within 5 m of the player" reaches the AI as a keep-out condition of THAT layout.
+   */
+  function requestPlaces(): { places?: RequestPlace[]; intent?: 'avoid' } {
+    const at = libraryShown() ? null : keepOutAskNow();
+    const p = at ? keepOut.request(at.id) : null;
+    return p ? { places: [p], intent: 'avoid' } : {};
+  }
 
   /**
    * The motions picked in the Library, for an ask (studio-motion-triggers): each with its length and what it is on now
@@ -3478,6 +3544,22 @@ export function start(host: StudioHost) {
         codePlaces.knob(m);
         if (m.end) keepSoon();
         break;
+      // Keep-out areas in the game (studio-code-keepout; bridge/keep-out.ts): a box drawn / dragged, a ◇ turned, the
+      // objects put by hand that stand in an area, "+ Draw a box" stopped there.
+      case 'studio:place/avoid-box':
+        keepOut.box(m);
+        if (m.end) keepSoon();
+        break;
+      case 'studio:place/avoid-knob':
+        keepOut.knob(m);
+        if (m.end) keepSoon();
+        break;
+      case 'studio:place/avoid-inside':
+        keepOut.inside(m);
+        break;
+      case 'studio:place/avoid-draw':
+        keepOut.stopDraw();
+        break;
       case 'studio:placement/items': {
         // UI stage 1: the UI layer's list feeds its own model; nothing of the world's below (the AI's marks, copies,
         // the frame swap) is about it. Its saved places go to the UI layer by name, whichever layer is on.
@@ -4555,6 +4637,8 @@ export function start(host: StudioHost) {
       keySheet.hide();
       return true;
     }
+    // "+ Draw a box" on (studio-code-keepout): Esc stops it first (the pick stays).
+    if (!mod && k === 'escape' && keepOut.stopDraw()) return true;
     // The timeline's keys (K sets a key; Delete / ⌘C / ⌘V / Space / ← → when the plate was the last thing pressed).
     if (timeline.onKey(e)) return true;
     if (mod && k === 'z') {
@@ -5258,7 +5342,12 @@ export function start(host: StudioHost) {
     },
     place: (id) => worldModel.places.get(id),
     placeIds: () => worldModel.places.ids(),
-    setPlace: (id, e) => setPlace(id, worldModel.places.get(id), e),
+    setPlace: (id, e) => {
+      const before = worldModel.places.get(id);
+      setPlace(id, before, e);
+      // A keep-out area the AI added or changed (place.avoid): its row glows violet on the card (studio-code-keepout).
+      keepOut.aiChanged(id, before, worldModel.places.get(id));
+    },
     // ✦ Turn into a rule (studio-code-torule): the rule's shape from the game page, and what the swap replaced.
     ruleSamples: (code, knobs, len, per) => ruleSamples(code, knobs, len, per),
     swapped: (x) => {

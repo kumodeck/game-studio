@@ -1,4 +1,4 @@
-/* KUMODeck Game Studio 0.1.52 — MIT License — built file, edit src/ instead */
+/* KUMODeck Game Studio 0.1.53 — MIT License — built file, edit src/ instead */
 (() => {
 const __defs = [];
 const __cache = [];
@@ -1078,6 +1078,13 @@ const MSG_PREFIX = 'studio:';
      
                                                                                                                                                            
      
+                                                                                                                    
+                                                                                                                     
+                                                                                                                         
+                                                                                                                    
+     
+                                                                                                    
+     
                                                                                                                         
                                                                                                                     
                                             
@@ -1345,6 +1352,18 @@ const MSG_PREFIX = 'studio:';
                                                                                        
      
                                                                                                  
+     
+                                                                                                                     
+                                                                                                                       
+                                                                                                                       
+     
+                                                                                                                                        
+                                                                                                                             
+                                                                                                        
+                                                                                                                         
+                                                                     
+                                                                                                    
+                                                              
                                                                                                                                                                                                   
                                                                                                    
      
@@ -1531,13 +1550,22 @@ function isStudioMessage(x         )                     {
      
                             
      
+                                                                                                                     
                                                                                                                          
-                                                                                                                      
-                                                                                                                       
-                                                                                                                         
-                                                                                                                   
+                                                                                                                     
+                             
      
-                     
+                          
+     
+                                                                                                                             
+                                                                                                                         
+                                                                                                                      
+                                                                                                                        
+                                                                                                                       
+                                                                                                                 
+                            
+     
+                         
      
                                                                                                                     
                                                                                                  
@@ -1564,6 +1592,18 @@ function isStudioMessage(x         )                     {
                    
                 
                        
+ 
+
+/** What an ask is for, when a button set it (StudioRequestInput.intent). */
+                                                
+/** A rule layout named in an ask (StudioRequestInput.places): its id and name, its knobs now, its keep-out areas. */
+                               
+             
+               
+                                      
+            
+                                 
+                                                                                                                                                                  
  
 
 /** A Library motion named in an ask (StudioRequestInput.motions). */
@@ -16041,6 +16081,37 @@ const en = {
   'hands.place.avoidOff': '{Ai} turned off “{what}” in {name}’s keep-out areas',
   'hands.place.avoidRemove': '{Ai} took “{what}” off {name}’s keep-out areas',
   'place.boxName': 'Box {n}',
+  // Keep-out areas on a rule layout's card (studio-code-keepout, 2026-10-24; the plan's step 3, Gemini's wording of that
+  // day: "+ Draw a box", "✦ Describe with text"). "Keep-out areas" kept over Gemini's "No-spawn areas": the hands lines
+  // above, CONTRACT.md and SKILL.md say it already, and "spawn" reads as enemies appearing while playing.
+  'keepout.title': 'Keep-out areas',
+  'keepout.titleTip': 'Where this layout puts nothing. Only this layout; things you placed by hand stay where they are',
+  'keepout.draw': '+ Draw a box',
+  'keepout.drawTip': 'Drag on the ground to draw a box (Esc to stop)',
+  'keepout.drawHint': 'Drag on the ground to draw a box · Esc to stop',
+  'keepout.drawingRow': '(drawing)',
+  'keepout.describe': '✦ Describe with text',
+  'keepout.describeTip': 'Say it in your words (“not on the road”, “not within 5 m of the player”): {ai} turns it into a rule',
+  'keepout.hand': 'Hand',
+  'keepout.handTip': 'Drawn by hand: drag its corners on the ground to resize it, its middle to move it',
+  'keepout.rule': 'Rule',
+  'keepout.ruleTip': 'A rule in your game decides where this is. Its number can be changed here',
+  'keepout.offTip': 'Turn off (it stays in the list)',
+  'keepout.onTip': 'Turn on',
+  'keepout.remove': 'Remove',
+  'keepout.more': 'More',
+  'keepout.alsoFor': 'Also for {name}',
+  'keepout.alsoDone': 'Added “{what}” to {name}’s keep-out areas too',
+  'keepout.alsoHas': '{name} has “{what}” already',
+  'keepout.added': 'Added “{what}” to {name}’s keep-out areas',
+  'keepout.addedOut': 'Added “{what}” to {name}’s keep-out areas ({n:1 1 moved out|# moved out})',
+  'keepout.skipped': '{n} of {all} {n:has|have} no place to go',
+  'keepout.inside': 'Inside a keep-out area',
+  'keepout.insideTip': 'Keep-out areas don’t move what you placed by hand: it stays here',
+  'keepout.missing': '(rule not found)',
+  'keepout.full': 'Up to {n} keep-out areas',
+  'keepout.chip': 'Keep-out areas',
+  'keepout.askPh': 'e.g. not on the road · not within 5 m of the player',
   'hands.unit.m': ' m',
   'hands.unit.px': ' px',
   'hands.unit.s': ' s',
@@ -16892,7 +16963,35 @@ const ja                               = {
   'hands.place.avoidSet': '{ai}が「{name}」の置かない所「{what}」を変えました',
   'hands.place.avoidOff': '{ai}が「{name}」の置かない所「{what}」をオフにしました',
   'hands.place.avoidRemove': '{ai}が「{name}」の置かない所から「{what}」を外しました',
-  'place.boxName': '箱 {n}',
+  'place.boxName': '四角 {n}',
+  'keepout.title': '置かない所',
+  'keepout.titleTip': 'この並べ方の物を置かない所。ほかの並べ方と、手で置いた物には効きません',
+  'keepout.draw': '＋ 四角を描く',
+  'keepout.drawTip': '地面をドラッグして四角を描く（Esc でやめる）',
+  'keepout.drawHint': '地面をドラッグして四角を描く · Esc でやめる',
+  'keepout.drawingRow': '（描いています）',
+  'keepout.describe': '✦ 言葉で指定',
+  'keepout.describeTip': '「道の上には置かない」「プレイヤーから 5 m 以内には置かない」のように書くと、{ai} がルールにします',
+  'keepout.hand': '手',
+  'keepout.handTip': '手で描いた四角: 地面で角を引くと大きさ、真ん中を引くと場所が変わります',
+  'keepout.rule': 'ルール',
+  'keepout.ruleTip': 'ゲームのルールが場所を決めています。数字はここで変えられます',
+  'keepout.offTip': 'オフにする（一覧には残る）',
+  'keepout.onTip': 'オンにする',
+  'keepout.remove': '外す',
+  'keepout.more': 'その他',
+  'keepout.alsoFor': 'ほかの並べ方にも: {name}',
+  'keepout.alsoDone': '{name}の置かない所にも「{what}」を足しました',
+  'keepout.alsoHas': '{name}にはもう「{what}」があります',
+  'keepout.added': '{name}の置かない所に「{what}」を足しました',
+  'keepout.addedOut': '{name}の置かない所に「{what}」を足しました（{n} 個が外へ）',
+  'keepout.skipped': '{all} 個のうち {n} 個は置ける所がありません',
+  'keepout.inside': '置かない所の中です',
+  'keepout.insideTip': '手で置いた物には置かない所は効きません（このまま置かれます）',
+  'keepout.missing': '（ルールが見つかりません）',
+  'keepout.full': '置かない所は {n} 個まで',
+  'keepout.chip': '置かない所',
+  'keepout.askPh': '例: 道の上には置かない · プレイヤーから 5 m 以内には置かない',
   'hands.unit.m': ' m',
   'hands.unit.px': ' px',
   'hands.unit.s': ' 秒',
@@ -17297,12 +17396,37 @@ function normalizeRequestInput(input) {
     }
     if (ms.length) out.motions = ms;
   }
+  // "ask" only: the rule layouts the words are about (studio-code-keepout, 2026-10-24: the card's "✦ Describe with
+  // text" under Keep-out areas), each with its keep-out areas as they are now. A hint like `motions`: a bad entry is
+  // dropped, never an error.
+  if (r.places !== undefined && kind === 'ask' && Array.isArray(r.places)) {
+    const ps = [];
+    const nums = (o) => (o && typeof o === 'object' ? Object.fromEntries(Object.entries(o).filter(([k, v]) => /^[A-Za-z][A-Za-z0-9_]{0,23}$/.test(k) && isFin(v)).slice(0, 3).map(([k, v]) => [k, roundTo(v, 10000)])) : {});
+    for (const p of r.places.slice(0, 8)) {
+      if (!p || typeof p.id !== 'string' || !/^[a-z0-9][a-z0-9-]{0,39}$/.test(p.id)) continue;
+      const e = { id: p.id, name: oneLine(typeof p.name === 'string' ? p.name : p.id, 40) || p.id, n: Number.isInteger(p.n) && p.n >= 0 ? Math.min(p.n, 1000) : 0 };
+      const k = nums(p.knobs);
+      if (Object.keys(k).length) e.knobs = k;
+      e.avoid = (Array.isArray(p.avoid) ? p.avoid : []).slice(0, 16).flatMap((a) => {
+        if (!a || typeof a !== 'object') return [];
+        const off = a.off === true ? { off: true } : {};
+        if (a.box && Array.isArray(a.box.p) && Array.isArray(a.box.size) && [...a.box.p, ...a.box.size].every(isFin)) {
+          return [{ box: { p: a.box.p.slice(0, 3).map((v) => roundTo(v, 1000)), size: a.box.size.slice(0, 3).map((v) => roundTo(v, 1000)) }, ...(typeof a.name === 'string' && a.name.trim() ? { name: oneLine(a.name, 40) } : {}), ...off }];
+        }
+        if (typeof a.code !== 'string' || !/^[a-z0-9][a-z0-9-]{0,39}$/.test(a.code)) return [];
+        const ak = nums(a.knobs);
+        return [{ code: a.code, ...(typeof a.name === 'string' && a.name.trim() ? { name: oneLine(a.name, 80) } : {}), ...(Object.keys(ak).length ? { knobs: ak } : {}), ...off }];
+      });
+      ps.push(e);
+    }
+    if (ps.length) out.places = ps;
+  }
+  // "ask" only: what a button said the words are for ('avoid': a keep-out area for `places`; 'to-code': the plan's step 4).
+  if (kind === 'ask' && (r.intent === 'avoid' || r.intent === 'to-code')) out.intent = r.intent;
   // "name" is always about objects. "ask" with no objects is about the whole
   // game (the ask strip with nothing picked: "make it night", "add enemies";
   // design-pass reviews 2026-10-16); it still needs words.
   if (kind === 'name' && !(out.objects && out.objects.length)) errors.push('a "name" request names at least one object');
-  // "ask" only (studio-code-torule): the words came from ✦ Turn into a rule. Anything else is left out, never an error.
-  if (kind === 'ask' && r.intent === 'to-code') out.intent = 'to-code';
   if (r.lang === 'en' || r.lang === 'ja') out.lang = r.lang;
   if (Number.isInteger(r.unsaved) && r.unsaved > 0) out.unsaved = Math.min(r.unsaved, 100000);
   if (r.dim === '2d' || r.dim === '3d') out.dim = r.dim;
@@ -18559,6 +18683,12 @@ const { toneThumb } = __require(17);
                       
                                                                                                                 
                        
+     
+                                                                                                                        
+                                                                                                                  
+                              
+     
+                                                                
                                                                                                                 
                          
                                                                   
@@ -18874,7 +19004,9 @@ function createPlacementPanel(d                    )                 {
   // says what the words will be about before a word is typed.
   const askChip = h('span', { class: 'ask-chip', hidden: true });
   hoverLights(askChip, () => d.selectedKeys());
-  const askEl = h('form', { class: 'ask-box', dataset: { part: 'ask' } }, h('span', { class: 'ask-spark', 'aria-hidden': 'true' }, icon('spark')), askChip, askInput,
+  // The second chip of a button's topic ("Keep-out areas"): violet, what the words will be turned into (a rule).
+  const askTag = h('span', { class: 'ask-chip topic', hidden: true, dataset: { part: 'ask-topic' } });
+  const askEl = h('form', { class: 'ask-box', dataset: { part: 'ask' } }, h('span', { class: 'ask-spark', 'aria-hidden': 'true' }, icon('spark')), askChip, askTag, askInput,
     h('kbd', { class: 'ask-kbd', 'aria-hidden': 'true', text: /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent) ? '⌘K' : 'Ctrl K' }), askSend);
   askEl.addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -18943,6 +19075,17 @@ function createPlacementPanel(d                    )                 {
     // Read aloud as one sentence ("Ask your AI about “crate-4”…").
     askInput.setAttribute('aria-label', whole ? ph : pair ? d.t('ask.one', { name: askChip.textContent ?? '' }) : n > 1 ? d.t('ask.many', { n }) : d.t(noObj ? 'ask.oneFile' : 'ask.one', { name: firstName }));
     askEl.classList.toggle('whole', whole);
+    // A button's topic (a layout's keep-out areas): its own two chips and example, over the object's chip.
+    const topic = answer ? null : d.askTopic?.() ?? null;
+    askTag.hidden = !topic;
+    if (topic) {
+      askEl.classList.remove('whole');
+      askChip.hidden = false;
+      askChip.textContent = topic.chip;
+      askTag.textContent = topic.tag;
+      askInput.placeholder = topic.ph;
+      askInput.setAttribute('aria-label', `${topic.chip} · ${topic.tag}`);
+    }
     // A round arrow, as in message apps: grey until there is something to send.
     setButton(askSend, 'send', d.t('ask.send'), false);
     askSend.disabled = !askInput.value.trim();
@@ -22525,6 +22668,11 @@ const { gapText, placeGaps } = __require(52);
                                    
                         
                                    
+     
+                                                                                                               
+                                                                    
+     
+                                
  
 
                                 
@@ -22604,6 +22752,7 @@ function createCodePlaceWire(d                   )                {
   }
 
   function guide(force = false) {
+    d.guided?.(force);
     const keys = [...(d.group().length > 1 ? d.group() : d.selected() ? [d.selected() ] : []), ...hovered];
     const ids = d.editing() ? [...new Set(keys.map((k) => layoutOf(k)?.id).filter((x)              => !!x))] : [];
     const places = ids.length ? d.store().result() ?? {} : {};
@@ -22803,6 +22952,540 @@ function createCodePlaceWire(d                   )                {
 __def(__exports, "createCodePlaceWire", () => createCodePlaceWire);
 };
 __defs[60] = function (__exports) {
+'use strict';
+// keep-out-model.ts
+
+// A rule layout's keep-out areas as rows (studio-code-keepout, 2026-10-24; the plan's step 3, "need 4": "when things are
+// placed procedurally I want to say where they must not go — sometimes as coordinates, sometimes as code").
+// Pure logic, no DOM: the card's list (keep-out-wire.ts) and the game page's painting (bridge/keep-out.ts) both read the
+// rows from here, so the list and the ground always show the same areas (test/keep-out-model.test.ts).
+//
+// Two kinds in ONE list, told apart by their edge only (the plan's decision 12):
+//   box   drawn by hand on the ground — coordinates, kept in the file (`places[id].avoid[i].box`): orange.
+//   code  a codeAvoid() condition in the game's code ("On the road", "From the player [5 m] within") — the rule decides
+//         where; the file keeps only whether it is off and the knobs the person turned: violet, dashed.
+// A condition the layout names in its own code (codePlace `avoid: ['road']`) is on without any file entry; switching it
+// off writes `{ code, off: true }`, switching it back on with nothing else changed takes the entry out again (the file
+// keeps only what the person changed — the same rule as ai-hands.ts place.avoid).
+//
+// Where it acts (chosen on 10/24, answer (a) of the plan's question 2): only the layout it is listed under — a box drawn
+// for the crystals does not move the coins — and never an object put by hand. "Also for another layout" copies it.
+                                                                                          
+
+                                                  
+                      
+                                                                                                               
+                                                                                      
+                                                                                                                            
+                                                                                                                
+
+/** At most this many areas in one layout's list (studio-files.mjs LIMITS.maxAvoid). */
+const MAX_AVOID = 16;
+
+const list = (e                                   )                   => (Array.isArray(e?.avoid) ? e .avoid  : []);
+const isBox = (a                )                                             => !!a && 'box' in a && !!a.box;
+
+/**
+ * The rows of one layout: the boxes first (in the order drawn), then the conditions — the code's own (in its order),
+ * then the ones added to the file (the AI's `--do place.avoid --code`). WHY boxes first: what the hand drew is what the
+ * person looks for right after drawing it (the plan's picture n4-box has "Box 1" on top).
+ */
+function rowsOf(codeIds                   , e                                   )             {
+  const all = list(e);
+  const rows             = [];
+  all.forEach((a, i) => {
+    if (isBox(a)) rows.push({ kind: 'box', i, n: rows.length + 1, name: a.name ?? null, box: a.box, off: !!a.off });
+  });
+  const fileCode = new Map                ();
+  all.forEach((a, i) => {
+    if (!isBox(a) && typeof (a                      ).code === 'string') fileCode.set((a                    ).code, i);
+  });
+  const codeRow = (code        , inCode         )           => {
+    const i = fileCode.get(code) ?? -1;
+    const a = i >= 0 ? (all[i]                                                                   ) : null;
+    return { kind: 'code', code, i, inCode, off: !!a?.off, ...(a?.knobs ? { knobs: a.knobs } : {}) };
+  };
+  for (const c of codeIds) rows.push(codeRow(c, true));
+  for (const c of fileCode.keys()) if (!codeIds.includes(c)) rows.push(codeRow(c, false));
+  return rows;
+}
+
+/** An entry with `avoid` replaced (none left: no `avoid`). */
+function withAvoid(e                                   , avoid                  )                 {
+  const o                 = { ...(e ?? {}) };
+  if (avoid.length) o.avoid = avoid;
+  else delete o.avoid;
+  return o;
+}
+
+/**
+ * A code condition's file entry after a change: one the code names, on, with no knob turned, is no entry at all; one the
+ * file added stays `{ code }` (it is what makes it act).
+ */
+function codeEntry(code        , inCode         , off         , knobs                                       )                        {
+  if (inCode && !off && !knobs) return null;
+  return { code, ...(knobs ? { knobs } : {}), ...(off ? { off: true          } : {}) };
+}
+
+/** Put a code row's new entry in its place (or at the end for a first entry; out when it is no entry any more). */
+function putCode(e                                   , row                                     , entry                       )                 {
+  const all = list(e).slice();
+  if (row.i >= 0) {
+    if (entry) all[row.i] = entry;
+    else all.splice(row.i, 1);
+  } else if (entry) all.push(entry);
+  return withAvoid(e, all);
+}
+
+/** The switch: on (true) / off. One change of the entry. */
+function switchRow(e                                   , row          , on         )                 {
+  if (row.kind === 'box') {
+    const all = list(e).slice();
+    const a = all[row.i];
+    if (!a || !isBox(a)) return { ...(e ?? {}) };
+    const { off: _off, ...rest } = a;
+    all[row.i] = on ? rest : { ...rest, off: true };
+    return withAvoid(e, all);
+  }
+  return putCode(e, row, codeEntry(row.code, row.inCode, !on, row.knobs));
+}
+
+/**
+ * × : the row out of the list. Only a row the file holds (a box, a condition added to the file); the code's own
+ * conditions have no × — they are switched off instead (taking them out of the code is the AI's job, on request).
+ */
+function canRemove(row          )          {
+  return row.kind === 'box' || !row.inCode;
+}
+function removeRow(e                                   , row          )                 {
+  if (!canRemove(row) || row.i < 0) return { ...(e ?? {}) };
+  const all = list(e).slice();
+  all.splice(row.i, 1);
+  return withAvoid(e, all);
+}
+
+/**
+ * A condition's knob turned (the card's number, the ◇ on the ground): `{ v, was }` with the code's number as `was`; back on
+ * the code's number = no knob (the file keeps only what differs).
+ */
+function knobRow(e                                   , row          , name        , v        , code                          )                 {
+  if (row.kind !== 'code') return { ...(e ?? {}) };
+  const r = (x        ) => {
+    const y = Math.round(x * 10000) / 10000;
+    return y === 0 ? 0 : y;
+  };
+  const ks                            = { ...(row.knobs ?? {}) };
+  const was = code[name]?.v;
+  if (was !== undefined && r(v) === r(was)) delete ks[name];
+  else ks[name] = { v: r(v), ...(was !== undefined ? { was: r(was) } : {}) };
+  return putCode(e, row, codeEntry(row.code, row.inCode, row.off, Object.keys(ks).length ? ks : undefined));
+}
+
+/** The knob values a condition runs with: the file's v over the code's. */
+function knobsNow(code                          , file                            )                         {
+  return Object.fromEntries(Object.entries(code).map(([n, k]) => [n, file?.[n]?.v ?? k.v]));
+}
+
+/** A box drawn: at the end of the list, with its name. */
+function addBox(e                                   , box     , name        )                 {
+  return withAvoid(e, [...list(e), { box: { p: box.p.slice(), size: box.size.slice() }, ...(name ? { name } : {}) }]);
+}
+
+/** Box `i` moved or resized (its name and off stay). */
+function setBox(e                                   , i        , box     )                 {
+  const all = list(e).slice();
+  const a = all[i];
+  if (!a || !isBox(a)) return { ...(e ?? {}) };
+  all[i] = { ...a, box: { p: box.p.slice(), size: box.size.slice() } };
+  return withAvoid(e, all);
+}
+
+/** The first "Box n" no box of this layout is called yet (n from 1): a box taken out leaves its number free. */
+function nextBoxName(e                                   , nameOf                       )         {
+  const used = new Set(list(e).filter(isBox).map((a) => a.name));
+  for (let n = 1; n <= MAX_AVOID + 1; n++) if (!used.has(nameOf(n))) return nameOf(n);
+  return nameOf(MAX_AVOID + 1);
+}
+
+/**
+ * "Also for <another layout>" (the row's ⋯; answer (a) of 10/24: an area acts on its own layout, and this is how the
+ * same area reaches a second one). A box is copied as it is (its name too); a condition is added with its knobs and
+ * off as they are here. null = nothing to add (the other layout has it already, or its list is full).
+ */
+function copyRowTo(target                                   , targetCodeIds                   , row          )                        {
+  const all = list(target);
+  if (all.length >= MAX_AVOID) return null;
+  if (row.kind === 'box') {
+    const same = all.some((a) => isBox(a) && JSON.stringify(a.box) === JSON.stringify(row.box));
+    return same ? null : withAvoid(target, [...all, { box: { p: row.box.p.slice(), size: row.box.size.slice() }, ...(row.name ? { name: row.name } : {}), ...(row.off ? { off: true          } : {}) }]);
+  }
+  const there = all.find((a) => !isBox(a) && (a                    ).code === row.code)                              ;
+  if (there ? !there.off : targetCodeIds.includes(row.code) && !row.knobs && !row.off) return null;
+  const entry = codeEntry(row.code, targetCodeIds.includes(row.code), row.off, row.knobs);
+  if (!entry) return null;
+  const rest = all.filter((a) => isBox(a) || (a                    ).code !== row.code);
+  return withAvoid(target, [...rest, entry]);
+}
+
+/**
+ * Rows the AI changed (a hands job's place.avoid): the rows of `after` that are new or differ from `before` — the card
+ * lights them violet for a moment ("the row that arrived glows", the plan's step 3, item 4). Keys as rowKey.
+ */
+function changedRows(codeIds                   , before                                   , after                                   )           {
+  const was = new Map(rowsOf(codeIds, before).map((r) => [rowKey(r), JSON.stringify(r)]));
+  return rowsOf(codeIds, after).filter((r) => was.get(rowKey(r)) !== JSON.stringify(r)).map(rowKey);
+}
+/** A row's lasting name: a condition by its code id, a box by its name (or its place). */
+const rowKey = (r          )         => (r.kind === 'code' ? `code:${r.code}` : `box:${r.name ?? r.i}`);
+
+/** Is ground point `q` (the layout's space) inside box `b`? The loader's own rule (studio-placement.js inBox). */
+function inBox(q          , b     , n       )          {
+  if (!b || !Array.isArray(b.p) || !Array.isArray(b.size) || !Array.isArray(q)) return false;
+  if (n === 2) return Math.abs(q[0]  - b.p[0] ) <= b.size[0]  / 2 && Math.abs(q[1]  - b.p[1] ) <= b.size[1]  / 2;
+  return Math.abs(q[0]  - b.p[0] ) <= b.size[0]  / 2 && q[1]  >= b.p[1]  - 1e-9 && q[1]  <= b.p[1]  + b.size[1]  && Math.abs(q[2]  - b.p[2] ) <= b.size[2]  / 2;
+}
+
+__def(__exports, "MAX_AVOID", () => MAX_AVOID);
+__def(__exports, "rowsOf", () => rowsOf);
+__def(__exports, "switchRow", () => switchRow);
+__def(__exports, "canRemove", () => canRemove);
+__def(__exports, "removeRow", () => removeRow);
+__def(__exports, "knobRow", () => knobRow);
+__def(__exports, "knobsNow", () => knobsNow);
+__def(__exports, "addBox", () => addBox);
+__def(__exports, "setBox", () => setBox);
+__def(__exports, "nextBoxName", () => nextBoxName);
+__def(__exports, "copyRowTo", () => copyRowTo);
+__def(__exports, "changedRows", () => changedRows);
+__def(__exports, "rowKey", () => rowKey);
+__def(__exports, "inBox", () => inBox);
+};
+__defs[61] = function (__exports) {
+'use strict';
+// keep-out-wire.ts
+
+// Keep-out areas on the card (studio-code-keepout, 2026-10-24; the plan's step 3). Need 4 of 10/24: "when things are
+// placed procedurally I want to mark NG areas — sometimes as coordinates, sometimes expressed as code". Under a rule
+// layout's block ("Layout  Scatter · 12  [Rule]"):
+//
+//   Keep-out areas
+//   [●] ▨ Box 1                       Hand   ⋯ ×      a box drawn on the ground (orange: the hand's)
+//   [●] ▨ On the road                 Rule   ⋯        the layout's own codeAvoid() (violet dashed: a rule's)
+//   [●] ▨ From the player [5 m] within Rule  ⋯ ×      a condition the AI added; its number is a knob
+//   1 of 12 has no place to go
+//   [+ Draw a box]  [✦ Describe with text]
+//
+// - the switch: off / on (a code's own condition off = `{ code, off: true }` in the file); × takes a row the file holds out
+//   (the code's own conditions have none: they are switched off — keep-out-model.ts canRemove says why);
+// - ⋯ "Also for <layout>": answer (a) of 10/24 — an area acts on its own layout only — so reaching a second
+//   layout is said, never implied;
+// - + Draw a box: the game page takes the next drag on the ground (bridge/keep-out.ts): the objects step out of the box
+//   while it is drawn, and its end is one ⌘Z, one Save count ("Added “Box 1” to crystal's keep-out areas (2 moved out)");
+// - ✦ Describe with text: the ask field gets the chips "crystal ×12" "Keep-out areas"; the request carries the layout
+//   and its areas (`places`, `intent: 'avoid'`); the AI writes a codeAvoid() and adds it with `--do place.avoid` — the row
+//   that arrives glows violet (main.ts calls aiChanged after a hands job's change).
+// Every change is one ⌘Z and one Save count per layout (the plan's decision 16), like the layout's knobs (code-place-wire.ts).
+// The words are "rule" for code (chosen on 10/24): the card never says "code".
+                                                                                                                
+const { h } = __require(16);
+const { icon } = __require(21);
+const { knobEl } = __require(25);
+                                                   
+const { MAX_AVOID, addBox, canRemove, changedRows, copyRowTo, knobRow, knobsNow, nextBoxName, removeRow, rowKey, rowsOf, setBox, switchRow } = __require(60);
+
+                                                                         
+                                   
+
+                                  
+       
+                                                                                   
+                          
+                            
+                                                              
+                      
+                               
+                                                                                                   
+                                                   
+                                                                                                             
+                              
+                                                                                                          
+                               
+                                                          
+                           
+                            
+                                             
+                     
+                                                                                                                  
+                         
+                                       
+                                                                                       
+ 
+
+                              
+                                                                                                              
+                                         
+                                                                                                                      
+                                              
+                                                                                         
+                              
+                                                                                                             
+                                                                                                                     
+                                                                                          
+                                                                                     
+                                                                                               
+                                                  
+                                                      
+                           
+                                                                                  
+                      
+                                                                                                                  
+                                                           
+                                                                       
+                                           
+                                                              
+                           
+ 
+
+/** How long a row the AI added stays lit (the same 2.4 s as the AI's light round the ask field). */
+const LIT_MS = 2400;
+
+function createKeepOutWire(d                 )              {
+  const t = d.t;
+  let drawingId                = null;
+  // A live change (a knob turned, a box being drawn or dragged): the entry before it, for the one undo step at its end.
+  let liveFrom                                      = null;
+  // The box being drawn now (its row says "drawing"), its name fixed when the drag began.
+  let drawingBox                                      = null;
+  let sentSig = '';
+  const inside = new Map                  ();
+  const lit = new Map                ();
+
+  const layoutOf = (key        ) => d.list().find((p) => p.keys.includes(key)) ?? null;
+  const info = (code        ) => d.avoids().find((a) => a.code === code) ?? null;
+  const entry = (id        )        => d.store().get(id);
+  const unit = (u        ) => (u ? t(`hands.unit.${u}`) : '');
+  const boxName = (n        ) => t('place.boxName', { n });
+
+  function setLive(id        , next       , card         ) {
+    if (!liveFrom || liveFrom.id !== id) liveFrom = { id, entry: d.store().get(id) };
+    d.store().set(id, next);
+    d.changed(card);
+  }
+  function endLive(id        , next       ) {
+    const from = liveFrom && liveFrom.id === id ? liveFrom.entry : d.store().get(id);
+    liveFrom = null;
+    d.store().set(id, from);
+    d.commit(id, from, next);
+  }
+  /** The entry a live change starts from (before the drag), so a drag's steps replace each other, never add up. */
+  const base = (id        )        => (liveFrom && liveFrom.id === id ? liveFrom.entry : entry(id));
+
+  /** The row's words: "Box 1", "On the road", or a condition with its knobs between its two halves. */
+  function rowWords(p               , row          )                       {
+    if (row.kind === 'box') {
+      const name = row.name ?? boxName(row.n);
+      return [drawingBox && drawingBox.id === p.id && drawingBox.name === name ? `${name} ${t('keepout.drawingRow')}` : name];
+    }
+    const c = info(row.code);
+    if (!c) return [`${row.code} `, h('span', { class: 'muted', text: t('keepout.missing') })];
+    const now = knobsNow(c.knobs, row.knobs);
+    const knobs = Object.entries(c.knobs).map(([name, k]) => knobEl({
+      label: k.label, unit: unit(k.unit), v: now[name] , min: k.min, max: k.max, step: k.step, tip: t('rule.knobTip'), part: `ko-knob-${row.code}-${name}`,
+      set: (v, end) => {
+        const r = rowsOf(p.avoid, base(p.id)).find((x) => x.kind === 'code' && x.code === row.code) ?? row;
+        const next = knobRow(base(p.id), r, name, v, c.knobs);
+        if (!end) {
+          setLive(p.id, next, false);
+          d.layout([p.id]);
+        } else endLive(p.id, next);
+      },
+    }));
+    return [c.name, ...knobs, ...(c.after ? [c.after] : [])];
+  }
+
+  /** The words of a row as one line (a toast, the ⋯ menu): knobs as numbers. */
+  function rowText(row          )         {
+    if (row.kind === 'box') return row.name ?? boxName(row.n);
+    const c = info(row.code);
+    if (!c) return row.code;
+    const now = knobsNow(c.knobs, row.knobs);
+    const ks = Object.entries(c.knobs).map(([n, k]) => `${Math.round(now[n]  * 100) / 100}${unit(k.unit)}`);
+    return [c.name, ...ks, c.after ?? ''].filter(Boolean).join(' ');
+  }
+
+  function rowEl(p               , row          )              {
+    const on = !row.off;
+    const k = rowKey(row);
+    const sw = h('button', { type: 'button', class: 'ko-sw', role: 'switch', 'aria-checked': String(on), title: t(on ? 'keepout.offTip' : 'keepout.onTip'),
+      'aria-label': `${rowText(row)}: ${t(on ? 'keepout.offTip' : 'keepout.onTip')}`, dataset: { part: 'ko-sw' },
+      onclick: () => d.commit(p.id, entry(p.id), switchRow(entry(p.id), row, !on)) }, h('i', {}));
+    const mark = h('span', { class: `ko-mark ${row.kind}`, 'aria-hidden': 'true' });
+    const words = h('span', { class: 'ko-words', title: rowText(row) }, ...rowWords(p, row));
+    const tag = h('span', { class: `ko-tag ${row.kind}`, title: t(row.kind === 'box' ? 'keepout.handTip' : 'keepout.ruleTip'), text: t(row.kind === 'box' ? 'keepout.hand' : 'keepout.rule') });
+    const others = d.list().filter((x) => x.id !== p.id);
+    const more = others.length ? h('button', { type: 'button', class: 'icon-btn ko-more', title: t('keepout.more'), 'aria-label': t('keepout.more'), dataset: { part: 'ko-more' },
+      onclick: (e       ) => d.menu(e.currentTarget               , others.slice(0, 8).map((o) => ({ id: `ko-also-${o.id}`, label: t('keepout.alsoFor', { name: o.name }), run: () => alsoFor(p, row, o) }))) }, icon('more')) : null;
+    const x = canRemove(row) ? h('button', { type: 'button', class: 'icon-btn ko-x', title: t('keepout.remove'), 'aria-label': `${rowText(row)}: ${t('keepout.remove')}`, dataset: { part: 'ko-x' },
+      onclick: () => d.commit(p.id, entry(p.id), removeRow(entry(p.id), row)) }, '×') : h('span', { class: 'ko-x-gap', 'aria-hidden': 'true' });
+    const el = h('div', { class: `ko-row${on ? '' : ' off'}`, dataset: { part: 'ko-row', row: k } }, sw, mark, words, tag, more, x);
+    // The row the AI just added or changed: violet for a moment, picked up where it was if the card is drawn again.
+    const until = lit.get(`${p.id}\n${k}`);
+    if (until && until > Date.now()) {
+      el.classList.add('lit');
+      el.style.animationDelay = `${-(LIT_MS - (until - Date.now()))}ms`;
+    }
+    return el;
+  }
+
+  /** "Also for <layout>": the row copied to another layout's list (one ⌘Z). */
+  function alsoFor(p               , row          , o               ) {
+    const to = copyRowTo(entry(o.id), o.avoid, row);
+    if (!to) return d.told(t('keepout.alsoHas', { what: rowText(row), name: o.name }));
+    d.commit(o.id, entry(o.id), to);
+    d.told(t('keepout.alsoDone', { what: rowText(row), name: o.name }));
+  }
+
+  function block(key        )                     {
+    const p = layoutOf(key);
+    if (!p || entry(p.id)?.hand) return null;
+    const rows = rowsOf(p.avoid, entry(p.id));
+    const full = (entry(p.id)?.avoid?.length ?? 0) >= MAX_AVOID;
+    const drawOn = drawingId === p.id;
+    const draw = h('button', { type: 'button', class: `ko-add${drawOn ? ' on' : ''}`, 'aria-pressed': String(drawOn), disabled: full && !drawOn,
+      title: full ? t('keepout.full', { n: MAX_AVOID }) : t('keepout.drawTip'), dataset: { part: 'ko-draw' },
+      onclick: () => (drawOn ? stopDraw() : startDraw(p.id)) }, t('keepout.draw'));
+    const ask = d.ask ? h('button', { type: 'button', class: 'ko-add ai', title: t('keepout.describeTip'), dataset: { part: 'ko-describe' },
+      onclick: () => d.ask (p.id) }, t('keepout.describe')) : null;
+    const all = p.keys.length + p.skipped.length;
+    const head = h('div', { class: 'ko-head', title: t('keepout.titleTip') }, t('keepout.title'));
+    // None yet: the title and the two buttons on ONE line. WHY: a phone's card grew by the list's height for every rule
+    // layout, and its sheet then covered the very object picked (the step-2 phone run, 10/24); the card stays as short
+    // as it was until an area is wanted.
+    if (!rows.length) {
+      return h('div', { class: 'ko-block one', dataset: { part: 'ko', id: p.id } }, h('div', { class: 'ko-foot' }, head, draw, ask),
+        p.skipped.length ? h('p', { class: 'note-line ko-skipped', dataset: { part: 'ko-skipped' }, text: t('keepout.skipped', { n: p.skipped.length, all }) }) : null,
+        drawOn ? h('p', { class: 'muted ko-hint', text: t('keepout.drawHint') }) : null);
+    }
+    return h('div', { class: 'ko-block', dataset: { part: 'ko', id: p.id } }, head,
+      h('div', { class: 'ko-rows' }, ...rows.map((r) => rowEl(p, r))),
+      p.skipped.length ? h('p', { class: 'note-line ko-skipped', dataset: { part: 'ko-skipped' }, text: t('keepout.skipped', { n: p.skipped.length, all }) }) : null,
+      h('div', { class: 'ko-foot' }, draw, ask),
+      drawOn ? h('p', { class: 'muted ko-hint', text: t('keepout.drawHint') }) : null);
+  }
+
+  function startDraw(id        ) {
+    drawingId = id;
+    sync(true);
+    d.changed(true);
+  }
+  function stopDraw()          {
+    if (!drawingId) return false;
+    drawingId = null;
+    drawingBox = null;
+    sync(true);
+    d.changed(true);
+    return true;
+  }
+
+  function sync(force = false) {
+    const key = d.editing() ? d.selected() : null;
+    const p = key ? layoutOf(key) : null;
+    const id = p && !entry(p.id)?.hand ? p.id : null;
+    if (drawingId && drawingId !== id) (drawingId = null), (drawingBox = null);
+    const m                = { type: 'studio:place/avoid', id, entry: id ? entry(id) : null, draw: !!id && drawingId === id };
+    const sig = JSON.stringify(m);
+    if (sig === sentSig && !force) return;
+    if (!id && !sentSig) return;
+    sentSig = id ? sig : '';
+    d.send(m);
+  }
+
+  return {
+    block,
+    pinnedLine(key) {
+      const p = layoutOf(key);
+      if (!p || !inside.get(p.id)?.includes(key)) return null;
+      return h('p', { class: 'ko-inside', title: t('keepout.insideTip'), dataset: { part: 'ko-inside' } }, h('span', { class: 'ko-mark box', 'aria-hidden': 'true' }), t('keepout.inside'));
+    },
+    sync,
+    box(m) {
+      const p = d.list().find((x) => x.id === m.id);
+      if (!p) return;
+      if (m.cancel) {
+        // Esc in the middle of a drag: the entry as it was, no undo step; the game page put the objects back already.
+        if (liveFrom && liveFrom.id === m.id) d.store().set(m.id, liveFrom.entry);
+        liveFrom = null;
+        drawingBox = null;
+        if (m.i === -1) drawingId = null;
+        sync(true);
+        d.changed(true);
+        return;
+      }
+      const from = base(m.id);
+      const box = { p: m.p, size: m.size };
+      if (m.i === -1 && !drawingBox) drawingBox = { id: m.id, name: nextBoxName(from, boxName) };
+      const next = m.i === -1 ? addBox(from, box, drawingBox .name) : setBox(from, m.i, box);
+      // Live: the card and the Save count only — the game page has laid the layout out itself (its objects step out).
+      if (!m.end) return setLive(m.id, next, true);
+      const name = drawingBox?.name;
+      drawingBox = null;
+      endLive(m.id, next);
+      if (m.i === -1) {
+        drawingId = null;
+        d.told(m.out ? t('keepout.addedOut', { name: p.name, what: name ?? '', n: m.out }) : t('keepout.added', { name: p.name, what: name ?? '' }));
+      }
+      sync(true);
+    },
+    knob(m) {
+      const p = d.list().find((x) => x.id === m.id);
+      const c = info(m.code);
+      if (!p || !c || !(m.knob in c.knobs)) return;
+      const row = rowsOf(p.avoid, base(m.id)).find((x) => x.kind === 'code' && x.code === m.code);
+      if (!row) return;
+      const next = knobRow(base(m.id), row, m.knob, m.v, c.knobs);
+      if (!m.end) {
+        setLive(m.id, next, true);
+        d.layout([m.id]);
+      } else endLive(m.id, next);
+    },
+    inside(m) {
+      const was = JSON.stringify(inside.get(m.id) ?? []);
+      if (m.keys.length) inside.set(m.id, m.keys.slice());
+      else inside.delete(m.id);
+      if (was !== JSON.stringify(m.keys)) d.changed(true);
+    },
+    drawing: () => drawingId,
+    stopDraw,
+    aiChanged(id, before, after) {
+      const p = d.list().find((x) => x.id === id);
+      if (!p) return;
+      const until = Date.now() + LIT_MS;
+      for (const k of changedRows(p.avoid, before, after)) lit.set(`${id}\n${k}`, until);
+    },
+    request(id) {
+      const p = d.list().find((x) => x.id === id);
+      if (!p) return null;
+      const e = entry(id);
+      const knobs = Object.fromEntries(Object.entries(p.knobs).map(([n, k]) => [n, e?.knobs?.[n]?.v ?? k.v]));
+      return {
+        id, name: p.name, n: p.keys.length, ...(Object.keys(knobs).length ? { knobs } : {}),
+        avoid: rowsOf(p.avoid, e).map((r) => {
+          if (r.kind === 'box') return { box: { p: r.box.p.slice(), size: r.box.size.slice() }, ...(r.name ? { name: r.name } : {}), ...(r.off ? { off: true          } : {}) };
+          const c = info(r.code);
+          return { code: r.code, ...(c ? { name: rowText(r) } : {}), ...(c && Object.keys(c.knobs).length ? { knobs: knobsNow(c.knobs, r.knobs) } : {}), ...(r.off ? { off: true          } : {}) };
+        }),
+      };
+    },
+    chip(id) {
+      const p = d.list().find((x) => x.id === id);
+      return p ? `${p.name} ×${p.keys.length + p.skipped.length}` : id;
+    },
+  };
+}
+
+__def(__exports, "createKeepOutWire", () => createKeepOutWire);
+};
+__defs[62] = function (__exports) {
 'use strict';
 // palette.ts
 
@@ -23108,7 +23791,7 @@ __def(__exports, "SUGGEST_MIN", () => SUGGEST_MIN);
 __def(__exports, "suggests", () => suggests);
 __def(__exports, "createPalette", () => createPalette);
 };
-__defs[61] = function (__exports) {
+__defs[63] = function (__exports) {
 'use strict';
 // thumb-fit.ts
 
@@ -23209,7 +23892,7 @@ function fitPicture(src        , out = OUT)                  {
 __def(__exports, "FIT_MARGIN", () => FIT_MARGIN);
 __def(__exports, "fitPicture", () => fitPicture);
 };
-__defs[62] = function (__exports) {
+__defs[64] = function (__exports) {
 'use strict';
 // undo.ts
 
@@ -23394,7 +24077,7 @@ __def(__exports, "poseChange", () => poseChange);
 __def(__exports, "UndoStack", () => UndoStack);
 __def(__exports, "sharedMotion", () => sharedMotion);
 };
-__defs[63] = function (__exports) {
+__defs[65] = function (__exports) {
 'use strict';
 // ../schema/hands.mjs
 
@@ -24287,7 +24970,7 @@ __def(__exports, "applyHandsToFile", () => applyHandsToFile);
 __def(__exports, "handsPlaceKey", () => handsPlaceKey);
 __def(__exports, "handsAvoid", () => handsAvoid);
 };
-__defs[64] = function (__exports) {
+__defs[66] = function (__exports) {
 'use strict';
 // ai-hands.ts
 
@@ -24306,7 +24989,7 @@ __defs[64] = function (__exports) {
 // Pure of the DOM: every effect goes through HandsDeps (main.ts wires them), so test/ai-hands.test.ts runs it with
 // stand-ins.
                                                                                                                                                                                                                               
-const { HANDS_MAKE_WHEN, handsAvoid, handsClip, handsMotion, handsPose, handsSaid, readHandsInput } = __require(63);
+const { HANDS_MAKE_WHEN, handsAvoid, handsClip, handsMotion, handsPose, handsSaid, readHandsInput } = __require(65);
 const { roundKnob, turnKnobs } = __require(33);
 const { CODE_LEN } = __require(34);
 const { MOTION_SAMPLES, gapText, motionGap, placeGaps, timeText } = __require(52);
@@ -24876,7 +25559,7 @@ function createAiHands(d           ) {
 
 __def(__exports, "createAiHands", () => createAiHands);
 };
-__defs[65] = function (__exports) {
+__defs[67] = function (__exports) {
 'use strict';
 // tooltip.ts
 
@@ -24996,7 +25679,7 @@ function installTooltips(root             )                                    {
 
 __def(__exports, "installTooltips", () => installTooltips);
 };
-__defs[66] = function (__exports) {
+__defs[68] = function (__exports) {
 'use strict';
 // shortcuts.ts
 
@@ -25079,7 +25762,7 @@ function createShortcutSheet(d                   ) {
 
 __def(__exports, "createShortcutSheet", () => createShortcutSheet);
 };
-__defs[67] = function (__exports) {
+__defs[69] = function (__exports) {
 'use strict';
 // context-menu.ts
 
@@ -25342,7 +26025,7 @@ function createContextMenu(d                 ) {
 __def(__exports, "placeMenu", () => placeMenu);
 __def(__exports, "createContextMenu", () => createContextMenu);
 };
-__defs[68] = function (__exports) {
+__defs[70] = function (__exports) {
 'use strict';
 // levels.ts
 
@@ -25762,7 +26445,7 @@ __def(__exports, "slugOf", () => slugOf);
 __def(__exports, "levelIdOf", () => levelIdOf);
 __def(__exports, "Levels", () => Levels);
 };
-__defs[69] = function (__exports) {
+__defs[71] = function (__exports) {
 'use strict';
 // check-note.ts
 
@@ -25801,7 +26484,7 @@ function checkNoteId(check                        , items                       
 
 __def(__exports, "checkNoteId", () => checkNoteId);
 };
-__defs[70] = function (__exports) {
+__defs[72] = function (__exports) {
 'use strict';
 // level-switch.ts
 
@@ -25975,7 +26658,7 @@ function createLevelSwitch(d                 ) {
 __def(__exports, "makeRows", () => makeRows);
 __def(__exports, "createLevelSwitch", () => createLevelSwitch);
 };
-__defs[71] = function (__exports) {
+__defs[73] = function (__exports) {
 'use strict';
 // context-rows.ts
 
@@ -26173,7 +26856,7 @@ function contextRows(place          , f          )           {
 
 __def(__exports, "contextRows", () => contextRows);
 };
-__defs[72] = function (__exports) {
+__defs[74] = function (__exports) {
 'use strict';
 // safe-save.ts
 
@@ -26284,7 +26967,7 @@ function createSafeSave(deps                              ) {
 __def(__exports, "bigChanges", () => bigChanges);
 __def(__exports, "createSafeSave", () => createSafeSave);
 };
-__defs[73] = function (__exports) {
+__defs[75] = function (__exports) {
 'use strict';
 // unsaved-guard.ts
 
@@ -26441,7 +27124,7 @@ __def(__exports, "lostBy", () => lostBy);
 __def(__exports, "playAsks", () => playAsks);
 __def(__exports, "createUnsavedGuard", () => createUnsavedGuard);
 };
-__defs[74] = function (__exports) {
+__defs[76] = function (__exports) {
 'use strict';
 // layer-switch.ts
 
@@ -26511,7 +27194,7 @@ function createLayerSwitch(choose                        , togglePeek           
 
 __def(__exports, "createLayerSwitch", () => createLayerSwitch);
 };
-__defs[75] = function (__exports) {
+__defs[77] = function (__exports) {
 'use strict';
 // ui-layer.ts
 
@@ -26600,7 +27283,7 @@ __def(__exports, "uiEntries", () => uiEntries);
 __def(__exports, "withLooks", () => withLooks);
 __def(__exports, "withUi", () => withUi);
 };
-__defs[76] = function (__exports) {
+__defs[78] = function (__exports) {
 'use strict';
 // ui-card.ts
 
@@ -26749,7 +27432,7 @@ function createUiCard(d            ) {
 
 __def(__exports, "createUiCard", () => createUiCard);
 };
-__defs[77] = function (__exports) {
+__defs[79] = function (__exports) {
 'use strict';
 // ui-screens.ts
 
@@ -26812,7 +27495,7 @@ function createUiScreens(d               ) {
 
 __def(__exports, "createUiScreens", () => createUiScreens);
 };
-__defs[78] = function (__exports) {
+__defs[80] = function (__exports) {
 'use strict';
 // ui-style-model.ts
 
@@ -27025,7 +27708,7 @@ __def(__exports, "validLook", () => validLook);
 __def(__exports, "validTheme", () => validTheme);
 __def(__exports, "UiStyleModel", () => UiStyleModel);
 };
-__defs[79] = function (__exports) {
+__defs[81] = function (__exports) {
 'use strict';
 // ui-theme.ts
 
@@ -27115,7 +27798,7 @@ function createUiTheme(d             ) {
 
 __def(__exports, "createUiTheme", () => createUiTheme);
 };
-__defs[80] = function (__exports) {
+__defs[82] = function (__exports) {
 'use strict';
 // ui-wire.ts
 
@@ -27131,11 +27814,11 @@ __defs[80] = function (__exports) {
 //     end of editing) and here only to draw the card — never saved. A new game page starts without them.
                                                                                                                                                     
                                                    
-const { createUiCard } = __require(76);
-const { withLooks } = __require(75);
-const { createUiScreens } = __require(77);
-const { UiStyleModel, validLook, validTheme } = __require(78);
-const { createUiTheme } = __require(79);
+const { createUiCard } = __require(78);
+const { withLooks } = __require(77);
+const { createUiScreens } = __require(79);
+const { UiStyleModel, validLook, validTheme } = __require(80);
+const { createUiTheme } = __require(81);
                                                    
 
                              
@@ -27330,7 +28013,7 @@ function createUiWire(d            ) {
 
 __def(__exports, "createUiWire", () => createUiWire);
 };
-__defs[81] = function (__exports) {
+__defs[83] = function (__exports) {
 'use strict';
 // sheet-fold.ts
 
@@ -27407,7 +28090,7 @@ __def(__exports, "barPress", () => barPress);
 __def(__exports, "FOLD_DRAG", () => FOLD_DRAG);
 __def(__exports, "gripEnd", () => gripEnd);
 };
-__defs[82] = function (__exports) {
+__defs[84] = function (__exports) {
 'use strict';
 // main.ts
 
@@ -27457,28 +28140,29 @@ const { attachWorld, roundLib } = __require(35);
 const { icon, setButton } = __require(21);
 const { receipt } = __require(58);
 const { createCodePlaceWire } = __require(59);
-const { createPalette } = __require(60);
-const { fitPicture } = __require(61);
+const { createKeepOutWire } = __require(61);
+const { createPalette } = __require(62);
+const { fitPicture } = __require(63);
 const { PlacementModel } = __require(36);
-const { UndoStack, poseChange, sharedMotion } = __require(62);
-const { createAiHands } = __require(64);
+const { UndoStack, poseChange, sharedMotion } = __require(64);
+const { createAiHands } = __require(66);
 const { MOTION_SAMPLES, RuleCompare, gapText, motionGap, timeText } = __require(52);
 const { copyKey, groupLayerMoves, groupLayerPossible, sameKind } = __require(48);
 const { displayName, forgetNames, noteItems, useGivenNames, useNameLang } = __require(14);
 const { keyOf, tipText } = __require(49);
-const { installTooltips } = __require(65);
-const { createShortcutSheet } = __require(66);
-const { createContextMenu } = __require(67);
-const { Levels, worldOf } = __require(68);
-const { checkNoteId } = __require(69);
-const { createLevelSwitch, makeRows } = __require(70);
-const { contextRows } = __require(71);
-const { bigChanges, createSafeSave } = __require(72);
-const { createUnsavedGuard, lostBy, playAsks } = __require(73);
-const { createLayerSwitch } = __require(74);
-const { uiAsPlacement, uiEntries, withUi } = __require(75);
-const { createUiWire } = __require(80);
-const { barPress, FOLD_DRAG, gripEnd, readFold, writeFold } = __require(81);
+const { installTooltips } = __require(67);
+const { createShortcutSheet } = __require(68);
+const { createContextMenu } = __require(69);
+const { Levels, worldOf } = __require(70);
+const { checkNoteId } = __require(71);
+const { createLevelSwitch, makeRows } = __require(72);
+const { contextRows } = __require(73);
+const { bigChanges, createSafeSave } = __require(74);
+const { createUnsavedGuard, lostBy, playAsks } = __require(75);
+const { createLayerSwitch } = __require(76);
+const { uiAsPlacement, uiEntries, withUi } = __require(77);
+const { createUiWire } = __require(82);
+const { barPress, FOLD_DRAG, gripEnd, readFold, writeFold } = __require(83);
 
                                                                         
 
@@ -28664,7 +29348,56 @@ function start(host            ) {
     compare: (id) => ruleCompare.place(levelNow(), id, worldModel.places.get(id)?.from),
     compareOn: () => ruleCompare.show,
     setCompareOn: (on) => setCompareShown(on),
+    guided: (force) => keepOut.sync(force),
   });
+  // Keep-out areas under a rule layout's block (studio-code-keepout, 2026-10-24; keep-out-wire.ts): the list, the boxes
+  // drawn on the ground (bridge/keep-out.ts), the conditions' knobs and ◇, "✦ Describe with text".
+  const keepOut = createKeepOutWire({
+    t,
+    list: () => codePlaceList,
+    avoids: () => codeAvoidList,
+    store: () => worldModel.places,
+    send: (m) => send(m),
+    commit: (id, from, to) => setPlace(id, from, to),
+    layout: (ids) => codePlaces.layout(ids),
+    changed: (card) => {
+      if (card) placementPanel.render();
+      renderButtons();
+    },
+    told: (text) => showToast(phone() ? t('hands.undoTouch', { text }) : t('hands.undo', { text, key: keyOf('undo', isMac()) }), 6000),
+    selected: () => (editLayer === 'world' && group.length <= 1 ? selected : null),
+    editing: () => editing && !playing && editLayer === 'world',
+    ask: host.offline ? undefined : (id) => {
+      keepOutAsk = selected ? { id, key: selected } : null;
+      focusAsk();
+    },
+    menu: (at, rows) => {
+      const r = at.getBoundingClientRect();
+      ctxMenu.show(rows, r.right, r.bottom + 4, { place: 'card', label: t('keepout.title') });
+      const m = ctxMenu.el.getBoundingClientRect();
+      ctxMenu.el.style.left = `${Math.max(8, Math.round(r.right - m.width))}px`;
+    },
+  });
+  // "✦ Describe with text" was pressed for this layout while this object was picked: the ask is about its keep-out areas
+  // (the chips "crystal ×12" "Keep-out areas", `places` + `intent: 'avoid'` in the request) until the pick moves on.
+  let keepOutAsk                                     = null;
+  const keepOutAskNow = () => {
+    if (keepOutAsk && (editLayer !== 'world' || selected !== keepOutAsk.key || !codePlaces.layoutOf(keepOutAsk.key))) keepOutAsk = null;
+    return keepOutAsk;
+  };
+  /** The card's rule block for `k`: the layout's (code-place-wire.ts), then its keep-out areas / "Inside a keep-out area". */
+  function ruleCard(k        ) {
+    const c = codePlaces.card(k);
+    if (!c) return null;
+    if (!c.numbers) {
+      const b = keepOut.block(k);
+      if (b) c.els.push(b);
+    } else {
+      const line = keepOut.pinnedLine(k);
+      if (line && c.els[0]) c.els[0].append(line);
+    }
+    return c;
+  }
   /** One change of a code layout's `places` entry: one undo step, laid out in the game (studio-code-base's setPlace). */
   function setPlace(id        , from                       , to                       ) {
     worldModel.places.set(id, to);
@@ -28757,7 +29490,7 @@ function start(host            ) {
       // ✦ Turn into a rule (studio-code-torule): the words were for the hand's shape on screen — the AI swaps a rule in.
       const toRule = toRuleNow(keys);
       if (toRule) toRuleAsk = null;
-      return askAi({ kind: 'ask', text, objects: requestObjects(keys), ...(files.length ? { assets: files } : {}), ...requestMotions(toRule === 'motion'), ...(toRule ? { intent: 'to-code'          } : {}) });
+      return askAi({ kind: 'ask', text, objects: requestObjects(keys), ...(files.length ? { assets: files } : {}), ...requestMotions(toRule === 'motion'), ...(toRule ? { intent: 'to-code'          } : requestPlaces()) });
     },
     answering: () => answering(),
     // The field's one placeholder (studio-words-plan, 2026-10-23): "Ask Claude…" whether or not Claude is there — the
@@ -28769,6 +29502,11 @@ function start(host            ) {
     assets: () => (libraryShown() ? filePick : []),
     // …or, in the Scene, the motion "Ask AI" was pressed on (the chip reads "crate · Hop", motion-ask.ts).
     motions: () => (libraryShown() ? libraryMotions.picked() : motionAsk.now() ? [motionAsk.now() .name] : []),
+    // "✦ Describe with text" under keep-out areas (studio-code-keepout): the chips "crystal ×12" "Keep-out areas".
+    askTopic: () => {
+      const at = libraryShown() ? null : keepOutAskNow();
+      return at ? { chip: keepOut.chip(at.id), tag: t('keepout.chip'), ph: t('keepout.askPh') } : null;
+    },
     showInLibrary: libraryTool ? () => showInLibrary() : undefined,
     unhold: (keys) => send({ type: 'studio:placement/unhold', keys }),
     // The card's ⋯ (studio-card-doors): the same menu plate as right-click, opened under the button, its right edge on
@@ -28784,7 +29522,7 @@ function start(host            ) {
     // studio-motion-delete (2026-10-24): the Motion row's right-click / ⋯ menu — the ⋯'s plate like cardMenu's (under it,
     // right edges together), a right-click's at the pointer; it holds Delete back (that key deletes the OBJECT).
     // A code layout's object (studio-code-knobs): the card's Layout and knobs, or "Manually overridden"; the list's tag.
-    layout: (k) => (editLayer === 'world' ? codePlaces.card(k) : null),
+    layout: (k) => (editLayer === 'world' ? ruleCard(k) : null),
     ruleTag: (k) => (editLayer === 'world' ? codePlaces.listTag(k) : null),
     ruleRows: (k) => (editLayer === 'world' ? codePlaces.rows(k) : []),
     // ✦ Turn into a rule (studio-code-torule): several hand-placed objects picked → the draft in the chat box.
@@ -28955,6 +29693,16 @@ function start(host            ) {
     menuOpen: () => ctxMenu.isOpen() && app.dataset.menu === 'motion',
     frame: () => iframe,
   });
+
+  /**
+   * "✦ Describe with text" under a layout's keep-out areas (studio-code-keepout): the layout and its areas, and what the
+   * words are for — so "not within 5 m of the player" reaches the AI as a keep-out condition of THAT layout.
+   */
+  function requestPlaces()                                                {
+    const at = libraryShown() ? null : keepOutAskNow();
+    const p = at ? keepOut.request(at.id) : null;
+    return p ? { places: [p], intent: 'avoid' } : {};
+  }
 
   /**
    * The motions picked in the Library, for an ask (studio-motion-triggers): each with its length and what it is on now
@@ -30855,6 +31603,22 @@ function start(host            ) {
         codePlaces.knob(m);
         if (m.end) keepSoon();
         break;
+      // Keep-out areas in the game (studio-code-keepout; bridge/keep-out.ts): a box drawn / dragged, a ◇ turned, the
+      // objects put by hand that stand in an area, "+ Draw a box" stopped there.
+      case 'studio:place/avoid-box':
+        keepOut.box(m);
+        if (m.end) keepSoon();
+        break;
+      case 'studio:place/avoid-knob':
+        keepOut.knob(m);
+        if (m.end) keepSoon();
+        break;
+      case 'studio:place/avoid-inside':
+        keepOut.inside(m);
+        break;
+      case 'studio:place/avoid-draw':
+        keepOut.stopDraw();
+        break;
       case 'studio:placement/items': {
         // UI stage 1: the UI layer's list feeds its own model; nothing of the world's below (the AI's marks, copies,
         // the frame swap) is about it. Its saved places go to the UI layer by name, whichever layer is on.
@@ -31932,6 +32696,8 @@ function start(host            ) {
       keySheet.hide();
       return true;
     }
+    // "+ Draw a box" on (studio-code-keepout): Esc stops it first (the pick stays).
+    if (!mod && k === 'escape' && keepOut.stopDraw()) return true;
     // The timeline's keys (K sets a key; Delete / ⌘C / ⌘V / Space / ← → when the plate was the last thing pressed).
     if (timeline.onKey(e)) return true;
     if (mod && k === 'z') {
@@ -32635,7 +33401,12 @@ function start(host            ) {
     },
     place: (id) => worldModel.places.get(id),
     placeIds: () => worldModel.places.ids(),
-    setPlace: (id, e) => setPlace(id, worldModel.places.get(id), e),
+    setPlace: (id, e) => {
+      const before = worldModel.places.get(id);
+      setPlace(id, before, e);
+      // A keep-out area the AI added or changed (place.avoid): its row glows violet on the card (studio-code-keepout).
+      keepOut.aiChanged(id, before, worldModel.places.get(id));
+    },
     // ✦ Turn into a rule (studio-code-torule): the rule's shape from the game page, and what the swap replaced.
     ruleSamples: (code, knobs, len, per) => ruleSamples(code, knobs, len, per),
     swapped: (x) => {
@@ -32876,7 +33647,7 @@ function start(host            ) {
 
 __def(__exports, "start", () => start);
 };
-__defs[83] = function (__exports) {
+__defs[85] = function (__exports) {
 'use strict';
 // host-local.ts
 
@@ -33076,19 +33847,19 @@ function createLocalHost(base         = LOCAL_PATHS.api)             {
 
 __def(__exports, "createLocalHost", () => createLocalHost);
 };
-__defs[84] = function (__exports) {
+__defs[86] = function (__exports) {
 'use strict';
 // local.ts
 
 // Entry of studio-shell.js: the shell page served by the local server
 // (skills/arrange/bin/studio.mjs), talking to it through createLocalHost().
 // The browser-only web demo has its own entry (src/hosts/browser/main.ts).
-const { start } = __require(82);
-const { createLocalHost } = __require(83);
+const { start } = __require(84);
+const { createLocalHost } = __require(85);
 
 start(createLocalHost());
 
 
 };
-__require(84);
+__require(86);
 })();

@@ -160,6 +160,14 @@ export interface CodePlaceView {
   dragTo(key: string, want: number[]): { pose: Pose; chip: string } | null;
   /** The drag ended (keep false = cancelled: back to the knob it had). */
   dragEnd(key: string, keep: boolean): void;
+  /**
+   * A keep-out box being drawn / dragged (studio-code-keepout; keep-out.ts): layout `id` laid out again with `entry` (the
+   * draft's entry with the box) — its objects step out of the box as it grows, and where they stood before shows dashed
+   * with an arrow (the same picture as a knob's drag). The first call remembers where they stood.
+   */
+  preview(id: string, entry: PlacementPlace | null): void;
+  /** The preview is over: how many of its objects moved (or have no place any more) since it began. */
+  previewEnd(): number;
 }
 
 export function createCodePlaceView(d: CodePlaceViewDeps): CodePlaceView {
@@ -192,6 +200,8 @@ text { font: 700 10px -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-
   let hoverAt: { x: number; y: number } | null = null;
   // A drag that turns a knob: the layout, the knob, its number before, its number now, where the objects stood before.
   let drag: { id: string; key: string; i: number; knob: string; from: number; v: number; before: Array<number[] | null> } | null = null;
+  // A keep-out box being drawn (studio-code-keepout): the layout and where its objects stood when it began.
+  let moving: { id: string; before: Array<number[] | null> } | null = null;
   let drawn = '';
   // Each object's ring (world radius, offset from its pivot to its foot), worked out once per object.
   const rings = new Map<string, { r: number; foot: number[] }>();
@@ -347,8 +357,9 @@ text { font: 700 10px -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-
         const f = far as { at: [number, number]; to: [number, number] | null; d: number; name: string } | null;
         if (f) parts.push({ kind: 'chip', pts: [f.at], side: f.to && f.to[0] > f.at[0] ? -1 : 1, text: `${f.name} · ${gapWords(d.lang(), f.d, three)}` });
       }
-      // While a drag turns the knob: where they stood before, dashed, with an arrow to where they go.
-      if (drag && drag.id === p.id) drag.before.forEach((q, i) => {
+      // While a drag turns the knob (or a keep-out box is drawn): where they stood before, dashed, with an arrow to where they go.
+      const before = drag && drag.id === p.id ? drag.before : moving && moving.id === p.id ? moving.before : null;
+      if (before) before.forEach((q, i) => {
         const now = spots[i];
         if (!q || !now) return;
         const key = `${p.id}-${i + 1}`;
@@ -448,6 +459,7 @@ text { font: 700 10px -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-
     clear() {
       guide = { ids: [], sel: null };
       drag = null;
+      moving = null;
       draw();
     },
     note(key) {
@@ -489,6 +501,23 @@ text { font: 700 10px -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-
       const lang = d.lang();
       const u = unitText(lang, def.unit);
       return pose ? { pose, chip: `${def.label} ${knobText(dr.from, def.step)} → ${knobText(dr.v, def.step)}${u}` } : null;
+    },
+    preview(id, entry) {
+      const p = list().get(id);
+      if (!p) return;
+      if (!moving || moving.id !== id) moving = { id, before: (p.spots ?? []).map((q) => (q ? q.slice() : null)) };
+      places = { ...places };
+      if (entry) places[id] = structuredClone(entry);
+      else delete places[id];
+      relay([id]);
+    },
+    previewEnd() {
+      const mv = moving;
+      moving = null;
+      drawn = '';
+      d.markDirty();
+      const now = mv ? list().get(mv.id)?.spots ?? [] : [];
+      return mv ? mv.before.filter((q, i) => q && (!now[i] || now[i]!.some((v, j) => Math.abs(v - q[j]!) > 1e-6))).length : 0;
     },
     dragEnd(key, keep) {
       const dr = drag;

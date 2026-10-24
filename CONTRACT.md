@@ -626,6 +626,17 @@ keep-out area belongs to the layout it is drawn for, not to the whole level.
   `code.was`: `pts`, `keys`) is drawn with the old path in orange beside it (short of room, the line keeps "◉ Max
   deviation 0.1 m" and the rest goes to its tooltip). The rule's objects are lit violet (the AI's marks), and the
   hand-placed ones it replaced are left out of the list while `from` names them. One switch for both.
+- **Keep-out areas in the editor** (studio-code-keepout, stage 3): the card's **Keep-out areas** under a layout's knobs
+  (boxes first, then conditions; a switch, × for what the file holds, a condition's knobs, ⋯ "Also for" another layout,
+  **+ Draw a box**, **✦ Describe with text**) and, in the game, the picked layout's areas painted (`studio:place/avoid
+  { id, entry, draw }` → bridge `keep-out.ts`): red hatching; a box's edge orange with four corners (size; Shift:
+  height) and its middle (place) to drag; a condition's edge violet and dashed — its `show(k, g)` shape (`{ circle: { p,
+  r } }`, `{ box: { p, size } }`, `{ poly: [[x, z], …] }`, 2D `[[x, y], …]`) with a ◇ for its first knob, else the ground
+  tried with its own `test` every 0.5 m (2D 8 px) near the layout and on screen; a red × where a skipped object would
+  go. Back: `studio:place/avoid-box { id, i, p, size, end, out?, cancel? }` (i = -1: drawn now; the page lays the layout
+  out again meanwhile, its objects stepping out), `studio:place/avoid-knob { id, code, knob, v, end }`,
+  `studio:place/avoid-inside { id, keys }` (objects put by hand that stand in an area: the card says so, they never
+  move), `studio:place/avoid-draw { id, on: false }` (Esc in the game). Each change: one undo step, one Save count.
 
 ## 2. Messages (bridge ⇄ shell)
 
@@ -892,10 +903,12 @@ a bonus that wakes an agent that happens to be watching.
   words are about — "Add this to the scene" asks for a new object made from
   them; plain folder paths, ≤ 50), `motions` (`ask`, studio-motion-triggers: Library motions picked with the words,
   ≤ 20, each `{ name, len, repeat?, on: [{ key, when?, until? }], keys? }` — a hint, bad entries dropped; `keys.p` = its
-  points, with `intent` only), `intent` (`ask`, studio-code-torule: `"to-code"` = the words came from ✦ Turn into a rule —
-  the AI fits the nearest rule to these hand-placed `objects` or this motion's points and swaps it in with `--do
-  place.code --replace` / `motion.code --replace` (§3.6), or, when none comes within half the object's size / a tenth of
-  the path's, replaces nothing and says so), `step`, `lang`, `dim`, `unsaved` (changes not
+  points, with `intent` only), `places` (`ask`, studio-code-keepout: the rule layouts the words are about, ≤ 8, each
+  `{ id, name, n, knobs?, avoid: [box | { code, name?, knobs?, off? }] }` — a hint), `intent` (`ask`: `"avoid"` = the
+  words are a keep-out area for `places` (the card's ✦ Describe with text); `"to-code"` (studio-code-torule) = the words
+  came from ✦ Turn into a rule — the AI fits the nearest rule to these hand-placed `objects` or this motion's points and
+  swaps it in with `--do place.code --replace` / `motion.code --replace` (§3.6), or, when none comes within half the
+  object's size / a tenth of the path's, replaces nothing and says so), `step`, `lang`, `dim`, `unsaved` (changes not
   saved yet), `view` (`ask`, 3D: the camera's `eye` and `target` when they
   asked, so new things land in sight), `files` (what it is about: `placement.json`,
   `.studio/next-step.md`, …; for `delete-files`, `.studio/next-step.md` then

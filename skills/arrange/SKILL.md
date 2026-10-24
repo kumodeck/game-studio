@@ -971,7 +971,11 @@ later", "scatter crystals on the field", "not on the road", "not within 5 m of t
 3. **Where not to put them**, said as a rule ("not on the road", "not near the player") → write a `codeAvoid()` and add
    it with `--do place.avoid --id crystals --code near-player`; said as a place ("not around here") → `--do place.avoid
    --id crystals --box '{"p":[x,y,z],"size":[w,h,d]}'`. A keep-out area belongs to that one layout (another layout
-   avoids it only when it is added there too), and never moves an object put by hand.
+   avoids it only when it is added there too), and never moves an object put by hand. An `ask` with `intent: "avoid"`
+   (the card's **✦ Describe with text** under Keep-out areas) names the layout in `places` (`id`, its `avoid` now): the
+   words are a keep-out area for THAT layout — write the `codeAvoid()` (a knob for the number they said; a `show` shape
+   when it is one: `{ circle: { p, r } }`, `{ box: { p, size } }`, `{ poly: [[x, z], …] }`, so the editor puts a ◇ on it)
+   and add it with `--do place.avoid` yourself; say in one line what you added. Never hand the person steps.
 4. **Write new layouts this way from the start.** A game that places them in a loop of its own shows each object as a
    hand-placed one (the person moves one at a time, the loop is lost); rewrite that loop as a `codePlace` when they ask
    to change the layout as a whole ("closer together", "keep the formula").

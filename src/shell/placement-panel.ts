@@ -94,6 +94,12 @@ export interface PlacementPanelDeps {
   assets?(): string[];
   /** Motions picked in the Library (studio-motion-triggers): the chip names them with the objects and files. */
   motions?(): string[];
+  /**
+   * What a button said the ask is about (studio-code-keepout: a layout's "✦ Describe with text"): the chip reads `chip`
+   * ("crystal ×12") with a second, violet chip `tag` ("Keep-out areas"), and the field shows `ph` as its example.
+   * null = the ordinary chip.
+   */
+  askTopic?(): { chip: string; tag: string; ph: string } | null;
   /** The card's "Show in Library →": the Library with this pick's detail. Absent = no Library in this build. */
   showInLibrary?(): void;
   /** Ask the AI to name these objects (the "no name" warning). */
@@ -409,7 +415,9 @@ export function createPlacementPanel(d: PlacementPanelDeps): PlacementPanel {
   // says what the words will be about before a word is typed.
   const askChip = h('span', { class: 'ask-chip', hidden: true });
   hoverLights(askChip, () => d.selectedKeys());
-  const askEl = h('form', { class: 'ask-box', dataset: { part: 'ask' } }, h('span', { class: 'ask-spark', 'aria-hidden': 'true' }, icon('spark')), askChip, askInput,
+  // The second chip of a button's topic ("Keep-out areas"): violet, what the words will be turned into (a rule).
+  const askTag = h('span', { class: 'ask-chip topic', hidden: true, dataset: { part: 'ask-topic' } });
+  const askEl = h('form', { class: 'ask-box', dataset: { part: 'ask' } }, h('span', { class: 'ask-spark', 'aria-hidden': 'true' }, icon('spark')), askChip, askTag, askInput,
     h('kbd', { class: 'ask-kbd', 'aria-hidden': 'true', text: /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent) ? '⌘K' : 'Ctrl K' }), askSend);
   askEl.addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -478,6 +486,17 @@ export function createPlacementPanel(d: PlacementPanelDeps): PlacementPanel {
     // Read aloud as one sentence ("Ask your AI about “crate-4”…").
     askInput.setAttribute('aria-label', whole ? ph : pair ? d.t('ask.one', { name: askChip.textContent ?? '' }) : n > 1 ? d.t('ask.many', { n }) : d.t(noObj ? 'ask.oneFile' : 'ask.one', { name: firstName }));
     askEl.classList.toggle('whole', whole);
+    // A button's topic (a layout's keep-out areas): its own two chips and example, over the object's chip.
+    const topic = answer ? null : d.askTopic?.() ?? null;
+    askTag.hidden = !topic;
+    if (topic) {
+      askEl.classList.remove('whole');
+      askChip.hidden = false;
+      askChip.textContent = topic.chip;
+      askTag.textContent = topic.tag;
+      askInput.placeholder = topic.ph;
+      askInput.setAttribute('aria-label', `${topic.chip} · ${topic.tag}`);
+    }
     // A round arrow, as in message apps: grey until there is something to send.
     setButton(askSend, 'send', d.t('ask.send'), false);
     askSend.disabled = !askInput.value.trim();

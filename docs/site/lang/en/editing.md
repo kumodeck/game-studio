@@ -184,6 +184,17 @@ Put a row of street lamps down one by one, and now you would rather tune it as a
 
 ![Six street lamps turned into a row: the rule’s lamps lit violet, orange dots where the hand-placed ones stood, “lamp-3 · 0.6 m”, and the card’s “Compare with original” with “Max deviation: lamp-3 (0.6 m)”](media/to-rule-place.webp)
 
+### Keep-out areas
+
+Under a layout's knobs, **Keep-out areas** lists where that layout puts nothing. The game shows each one on the ground in red hatching: a box you drew has an orange edge, an area your game's rule decides (“On the road”) a violet dashed one.
+
+- **+ Draw a box**, then drag on the ground (one finger on a phone; <kbd>Esc</kbd> stops). The things of that layout step out of the box while you draw, and the line says how many moved. Drag its corners to resize it (<kbd>Shift</kbd>: its height), its middle to move it.
+- **✦ Describe with text** puts the layout and **Keep-out areas** in the box for your AI: say it in your words, “not within 5 m of the player”. Your AI turns it into a rule in the game and adds it to the list (the new row glows violet). A number in it, like **5 m**, is a knob: in the list, or the ◇ on its edge in the game.
+- The switch turns one off (it stays in the list); **×** removes a box or an area your AI added. **⋯ Also for** adds the same area to another layout: an area only ever acts on the layout it is listed under.
+- What you placed yourself is never moved by an area: **Manually overridden** says **Inside a keep-out area** when it stands in one. When an area leaves no room, the list says **1 of 12 has no place to go**, and a red × shows where it would have gone.
+
+![Crystals scattered by a rule: a box drawn by hand (orange), “On the road” and “From the player 6 m within” (violet), and the card’s Keep-out areas](media/keep-out.webp)
+
 ## The side window and phones
 
 In the pane next to the chat in the Claude app, and on a phone, everything at the bottom is **one sheet** under the game:

@@ -19,6 +19,7 @@ import { createUiExtras } from './ui-extras.ts';
 import { loaderPlay } from './play-switch.ts';
 import { codeAvoidsOf, codeMotionsOf, codePlacesOf, namedByLayout } from './code-lists.ts';
 import { createCodePlaceView } from './code-place.ts';
+import { createKeepOutView } from './keep-out.ts';
 import { createCodeMotionView, withRuleMotions } from './code-motion.ts';
 import { seenEnough, tooSmall } from './seen.ts';
 
@@ -193,6 +194,10 @@ export function createEditor(deps: EditorDeps): Editor {
       postSelected();
       input?.selectionChanged();
     } });
+  // The picked layout's keep-out areas on the ground (studio-code-keepout, 2026-10-24; keep-out.ts): painted, a box drawn
+  // and dragged, a condition's ◇. Made before input.ts attaches, so a press on a corner — or any press while drawing —
+  // reaches it first.
+  const keepOut = createKeepOutView({ win, adapter: () => adapter, post: (m) => post(m), lang: () => lang, markDirty: () => (dirtyFrame = true), places: codePlace });
   let lang: Lang = 'en';
   let loopId = 0;
   let dirtyFrame = true;
@@ -279,7 +284,7 @@ export function createEditor(deps: EditorDeps): Editor {
     input?.frame();
     toolHost.frame();
     timeline.frame();
-    if (layer === 'world') (codePlace.frame(), codeMotion.frame());
+    if (layer === 'world') (keepOut.frame(), codePlace.frame(), codeMotion.frame());
     dirtyFrame = false;
   };
 
@@ -1326,8 +1331,11 @@ export function createEditor(deps: EditorDeps): Editor {
         case 'studio:place/guide':
           if (state.editing && layer === 'world') codePlace.handle(msg);
           break;
+        case 'studio:place/avoid':
+          if (state.editing && layer === 'world') keepOut.handle(msg);
+          break;
         case 'studio:core/edit':
-          if (!msg.on) (timeline.clear(), codePlace.clear(), codeMotion.clear());
+          if (!msg.on) (timeline.clear(), codePlace.clear(), codeMotion.clear(), keepOut.clear());
           setEditing(msg.on, msg.viewState);
           if (msg.on && wantLayer) {
             const w = wantLayer;
@@ -1336,7 +1344,7 @@ export function createEditor(deps: EditorDeps): Editor {
           }
           break;
         case 'studio:core/layer':
-          if (msg.layer !== layer) (timeline.clear(), codePlace.clear(), codeMotion.clear());
+          if (msg.layer !== layer) (timeline.clear(), codePlace.clear(), codeMotion.clear(), keepOut.clear());
           if (msg.layer === 'world' || msg.layer === 'ui') setLayer(msg.layer);
           break;
         case 'studio:ui/screen':

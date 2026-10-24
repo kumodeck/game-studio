@@ -2136,12 +2136,37 @@ function normalizeRequestInput(input) {
     }
     if (ms.length) out.motions = ms;
   }
+  // "ask" only: the rule layouts the words are about (studio-code-keepout, 2026-10-24: the card's "✦ Describe with
+  // text" under Keep-out areas), each with its keep-out areas as they are now. A hint like `motions`: a bad entry is
+  // dropped, never an error.
+  if (r.places !== undefined && kind === 'ask' && Array.isArray(r.places)) {
+    const ps = [];
+    const nums = (o) => (o && typeof o === 'object' ? Object.fromEntries(Object.entries(o).filter(([k, v]) => /^[A-Za-z][A-Za-z0-9_]{0,23}$/.test(k) && isFin(v)).slice(0, 3).map(([k, v]) => [k, roundTo(v, 10000)])) : {});
+    for (const p of r.places.slice(0, 8)) {
+      if (!p || typeof p.id !== 'string' || !/^[a-z0-9][a-z0-9-]{0,39}$/.test(p.id)) continue;
+      const e = { id: p.id, name: oneLine(typeof p.name === 'string' ? p.name : p.id, 40) || p.id, n: Number.isInteger(p.n) && p.n >= 0 ? Math.min(p.n, 1000) : 0 };
+      const k = nums(p.knobs);
+      if (Object.keys(k).length) e.knobs = k;
+      e.avoid = (Array.isArray(p.avoid) ? p.avoid : []).slice(0, 16).flatMap((a) => {
+        if (!a || typeof a !== 'object') return [];
+        const off = a.off === true ? { off: true } : {};
+        if (a.box && Array.isArray(a.box.p) && Array.isArray(a.box.size) && [...a.box.p, ...a.box.size].every(isFin)) {
+          return [{ box: { p: a.box.p.slice(0, 3).map((v) => roundTo(v, 1000)), size: a.box.size.slice(0, 3).map((v) => roundTo(v, 1000)) }, ...(typeof a.name === 'string' && a.name.trim() ? { name: oneLine(a.name, 40) } : {}), ...off }];
+        }
+        if (typeof a.code !== 'string' || !/^[a-z0-9][a-z0-9-]{0,39}$/.test(a.code)) return [];
+        const ak = nums(a.knobs);
+        return [{ code: a.code, ...(typeof a.name === 'string' && a.name.trim() ? { name: oneLine(a.name, 80) } : {}), ...(Object.keys(ak).length ? { knobs: ak } : {}), ...off }];
+      });
+      ps.push(e);
+    }
+    if (ps.length) out.places = ps;
+  }
+  // "ask" only: what a button said the words are for ('avoid': a keep-out area for `places`; 'to-code': the plan's step 4).
+  if (kind === 'ask' && (r.intent === 'avoid' || r.intent === 'to-code')) out.intent = r.intent;
   // "name" is always about objects. "ask" with no objects is about the whole
   // game (the ask strip with nothing picked: "make it night", "add enemies";
   // design-pass reviews 2026-10-16); it still needs words.
   if (kind === 'name' && !(out.objects && out.objects.length)) errors.push('a "name" request names at least one object');
-  // "ask" only (studio-code-torule): the words came from ✦ Turn into a rule. Anything else is left out, never an error.
-  if (kind === 'ask' && r.intent === 'to-code') out.intent = 'to-code';
   if (r.lang === 'en' || r.lang === 'ja') out.lang = r.lang;
   if (Number.isInteger(r.unsaved) && r.unsaved > 0) out.unsaved = Math.min(r.unsaved, 100000);
   if (r.dim === '2d' || r.dim === '3d') out.dim = r.dim;

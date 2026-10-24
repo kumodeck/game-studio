@@ -192,7 +192,7 @@ test('place.set knobs / pin, place.avoid — one ⌘Z for the job; a knob back o
   assert.ok(r.results.every((x) => x.ok), JSON.stringify(r.results));
   assert.deepEqual(e.store.get('hex'), {
     knobs: { gap: { v: 4, was: 6 } }, pins: { 'hex-3': { p: [-3.1, 0.95, -19] } },
-    avoid: [{ code: 'near-player', knobs: { r: { v: 6, was: 5 } } }, { box: { p: [-8, 0, -17], size: [3, 2, 5] }, name: '箱 1' }, { code: 'road', off: true }],
+    avoid: [{ code: 'near-player', knobs: { r: { v: 6, was: 5 } } }, { box: { p: [-8, 0, -17], size: [3, 2, 5] }, name: '四角 1' }, { code: 'road', off: true }],
   });
   assert.equal(e.undo.size, 1);
   assert.equal(e.lines()[0], 'Claude が「六角形の列」を変えました: 間 4 m（ほか 4 件）');

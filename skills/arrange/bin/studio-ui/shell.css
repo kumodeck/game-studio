@@ -609,6 +609,8 @@ span.foot-row { display: flex; align-items: center; min-height: var(--h); }
    hover. The field keeps the room. */
 .ask-chip { flex: 0 1 auto; height: 20px; padding: 0 8px; border-radius: 999px; display: inline-block; line-height: 20px; font-size: 12px; font-weight: 600;
   color: var(--you-text); background: var(--you-soft); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--you) 45%, transparent); max-width: min(30%, 160px); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: default; }
+/* A button's topic (studio-code-keepout: "Keep-out areas"): violet, what the words are turned into — a rule (the AI's). */
+.ask-chip.topic { flex: none; color: var(--ai-text); background: var(--ai-soft); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ai) 45%, transparent); }
 .ask-input { flex: 1; min-width: 0; height: 100%; border: 0; background: none; color: var(--text); font: inherit; outline: none; padding: 0; }
 .ask-input::placeholder { color: var(--text-2); }
 /* A short notice in the field's place (main.ts showToast; the second design review's ⑧, 2026-10-19): one line in the
@@ -1917,6 +1919,57 @@ li.obj .rule-tag { margin-left: 4px; flex: none; }
 /* Phone / side window: the same parts in the sheet; the knobs' names a little wider (as the numbers' labels, .fields). */
 .shell[data-layout="phone"] .knob { grid-template-columns: 56px minmax(0, 1fr); }
 .shell[data-layout="phone"] .knob-box { max-width: none; }
+
+/* ----- Keep-out areas under a rule layout (studio-code-keepout, 2026-10-24; keep-out-wire.ts) -----
+   One list for both kinds; the mark tells them apart the way the ground does (red hatching; a box's edge orange = drawn by
+   hand, a condition's violet and dashed = a rule's). Each row: switch · mark · words (a condition's number is a knob in
+   the words: "From the player [5 m] within") · Hand / Rule · ⋯ · ×. */
+.ko-block { display: grid; gap: 6px; padding: 8px; border-radius: 8px; box-shadow: inset 0 0 0 1px var(--line-2); }
+.ko-head { color: var(--text-2); font-size: var(--fs-s); }
+.ko-rows { display: grid; gap: 2px; }
+.ko-row { display: flex; align-items: center; gap: 6px; min-height: 28px; padding: 0 2px; border-radius: 6px; min-width: 0; }
+.ko-row.off .ko-words, .ko-row.off .ko-mark { opacity: .45; }
+.ko-row.lit { animation: studio-ko-lit 2.4s var(--ease) both; }
+@keyframes studio-ko-lit { 0%, 60% { background: var(--ai-soft); box-shadow: inset 0 0 0 1.5px var(--ai); } 100% { background: transparent; box-shadow: none; } }
+.ko-sw { all: unset; position: relative; flex: none; width: 22px; height: 12px; border-radius: 6px; background: var(--ai); cursor: pointer; }
+.ko-sw > i { position: absolute; top: 2px; right: 2px; width: 8px; height: 8px; border-radius: 50%; background: #fff; }
+.ko-sw[aria-checked="false"] { background: var(--raise-3); }
+.ko-sw[aria-checked="false"] > i { right: auto; left: 2px; }
+.ko-sw:focus-visible { outline: 1.5px solid var(--you); outline-offset: 2px; }
+/* The mark: a small square of the ground's red hatching, its edge the kind's colour. */
+.ko-mark { flex: none; width: 12px; height: 12px; border-radius: 2px;
+  background: repeating-linear-gradient(135deg, rgba(255, 69, 90, .75) 0 1.5px, transparent 1.5px 4px); }
+.ko-mark.box { box-shadow: inset 0 0 0 1.5px var(--you); }
+.ko-mark.code { outline: 1.5px dashed var(--ai); outline-offset: -1.5px; }
+/* The words wrap (a condition with its number is longer than a card is wide: "From the player [5 m] within"); the number's
+   box never shrinks under its number. */
+.ko-words { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 2px 4px; padding: 2px 0; font-size: 12px; overflow-wrap: anywhere; }
+.ko-words .knob { display: inline-flex; flex: none; grid-template-columns: none; }
+.ko-words .knob-l { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+.ko-words .knob-box { min-width: 48px; height: 24px; padding: 0 6px; }
+.ko-tag { flex: none; color: var(--text-3); font-size: 10px; }
+.ko-tag.box { color: var(--you-text); }
+.ko-tag.code { color: var(--ai-text); }
+.ko-more, .ko-x { flex: none; width: 22px; height: 22px; color: var(--text-2); font-size: 14px; }
+.ko-more .icon { width: 14px; height: 14px; }
+.ko-x-gap { flex: none; width: 22px; }
+.ko-skipped { color: var(--danger); }
+.ko-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+/* None yet: the title and the two buttons on one line (the title takes what is left). */
+.ko-block.one { padding: 6px 8px; }
+.ko-block.one .ko-head { flex: 1 1 auto; min-width: 0; }
+.ko-add { all: unset; padding: 3px 8px; border-radius: 6px; background: var(--raise-2); color: var(--text); font-size: var(--fs-s); cursor: pointer; }
+.ko-add:hover:not(:disabled) { background: var(--raise-3); }
+.ko-add:disabled { opacity: .45; cursor: default; }
+.ko-add.on { box-shadow: inset 0 0 0 1.5px var(--you); color: var(--you-text); background: var(--you-soft); }
+.ko-add.ai { color: var(--ai-text); background: var(--ai-soft); }
+.ko-add:focus-visible { outline: 1.5px solid var(--you); outline-offset: 2px; }
+.ko-hint { margin: 0; font-size: var(--fs-s); color: var(--you-text); }
+/* "Inside a keep-out area" under "Manually overridden" (one put by hand stays where the hand put it). */
+.ko-inside { display: flex; align-items: center; gap: 6px; margin: 0; font-size: var(--fs-s); color: var(--text-2); }
+.shell[data-layout="phone"] .ko-row { min-height: 40px; }
+.shell[data-layout="phone"] .ko-more, .shell[data-layout="phone"] .ko-x { width: 36px; height: 36px; }
+.shell[data-layout="phone"] .ko-add { padding: 8px 10px; }
 
 /* ----- A rule motion on the timeline (studio-code-knobs, 2026-10-24; timeline-panel.ts drawRule / ruleItems) -----
    Its row is a violet strip with thin slanted lines (no points: the game's rule is its shape), as wide as the ruler — it

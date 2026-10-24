@@ -55,6 +55,11 @@ export interface CodePlaceWireDeps {
   compare?(id: string): HandSpot[];
   compareOn?(): boolean;
   setCompareOn?(on: boolean): void;
+  /**
+   * Every guide update (a pick, a change of the draft, a new list): the keep-out areas follow the same moments
+   * (studio-code-keepout: keep-out-wire.ts sync). Absent = nothing.
+   */
+  guided?(force: boolean): void;
 }
 
 export interface CodePlaceWire {
@@ -134,6 +139,7 @@ export function createCodePlaceWire(d: CodePlaceWireDeps): CodePlaceWire {
   }
 
   function guide(force = false) {
+    d.guided?.(force);
     const keys = [...(d.group().length > 1 ? d.group() : d.selected() ? [d.selected()!] : []), ...hovered];
     const ids = d.editing() ? [...new Set(keys.map((k) => layoutOf(k)?.id).filter((x): x is string => !!x))] : [];
     const places = ids.length ? d.store().result() ?? {} : {};

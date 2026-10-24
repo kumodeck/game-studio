@@ -23,6 +23,7 @@
     { "id": "motion-line", "test": "test/studio-motion-line.browser.mjs", "args": ["--only", "pc", "--themes", "light", "--games", "neon"] },
     { "id": "openside", "test": "test/studio-open-side.browser.mjs", "args": ["--only", "side", "--theme", "light", "--prefix", "docs"] },
     { "id": "code-knobs", "test": "test/studio-code-place.browser.mjs", "args": ["--themes", "light", "--only", "layout,motion"] },
+    { "id": "code-keepout", "test": "test/studio-code-place.browser.mjs", "args": ["--themes", "light", "--only", "keepout"] },
     { "id": "to-rule", "test": "test/studio-code-place.browser.mjs", "args": ["--themes", "light", "--only", "torule"] }
   ],
   "pictures": [
@@ -64,6 +65,7 @@
     { "as": "side-sheet", "run": "openside", "file": "07-docs-side-{lang}-light-*-sheet.png" },
     { "as": "rule-layout", "run": "code-knobs", "file": "2-{lang}-light-3-drag.png" },
     { "as": "rule-motion", "run": "code-knobs", "file": "2-{lang}-light-10-diamond.png" },
+    { "as": "keep-out", "run": "code-keepout", "file": "3-{lang}-light-4-6m.png" },
     { "as": "to-rule-place", "run": "to-rule", "file": "4-{lang}-light-2-place.png" },
     { "as": "to-rule-motion", "run": "to-rule", "file": "4-{lang}-light-5-motion.png" }
   ]

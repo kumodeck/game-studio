@@ -1,4 +1,4 @@
-/* KUMODeck Game Studio 0.1.52 — MIT License — built file, edit src/ instead */
+/* KUMODeck Game Studio 0.1.53 — MIT License — built file, edit src/ instead */
 (() => {
 const __defs = [];
 const __cache = [];
@@ -4685,6 +4685,13 @@ const MSG_PREFIX = 'studio:';
      
                                                                                                                                                            
      
+                                                                                                                    
+                                                                                                                     
+                                                                                                                         
+                                                                                                                    
+     
+                                                                                                    
+     
                                                                                                                         
                                                                                                                     
                                             
@@ -4952,6 +4959,18 @@ const MSG_PREFIX = 'studio:';
                                                                                        
      
                                                                                                  
+     
+                                                                                                                     
+                                                                                                                       
+                                                                                                                       
+     
+                                                                                                                                        
+                                                                                                                             
+                                                                                                        
+                                                                                                                         
+                                                                     
+                                                                                                    
+                                                              
                                                                                                                                                                                                   
                                                                                                    
      
@@ -5138,13 +5157,22 @@ function isStudioMessage(x         )                     {
      
                             
      
+                                                                                                                     
                                                                                                                          
-                                                                                                                      
-                                                                                                                       
-                                                                                                                         
-                                                                                                                   
+                                                                                                                     
+                             
      
-                     
+                          
+     
+                                                                                                                             
+                                                                                                                         
+                                                                                                                      
+                                                                                                                        
+                                                                                                                       
+                                                                                                                 
+                            
+     
+                         
      
                                                                                                                     
                                                                                                  
@@ -5171,6 +5199,18 @@ function isStudioMessage(x         )                     {
                    
                 
                        
+ 
+
+/** What an ask is for, when a button set it (StudioRequestInput.intent). */
+                                                
+/** A rule layout named in an ask (StudioRequestInput.places): its id and name, its knobs now, its keep-out areas. */
+                               
+             
+               
+                                      
+            
+                                 
+                                                                                                                                                                  
  
 
 /** A Library motion named in an ask (StudioRequestInput.motions). */
@@ -16482,6 +16522,14 @@ function knobRange(k                                           )                
                                                                            
                                                                           
                                             
+     
+                                                                                                                          
+                                                                                                                        
+                                                                                                  
+     
+                                                          
+                                                                                                       
+                       
  
 
 function createCodePlaceView(d                   )                {
@@ -16514,6 +16562,8 @@ text { font: 700 10px -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-
   let hoverAt                                  = null;
   // A drag that turns a knob: the layout, the knob, its number before, its number now, where the objects stood before.
   let drag                                                                                                                       = null;
+  // A keep-out box being drawn (studio-code-keepout): the layout and where its objects stood when it began.
+  let moving                                                        = null;
   let drawn = '';
   // Each object's ring (world radius, offset from its pivot to its foot), worked out once per object.
   const rings = new Map                                       ();
@@ -16669,8 +16719,9 @@ text { font: 700 10px -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-
         const f = far                                                                                         ;
         if (f) parts.push({ kind: 'chip', pts: [f.at], side: f.to && f.to[0] > f.at[0] ? -1 : 1, text: `${f.name} · ${gapWords(d.lang(), f.d, three)}` });
       }
-      // While a drag turns the knob: where they stood before, dashed, with an arrow to where they go.
-      if (drag && drag.id === p.id) drag.before.forEach((q, i) => {
+      // While a drag turns the knob (or a keep-out box is drawn): where they stood before, dashed, with an arrow to where they go.
+      const before = drag && drag.id === p.id ? drag.before : moving && moving.id === p.id ? moving.before : null;
+      if (before) before.forEach((q, i) => {
         const now = spots[i];
         if (!q || !now) return;
         const key = `${p.id}-${i + 1}`;
@@ -16770,6 +16821,7 @@ text { font: 700 10px -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-
     clear() {
       guide = { ids: [], sel: null };
       drag = null;
+      moving = null;
       draw();
     },
     note(key) {
@@ -16812,6 +16864,23 @@ text { font: 700 10px -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-
       const u = unitText(lang, def.unit);
       return pose ? { pose, chip: `${def.label} ${knobText(dr.from, def.step)} → ${knobText(dr.v, def.step)}${u}` } : null;
     },
+    preview(id, entry) {
+      const p = list().get(id);
+      if (!p) return;
+      if (!moving || moving.id !== id) moving = { id, before: (p.spots ?? []).map((q) => (q ? q.slice() : null)) };
+      places = { ...places };
+      if (entry) places[id] = structuredClone(entry);
+      else delete places[id];
+      relay([id]);
+    },
+    previewEnd() {
+      const mv = moving;
+      moving = null;
+      drawn = '';
+      d.markDirty();
+      const now = mv ? list().get(mv.id)?.spots ?? [] : [];
+      return mv ? mv.before.filter((q, i) => q && (!now[i] || now[i] .some((v, j) => Math.abs(v - q[j] ) > 1e-6))).length : 0;
+    },
     dragEnd(key, keep) {
       const dr = drag;
       drag = null;
@@ -16840,6 +16909,1221 @@ __def(__exports, "knobRange", () => knobRange);
 __def(__exports, "createCodePlaceView", () => createCodePlaceView);
 };
 __defs[45] = function (__exports) {
+'use strict';
+// ../shell/keep-out-model.ts
+
+// A rule layout's keep-out areas as rows (studio-code-keepout, 2026-10-24; the plan's step 3, "need 4": "when things are
+// placed procedurally I want to say where they must not go — sometimes as coordinates, sometimes as code").
+// Pure logic, no DOM: the card's list (keep-out-wire.ts) and the game page's painting (bridge/keep-out.ts) both read the
+// rows from here, so the list and the ground always show the same areas (test/keep-out-model.test.ts).
+//
+// Two kinds in ONE list, told apart by their edge only (the plan's decision 12):
+//   box   drawn by hand on the ground — coordinates, kept in the file (`places[id].avoid[i].box`): orange.
+//   code  a codeAvoid() condition in the game's code ("On the road", "From the player [5 m] within") — the rule decides
+//         where; the file keeps only whether it is off and the knobs the person turned: violet, dashed.
+// A condition the layout names in its own code (codePlace `avoid: ['road']`) is on without any file entry; switching it
+// off writes `{ code, off: true }`, switching it back on with nothing else changed takes the entry out again (the file
+// keeps only what the person changed — the same rule as ai-hands.ts place.avoid).
+//
+// Where it acts (chosen on 10/24, answer (a) of the plan's question 2): only the layout it is listed under — a box drawn
+// for the crystals does not move the coins — and never an object put by hand. "Also for another layout" copies it.
+                                                                                          
+
+                                                  
+                      
+                                                                                                               
+                                                                                      
+                                                                                                                            
+                                                                                                                
+
+/** At most this many areas in one layout's list (studio-files.mjs LIMITS.maxAvoid). */
+const MAX_AVOID = 16;
+
+const list = (e                                   )                   => (Array.isArray(e?.avoid) ? e .avoid  : []);
+const isBox = (a                )                                             => !!a && 'box' in a && !!a.box;
+
+/**
+ * The rows of one layout: the boxes first (in the order drawn), then the conditions — the code's own (in its order),
+ * then the ones added to the file (the AI's `--do place.avoid --code`). WHY boxes first: what the hand drew is what the
+ * person looks for right after drawing it (the plan's picture n4-box has "Box 1" on top).
+ */
+function rowsOf(codeIds                   , e                                   )             {
+  const all = list(e);
+  const rows             = [];
+  all.forEach((a, i) => {
+    if (isBox(a)) rows.push({ kind: 'box', i, n: rows.length + 1, name: a.name ?? null, box: a.box, off: !!a.off });
+  });
+  const fileCode = new Map                ();
+  all.forEach((a, i) => {
+    if (!isBox(a) && typeof (a                      ).code === 'string') fileCode.set((a                    ).code, i);
+  });
+  const codeRow = (code        , inCode         )           => {
+    const i = fileCode.get(code) ?? -1;
+    const a = i >= 0 ? (all[i]                                                                   ) : null;
+    return { kind: 'code', code, i, inCode, off: !!a?.off, ...(a?.knobs ? { knobs: a.knobs } : {}) };
+  };
+  for (const c of codeIds) rows.push(codeRow(c, true));
+  for (const c of fileCode.keys()) if (!codeIds.includes(c)) rows.push(codeRow(c, false));
+  return rows;
+}
+
+/** An entry with `avoid` replaced (none left: no `avoid`). */
+function withAvoid(e                                   , avoid                  )                 {
+  const o                 = { ...(e ?? {}) };
+  if (avoid.length) o.avoid = avoid;
+  else delete o.avoid;
+  return o;
+}
+
+/**
+ * A code condition's file entry after a change: one the code names, on, with no knob turned, is no entry at all; one the
+ * file added stays `{ code }` (it is what makes it act).
+ */
+function codeEntry(code        , inCode         , off         , knobs                                       )                        {
+  if (inCode && !off && !knobs) return null;
+  return { code, ...(knobs ? { knobs } : {}), ...(off ? { off: true          } : {}) };
+}
+
+/** Put a code row's new entry in its place (or at the end for a first entry; out when it is no entry any more). */
+function putCode(e                                   , row                                     , entry                       )                 {
+  const all = list(e).slice();
+  if (row.i >= 0) {
+    if (entry) all[row.i] = entry;
+    else all.splice(row.i, 1);
+  } else if (entry) all.push(entry);
+  return withAvoid(e, all);
+}
+
+/** The switch: on (true) / off. One change of the entry. */
+function switchRow(e                                   , row          , on         )                 {
+  if (row.kind === 'box') {
+    const all = list(e).slice();
+    const a = all[row.i];
+    if (!a || !isBox(a)) return { ...(e ?? {}) };
+    const { off: _off, ...rest } = a;
+    all[row.i] = on ? rest : { ...rest, off: true };
+    return withAvoid(e, all);
+  }
+  return putCode(e, row, codeEntry(row.code, row.inCode, !on, row.knobs));
+}
+
+/**
+ * × : the row out of the list. Only a row the file holds (a box, a condition added to the file); the code's own
+ * conditions have no × — they are switched off instead (taking them out of the code is the AI's job, on request).
+ */
+function canRemove(row          )          {
+  return row.kind === 'box' || !row.inCode;
+}
+function removeRow(e                                   , row          )                 {
+  if (!canRemove(row) || row.i < 0) return { ...(e ?? {}) };
+  const all = list(e).slice();
+  all.splice(row.i, 1);
+  return withAvoid(e, all);
+}
+
+/**
+ * A condition's knob turned (the card's number, the ◇ on the ground): `{ v, was }` with the code's number as `was`; back on
+ * the code's number = no knob (the file keeps only what differs).
+ */
+function knobRow(e                                   , row          , name        , v        , code                          )                 {
+  if (row.kind !== 'code') return { ...(e ?? {}) };
+  const r = (x        ) => {
+    const y = Math.round(x * 10000) / 10000;
+    return y === 0 ? 0 : y;
+  };
+  const ks                            = { ...(row.knobs ?? {}) };
+  const was = code[name]?.v;
+  if (was !== undefined && r(v) === r(was)) delete ks[name];
+  else ks[name] = { v: r(v), ...(was !== undefined ? { was: r(was) } : {}) };
+  return putCode(e, row, codeEntry(row.code, row.inCode, row.off, Object.keys(ks).length ? ks : undefined));
+}
+
+/** The knob values a condition runs with: the file's v over the code's. */
+function knobsNow(code                          , file                            )                         {
+  return Object.fromEntries(Object.entries(code).map(([n, k]) => [n, file?.[n]?.v ?? k.v]));
+}
+
+/** A box drawn: at the end of the list, with its name. */
+function addBox(e                                   , box     , name        )                 {
+  return withAvoid(e, [...list(e), { box: { p: box.p.slice(), size: box.size.slice() }, ...(name ? { name } : {}) }]);
+}
+
+/** Box `i` moved or resized (its name and off stay). */
+function setBox(e                                   , i        , box     )                 {
+  const all = list(e).slice();
+  const a = all[i];
+  if (!a || !isBox(a)) return { ...(e ?? {}) };
+  all[i] = { ...a, box: { p: box.p.slice(), size: box.size.slice() } };
+  return withAvoid(e, all);
+}
+
+/** The first "Box n" no box of this layout is called yet (n from 1): a box taken out leaves its number free. */
+function nextBoxName(e                                   , nameOf                       )         {
+  const used = new Set(list(e).filter(isBox).map((a) => a.name));
+  for (let n = 1; n <= MAX_AVOID + 1; n++) if (!used.has(nameOf(n))) return nameOf(n);
+  return nameOf(MAX_AVOID + 1);
+}
+
+/**
+ * "Also for <another layout>" (the row's ⋯; answer (a) of 10/24: an area acts on its own layout, and this is how the
+ * same area reaches a second one). A box is copied as it is (its name too); a condition is added with its knobs and
+ * off as they are here. null = nothing to add (the other layout has it already, or its list is full).
+ */
+function copyRowTo(target                                   , targetCodeIds                   , row          )                        {
+  const all = list(target);
+  if (all.length >= MAX_AVOID) return null;
+  if (row.kind === 'box') {
+    const same = all.some((a) => isBox(a) && JSON.stringify(a.box) === JSON.stringify(row.box));
+    return same ? null : withAvoid(target, [...all, { box: { p: row.box.p.slice(), size: row.box.size.slice() }, ...(row.name ? { name: row.name } : {}), ...(row.off ? { off: true          } : {}) }]);
+  }
+  const there = all.find((a) => !isBox(a) && (a                    ).code === row.code)                              ;
+  if (there ? !there.off : targetCodeIds.includes(row.code) && !row.knobs && !row.off) return null;
+  const entry = codeEntry(row.code, targetCodeIds.includes(row.code), row.off, row.knobs);
+  if (!entry) return null;
+  const rest = all.filter((a) => isBox(a) || (a                    ).code !== row.code);
+  return withAvoid(target, [...rest, entry]);
+}
+
+/**
+ * Rows the AI changed (a hands job's place.avoid): the rows of `after` that are new or differ from `before` — the card
+ * lights them violet for a moment ("the row that arrived glows", the plan's step 3, item 4). Keys as rowKey.
+ */
+function changedRows(codeIds                   , before                                   , after                                   )           {
+  const was = new Map(rowsOf(codeIds, before).map((r) => [rowKey(r), JSON.stringify(r)]));
+  return rowsOf(codeIds, after).filter((r) => was.get(rowKey(r)) !== JSON.stringify(r)).map(rowKey);
+}
+/** A row's lasting name: a condition by its code id, a box by its name (or its place). */
+const rowKey = (r          )         => (r.kind === 'code' ? `code:${r.code}` : `box:${r.name ?? r.i}`);
+
+/** Is ground point `q` (the layout's space) inside box `b`? The loader's own rule (studio-placement.js inBox). */
+function inBox(q          , b     , n       )          {
+  if (!b || !Array.isArray(b.p) || !Array.isArray(b.size) || !Array.isArray(q)) return false;
+  if (n === 2) return Math.abs(q[0]  - b.p[0] ) <= b.size[0]  / 2 && Math.abs(q[1]  - b.p[1] ) <= b.size[1]  / 2;
+  return Math.abs(q[0]  - b.p[0] ) <= b.size[0]  / 2 && q[1]  >= b.p[1]  - 1e-9 && q[1]  <= b.p[1]  + b.size[1]  && Math.abs(q[2]  - b.p[2] ) <= b.size[2]  / 2;
+}
+
+__def(__exports, "MAX_AVOID", () => MAX_AVOID);
+__def(__exports, "rowsOf", () => rowsOf);
+__def(__exports, "switchRow", () => switchRow);
+__def(__exports, "canRemove", () => canRemove);
+__def(__exports, "removeRow", () => removeRow);
+__def(__exports, "knobRow", () => knobRow);
+__def(__exports, "knobsNow", () => knobsNow);
+__def(__exports, "addBox", () => addBox);
+__def(__exports, "setBox", () => setBox);
+__def(__exports, "nextBoxName", () => nextBoxName);
+__def(__exports, "copyRowTo", () => copyRowTo);
+__def(__exports, "changedRows", () => changedRows);
+__def(__exports, "rowKey", () => rowKey);
+__def(__exports, "inBox", () => inBox);
+};
+__defs[46] = function (__exports) {
+'use strict';
+// keep-out-paint.ts
+
+// Where a keep-out area is, on the ground (studio-code-keepout, 2026-10-24; the plan's step 3, item 3). Pure maths, no
+// DOM: keep-out.ts projects what this gives and paints it (test/keep-out-paint.test.ts checks the painted cells against
+// the condition itself).
+//
+// A box drawn by hand is its four floor corners. A code condition (codeAvoid) is painted one of two ways:
+//   - its `show(k, g)` shape when it has one: { circle: { p, r } } · { box: { p, size } } · { poly: [[x, z], …] } (2D:
+//     [[x, y], …]) — exact, and the only kind with a ◇ on its edge (a knob dragged there finds the number that brings the
+//     edge to the finger, as a rule motion's ◇ does);
+//   - else the ground is tried every 0.5 m (2D: every 8 px) with its own `test` — the editor never reads the rule, it
+//     runs it, so "not on the road" paints the road whatever the AI wrote. Cells in a row are joined into runs (one
+//     quad each) and the edge is where an "in" cell meets an "out" one, joined into long straight pieces.
+// WHY run the test and not ask the AI for a shape: a condition is often not a shape at all ("where the floor is lava",
+// "between the trees") — the picture must be true for any rule, and the rule is the truth the loader uses.
+// Axes: the ground is x and z in 3D (y up), x and y in 2D; `a` / `b` below are those two.
+
+                   
+                                              
+                                                
+                                      
+
+const num = (v         )              => typeof v === 'number' && Number.isFinite(v);
+const vec = (v         , n        )                  => (Array.isArray(v) && v.length >= n && v.slice(0, n).every(num) ? (v.slice(0, n)            ) : null);
+
+/** The ground's second axis: z in 3D, y in 2D. */
+const B = (n       ) => (n === 3 ? 2 : 1);
+
+/** A codeAvoid `show(k, g)` answer as a shape (anything else: null — then the ground is tried with `test`). */
+function shapeOf(v         , n       )               {
+  if (!v || typeof v !== 'object') return null;
+  const o = v                           ;
+  const c = o.circle                                       ;
+  if (c && typeof c === 'object') {
+    const p = vec(c.p, n);
+    if (p && num(c.r) && c.r > 0) return { kind: 'circle', p, r: c.r };
+  }
+  const b = o.box                                       ;
+  if (b && typeof b === 'object') {
+    const p = vec(b.p, n), size = vec(b.size, n);
+    if (p && size) return { kind: 'box', p, size };
+  }
+  if (Array.isArray(o.poly) && o.poly.length >= 3) {
+    const pts = o.poly.map((q) => vec(q, 2)).filter((q)                => !!q);
+    if (pts.length >= 3) return { kind: 'poly', pts };
+  }
+  return null;
+}
+
+/**
+ * A shape's edge as world points, closed (the last is the first): a circle in `seg` pieces, a box's four floor corners,
+ * a polygon as given. 3D points sit at height `y` (a circle / box at its own p's height when it has one).
+ */
+function outlineOf(s       , n       , y        , seg = 48)             {
+  const at = (a        , b        , h = y) => (n === 3 ? [a, h, b] : [a, b]);
+  const pts             = [];
+  if (s.kind === 'circle') {
+    const h = n === 3 ? s.p[1]  : y;
+    for (let i = 0; i <= seg; i++) {
+      const t = (i / seg) * 2 * Math.PI;
+      pts.push(at(s.p[0]  + s.r * Math.cos(t), s.p[B(n)]  + s.r * Math.sin(t), h));
+    }
+    return pts;
+  }
+  if (s.kind === 'box') return boxCorners(s, n).concat([boxCorners(s, n)[0] ]);
+  for (const q of s.pts) pts.push(at(q[0] , q[1] ));
+  pts.push(pts[0] .slice());
+  return pts;
+}
+
+/**
+ * A box's four floor corners, in order round it (3D: `p` = the middle of its bottom, `size` = [w, h, d]; 2D: `p` = its
+ * middle, `size` = [w, h]) — the loader's own reading of a box (studio-placement.js inBox).
+ */
+function boxCorners(b                                 , n       )             {
+  const w = b.size[0]  / 2, d = b.size[B(n)]  / 2;
+  const x = b.p[0] , z = b.p[B(n)] ;
+  const c = [[-1, -1], [1, -1], [1, 1], [-1, 1]]         ;
+  return c.map(([i, k]) => (n === 3 ? [x + i * w, b.p[1] , z + k * d] : [x + i * w, z + k * d]));
+}
+
+                       
+                                                                                                  
+                    
+             
+             
+             
+             
+               
+ 
+                         
+             
+             
+             
+             
+ 
+
+/** At most this many cells per condition: a wide view gets a coarser grid (step doubled) instead of a slow frame. */
+const MAX_CELLS = 40000;
+
+/**
+ * Try the ground in `bounds` every `step` (doubled until the cells fit MAX_CELLS) with `test` at each cell's middle
+ * (3D at height `y`). A test that throws counts as "out" (the loader treats it the same way).
+ */
+function sampleGrid(test                          , bounds        , step        , y        , n       )       {
+  let s = step;
+  const span = (lo        , hi        ) => Math.max(1, Math.ceil((hi - lo) / s));
+  while (span(bounds.a0, bounds.a1) * span(bounds.b0, bounds.b1) > MAX_CELLS) s *= 2;
+  const nx = span(bounds.a0, bounds.a1), nz = span(bounds.b0, bounds.b1);
+  const cells = new Uint8Array(nx * nz);
+  for (let iz = 0; iz < nz; iz++) {
+    const b = bounds.b0 + (iz + 0.5) * s;
+    for (let ix = 0; ix < nx; ix++) {
+      const a = bounds.a0 + (ix + 0.5) * s;
+      let hit = false;
+      try {
+        hit = !!test(n === 3 ? [a, y, b] : [a, b]);
+      } catch {
+        hit = false;
+      }
+      if (hit) cells[iz * nx + ix] = 1;
+    }
+  }
+  return { cells, nx, nz, a0: bounds.a0, b0: bounds.b0, step: s };
+}
+
+/** The "in" cells of each row joined: [iz, from ix, to ix (exclusive)]. One quad each to paint. */
+function runsOf(g      )                                  {
+  const out                                  = [];
+  for (let iz = 0; iz < g.nz; iz++) {
+    let ix = 0;
+    while (ix < g.nx) {
+      if (!g.cells[iz * g.nx + ix]) {
+        ix++;
+        continue;
+      }
+      const from = ix;
+      while (ix < g.nx && g.cells[iz * g.nx + ix]) ix++;
+      out.push([iz, from, ix]);
+    }
+  }
+  return out;
+}
+
+/**
+ * The edge of the painted cells as ground segments [[a, b], [a, b]]: wherever an "in" cell meets an "out" one (or the
+ * grid's border), pieces on one straight line joined end to end — so a road's edge is two long lines, not a staircase
+ * of 0.5 m steps. The grid's own border is not an edge (the area goes on past what is tried).
+ */
+function edgesOf(g      )                                              {
+  const at = (ix        , iz        ) => ix >= 0 && iz >= 0 && ix < g.nx && iz < g.nz && !!g.cells[iz * g.nx + ix];
+  const outOf = (ix        , iz        ) => ix < 0 || iz < 0 || ix >= g.nx || iz >= g.nz;
+  const A = (ix        ) => g.a0 + ix * g.step;
+  const Bv = (iz        ) => g.b0 + iz * g.step;
+  const out                                              = [];
+  // Lines across a (between rows iz-1 and iz), joined along a.
+  for (let iz = 0; iz <= g.nz; iz++) {
+    let start = -1;
+    for (let ix = 0; ix <= g.nx; ix++) {
+      const edge = ix < g.nx && at(ix, iz) !== at(ix, iz - 1) && !outOf(ix, iz - 1) && !outOf(ix, iz);
+      if (edge && start < 0) start = ix;
+      if (!edge && start >= 0) (out.push([[A(start), Bv(iz)], [A(ix), Bv(iz)]]), (start = -1));
+    }
+  }
+  // Lines along b (between columns ix-1 and ix), joined along b.
+  for (let ix = 0; ix <= g.nx; ix++) {
+    let start = -1;
+    for (let iz = 0; iz <= g.nz; iz++) {
+      const edge = iz < g.nz && at(ix, iz) !== at(ix - 1, iz) && !outOf(ix - 1, iz) && !outOf(ix, iz);
+      if (edge && start < 0) start = iz;
+      if (!edge && start >= 0) (out.push([[A(ix), Bv(start)], [A(ix), Bv(iz)]]), (start = -1));
+    }
+  }
+  return out;
+}
+
+/** The point of `pts` nearest `want` on the ground (a ◇'s search: which knob value brings the edge to the finger). */
+function nearestOn(pts            , want          , n       )                  {
+  let best                  = null, bd = Infinity;
+  for (const q of pts) {
+    const d = Math.hypot(q[0]  - want[0] , q[B(n)]  - want[B(n)] );
+    if (d < bd) (bd = d), (best = q);
+  }
+  return best;
+}
+
+/** Ground bounds round `pts` (and `extra` around them): the part of the ground worth trying. */
+function boundsOf(pts            , n       , extra        )                {
+  const ok = pts.filter((q) => q && num(q[0]) && num(q[B(n)]));
+  if (!ok.length) return null;
+  const as = ok.map((q) => q[0] ), bs = ok.map((q) => q[B(n)] );
+  return { a0: Math.min(...as) - extra, a1: Math.max(...as) + extra, b0: Math.min(...bs) - extra, b1: Math.max(...bs) + extra };
+}
+
+/** Two bounds' common part (null: none). */
+function clipBounds(a        , b               )                {
+  if (!b) return a;
+  const o = { a0: Math.max(a.a0, b.a0), a1: Math.min(a.a1, b.a1), b0: Math.max(a.b0, b.b0), b1: Math.min(a.b1, b.b1) };
+  return o.a1 > o.a0 && o.b1 > o.b0 ? o : null;
+}
+
+__def(__exports, "B", () => B);
+__def(__exports, "shapeOf", () => shapeOf);
+__def(__exports, "outlineOf", () => outlineOf);
+__def(__exports, "boxCorners", () => boxCorners);
+__def(__exports, "MAX_CELLS", () => MAX_CELLS);
+__def(__exports, "sampleGrid", () => sampleGrid);
+__def(__exports, "runsOf", () => runsOf);
+__def(__exports, "edgesOf", () => edgesOf);
+__def(__exports, "nearestOn", () => nearestOn);
+__def(__exports, "boundsOf", () => boundsOf);
+__def(__exports, "clipBounds", () => clipBounds);
+};
+__defs[47] = function (__exports) {
+'use strict';
+// keep-out.ts
+
+// A rule layout's keep-out areas on the ground of the game page (studio-code-keepout, 2026-10-24; the plan's step 3,
+// its pictures n4-box / n4-code). For the picked object's layout
+// (studio:place/avoid from the shell, keep-out-wire.ts):
+//
+//   paint      every area that is on, in red hatching — the same for both kinds, told apart by the edge only: a box drawn
+//              by hand has an orange edge, four corners to drag (size; Shift: height) and a middle to drag (place); a
+//              code condition (codeAvoid) has a violet dashed edge — its `show` shape, else the ground tried with its own
+//              `test` (keep-out-paint.ts) — and a ◇ on that edge when it has a knob and a shape (drag: the number that
+//              brings the edge to the finger; studio:place/avoid-knob). A box that is off: its edge only, grey, dashed.
+//   ×          where an object of the layout would go but has no place (skipped: every try was in an area) — on the row's
+//              line, in red (the card says "1 of 12 has no place to go").
+//   draw       "+ Draw a box" on: the next drag on the ground draws a box. While it grows, the layout is laid out again
+//              with it (code-place.ts preview: the loader's own re-pick, so what the editor shows is what the game
+//              will do) — the objects step out of it, where they stood before dashed with an arrow. Its end is one
+//              studio:place/avoid-box with `out` (how many moved); Esc stops (studio:place/avoid-draw, or `cancel`).
+//   inside     the layout's objects put by hand ("just this one") that stand in one of its areas: the card says so
+//              (studio:place/avoid-inside) — never moved: the hand wins (the plan's decision 12).
+// WHY its own listeners, made before input.ts attaches (editor.ts): a press on a corner, the middle, the ◇ — or any press
+// while drawing — must not pick or drag what is under it (the same reason as timeline-path.ts / code-motion.ts).
+// WHY a finger draws with ONE finger: two fingers stay the camera's (the plan's step 3, item 8). A second finger while
+// drawing stops the box (Esc's way) and the gesture goes on to the camera.
+// Space: the layout's root is taken to be the scene (as timeline-path.ts takes an object's parent): a layout inside a
+// moved group draws its areas off by the group's offset.
+                                                                                                        
+const { codeSpot, findByKey, knobValues } = __require(20);
+const { addBox, inBox, nextBoxName, rowsOf, setBox } = __require(45);
+const { findKnob, knobRange, knobText, unitText } = __require(44);
+const { B, boundsOf, boxCorners, clipBounds, edgesOf, nearestOn, outlineOf, runsOf, sampleGrid, shapeOf } = __require(46);
+
+const YOU = '#ff6b1a';
+const VIOLET = '#a78bfa';
+// A little see-through: the hatching is drawn over the game (an overlay), so what stands in an area stays readable.
+const RED = 'rgba(255, 69, 90, .5)';
+
+                                      
+                                                                                                     
+/** A layout as the loader keeps it (Symbol.for('game-studio.codePlaces')): plain fields only are read. */
+                  
+             
+                                 
+                  
+                 
+                    
+                                 
+                                                                                                 
+ 
+/** A keep-out condition as the loader keeps it (Symbol.for('game-studio.codeAvoids')). */
+                
+             
+               
+                                 
+                                                                                        
+                                                                            
+ 
+
+// "Box 1" is the shell's place.boxName too (i18n.ts): the box being drawn is named here before the shell names it.
+const WORDS                                                                                                                                             = {
+  en: { box: (n) => `Box ${n}`, draw: 'Drag on the ground to draw a box (Esc to stop)', drawTouch: 'Drag on the ground with one finger to draw a box',
+    corner: 'Corner: drag to resize (the opposite corner stays) · Shift: height', middle: 'Drag to move the box', knob: (l) => `${l}: drag to change` },
+  ja: { box: (n) => `四角 ${n}`, draw: '地面をドラッグして四角を描く（Esc でやめる）', drawTouch: '地面を 1 本指でドラッグして四角を描く',
+    corner: '角：引いて大きさを変える（反対の角はそのまま）・Shift で高さ', middle: '引いて四角を動かす', knob: (l) => `${l}：引いて変える` },
+};
+
+const CSS = `
+.root { position: fixed; inset: 0; pointer-events: none; z-index: 2147483644; }
+svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.hit { pointer-events: auto; cursor: grab; fill: transparent; touch-action: none; }
+.hit.on { cursor: grabbing; }
+text { font: 700 11px -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif; fill: #fff; }
+`;
+
+                                  
+           
+                           
+                               
+               
+                    
+                                                                                                       
+                                                        
+ 
+
+                              
+                                   
+                                                         
+                
+                                                          
+                
+ 
+
+           
+                                                                                                                    
+                                                                                                                         
+                                                                                   
+                                                                                                 
+
+function createKeepOutView(d                 )              {
+  const { win } = d;
+  const doc = win.document;
+  const host = doc.createElement('div');
+  host.setAttribute('data-studio-ui', '');
+  host.setAttribute('data-studio-keep-out', '');
+  const shadow = host.attachShadow({ mode: 'open' });
+  const style = doc.createElement('style');
+  style.textContent = CSS;
+  const root = doc.createElement('div');
+  root.className = 'root';
+  const NS = 'http://www.w3.org/2000/svg';
+  const svg = doc.createElementNS(NS, 'svg')                 ;
+  root.append(svg);
+  shadow.append(style, root);
+  let mounted = false;
+
+  // The shell's: the layout shown, its draft entry, "+ Draw a box" on.
+  let shown                                                                     = null;
+  let drag              = null;
+  // The shell's last message while a drag went on (applied when it ends: a ◇ dragged on a phone that the browser took
+  // for a pan once left the picture stuck on the old areas).
+  let pending                                                                = null;
+  // The mouse over the game while drawing (the hint follows it).
+  let hover                          = null;
+  let drawn = '';
+  let insideSig = '';
+  // A condition's tried ground, kept while its knobs and the part of the ground tried stay the same.
+  const grids = new Map              ();
+
+  const layouts = ()                      => {
+    const m = (win                                      )[Symbol.for('game-studio.codePlaces')];
+    return m instanceof Map ? (m                       ) : new Map();
+  };
+  const conds = ()                    => {
+    const m = (win                                      )[Symbol.for('game-studio.codeAvoids')];
+    return m instanceof Map ? (m                     ) : new Map();
+  };
+  const dim = ()        => (d.adapter().dim === '3d' ? 3 : 2);
+  const r3 = (v        ) => Math.round(v * 1000) / 1000;
+  const r1 = (v        ) => Math.round(v * 10) / 10;
+
+  /** g of a condition (the loader's: the player where the level starts, the level). */
+  function gOf(p        )                          {
+    const opts = p.home?.opts;
+    let player                  = null;
+    try {
+      const o = opts?.player                                                                              ;
+      if (Array.isArray(o) && o.every((v) => typeof v === 'number')) player = o.slice();
+      else {
+        const obj = (o && !Array.isArray(o) && o.position ? o : p.home?.root ? findByKey(p.home.root, 'player', !!p.home.three) : null)                                                              ;
+        if (obj?.position) player = p.home?.three ? [obj.position.x, obj.position.y, obj.position.z ?? 0] : [obj.position.x, obj.position.y];
+      }
+    } catch {
+      player = null;
+    }
+    return { player, level: opts?.level ?? null };
+  }
+
+  /**
+   * The ground under the layout (3D), where a box is drawn and a condition painted: the highest surface under its objects
+   * (the lowest of those: adapter.rest), else the adapter's own ground (y 0, toGround's) — or their feet when they stand
+   * below it. Worked out once per layout out (rest() casts rays: not every frame). 2D: none (0).
+   * WHY not the objects' feet: things that float (crystals at 1.1 m) would get a box drawn in the air, off the road.
+   */
+  const floors = new Map                                    ();
+  function floorOf(p        )         {
+    if (dim() === 2) return 0;
+    const sig = JSON.stringify(p.spots ?? null);
+    const known = floors.get(p.id);
+    if (known && known.sig === sig) return known.y;
+    const a = d.adapter();
+    const num = (v         )              => typeof v === 'number' && Number.isFinite(v);
+    const below = p.keys.map((k) => a.rest?.(k, p.keys)?.below).filter(num);
+    const feet = p.keys.map((k) => a.foot?.(k)?.[1]).filter(num);
+    const y = below.length ? Math.min(...below) : feet.length && Math.min(...feet) < 0 ? Math.min(...feet) : 0;
+    floors.set(p.id, { sig, y });
+    return y;
+  }
+  /** A new box's height: up past the layout's highest object (at least 2 m), so it holds what it is drawn round. */
+  function heightOf(p        , floor        )         {
+    const ys = (p.spots ?? []).filter((q)                => !!q).map((q) => q[1] );
+    return Math.max(2, Math.ceil((ys.length ? Math.max(...ys) : floor) - floor + 1));
+  }
+  /** The height a condition is tried at: about where the layout's objects stand (a test may read y). */
+  function spotY(p        , floor        )         {
+    const ys = (p.spots ?? []).filter((q)                => !!q).map((q) => q[1] );
+    return ys.length ? ys.reduce((s, v) => s + v, 0) / ys.length : floor;
+  }
+
+  /** The entry as drawn now: the shell's, with the box being drawn / dragged in it. */
+  function entryNow()                        {
+    if (!shown) return null;
+    if (drag?.kind === 'new' && drag.box) return addBox(shown.entry, drag.box, nextBoxName(shown.entry, (WORDS[d.lang()] ?? WORDS.en).box));
+    if ((drag?.kind === 'corner' || drag?.kind === 'middle')) return setBox(shown.entry, drag.i, drag.box);
+    return shown.entry;
+  }
+  /** A condition's knob values: the file's over the code's, and the ◇'s while it is dragged. */
+  function knobsOf(c      , row                                     )                         {
+    const k = knobValues(c.knobs, row.knobs)                          ;
+    return drag?.kind === 'knob' && drag.code === c.id ? { ...k, [drag.knob]: drag.v } : k;
+  }
+  function shapeFor(c      , k                        , p        )               {
+    if (typeof c.show !== 'function') return null;
+    try {
+      return shapeOf(c.show(k, gOf(p)), dim());
+    } catch {
+      return null;
+    }
+  }
+
+  /** The part of the ground on screen (3D: tried at nine points of the view; sky: none), or null. */
+  function visible(floor        )                {
+    const a = d.adapter();
+    if (!a.toGround) return null;
+    const pts             = [];
+    for (const fx of [0, 0.5, 1]) for (const fy of [0.12, 0.5, 1]) {
+      const q = a.toGround(fx * win.innerWidth, fy * win.innerHeight, floor);
+      if (q) pts.push(q);
+    }
+    return pts.length >= 2 ? boundsOf(pts, dim(), 0) : null;
+  }
+
+  /** A condition without a shape: the ground near the layout and on screen, tried with its test (kept while the same). */
+  function gridFor(c      , k                        , p        , floor        )              {
+    const n = dim();
+    const spots = [...(p.spots ?? []).filter((q)                => !!q)];
+    const near = boundsOf(spots, n, 0);
+    if (!near) return null;
+    const span = Math.max(near.a1 - near.a0, near.b1 - near.b0);
+    const extra = n === 3 ? Math.max(8, span * 0.3) : Math.max(160, span * 0.3);
+    const around = { a0: near.a0 - extra, a1: near.a1 + extra, b0: near.b0 - extra, b1: near.b1 + extra };
+    const b = clipBounds(around, visible(floor));
+    if (!b) return null;
+    // Rounded outwards to whole steps of 2 m (2D 32 px): a camera that moves a little keeps the same grid.
+    const q = n === 3 ? 2 : 32;
+    const rb = { a0: Math.floor(b.a0 / q) * q, a1: Math.ceil(b.a1 / q) * q, b0: Math.floor(b.b0 / q) * q, b1: Math.ceil(b.b1 / q) * q };
+    const y = spotY(p, floor);
+    const sig = JSON.stringify([c.id, k, rb, r3(y)]);
+    const known = grids.get(sig);
+    if (known) return known;
+    const g = gOf(p);
+    const grid = sampleGrid((pt) => !!c.test(pt, k, g), rb, n === 3 ? 0.5 : 8, y, n);
+    if (grids.size > 24) grids.clear();
+    grids.set(sig, grid);
+    return grid;
+  }
+
+             
+                                                    
+                                                                                                   
+                                                                                 
+                                                                      
+                                                                                      
+                                                                                         
+                                              
+
+  function parts()         {
+    const a = d.adapter();
+    const p = shown ? layouts().get(shown.id) : null;
+    if (!shown || !p || !a.toScreen) return [];
+    const n = dim();
+    const scr = (w          ) => a.toScreen (w);
+    const floor = floorOf(p);
+    const entry = entryNow();
+    const out         = [];
+    const fill = (w            ) => {
+      const s = w.map(scr);
+      if (s.every(Boolean)) out.push({ kind: 'fill', pts: s                            });
+      return s;
+    };
+    const rows = rowsOf(p.avoid, entry);
+    for (const row of rows) {
+      if (row.kind === 'box') {
+        const box = n === 3 ? { p: [row.box.p[0] , row.box.p[1] ?? floor, row.box.p[2] ], size: row.box.size } : row.box;
+        const c = boxCorners(box, n);
+        if (row.off) {
+          const s = c.map(scr);
+          if (s.every(Boolean)) out.push({ kind: 'edge', pts: s                           , color: 'off', close: true });
+          continue;
+        }
+        const s = fill(c);
+        if (!s.every(Boolean)) continue;
+        out.push({ kind: 'edge', pts: s                           , color: 'box', close: true });
+        const busy = drag && drag.kind !== 'knob' && drag.kind !== 'new' && drag.i === row.i;
+        s.forEach((q, ci) => out.push({ kind: 'corner', at: q , i: row.i, c: ci, on: !!busy && drag .kind === 'corner' && (drag                      ).corner === ci }));
+        const mid = scr(n === 3 ? [box.p[0] , box.p[1] , box.p[2] ] : box.p);
+        if (mid) out.push({ kind: 'middle', at: mid, i: row.i, on: !!busy && drag .kind === 'middle' });
+        // Its name over its farthest corner (the plan's picture: "Box 1" in orange).
+        const top = (s                           ).reduce((m, q) => (q[1] < m[1] ? q : m));
+        out.push({ kind: 'tag', at: [top[0], top[1] - 14], text: row.name ?? (WORDS[d.lang()] ?? WORDS.en).box(row.n), color: 'box' });
+        continue;
+      }
+      if (row.off) continue;
+      const c = conds().get(row.code);
+      if (!c) continue;
+      const k = knobsOf(c, row);
+      const shape = shapeFor(c, k, p);
+      if (shape) {
+        const pts = outlineOf(shape, n, floor);
+        const s = pts.map(scr);
+        // A circle partly behind the camera: what is on screen, in pieces (a fill needs it whole).
+        if (s.every(Boolean)) fill(pts);
+        out.push({ kind: 'edge', pts: s.filter(Boolean)                           , color: 'code', close: s.every(Boolean) });
+        const name = Object.keys(c.knobs)[0];
+        // The ◇ at the right-most point of the edge that is on screen (a hand reaches it without crossing the area). WHY on
+        // screen: a phone's camera close to an object showed the circle's right end past the window, and the ◇ with it.
+        const m = 16;
+        const vis = s.map((q, i) => [q, i]         ).filter(([q]) => q && q[0] > m && q[0] < win.innerWidth - m && q[1] > m && q[1] < win.innerHeight - m);
+        if (name && vis.length) {
+          const j = vis.reduce((b, x) => (x[0] [0] > b[0] [0] ? x : b))[1];
+          const def = c.knobs[name] ;
+          const u = unitText(d.lang(), def.unit);
+          const dk = drag?.kind === 'knob' && drag.code === c.id ? drag : null;
+          const label = dk ? `${def.label} ${knobText(dk.from, def.step)} → ${knobText(dk.v, def.step)}${u}` : `${def.label} ${knobText(k[name] , def.step)}${u}`;
+          out.push({ kind: 'knob', at: s[j] , code: c.id, label, on: !!dk });
+        }
+        continue;
+      }
+      const grid = gridFor(c, k, p, floor);
+      if (!grid) continue;
+      const at = (A        , Bv        ) => (n === 3 ? [A, floor, Bv] : [A, Bv]);
+      const runs = runsOf(grid);
+      for (const [iz, i0, i1] of runs) {
+        const A0 = grid.a0 + i0 * grid.step, A1 = grid.a0 + i1 * grid.step, B0 = grid.b0 + iz * grid.step, B1 = B0 + grid.step;
+        fill([at(A0, B0), at(A1, B0), at(A1, B1), at(A0, B1)]);
+      }
+      for (const [u, v] of edgesOf(grid)) {
+        const s0 = scr(at(u[0], u[1])), s1 = scr(at(v[0], v[1]));
+        if (s0 && s1) out.push({ kind: 'edge', pts: [s0, s1], color: 'code', close: false });
+      }
+      // Its name in the middle of what it paints (the plan's picture: "On the road" on the road).
+      const mid = runs[Math.floor(runs.length / 2)];
+      if (mid) {
+        const [iz, i0, i1] = mid;
+        const s = scr(at(grid.a0 + ((i0 + i1) / 2) * grid.step, grid.b0 + (iz + 0.5) * grid.step));
+        if (s) out.push({ kind: 'tag', at: s, text: c.name, color: 'code' });
+      }
+    }
+    // Where an object would go but has no place: a red × (its first try's place).
+    const k = knobValues(p.knobs, entry?.knobs)                          ;
+    for (const key of p.skipped ?? []) {
+      const i = Number(key.slice(p.id.length + 1)) - 1;
+      const q = Number.isInteger(i) && i >= 0 ? (codeSpot(p.id, i, k)                   ) : null;
+      const s = q ? scr(n === 3 ? [q[0] , floor, q[2] ] : q) : null;
+      if (s) out.push({ kind: 'cross', at: s });
+    }
+    if (shown.draw && !drag) {
+      const coarse = !!win.matchMedia?.('(pointer: coarse)').matches;
+      const w = WORDS[d.lang()] ?? WORDS.en;
+      out.push({ kind: 'tag', at: hover && !coarse ? [hover[0] + 14, hover[1] + 22] : [win.innerWidth / 2 - 120, 28], text: coarse ? w.drawTouch : w.draw, color: 'hint' });
+    }
+    return out;
+  }
+
+  function draw() {
+    const ps = parts();
+    const sig = JSON.stringify(ps);
+    if (sig === drawn) return;
+    drawn = sig;
+    if (!ps.length) {
+      svg.replaceChildren();
+      return;
+    }
+    if (!mounted && doc.body) (doc.body.append(host), (mounted = true));
+    svg.replaceChildren(defs());
+    const coarse = !!win.matchMedia?.('(pointer: coarse)').matches;
+    const w = WORDS[d.lang()] ?? WORDS.en;
+    const path = (pts                         , close         , stroke        , width        , dash         , fillWith = 'none') => {
+      const el = doc.createElementNS(NS, 'path');
+      el.setAttribute('d', pts.map((q, i) => `${i ? 'L' : 'M'}${q[0].toFixed(1)} ${q[1].toFixed(1)}`).join('') + (close ? 'Z' : ''));
+      el.setAttribute('fill', fillWith);
+      el.setAttribute('stroke', stroke);
+      el.setAttribute('stroke-width', String(width));
+      el.setAttribute('stroke-linejoin', 'round');
+      if (dash) el.setAttribute('stroke-dasharray', dash);
+      svg.append(el);
+      return el;
+    };
+    const hit = (at                  , r        , attr        , val        , tip        , on         ) => {
+      const c = doc.createElementNS(NS, 'circle');
+      c.setAttribute('cx', at[0].toFixed(1));
+      c.setAttribute('cy', at[1].toFixed(1));
+      c.setAttribute('r', String(r));
+      c.setAttribute('class', `hit${on ? ' on' : ''}`);
+      c.setAttribute(attr, val);
+      c.setAttribute('data-part', attr.replace('data-', ''));
+      c.setAttribute('aria-label', tip);
+      const t = doc.createElementNS(NS, 'title');
+      t.textContent = tip;
+      c.append(t);
+      svg.append(c);
+    };
+    // Fills first (under every edge), then edges, then what is grabbed, then words.
+    for (const x of ps) if (x.kind === 'fill') path(x.pts, true, 'none', 0, undefined, 'url(#ko-hatch)');
+    for (const x of ps) {
+      if (x.kind !== 'edge') continue;
+      path(x.pts, x.close, 'rgba(0,0,0,.35)', 4);
+      if (x.color === 'box') path(x.pts, x.close, YOU, 2);
+      else if (x.color === 'code') path(x.pts, x.close, VIOLET, 1.8, '6 5');
+      else path(x.pts, x.close, 'rgba(255,255,255,.55)', 1.4, '4 4');
+    }
+    for (const x of ps) {
+      if (x.kind === 'cross') {
+        const [cx, cy] = x.at;
+        const d1                          = [[cx - 6, cy - 6], [cx + 6, cy + 6]], d2                          = [[cx + 6, cy - 6], [cx - 6, cy + 6]];
+        for (const dd of [d1, d2]) (path(dd, false, 'rgba(0,0,0,.45)', 5), path(dd, false, '#ff453a', 2.4));
+      } else if (x.kind === 'corner') {
+        const s = x.on ? 6 : 5;
+        const q = doc.createElementNS(NS, 'rect');
+        q.setAttribute('x', (x.at[0] - s).toFixed(1));
+        q.setAttribute('y', (x.at[1] - s).toFixed(1));
+        q.setAttribute('width', String(2 * s));
+        q.setAttribute('height', String(2 * s));
+        q.setAttribute('rx', '1.5');
+        q.setAttribute('fill', x.on ? YOU : '#fff');
+        q.setAttribute('stroke', x.on ? '#fff' : YOU);
+        q.setAttribute('stroke-width', '2');
+        svg.append(q);
+        hit(x.at, coarse ? 22 : 12, 'data-ko-corner', `${x.i}:${x.c}`, w.corner, x.on);
+      } else if (x.kind === 'middle') {
+        const c = doc.createElementNS(NS, 'circle');
+        c.setAttribute('cx', x.at[0].toFixed(1));
+        c.setAttribute('cy', x.at[1].toFixed(1));
+        c.setAttribute('r', x.on ? '7.5' : '6.5');
+        c.setAttribute('fill', x.on ? YOU : '#fff');
+        c.setAttribute('stroke', x.on ? '#fff' : YOU);
+        c.setAttribute('stroke-width', '2.5');
+        svg.append(c);
+        hit(x.at, coarse ? 22 : 14, 'data-ko-mid', String(x.i), w.middle, x.on);
+      } else if (x.kind === 'knob') {
+        const r = x.on ? 8 : 7;
+        const dm = doc.createElementNS(NS, 'rect');
+        dm.setAttribute('x', (x.at[0] - r).toFixed(1));
+        dm.setAttribute('y', (x.at[1] - r).toFixed(1));
+        dm.setAttribute('width', String(2 * r));
+        dm.setAttribute('height', String(2 * r));
+        dm.setAttribute('rx', '1.5');
+        dm.setAttribute('transform', `rotate(45 ${x.at[0].toFixed(1)} ${x.at[1].toFixed(1)})`);
+        dm.setAttribute('fill', x.on ? YOU : '#fff');
+        dm.setAttribute('stroke', x.on ? '#fff' : VIOLET);
+        dm.setAttribute('stroke-width', '2.5');
+        svg.append(dm);
+        tag([x.at[0] + 14, x.at[1] - 12], x.label, x.on ? YOU : 'rgba(20,20,26,.82)');
+        hit(x.at, coarse ? 22 : 14, 'data-ko-knob', x.code, w.knob(x.label), x.on);
+      }
+    }
+    for (const x of ps) if (x.kind === 'tag' && x.text) tag(x.at, x.text, x.color === 'box' ? YOU : x.color === 'hint' ? 'rgba(20,20,26,.88)' : 'rgba(20,20,26,.72)');
+  }
+  /** A small label: white words on a rounded tag (`at` = its left end, middle). */
+  function tag(at                  , text        , bg        ) {
+    const wd = 12 + [...text].reduce((s, ch) => s + (ch.charCodeAt(0) > 0x2e80 ? 11 : 6.4), 0);
+    const r = doc.createElementNS(NS, 'rect');
+    r.setAttribute('x', at[0].toFixed(1));
+    r.setAttribute('y', (at[1] - 9).toFixed(1));
+    r.setAttribute('width', wd.toFixed(1));
+    r.setAttribute('height', '18');
+    r.setAttribute('rx', '5');
+    r.setAttribute('fill', bg);
+    const tx = doc.createElementNS(NS, 'text');
+    tx.setAttribute('x', (at[0] + 6).toFixed(1));
+    tx.setAttribute('y', (at[1] + 4).toFixed(1));
+    tx.textContent = text;
+    svg.append(r, tx);
+  }
+  /** The red hatching (screen space, as the plan's pictures: the same for both kinds). */
+  function defs() {
+    const df = doc.createElementNS(NS, 'defs');
+    const pt = doc.createElementNS(NS, 'pattern');
+    pt.setAttribute('id', 'ko-hatch');
+    pt.setAttribute('width', '8');
+    pt.setAttribute('height', '8');
+    pt.setAttribute('patternUnits', 'userSpaceOnUse');
+    pt.setAttribute('patternTransform', 'rotate(45)');
+    const bg = doc.createElementNS(NS, 'rect');
+    bg.setAttribute('width', '8');
+    bg.setAttribute('height', '8');
+    bg.setAttribute('fill', 'rgba(255, 69, 90, .1)');
+    const ln = doc.createElementNS(NS, 'line');
+    ln.setAttribute('x1', '0');
+    ln.setAttribute('y1', '0');
+    ln.setAttribute('x2', '0');
+    ln.setAttribute('y2', '8');
+    ln.setAttribute('stroke', RED);
+    ln.setAttribute('stroke-width', '2');
+    pt.append(bg, ln);
+    df.append(pt);
+    return df;
+  }
+
+  /** The layout's objects put by hand that stand in one of its areas (on): to the shell when that changes. */
+  function checkInside() {
+    const p = shown ? layouts().get(shown.id) : null;
+    const pins = shown?.entry?.pins ?? {};
+    const keys           = [];
+    if (p && shown) {
+      const n = dim();
+      const g = gOf(p);
+      const rows = rowsOf(p.avoid, shown.entry).filter((r) => !r.off);
+      for (const [key, pin] of Object.entries(pins)) {
+        if (!Array.isArray(pin.p) || !p.keys.includes(key)) continue;
+        const q = pin.p;
+        const hit = rows.some((r) => {
+          if (r.kind === 'box') return inBox(q, r.box, n);
+          const c = conds().get(r.code);
+          if (!c) return false;
+          try {
+            return !!c.test(q, knobValues(c.knobs, r.knobs)                          , g);
+          } catch {
+            return false;
+          }
+        });
+        if (hit) keys.push(key);
+      }
+    }
+    const sig = shown ? JSON.stringify([shown.id, keys]) : '';
+    if (sig === insideSig) return;
+    insideSig = sig;
+    if (shown) d.post({ type: 'studio:place/avoid-inside', id: shown.id, keys });
+  }
+
+  // ----- presses: draw a box, drag a corner / the middle / a ◇ -----
+  const opts = { capture: true, passive: false }                           ;
+  const take = (e       ) => {
+    e.stopImmediatePropagation();
+    if (e.cancelable) e.preventDefault();
+  };
+  const ground = (e              , y        ) => d.adapter().toGround?.(e.clientX, e.clientY, y) ?? null;
+  /** What a press is on: one of our corners, a box's middle, a ◇ — or nothing of ours. */
+  const targetOf = (e       )                                                                    => {
+    for (const t of e.composedPath()) {
+      if (!(t instanceof Element) || !svg.contains(t)) continue;
+      const c = t.getAttribute('data-ko-corner');
+      if (c !== null) return { corner: [Number(c.split(':')[0]), Number(c.split(':')[1])] };
+      const m = t.getAttribute('data-ko-mid');
+      if (m !== null) return { mid: Number(m) };
+      const k = t.getAttribute('data-ko-knob');
+      if (k !== null) return { knob: k };
+    }
+    return null;
+  };
+  /** A press on the editor's own parts in the page (the strip, a path's point): not the ground. */
+  const onEditorUi = (e       ) => e.composedPath().some((t) => t instanceof Element && t !== host && t.hasAttribute('data-studio-ui'));
+
+  const boxRow = (i        ) => {
+    const a = shown?.entry?.avoid?.[i];
+    return a && 'box' in a ? a.box : null;
+  };
+
+  const onDown = (e              ) => {
+    if (!shown || (e.pointerType === 'mouse' && e.button !== 0)) return;
+    // A second finger while drawing: the box stops, the camera takes the gesture (two fingers stay the camera's).
+    if (drag && e.pointerId !== drag.id) {
+      if (e.pointerType === 'touch') cancel();
+      return;
+    }
+    const p = layouts().get(shown.id);
+    if (!p) return;
+    const n = dim();
+    const tg = targetOf(e);
+    if (tg?.corner) {
+      const b = boxRow(tg.corner[0]);
+      if (!b) return;
+      take(e);
+      const mid = n === 3 ? [b.p[0] , b.p[1] , b.p[2] ] : b.p;
+      const s0 = d.adapter().toScreen?.(mid), s1 = n === 3 ? d.adapter().toScreen?.([mid[0] , mid[1]  + 1, mid[2] ]) : null;
+      const px = s0 && s1 ? Math.abs(s1[1] - s0[1]) : 0;
+      drag = { kind: 'corner', id: e.pointerId, i: tg.corner[0], corner: tg.corner[1], start: structuredClone(b), box: structuredClone(b), up: false, y0: e.clientY, mpp: px > 0.5 ? 1 / px : 0.02 };
+    } else if (tg?.mid !== undefined) {
+      const b = boxRow(tg.mid);
+      const at = b ? ground(e, n === 3 ? b.p[1]  : 0) : null;
+      if (!b || !at) return;
+      take(e);
+      drag = { kind: 'middle', id: e.pointerId, i: tg.mid, start: structuredClone(b), box: structuredClone(b), grab: at };
+    } else if (tg?.knob) {
+      const c = conds().get(tg.knob);
+      const name = c ? Object.keys(c.knobs)[0] : undefined;
+      const row = rowsOf(p.avoid, shown.entry).find((r) => r.kind === 'code' && r.code === tg.knob)                                                   ;
+      if (!c || !name || !row) return;
+      take(e);
+      const v = (knobValues(c.knobs, row.knobs)                          )[name] ;
+      drag = { kind: 'knob', id: e.pointerId, code: c.id, knob: name, from: v, v, y: floorOf(p) };
+    } else if (shown.draw && !onEditorUi(e)) {
+      const floor = floorOf(p);
+      const at = ground(e, floor);
+      if (!at) return;
+      take(e);
+      drag = { kind: 'new', id: e.pointerId, a: at, box: null, floor, height: heightOf(p, floor), x0: e.clientX, y0: e.clientY };
+    } else return;
+    // The pointer held by the host, which is never drawn again. WHY: a finger is tied to what it pressed (the browser's
+    // implicit capture), and the corner / ◇ pressed is redrawn by the next frame — a removed element's moves and its
+    // release reach no one, and on a phone the ◇ never turned and the drag never ended (found by the phone run, 10/24).
+    try {
+      host.setPointerCapture(e.pointerId);
+    } catch {
+      /* not capturable (the pointer already gone): the window's listeners still see the mouse */
+    }
+    drawn = '';
+    d.markDirty();
+  };
+
+  /** The box from where the drag began to the finger (3D on the layout's ground; 2D in the stage's px). */
+  function newBox(dr                                , b          )      {
+    if (dim() === 3) {
+      const w = Math.max(0.2, Math.abs(b[0]  - dr.a[0] )), dd = Math.max(0.2, Math.abs(b[2]  - dr.a[2] ));
+      return { p: [r3((b[0]  + dr.a[0] ) / 2), r3(dr.floor), r3((b[2]  + dr.a[2] ) / 2)], size: [r3(w), dr.height, r3(dd)] };
+    }
+    return { p: [r1((b[0]  + dr.a[0] ) / 2), r1((b[1]  + dr.a[1] ) / 2)], size: [r1(Math.max(4, Math.abs(b[0]  - dr.a[0] ))), r1(Math.max(4, Math.abs(b[1]  - dr.a[1] )))] };
+  }
+
+  function step(e              , end         ) {
+    const dr = drag;
+    if (!dr || !shown) return;
+    const id = shown.id;
+    const n = dim();
+    if (dr.kind === 'knob') {
+      const p = layouts().get(id), c = conds().get(dr.code);
+      const want = ground(e, dr.y);
+      if (p && c && want) {
+        const def = c.knobs[dr.knob] ;
+        const row = rowsOf(p.avoid, shown.entry).find((r) => r.kind === 'code' && r.code === dr.code)                                                   ;
+        const k0 = knobValues(c.knobs, row?.knobs)                          ;
+        const [lo, hi] = knobRange({ v: dr.from, min: def.min, max: def.max });
+        const near = (x        ) => {
+          const s = shapeFor(c, { ...k0, [dr.knob]: x }, p);
+          return s ? nearestOn(outlineOf(s, n, dr.y), want, n) : null;
+        };
+        const v = findKnob(near, want, lo, hi, !!def.step && def.step >= 1);
+        if (v !== null) {
+          const q = Math.pow(10, Math.floor(Math.log10(Math.max(1e-6, (hi - lo) / 100))));
+          dr.v = def.step && def.step >= 1 ? v : Math.round(v / q) * q;
+        }
+      }
+      d.post({ type: 'studio:place/avoid-knob', id, code: dr.code, knob: dr.knob, v: dr.v, end });
+      if (end) (drag = null), applyPending();
+      drawn = '';
+      d.markDirty();
+      return;
+    }
+    if (dr.kind === 'new') {
+      const b = ground(e, dr.floor);
+      const far = Math.hypot(e.clientX - dr.x0, e.clientY - dr.y0) > 4;
+      if (b && (far || dr.box)) dr.box = newBox(dr, b);
+      // A press without a drag draws nothing (the button stays on: the next drag draws).
+      if (!dr.box) {
+        if (end) drag = null;
+        return;
+      }
+    } else if (dr.kind === 'corner') {
+      const start = dr.start;
+      if (n === 3 && (dr.up || e.shiftKey)) {
+        if (!dr.up) (dr.up = true), (dr.y0 = e.clientY);
+        dr.box = { p: dr.box.p.slice(), size: [dr.box.size[0] , Math.max(0.2, r3(start.size[1]  + (dr.y0 - e.clientY) * dr.mpp)), dr.box.size[2] ] };
+      } else {
+        const hit = ground(e, n === 3 ? start.p[1]  : 0);
+        const opp = boxCorners(dr.box, n)[(dr.corner + 2) % 4] ;
+        if (hit) {
+          const bA = B(n);
+          const min = n === 3 ? 0.2 : 4, rr = n === 3 ? r3 : r1;
+          const w = Math.max(min, Math.abs(hit[0]  - opp[0] )), dd = Math.max(min, Math.abs(hit[bA]  - opp[bA] ));
+          const sx = Math.sign(hit[0]  - opp[0] ) || 1, sz = Math.sign(hit[bA]  - opp[bA] ) || 1;
+          const mx = rr(opp[0]  + (sx * w) / 2), mz = rr(opp[bA]  + (sz * dd) / 2);
+          dr.box = n === 3 ? { p: [mx, start.p[1] , mz], size: [rr(w), dr.box.size[1] , rr(dd)] } : { p: [mx, mz], size: [rr(w), rr(dd)] };
+          // The corner now under the finger is the one held (a drag across the opposite corner flips the box).
+          const cs = boxCorners(dr.box, n);
+          dr.corner = cs.reduce((bi, q, i) => (Math.hypot(q[0]  - hit[0] , q[bA]  - hit[bA] ) < Math.hypot(cs[bi] [0]  - hit[0] , cs[bi] [bA]  - hit[bA] ) ? i : bi), 0);
+        }
+      }
+    } else if (dr.kind === 'middle') {
+      const hit = ground(e, n === 3 ? dr.start.p[1]  : 0);
+      if (hit) {
+        const rr = n === 3 ? r3 : r1;
+        const p = dr.start.p.slice();
+        p[0] = rr(p[0]  + hit[0]  - dr.grab[0] );
+        p[B(n)] = rr(p[B(n)]  + hit[B(n)]  - dr.grab[B(n)] );
+        dr.box = { p, size: dr.start.size.slice() };
+      }
+    }
+    const box = dr.kind === 'new' ? dr.box  : dr.box;
+    const i = dr.kind === 'new' ? -1 : dr.i;
+    // The layout laid out again with the box as it is now: its objects step out (and back in when it shrinks).
+    d.places.preview(id, entryNow());
+    if (!end) d.post({ type: 'studio:place/avoid-box', id, i, p: box.p, size: box.size, end: false });
+    else {
+      const out = d.places.previewEnd();
+      const next = entryNow();
+      drag = null;
+      shown = { ...shown, entry: next, draw: dr.kind === 'new' ? false : shown.draw };
+      d.post({ type: 'studio:place/avoid-box', id, i, p: box.p, size: box.size, end: true, out });
+      // What the shell said during the drag is older than this box: its answer to the end comes next.
+      pending = null;
+      checkInside();
+    }
+    drawn = '';
+    d.markDirty();
+  }
+
+  /** Esc / a second finger / pointercancel: the drag is undone (the layout back as it was), nothing kept. */
+  function cancel() {
+    const dr = drag;
+    if (!dr || !shown) return;
+    drag = null;
+    if (dr.kind === 'knob') d.post({ type: 'studio:place/avoid-knob', id: shown.id, code: dr.code, knob: dr.knob, v: dr.from, end: true });
+    else {
+      d.places.preview(shown.id, shown.entry);
+      d.places.previewEnd();
+      if (dr.kind !== 'new' || dr.box) {
+        const b = dr.kind === 'new' ? dr.box  : dr.start;
+        d.post({ type: 'studio:place/avoid-box', id: shown.id, i: dr.kind === 'new' ? -1 : dr.i, p: b.p, size: b.size, end: true, cancel: true });
+      }
+    }
+    applyPending();
+    drawn = '';
+    d.markDirty();
+  }
+
+  /** The shell's message: what to show (the layout, its entry, "+ Draw a box"). */
+  function apply(msg                                                        ) {
+    shown = msg.id ? { id: msg.id, entry: msg.entry ? structuredClone(msg.entry) : null, draw: !!msg.draw } : null;
+    if (!shown?.draw) hover = null;
+    checkInside();
+    drawn = '';
+    d.markDirty();
+  }
+  function applyPending() {
+    const m = pending;
+    pending = null;
+    if (m) apply(m);
+  }
+
+  const onMove = (e              ) => {
+    if (!drag) {
+      if (shown?.draw && e.pointerType === 'mouse') {
+        hover = [e.clientX, e.clientY];
+        d.markDirty();
+      }
+      return;
+    }
+    if (e.pointerId !== drag.id) return;
+    take(e);
+    step(e, false);
+  };
+  const onUp = (e              ) => {
+    if (!drag || e.pointerId !== drag.id) return;
+    take(e);
+    if (e.type === 'pointercancel') cancel();
+    else step(e, true);
+  };
+  // The drag's pointer taken away (the browser's own gesture, the page losing it): as Esc.
+  const onLost = (e              ) => {
+    if (drag && e.pointerId === drag.id) cancel();
+  };
+  const onKey = (e               ) => {
+    if (e.key !== 'Escape' || !shown) return;
+    if (drag) {
+      take(e);
+      cancel();
+    } else if (shown.draw) {
+      take(e);
+      shown = { ...shown, draw: false };
+      d.post({ type: 'studio:place/avoid-draw', id: shown.id, on: false });
+      drawn = '';
+      d.markDirty();
+    }
+  };
+  win.addEventListener('pointerdown', onDown, opts);
+  win.addEventListener('pointermove', onMove, opts);
+  win.addEventListener('pointerup', onUp, opts);
+  win.addEventListener('pointercancel', onUp, opts);
+  win.addEventListener('lostpointercapture', onLost, opts);
+  win.addEventListener('keydown', onKey, { capture: true });
+
+  return {
+    handle(msg) {
+      if (msg.type !== 'studio:place/avoid') return;
+      // While a box or a ◇ is dragged, ours is newer: kept for the drag's end (a box's end drops it: the shell answers).
+      if (drag) return void (pending = msg);
+      apply(msg);
+    },
+    frame: draw,
+    clear() {
+      if (drag) cancel();
+      shown = null;
+      hover = null;
+      insideSig = '';
+      draw();
+    },
+  };
+}
+
+__def(__exports, "createKeepOutView", () => createKeepOutView);
+};
+__defs[48] = function (__exports) {
 'use strict';
 // code-motion.ts
 
@@ -17216,7 +18500,7 @@ __def(__exports, "ruleAt", () => ruleAt);
 __def(__exports, "withRuleMotions", () => withRuleMotions);
 __def(__exports, "createCodeMotionView", () => createCodeMotionView);
 };
-__defs[46] = function (__exports) {
+__defs[49] = function (__exports) {
 'use strict';
 // seen.ts
 
@@ -17300,7 +18584,7 @@ __def(__exports, "seenEnough", () => seenEnough);
 __def(__exports, "minPickPx", () => minPickPx);
 __def(__exports, "tooSmall", () => tooSmall);
 };
-__defs[47] = function (__exports) {
+__defs[50] = function (__exports) {
 'use strict';
 // editor.ts
 
@@ -17325,8 +18609,9 @@ const { createUiExtras } = __require(37);
 const { loaderPlay } = __require(42);
 const { codeAvoidsOf, codeMotionsOf, codePlacesOf, namedByLayout } = __require(43);
 const { createCodePlaceView } = __require(44);
-const { createCodeMotionView, withRuleMotions } = __require(45);
-const { seenEnough, tooSmall } = __require(46);
+const { createKeepOutView } = __require(47);
+const { createCodeMotionView, withRuleMotions } = __require(48);
+const { seenEnough, tooSmall } = __require(49);
 
                              
                                                                                                                      
@@ -17499,6 +18784,10 @@ function createEditor(deps            )         {
       postSelected();
       input?.selectionChanged();
     } });
+  // The picked layout's keep-out areas on the ground (studio-code-keepout, 2026-10-24; keep-out.ts): painted, a box drawn
+  // and dragged, a condition's ◇. Made before input.ts attaches, so a press on a corner — or any press while drawing —
+  // reaches it first.
+  const keepOut = createKeepOutView({ win, adapter: () => adapter, post: (m) => post(m), lang: () => lang, markDirty: () => (dirtyFrame = true), places: codePlace });
   let lang       = 'en';
   let loopId = 0;
   let dirtyFrame = true;
@@ -17585,7 +18874,7 @@ function createEditor(deps            )         {
     input?.frame();
     toolHost.frame();
     timeline.frame();
-    if (layer === 'world') (codePlace.frame(), codeMotion.frame());
+    if (layer === 'world') (keepOut.frame(), codePlace.frame(), codeMotion.frame());
     dirtyFrame = false;
   };
 
@@ -18632,8 +19921,11 @@ function createEditor(deps            )         {
         case 'studio:place/guide':
           if (state.editing && layer === 'world') codePlace.handle(msg);
           break;
+        case 'studio:place/avoid':
+          if (state.editing && layer === 'world') keepOut.handle(msg);
+          break;
         case 'studio:core/edit':
-          if (!msg.on) (timeline.clear(), codePlace.clear(), codeMotion.clear());
+          if (!msg.on) (timeline.clear(), codePlace.clear(), codeMotion.clear(), keepOut.clear());
           setEditing(msg.on, msg.viewState);
           if (msg.on && wantLayer) {
             const w = wantLayer;
@@ -18642,7 +19934,7 @@ function createEditor(deps            )         {
           }
           break;
         case 'studio:core/layer':
-          if (msg.layer !== layer) (timeline.clear(), codePlace.clear(), codeMotion.clear());
+          if (msg.layer !== layer) (timeline.clear(), codePlace.clear(), codeMotion.clear(), keepOut.clear());
           if (msg.layer === 'world' || msg.layer === 'ui') setLayer(msg.layer);
           break;
         case 'studio:ui/screen':
@@ -18809,7 +20101,7 @@ function createEditor(deps            )         {
 
 __def(__exports, "createEditor", () => createEditor);
 };
-__defs[48] = function (__exports) {
+__defs[51] = function (__exports) {
 'use strict';
 // ../shell/line-fade.ts
 
@@ -18872,7 +20164,7 @@ __def(__exports, "lineFades", () => lineFades);
 __def(__exports, "lineStayMs", () => lineStayMs);
 __def(__exports, "lineKey", () => lineKey);
 };
-__defs[49] = function (__exports) {
+__defs[52] = function (__exports) {
 'use strict';
 // ../shell/icons.ts
 
@@ -19055,7 +20347,7 @@ function setButton(b                   , name               , label        , sho
 __def(__exports, "icon", () => icon);
 __def(__exports, "setButton", () => setButton);
 };
-__defs[50] = function (__exports) {
+__defs[53] = function (__exports) {
 'use strict';
 // play-shot.ts
 
@@ -19267,7 +20559,7 @@ function shootPage(win     , skip                          )                {
 __def(__exports, "SHOT_W", () => SHOT_W);
 __def(__exports, "shootPage", () => shootPage);
 };
-__defs[51] = function (__exports) {
+__defs[54] = function (__exports) {
 'use strict';
 // play-pause.ts
 
@@ -19406,7 +20698,7 @@ function createPauseHold(win                            , parts            )    
 __def(__exports, "isPauseKey", () => isPauseKey);
 __def(__exports, "createPauseHold", () => createPauseHold);
 };
-__defs[52] = function (__exports) {
+__defs[55] = function (__exports) {
 'use strict';
 // play-chat.ts
 
@@ -19426,7 +20718,7 @@ __defs[52] = function (__exports) {
 // Lives in play-ask.ts's shadow root and top layer, so it draws over a full-screen game and the game's CSS cannot
 // reach it. No colour but the AI's violet, as everywhere in the editor.
                                                
-const { icon } = __require(49);
+const { icon } = __require(52);
 
                            
                     
@@ -19763,7 +21055,7 @@ __def(__exports, "chatOnLine", () => chatOnLine);
 __def(__exports, "CHAT_CSS", () => CHAT_CSS);
 __def(__exports, "createChat", () => createChat);
 };
-__defs[53] = function (__exports) {
+__defs[56] = function (__exports) {
 'use strict';
 // play-move.ts
 
@@ -19798,7 +21090,7 @@ __defs[53] = function (__exports) {
 const { UI } = __require(13);
                                              
                                                     
-const { createEditor } = __require(47);
+const { createEditor } = __require(50);
 const { drivenBetween } = __require(35);
 const { nativeSetTimeout } = __require(0);
 
@@ -20164,7 +21456,7 @@ __def(__exports, "MOVE_CSS", () => MOVE_CSS);
 __def(__exports, "createPlayMove", () => createPlayMove);
 __def(__exports, "defaultHandlePx", () => defaultHandlePx);
 };
-__defs[54] = function (__exports) {
+__defs[57] = function (__exports) {
 'use strict';
 // play-ask.ts
 
@@ -20190,12 +21482,12 @@ __defs[54] = function (__exports) {
 // Nothing here runs unless the editor says an AI can get the request (play/on): the offline web demo shows nothing.
                                                                                                                                          
 const { isStudioMessage } = __require(13);
-const { LINE_FADE_MS, LINE_GRACE_MS, lineStayMs } = __require(48);
-const { icon } = __require(49);
-const { shootPage } = __require(50);
-const { createPauseHold, isPauseKey } = __require(51);
-const { CHAT_CSS, createChat } = __require(52);
-const { createPlayMove, defaultHandlePx, MOVE_CSS } = __require(53);
+const { LINE_FADE_MS, LINE_GRACE_MS, lineStayMs } = __require(51);
+const { icon } = __require(52);
+const { shootPage } = __require(53);
+const { createPauseHold, isPauseKey } = __require(54);
+const { CHAT_CSS, createChat } = __require(55);
+const { createPlayMove, defaultHandlePx, MOVE_CSS } = __require(56);
                                              
                                                     
 const { nativeSetTimeout, nativeClearTimeout } = __require(0);
@@ -21140,7 +22432,7 @@ __def(__exports, "isAskKey", () => isAskKey);
 __def(__exports, "near2D", () => near2D);
 __def(__exports, "startPlayAsk", () => startPlayAsk);
 };
-__defs[55] = function (__exports) {
+__defs[58] = function (__exports) {
 'use strict';
 // levels.ts
 
@@ -21195,7 +22487,7 @@ function pickLevel(list         , href        , inFrame         )               
 __def(__exports, "cleanLevels", () => cleanLevels);
 __def(__exports, "pickLevel", () => pickLevel);
 };
-__defs[56] = function (__exports) {
+__defs[59] = function (__exports) {
 'use strict';
 // early-press.ts
 
@@ -21277,7 +22569,7 @@ function watchEarlyTaps(win        )            {
 
 __def(__exports, "watchEarlyTaps", () => watchEarlyTaps);
 };
-__defs[57] = function (__exports) {
+__defs[60] = function (__exports) {
 'use strict';
 // bridge.ts
 
@@ -21293,13 +22585,13 @@ const { installPlayClock } = __require(18);
 const { adapterFromPort2D } = __require(19);
 const { findDomUi, uiAdapterFromPort } = __require(22);
 const { runSelfCheck } = __require(23);
-const { createEditor } = __require(47);
-const { startPlayAsk } = __require(54);
+const { createEditor } = __require(50);
+const { startPlayAsk } = __require(57);
 const { createPlaySwitch } = __require(42);
 const { arrangeInPlay, moveInPlay } = __require(41);
 const { applyPlacement, placementForLevel } = __require(20);
-const { pickLevel } = __require(55);
-const { watchEarlyTaps } = __require(56);
+const { pickLevel } = __require(58);
+const { watchEarlyTaps } = __require(59);
                                                     
 const { nativeSetTimeout } = __require(0);
 
@@ -21732,7 +23024,7 @@ function startBridge(opts               )       {
 __def(__exports, "readEditParams", () => readEditParams);
 __def(__exports, "startBridge", () => startBridge);
 };
-__defs[58] = function (__exports) {
+__defs[61] = function (__exports) {
 'use strict';
 // main.ts
 
@@ -21751,11 +23043,11 @@ __require(0);
 // the three.js adapter: it installs __THREE_DEVTOOLS__ and wraps rAF/render.
 __require(1);
 const { threeProbe } = __require(12);
-const { startBridge } = __require(57);
+const { startBridge } = __require(60);
 
 startBridge({ builtins: [threeProbe] });
 
 
 };
-__require(58);
+__require(61);
 })();

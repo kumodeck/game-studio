@@ -1062,6 +1062,13 @@ export type ShellToBridge =
    */
   | { type: 'studio:place/guide'; ids: string[]; sel: string | null; places?: Record<string, PlacementPlace>; compare?: Record<string, PlaceCompareMarks> }
   /**
+   * studio-code-keepout (2026-10-24; the plan's step 3): the keep-out areas of the picked object's rule layout `id`
+   * painted on the ground (red hatching; a box's edge orange with its corners to drag, a code condition's violet and
+   * dashed, its ◇ when it has a knob and a shape), with `entry` = the layout's `places` entry of the draft. `draw` = the
+   * card's "+ Draw a box" is on: a drag on the ground draws a box (studio:place/avoid-box, i = -1). null id = none.
+   */
+  | { type: 'studio:place/avoid'; id: string | null; entry?: PlacementPlace | null; draw?: boolean }
+  /**
    * studio-motion-move (2026-10-23): a move / turn / resize is a point of a motion now (the timeline open, ● on, no Try
    * running) — or not any more. While on, a thing the game moves takes every tool as a motion's point (Item.meets),
    * not as its start spot (Item.startSpot).
@@ -1329,6 +1336,18 @@ export type BridgeToShell =
    * `end` (one undo step and one Save count in the shell). `key` = the object dragged.
    */
   | { type: 'studio:place/knob'; id: string; knob: string; v: number; end: boolean; key: string }
+  /**
+   * studio-code-keepout: a keep-out box of layout `id` drawn (i = -1, a new one), moved or resized (i = its place in
+   * the file's list) in the game: live, then `end` (one undo step in the shell). The game page has laid the layout out
+   * again meanwhile (its objects step out of the box); `out` (at the end) = how many moved; `cancel` = Esc: as before.
+   */
+  | { type: 'studio:place/avoid-box'; id: string; i: number; p: number[]; size: number[]; end: boolean; out?: number; cancel?: boolean }
+  /** studio-code-keepout: the ◇ on a keep-out condition's edge dragged: its knob `knob` turned to `v` (live, then `end`). */
+  | { type: 'studio:place/avoid-knob'; id: string; code: string; knob: string; v: number; end: boolean }
+  /** studio-code-keepout: the objects of layout `id` put by hand that stand in one of its keep-out areas ([] = none). */
+  | { type: 'studio:place/avoid-inside'; id: string; keys: string[] }
+  /** studio-code-keepout: "+ Draw a box" stopped in the game (Esc there) before a box was drawn. */
+  | { type: 'studio:place/avoid-draw'; id: string; on: false }
   /** studio-motion-triggers: the area's middle dragged in the game (world [x, y, z]); `end` = the drag ended. `size` (studio-timeline-2): a corner dragged — the area's new size (and middle). */
   | { type: 'studio:timeline/area-moved'; key: string; p: number[]; end: boolean; size?: number[] }
   /**
@@ -1515,13 +1534,22 @@ export interface StudioRequestInput {
    */
   motions?: RequestMotion[];
   /**
-   * "ask" only (studio-code-torule, 2026-10-24; the plan's need 3: "turn what I placed / moved by hand into a formula"):
-   * 'to-code' = the words came from ✦ Turn into a rule — the AI writes the nearest rule for these hand-placed objects
-   * (`objects`, with where each stands now) or this motion of points (`motions`, with its `keys`) and puts it in their
-   * place itself (`--do place.code --replace` / `motion.code --replace`); the editor measures how close it came. When no
-   * rule comes close (half the object's size; a tenth of the path's), it replaces nothing and says so in one line.
+   * "ask" only (studio-code-keepout, 2026-10-24): the rule layouts the words are about — the card's "✦ Describe with
+   * text" under Keep-out areas puts the layout here with its areas as they are now (`avoid`: boxes and conditions, on or
+   * off), so "not within 5 m of the player" reaches the AI with the layout's id: it writes a codeAvoid() and adds it
+   * with `--do place.avoid`.
    */
-  intent?: 'to-code';
+  places?: RequestPlace[];
+  /**
+   * "ask" only: what the words are for, when a button said so. 'avoid' = a keep-out area for `places` (studio-code-keepout).
+   * 'to-code' (studio-code-torule, 2026-10-24; the plan's need 3: "turn what I placed / moved by hand into a formula") =
+   * the words came from ✦ Turn into a rule — the AI writes the nearest rule for these hand-placed objects (`objects`,
+   * with where each stands now) or this motion of points (`motions`, with its `keys`) and puts it in their place itself
+   * (`--do place.code --replace` / `motion.code --replace`); the editor measures how close it came. When no rule comes
+   * close (half the object's size; a tenth of the path's), it replaces nothing and says so in one line. Absent =
+   * whatever the words say.
+   */
+  intent?: RequestIntent;
   /**
    * UI stage 1: 'ui' when the objects are the game's HTML UI (data-studio-key elements, picked in the UI layer), so
    * the AI changes that element's HTML / CSS, not a world object. Absent = the world, as before.
@@ -1548,6 +1576,18 @@ export interface StudioRequestInput {
   paused?: boolean;
   chat?: string;
   history?: ChatLine[];
+}
+
+/** What an ask is for, when a button set it (StudioRequestInput.intent). */
+export type RequestIntent = 'avoid' | 'to-code';
+/** A rule layout named in an ask (StudioRequestInput.places): its id and name, its knobs now, its keep-out areas. */
+export interface RequestPlace {
+  id: string;
+  name: string;
+  /** How many objects it puts now. */
+  n: number;
+  knobs?: Record<string, number>;
+  avoid: Array<{ box: { p: number[]; size: number[] }; name?: string; off?: true } | { code: string; name?: string; knobs?: Record<string, number>; off?: true }>;
 }
 
 /** A Library motion named in an ask (StudioRequestInput.motions). */

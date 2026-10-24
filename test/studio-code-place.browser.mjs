@@ -13,6 +13,15 @@
 //           the line, no "Repeat: Once"; the ◇ of its path dragged out: Radius 2 → 3 m; Disable / enable; "Make editable
 //           points": a motion of points; ⌘Z back to the rule.
 //   plain   (the first theme) a game with no rule (Neon Run as it is): the card and the list as before (no Layout, no tag).
+//   keepout (studio-code-keepout, 2026-10-24; the plan's step 3, need 4: "when things are placed procedurally I want to
+//           mark where they must not go — as coordinates or as code"): twelve crystals scattered by a rule (codePlace
+//           'crystal', its code avoids codeAvoid('road')), and codeAvoid('near-player') in the code for the AI to add:
+//           press a crystal → the card's Keep-out areas ("On the road", Rule) and the road painted in the game → "+ Draw a
+//           box" and a drag on the ground → the crystals in it step out ("2 moved out"), Save · 1 → "✦ Describe with text":
+//           the chips, the request (`places`, `intent: 'avoid'`) → the AI's place.avoid: its row glows, a circle with a ◇
+//           → the ◇ dragged out, then 5 → 6 m typed → Save: the file → "On the road" off → ⌘Z back on → ⌘Z ×4: as at
+//           the start → a box that leaves almost no room: "N of 12 have no place to go" and the × → one put by hand on
+//           the road: "Inside a keep-out area" → × on a row.
 //   torule  (the first theme; studio-code-torule, 2026-10-24 — need 3: "turn what I placed / moved by hand into a close
 //           formula") six street lamps placed by hand (the third 0.6 m off the line) and the ship's motion of points:
 //           pick the six → ✦ Turn into a rule → the draft in the chat box, sent (intent "to-code") → a stand-in AI writes
@@ -21,11 +30,12 @@
 //           the hand lamps back. The ship: the motion row's ⋯ → Turn into a rule… → `motion.code --replace` → the strip
 //           lit with orange marks, "Compare with original · Max deviation …" on the line, orange dots in the game → Save:
 //           the comparison gone.
-// Pictures (`--shots <dir>`): 2-<lang>-<theme>-<step>.png (the plan's step-2 pictures), 4-<lang>-<theme>-<step>.png (step 4).
+// Pictures (`--shots <dir>`): 2-<lang>-<theme>-<step>.png (the plan's step-2 pictures), 3-… (step 3), 4-… (step 4).
+// `--before`: only the first keep-out picture (run with the previous version's UI: `--ui <dir>`).
 //
-//   node test/studio-code-place.browser.mjs [--lang en|ja] [--themes dark,light] [--width 1280] [--only layout,motion,plain,torule] [--shots <dir>]
+//   node test/studio-code-place.browser.mjs [--lang en|ja] [--themes dark,light] [--width 1280] [--only layout,motion,plain,keepout,torule] [--shots <dir>] [--before]
 // Exit 1 on a failure.
-import { copyFileSync, cpSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { copyFileSync, cpSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -46,7 +56,8 @@ const LANG = take('--lang', 'ja');
 const THEMES = take('--themes', 'dark,light').split(',').filter((x) => x === 'dark' || x === 'light');
 const WIDTH = Number(take('--width', '1280'));
 const PHONE = WIDTH < 500;
-const ONLY = take('--only', 'layout,motion,plain,torule').split(',');
+const ONLY = take('--only', 'layout,motion,plain,keepout,torule').split(',');
+const BEFORE = args.includes('--before');
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const W = LANG === 'ja'
   ? { saved: '間 → 4 m', layout: '並べ方', line: '直線 · 4 個', tag: 'ルール', gap: '間', note: '動かすと間が変わる', pinned: 'この 1 個だけ手動で配置中', hand: '個別に配置', motion: '動きのルール', radius: '半径', points: '編集点にする', repeat: 'くり返し', off: '一時停止' }
@@ -81,6 +92,30 @@ const RULES = `
 const MOTION_FILE = { version: 1, tool: 'placement', dim: '3d', space: 'local', objects: {},
   motions: [{ name: LANG === 'ja' ? 'らせん' : 'Spiral', code: 'spiral' }],
   motion: { pillar: { clips: [{ use: LANG === 'ja' ? 'らせん' : 'Spiral', when: { on: 'start' } }] } } };
+
+// Step 3: crystals scattered by a rule that keeps off the road; a second condition (near the player's start) for the AI.
+const W3 = LANG === 'ja'
+  ? { title: '置かない所', road: '道の上', rule: 'ルール', hand: '手', chip: '置かない所', crystal: '結晶', near: 'プレイヤーから', out: '個が外へ', skipped: '個は置ける所がありません', inside: '置かない所の中です', box: '四角 1', ask: 'プレイヤーから 5 m 以内には置かない' }
+  : { title: 'Keep-out areas', road: 'On the road', rule: 'Rule', hand: 'Hand', chip: 'Keep-out areas', crystal: 'crystal', near: 'From the player', out: 'moved out', skipped: 'no place to go', inside: 'Inside a keep-out area', box: 'Box 1', ask: 'not within 5 m of the player' };
+const KEEPOUT = `
+    // Twelve crystals scattered over the field, never on the road (the AI's codePlace and codeAvoid; SKILL.md "Code layouts").
+    codePlace('crystal', {
+      name: ${JSON.stringify(W3.crystal)},
+      knobs: { n: { v: 12, label: ${JSON.stringify(LANG === 'ja' ? '個数' : 'Count')}, unit: '', min: 1, max: 30, step: 1 } },
+      count: (k) => k.n,
+      make: () => new THREE.Mesh(new THREE.OctahedronGeometry(.45), glow(0x6ff0ff, 1.4)),
+      at: (i, k, g) => ({ p: [-12 + g.rand() * 24, 1.1, 4 - g.rand() * 34] }),
+      avoid: ['road'],
+    });
+    codeAvoid('road', { name: ${JSON.stringify(W3.road)}, test: (p) => Math.abs(p[0]) < 5 });
+    // Not within r m of where the player starts (a knob; its shape a circle, so the editor puts a ◇ on it).
+    codeAvoid('near-player', {
+      name: ${JSON.stringify(W3.near)}, after: ${JSON.stringify(LANG === 'ja' ? '以内' : 'within')},
+      knobs: { r: { v: 5, label: ${JSON.stringify(LANG === 'ja' ? '距離' : 'Distance')}, unit: 'm', min: 1, max: 20 } },
+      test: (p, k, g) => !!g.player && Math.hypot(p[0] - g.player[0], p[2] - g.player[2]) < k.r,
+      show: (k, g) => (g.player ? { circle: { p: [g.player[0], 0, g.player[2]], r: k.r } } : null),
+    });
+`;
 
 // ✦ Turn into a rule (studio-code-torule): the hand-placed lamps and the hand-made motion, as a person's game has them.
 const SHIP_MOTION = LANG === 'ja' ? 'ship の動き' : 'Ship motion';
@@ -128,7 +163,7 @@ const SHIP_FILE = { version: 1, tool: 'placement', dim: '3d', space: 'local', ob
   motions: [{ name: SHIP_MOTION, len: 2, repeat: 'loop', keys: { p: Array.from({ length: 9 }, (_, i) => ({ t: i / 4, v: [Math.round((Math.sin((i / 8) * 2 * Math.PI) * 1.5 + (i === 3 ? 0.12 : 0)) * 1000) / 1000, 0, 0], ease: 'linear' })) } }],
   motion: { ship: { clips: [{ use: SHIP_MOTION, when: { on: 'start' } }] } } };
 
-/** Neon Run in a temporary folder: `rules` = with the hexagons as a rule layout and the pillar's rule motion; 'torule' = the hand lamps and the ship's hand motion. */
+/** Neon Run in a temporary folder: `rules` = with the hexagons as a rule layout and the pillar's rule motion ('keepout': the crystals; 'torule': the hand lamps and the ship's hand motion). */
 function makeGame(theme, rules) {
   const root = mkdtempSync(join(tmpdir(), 'studio-code-knobs-'));
   cpSync(join(PKG, 'test/neon-run'), root, { recursive: true });
@@ -139,6 +174,13 @@ function makeGame(theme, rules) {
       .replace("    await applyPlacement(scene, './placement.json');", `${LAMPS}\n    await applyPlacement(scene, './placement.json');`);
     writeFileSync(join(root, 'index.html'), html);
     writeFileSync(join(root, 'placement.json'), JSON.stringify(SHIP_FILE, null, 2));
+  } else if (rules === 'keepout') {
+    const html = readFileSync(join(root, 'index.html'), 'utf8')
+      .replace("import { applyPlacement } from './studio-placement.js';", "import { applyPlacement, codeAvoid, codePlace } from './studio-placement.js';")
+      // The player starts at (0, 0, -4) for the conditions (applyPlacement's { player }): in front of the camera.
+      .replace("    await applyPlacement(scene, './placement.json');", `${KEEPOUT}    await applyPlacement(scene, './placement.json', { player: [0, 0, -4] });`);
+    writeFileSync(join(root, 'index.html'), html);
+    writeFileSync(join(root, 'placement.json'), JSON.stringify({ version: 1, tool: 'placement', dim: '3d', space: 'local', objects: {} }, null, 2));
   } else if (rules) {
     let html = readFileSync(join(root, 'index.html'), 'utf8')
       .replace("import { applyPlacement } from './studio-placement.js';", "import { applyPlacement, codeMotion, codePlace } from './studio-placement.js';");
@@ -207,6 +249,8 @@ async function run(theme, first) {
       check(await page.eval(`!!document.querySelector('[data-part=rule-knob-gap]') && !!document.querySelector('[data-part=rule-knob-n]')`), 'its knobs Gap and Count are on the card');
       check(await page.eval(`!document.querySelector('[data-part=card] .f-cells.n3')`), 'no Position numbers (the rule decides them)');
       check((await rings()) >= 8, `violet rings and the dotted line in the game (${await rings()} paths)`);
+      // A phone's open card can cover the hexagon for a moment (the camera then steps back to show it): wait for the line.
+      await page.waitFor(`(() => { const h = [...${GW}.document.querySelectorAll('[data-studio-ui]')].map((x) => x.shadowRoot?.querySelector('.note')).find((n) => n && n.style.display !== 'none'); return !!h && h.textContent.includes(${JSON.stringify(W.note)}); })()`, 4000).catch(() => null);
       check((await note()).includes(W.note), `the line under the strip: "${await note()}"`);
       check(JSON.parse(await page.eval(ROW)).join() === '-4,-10,-16,-22', `the rule put them 6 m apart (${await page.eval(ROW)})`);
       if (!PHONE) check((await page.eval(`document.querySelector('[data-action=card-more]')?.title ?? ''`)).includes(W.hand), 'the card\'s ⋯ has Place individually too');
@@ -230,7 +274,9 @@ async function run(theme, first) {
       const a2 = await at('hex-2');
       const a1 = await at('hex-1');
       let chip = '';
-      await drag(a2, { x: a2.x, y: a2.y + (a1.y - a2.y) * 0.4 }, 0, async () => {
+      // At least 36 px toward the camera: with the camera stepped back (a phone's taller card) 40 % of the gap between two
+      // hexagons was a few px — less than a drag (studio-code-keepout's phone run, 10/24).
+      await drag(a2, { x: a2.x, y: a2.y + Math.max(36, (a1.y - a2.y) * 0.4) }, 0, async () => {
         chip = await page.eval(`(() => { const h = [...${GW}.document.querySelectorAll('[data-studio-ui]')].map((x) => x.shadowRoot?.querySelector('.chip')).find((n) => n && n.style.display !== 'none'); return h ? h.textContent : ''; })()`);
         await shot('3-drag');
       });
@@ -535,9 +581,225 @@ async function toRule(theme) {
   }
 }
 
+/**
+ * Step 3 (studio-code-keepout): a rule layout's keep-out areas — the card's list, a box drawn on the ground, a condition
+ * added by the AI from the words, its ◇ and knob, on / off, ⌘Z, no place left, one put by hand inside, ×.
+ */
+async function keepout(theme) {
+  console.log(`${LANG} ${theme} ${WIDTH} keepout`);
+  const root = makeGame(theme, 'keepout');
+  const srv = await startStudioServer({ root, kumo: { home: join(root, '.no-kumo-home'), env: {} }, uiDir: UI, log: () => {}, env: {} });
+  const browser = await launch();
+  try {
+    const page = await newPage(browser, { width: WIDTH, height: PHONE ? 844 : 800, mobile: PHONE, cdnCache: process.env.STUDIO_CDN_CACHE });
+    const shot = async (what) => SHOTS && writeFileSync(join(SHOTS, `3-${LANG}-${theme}${PHONE ? '-phone' : ''}-${what}.png`), await page.screenshot());
+    const ai = (ops) => askEditor({ origin: srv.origin, stopToken: srv.stopToken }, ops, 'claude');
+    const crystal = async () => (await ai([{ do: 'list' }])).results?.[0]?.list?.places?.find((p) => p.id === 'crystal');
+    const draft = async () => (await crystal())?.avoid ?? [];
+    const card = () => page.eval(`(() => { const f = document.querySelector('[data-part=card] details.fine'); if (f && !f.open) f.open = true; return document.querySelector('[data-part=card]')?.innerText ?? ''; })()`);
+    const fold = async () => (await page.eval(`(() => { const f = document.querySelector('[data-part=card] details.fine'); if (f && f.open && ${PHONE}) f.open = false; return 1; })()`), await sleep(300));
+    const saveN = () => page.eval(`document.querySelector('[data-part=save]')?.textContent ?? ''`);
+    const told = () => page.eval(`[...document.querySelectorAll('.ai-line, .ask-news:not([hidden]), .toast.on')].map((e) => e.textContent).join(' | ')`);
+    const KO = `${GW}.document.querySelector('[data-studio-keep-out]')?.shadowRoot`;
+    const koCount = (sel) => page.eval(`${KO}?.querySelectorAll(${JSON.stringify(sel)}).length ?? 0`);
+    const koText = () => page.eval(`[...(${KO}?.querySelectorAll('text') ?? [])].map((t) => t.textContent).join(' | ')`);
+    // Where the crystals stand now ([x, z] each) and which have no place.
+    const spots = async () => JSON.parse(await page.eval(`JSON.stringify([...${GW}[Symbol.for('game-studio.codePlaces')].get('crystal').objs].map((o) => [Math.round(o.position.x * 100) / 100, Math.round(o.position.z * 100) / 100]))`));
+    const skipped = async () => JSON.parse(await page.eval(`JSON.stringify(${GW}[Symbol.for('game-studio.codePlaces')].get('crystal').skipped)`));
+    /** A ground point on the editor page's screen. */
+    const scr = async (p) => JSON.parse(await page.eval(`(() => { const f = document.querySelector('iframe.game:not(.leaving)').getBoundingClientRect(); const s = ${DBG}.toScreen(${JSON.stringify(p)}); return s ? JSON.stringify({ x: f.left + s[0], y: f.top + s[1] }) : 'null'; })()`));
+    /** An element of the keep-out picture on the editor page's screen (its middle). */
+    const koAt = async (sel) => JSON.parse(await page.eval(`(() => { const f = document.querySelector('iframe.game:not(.leaving)').getBoundingClientRect(); const c = ${KO}?.querySelector(${JSON.stringify(sel)}); if (!c) return 'null'; const r = c.getBoundingClientRect(); return JSON.stringify({ x: f.left + r.left + r.width / 2, y: f.top + r.top + r.height / 2 }); })()`));
+    const key = async (k, modifiers = 0, code = k) => {
+      await page.send('Input.dispatchKeyEvent', { type: 'keyDown', key: k, code, modifiers, windowsVirtualKeyCode: k.toUpperCase().charCodeAt(0) });
+      await page.send('Input.dispatchKeyEvent', { type: 'keyUp', key: k, code, modifiers, windowsVirtualKeyCode: k.toUpperCase().charCodeAt(0) });
+    };
+    const undoKey = async () => (await page.eval(`document.activeElement?.blur()`), await key('z', 4, 'KeyZ'), await sleep(600));
+    /** A drag in the game: a finger on a phone (one finger draws a box), the mouse elsewhere; `mid` = while still down. */
+    const drag = async (a, b, mid = null) => {
+      if (PHONE) {
+        await page.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: a.x, y: a.y, id: 1 }] });
+        for (let i = 1; i <= 12; i++) (await page.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: a.x + ((b.x - a.x) * i) / 12, y: a.y + ((b.y - a.y) * i) / 12, id: 1 }] }), await sleep(30));
+        if (mid) await mid();
+        await page.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+      } else {
+        await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: a.x, y: a.y });
+        await page.send('Input.dispatchMouseEvent', { type: 'mousePressed', x: a.x, y: a.y, button: 'left', buttons: 1, clickCount: 1 });
+        for (let i = 1; i <= 12; i++) (await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: a.x + ((b.x - a.x) * i) / 12, y: a.y + ((b.y - a.y) * i) / 12, button: 'left', buttons: 1 }), await sleep(30));
+        if (mid) await mid();
+        await page.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: b.x, y: b.y, button: 'left', buttons: 0, clickCount: 1 });
+      }
+      await sleep(600);
+    };
+    const click = (part) => page.eval(`(() => { const b = document.querySelector('[data-part=card] [data-part=${part}]'); b?.click(); return !!b; })()`);
+    await page.goto(srv.url);
+    await page.waitFor(`document.querySelectorAll('.obj').length > 0 && !!${GW}?.__gameStudio?._debug`, 90000);
+    await sleep(1500);
+
+    // ---- 1. press a crystal: Keep-out areas on the card ("On the road", Rule), the road painted in the game ----
+    await page.eval(`studioShell.actions.select('crystal-1')`);
+    await sleep(900);
+    const c1 = await card();
+    if (BEFORE) {
+      await shot('0-before');
+      check(true, `before: "${c1.replace(/\n/g, ' / ').slice(0, 100)}"`);
+      return;
+    }
+    check(c1.includes(W3.title) && c1.includes(W3.road) && c1.includes(W3.rule), `the card's keep-out list: "${c1.replace(/\n/g, ' / ').slice(0, 160)}"`);
+    const start = await spots();
+    check(start.length === 12 && start.every(([x]) => Math.abs(x) >= 5), `12 crystals, none on the road (${JSON.stringify(start)})`);
+    await page.waitFor(`(${KO}?.querySelectorAll('path[fill="url(#ko-hatch)"]').length ?? 0) > 0`, 6000).catch(() => null);
+    check((await koCount('path[fill="url(#ko-hatch)"]')) > 0 && (await koText()).includes(W3.road), `the road painted in the game ("${(await koText()).slice(0, 60)}", ${await koCount('path[fill="url(#ko-hatch)"]')} pieces)`);
+    await shot('1-road');
+
+    // ---- 2. + Draw a box round the two nearest crystals on the left: they step out (one ⌘Z, Save · 1) ----
+    check(await click('ko-draw'), 'the "+ Draw a box" button');
+    await sleep(500);
+    check((await koText()).length > 0 && (await page.eval(`document.querySelector('[data-part=ko-draw]')?.getAttribute('aria-pressed')`)) === 'true', `drawing: the button on, the hint in the game ("${(await koText()).slice(-60)}")`);
+    await fold();
+    // The crystals the game shows (well inside its frame: the list and the card sit over its sides), nearest the camera first.
+    const frame = JSON.parse(await page.eval(`JSON.stringify(document.querySelector('iframe.game:not(.leaving)').getBoundingClientRect())`));
+    const seen = async (q) => {
+      const s = await scr([q[0], 0, q[1]]);
+      return !!s && s.x > frame.left + 40 && s.x < frame.left + frame.width * (PHONE ? 0.9 : 0.62) && s.y > frame.top + 60 && s.y < frame.top + frame.height * (PHONE ? 0.5 : 0.8);
+    };
+    const left = [];
+    for (const q of start.filter(([x]) => x < -5).sort((a, b) => b[1] - a[1])) if (await seen([q[0] - 1, q[1] + 1]) && (await seen([q[0] + 1, q[1] - 1]))) left.push(q);
+    const a1 = left[0] ?? start[0], a2 = left.slice(1).sort((p, q) => Math.hypot(p[0] - a1[0], p[1] - a1[1]) - Math.hypot(q[0] - a1[0], q[1] - a1[1]))[0];
+    const inBox = [a1, ...(a2 && Math.hypot(a2[0] - a1[0], a2[1] - a1[1]) < 7 ? [a2] : [])];
+    const bx = [Math.min(...inBox.map((q) => q[0])) - 1, Math.max(...inBox.map((q) => q[0])) + 1], bz = [Math.min(...inBox.map((q) => q[1])) - 1, Math.max(...inBox.map((q) => q[1])) + 1];
+    const A = await scr([bx[0], 0, bz[1]]), Bp = await scr([bx[1], 0, bz[0]]);
+    check(!!A && !!Bp, `the box's corners on screen (${JSON.stringify([A, Bp])})`);
+    if (A && Bp) await drag(A, Bp, () => shot('2-drawing'));
+    const after = await spots();
+    const inside = (q) => q[0] > bx[0] + 0.3 && q[0] < bx[1] - 0.3 && q[1] > bz[0] + 0.3 && q[1] < bz[1] - 0.3;
+    check(after.every((q) => !inside(q)), `no crystal left in the box (x ${bx.map((v) => v.toFixed(1))}, z ${bz.map((v) => v.toFixed(1))}): ${JSON.stringify(after)}`);
+    const d2 = await draft();
+    check(d2.some((x) => x.box && x.name === W3.box), `the draft: ${JSON.stringify(d2)}`);
+    check((await told()).includes(W3.out), `the line: "${(await told()).slice(0, 120)}"`);
+    check(/1/.test(await saveN()), `Save · 1 ("${await saveN()}")`);
+    check((await card()).includes(W3.box) && (await card()).includes(W3.hand), 'the card lists the box (Hand)');
+    await shot('2-box');
+
+    // ---- 3. ✦ Describe with text: the chips, the request; the AI adds "From the player": its row glows, a circle with a ◇ ----
+    check(await click('ko-describe'), 'the "✦ Describe with text" button');
+    await sleep(500);
+    const chips = await page.eval(`[...document.querySelectorAll('[data-part=ask] .ask-chip:not([hidden])')].map((e) => e.textContent).join(' + ')`);
+    check(chips.includes(`${W3.crystal} ×12`) && chips.includes(W3.chip), `the ask chips: "${chips}"`);
+    await page.eval(`(() => { const i = document.querySelector('[data-part=ask] .ask-input'); i.value = ${JSON.stringify(W3.ask)}; i.dispatchEvent(new Event('input', { bubbles: true })); })()`);
+    await shot('3-ask');
+    await page.eval(`document.querySelector('[data-part=ask]').requestSubmit()`);
+    await sleep(1200);
+    const reqDir = join(root, '.studio/requests');
+    const reqs = (() => { try { return readdirSync(reqDir).filter((f) => f.endsWith('.json')).sort(); } catch { return []; } })();
+    const req = reqs.length ? JSON.parse(readFileSync(join(reqDir, reqs[reqs.length - 1]), 'utf8')) : null;
+    check(req?.intent === 'avoid' && req?.places?.[0]?.id === 'crystal' && req.places[0].avoid?.length === 2, `the request: intent ${req?.intent}, places ${JSON.stringify(req?.places)?.slice(0, 160)}`);
+    const r3 = await ai([{ do: 'place.avoid', id: 'crystal', code: 'near-player' }]);
+    check(r3.results?.[0]?.ok, `the AI's place.avoid: ${JSON.stringify(r3.results?.[0])}`);
+    await sleep(500);
+    await card();
+    check(await page.eval(`!!document.querySelector('[data-part=ko-row].lit[data-row="code:near-player"]')`), 'its row glows violet');
+    check((await card()).includes(W3.near), 'the card lists it');
+    const nearNow = (await spots()).filter(([x, z]) => Math.hypot(x, z + 4) < 5);
+    check(!nearNow.length, `no crystal within 5 m of the player's start (${JSON.stringify(nearNow)})`);
+    check((await koCount('[data-ko-knob]')) === 1, 'its ◇ on the circle');
+    await shot('3-arrived');
+
+    // ---- 4. the ◇ dragged out, then 6 m typed: the circle grows, the crystals near it step out ----
+    await fold();
+    // A phone's sheet shrinks after "…" folds: the ◇ is pressed once nothing of the editor covers it.
+    const free = async (q) => q && (await page.waitFor(`document.elementFromPoint(${q.x}, ${q.y})?.matches?.('iframe.game')`, 4000).catch(() => false));
+    await free(await koAt('[data-ko-knob]'));
+    const dia = await koAt('[data-ko-knob]');
+    const mid = await scr([0, 0, -4]);
+    // Outward (a bigger circle) — or inward when outward leaves the game's frame (a phone's camera is close).
+    const out4 = dia && mid ? { x: dia.x + (dia.x - mid.x) * 0.25, y: dia.y + (dia.y - mid.y) * 0.25 } : null;
+    const fr4 = JSON.parse(await page.eval(`JSON.stringify(document.querySelector('iframe.game:not(.leaving)').getBoundingClientRect())`));
+    const fits = out4 && out4.x > fr4.left + 10 && out4.x < fr4.right - 10 && out4.y > fr4.top + 10 && out4.y < fr4.bottom - 10;
+    check(!!dia, `the ◇ is on screen (${JSON.stringify(dia)})`);
+    if (dia && mid) await drag(dia, fits ? out4 : { x: dia.x - (dia.x - mid.x) * 0.2, y: dia.y - (dia.y - mid.y) * 0.2 }, () => shot('4-diamond'));
+    const r4 = (await draft()).find((x) => x.code === 'near-player')?.knobs?.r?.v;
+    check(typeof r4 === 'number' && (fits ? r4 > 5 : r4 < 5), `the ◇ turned Distance: 5 → ${r4} (${fits ? 'out' : 'in'})`);
+    await card();
+    await page.eval(`document.querySelector('[data-part=ko-knob-near-player-r]').dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))`);
+    await sleep(200);
+    await page.eval(`(() => { const f = document.querySelector('[data-part=ko-knob-near-player-r-in]'); f.value = '6'; f.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); })()`);
+    await sleep(900);
+    const k6 = (await draft()).find((x) => x.code === 'near-player')?.knobs?.r;
+    check(k6?.v === 6, `Distance 6 m (${JSON.stringify(k6)})`);
+    const near6 = (await spots()).filter(([x, z]) => Math.hypot(x, z + 4) < 6);
+    check(!near6.length, `no crystal within 6 m (${JSON.stringify(near6)})`);
+    await shot('4-6m');
+
+    // ---- 5. Save: the file has the box and the condition ({ v: 6, was: 5 }) ----
+    await page.eval(`document.querySelector('[data-part=save]')?.click()`);
+    await sleep(1500);
+    const saved = JSON.parse(readFileSync(join(root, 'placement.json'), 'utf8'));
+    const av = saved.places?.crystal?.avoid ?? [];
+    check(av.length === 2 && av[0].box && av[0].name === W3.box && av[1].code === 'near-player' && av[1].knobs?.r?.v === 6 && av[1].knobs.r.was === 5, `placement.json places.crystal.avoid: ${JSON.stringify(av)}`);
+
+    // ---- 6. "On the road" off: { code: 'road', off: true }, crystals may stand on the road; ⌘Z: back on ----
+    await card();
+    await page.eval(`document.querySelector('[data-part=ko-row][data-row="code:road"] [data-part=ko-sw]').click()`);
+    await sleep(900);
+    check((await draft()).some((x) => x.code === 'road' && x.off), `off: ${JSON.stringify(await draft())}`);
+    check((await spots()).some(([x]) => Math.abs(x) < 5), `some crystal on the road now (${JSON.stringify(await spots())})`);
+    check(!(await koText()).includes(W3.road), 'the road no longer painted');
+    await shot('5-off');
+    await undoKey();
+    check(!(await draft()).some((x) => x.code === 'road' && x.off) && (await spots()).every(([x]) => Math.abs(x) >= 5), '⌘Z: "On the road" on again, none on the road');
+
+    // ---- 7. ⌘Z ×4 (6 m typed, the ◇, the AI's condition, the box): as at the start ----
+    for (let i = 0; i < 4; i++) await undoKey();
+    check(!(await draft()).some((x) => x.box || x.code === 'near-player'), `⌘Z ×4: no box, no condition (${JSON.stringify(await draft())})`);
+    check(JSON.stringify(await spots()) === JSON.stringify(start), 'the crystals where they were at the start');
+
+    // ---- 8. a box that leaves almost no room (the AI's): "N of 12 have no place to go", × where they would go ----
+    await ai([{ do: 'place.avoid', id: 'crystal', box: { p: [0, 0, -14], size: [26, 10, 34] } }]);
+    await sleep(900);
+    const sk = await skipped();
+    const keys8 = (await crystal())?.keys ?? [];
+    check(sk.length > 0 && keys8.length > 0, `some have no place (${sk.length}), some do (${keys8.length})`);
+    if (keys8[0]) await page.eval(`studioShell.actions.select(${JSON.stringify(keys8[0])})`);
+    await sleep(800);
+    const c8 = await card();
+    check(c8.includes(W3.skipped) && c8.includes(String(sk.length)), `the line: "${c8.split('\n').find((l) => l.includes(W3.skipped))}"`);
+    check((await koCount('path[stroke="#ff453a"]')) >= 2, `× in the game (${(await koCount('path[stroke="#ff453a"]')) / 2})`);
+    await shot('6-skipped');
+    await undoKey();
+    check(!(await skipped()).length, '⌘Z: every crystal has a place again');
+
+    // ---- 9. one put by hand on the road: "Manually overridden" and "Inside a keep-out area" (it stays) ----
+    await ai([{ do: 'place.set', id: 'crystal', pin: { key: 'crystal-2', p: [0, 1.1, -10] } }]);
+    await page.eval(`studioShell.actions.select('crystal-2')`);
+    await sleep(900);
+    const c9 = await card();
+    check(c9.includes(W3.inside), `the card: "${c9.replace(/\n/g, ' / ').slice(0, 120)}"`);
+    check((await spots()).some(([x, z]) => x === 0 && z === -10), 'it stays on the road (the hand wins)');
+    await shot('7-inside');
+    await undoKey();
+
+    // ---- 10. × on a row: a box the AI drew, taken out (one ⌘Z) ----
+    await page.eval(`studioShell.actions.select('crystal-1')`);
+    await ai([{ do: 'place.avoid', id: 'crystal', box: { p: [8, 0, -10], size: [3, 4, 3] } }]);
+    await sleep(600);
+    await card();
+    const rows = () => page.eval(`document.querySelectorAll('[data-part=ko-row]').length`);
+    const n10 = await rows();
+    await page.eval(`document.querySelector('[data-part=ko-row] [data-part=ko-x]')?.click()`);
+    await sleep(600);
+    await card();
+    check((await rows()) === n10 - 1 && !(await draft()).some((x) => x.box), `× took the box out (${n10} → ${await rows()} rows)`);
+  } finally {
+    await browser.close();
+    await srv.close();
+  }
+}
+
 for (const [i, theme] of THEMES.entries()) {
-  if (ONLY.some((x) => x !== 'plain' && x !== 'torule')) await run(theme, i === 0);
+  if (ONLY.includes('layout') || ONLY.includes('motion')) await run(theme, i === 0);
   if (i === 0 && ONLY.includes('plain')) await plain(theme);
+  if (ONLY.includes('keepout')) await keepout(theme);
   if (i === 0 && ONLY.includes('torule')) await toRule(theme);
 }
 console.log(failed ? `${failed} failed` : 'all passed');
