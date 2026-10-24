@@ -88,6 +88,12 @@
   function movable(o) {
     if (mark(o, 'studio') === false || !o.visible || o.active === false) return false;
     if (o.scrollFactorX === 0 && o.scrollFactorY === 0) return false; // HUD
+    // A UI the game's code delivered as codeUi (its `size` is this object: studio-canvas-ui-3, 2026-10-24) is the UI
+    // layer's now, moved there by the codeUi — never a world object too.
+    // A container's parts too (a message panel delivered as one codeUi: its texts are not world objects either — the
+    // real AI's run of 2026-10-25 had to patch its adapter for that).
+    const ui = globalThis[Symbol.for('game-studio.codeUiObjects')];
+    if (ui) for (let p = o; p; p = p.parentContainer) if (ui.has(p)) return false;
     if (/Particle|Emitter|Light|Zone/.test(o.type || '')) return false;
     // EDIT HERE if the game's score / hint texts are plain this.add.text(…)
     // without setScrollFactor(0) (common in AI-written games): they would be
@@ -337,8 +343,10 @@
         const game = findGame();
         if (!game) return [];
         const out = [];
+        const ui = globalThis[Symbol.for('game-studio.codeUiObjects')];
         const push = (o, scene, via) => {
-          if (!o || !o.visible || typeof o.getBounds !== 'function') return;
+          // A codeUi's object (or a part of one) is selectable already (stage 3): no dotted frame.
+          if (!o || !o.visible || typeof o.getBounds !== 'function' || (ui && (ui.has(o) || ui.has(via)))) return;
           const b = o.getBounds();
           if (!(b.width > 0 && b.height > 0)) return;
           const m = worldToScreen(via, scene);

@@ -281,6 +281,7 @@ export function adapterFromPort2D(port: Port2D, _core: Core, win: Window = windo
       port.resume?.();
     },
     render: () => port.render(),
+    holdsLoop: typeof port.pause === 'function',
     pickNear(x, y, radius) {
       const vw = win.innerWidth, vh = win.innerHeight;
       const hits: Array<{ key: string; inside: boolean; area: number; order: number; onScreen: boolean }> = [];

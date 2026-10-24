@@ -8,7 +8,7 @@
 //   - the looks and the theme: the model (saved in placement.json, undone, counted);
 //   - the screen shown, a button's look shown, sample values: the game page only (the bridge puts them back at the
 //     end of editing) and here only to draw the card — never saved. A new game page starts without them.
-import type { BridgeToShell, CodeUiInfo, Item, PlacementFile, PlacementUiEntry, ShellToBridge, UiPropName, UiProps, UiState, UiThemeVar } from '../contract.ts';
+import type { BridgeToShell, CodeUiInfo, Item, PlacementFile, PlacementUiEntry, ShellToBridge, UiEdgeInfo, UiPropName, UiProps, UiState, UiThemeVar } from '../contract.ts';
 import type { MenuEntry } from './context-menu.ts';
 import { createUiCard } from './ui-card.ts';
 import { withLooks } from './ui-layer.ts';
@@ -59,6 +59,9 @@ export function createUiWire(d: UiWireDeps) {
   // `code` / `from` / `at` and the AI's `list` — and the HTML keys they clash with; the AI's ui.code checks waiting.
   let codes = new Map<string, CodeUiInfo>();
   let clash: string[] = [];
+  // studio-canvas-ui-3 (2026-10-24): the HTML UI's edges as the page last said them (studio:ui/edges) — an HTML element's
+  // `from` / `at` in the file, and what the AI's ui.set --from measures an HTML element by.
+  let edges = new Map<string, UiEdgeInfo>();
   let checkId = 0;
   const checks = new Map<number, (r: Array<{ key: string; ok: boolean; why?: string; note?: string }>) => void>();
 
@@ -141,6 +144,10 @@ export function createUiWire(d: UiWireDeps) {
         clash = m.clash.slice();
         return true;
       }
+      if (m.type === 'studio:ui/edges') {
+        edges = new Map(m.list.map((e) => [e.key, e]));
+        return true;
+      }
       if (m.type === 'studio:ui/code-checked') {
         checks.get(m.id)?.(m.results);
         checks.delete(m.id);
@@ -216,7 +223,7 @@ export function createUiWire(d: UiWireDeps) {
     },
     /** placement.json `ui`: the moves with each element's look and screen (ui-layer.ts withLooks). */
     entries(moves: Record<string, PlacementUiEntry>): Record<string, PlacementUiEntry> {
-      return withLooks(moves, model.entries(), screenOf, labels, codes);
+      return withLooks(moves, model.entries(), screenOf, labels, codes, edges);
     },
     /** The AI's ui.set look (ai-hands.ts): as the card's row — one undo step, sent to the game, counted. */
     setLookFor: (key: string, path: string, value: string | number) => setLook(key, path, value),
@@ -225,6 +232,20 @@ export function createUiWire(d: UiWireDeps) {
       codes = new Map();
       clash = [];
     },
+    /** The Theme's rows (CSS variables and codeTheme) as the page last said them; [] = none. */
+    themeVars: (): UiThemeVar[] => vars.slice(),
+    /** The AI's ui.theme --v: as the Theme row — one undo step, sent to the game, counted. */
+    setThemeFor: (name: string, value: string) => setTheme(name, value),
+    /** The AI's ui.theme --clear (studio-canvas-ui-3): it wrote the variable into the code — out of the file, not a change of the person's. */
+    forgetTheme(name: string): boolean {
+      const had = model.forgetTheme(name);
+      theme.refresh();
+      return had;
+    },
+    /** placement.json's `theme` as it would be written now. */
+    themeEntries: () => model.themeResult() ?? {},
+    /** The HTML UI's edges (studio-canvas-ui-3), as last said; [] for a game without HTML UI. */
+    edges: (): UiEdgeInfo[] => [...edges.values()],
     /** The game's codeUis (studio-canvas-ui), as last listed; [] for a game without them. */
     codes: (): CodeUiInfo[] => [...codes.values()],
     /** codeUi ids an HTML element's key already uses. */

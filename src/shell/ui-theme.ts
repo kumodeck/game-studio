@@ -10,7 +10,8 @@
 // then). Rows read like the card's (.fields): the variable's name without its "--", grey; the value as the card shows
 // colours. Changing one recolours every rule that uses it at once (style.setProperty on the game's <html>); one undo
 // step and one Save count each (main.ts: the ui-theme change). A game without such variables has no Theme row at all
-// (the skill asks the AI, once, whether to gather its colours into variables).
+// (the skill asks the AI, once, whether to gather its colours into variables). A UI the game draws in its canvas has
+// its theme in the code (codeTheme, studio-canvas-ui-3, 2026-10-24): the same rows, named by the code's label.
 import type { UiThemeVar } from '../contract.ts';
 import { h } from './dom.ts';
 import { icon } from './icons.ts';
@@ -53,7 +54,9 @@ export function createUiTheme(d: UiThemeDeps) {
     h('span', { class: 'list-title', text: d.t('uiTheme.title') }), h('span', { class: 'count n mono', text: String(vars.length) }), icon(open ? 'chevronUp' : 'chevronDown'));
     const body = h('div', { class: 'fields ui-theme-rows', dataset: { part: 'ui-theme-rows' }, hidden: !open });
     for (const v of vars) {
-      const name = v.name.replace(/^--/, '');
+      // A codeTheme's label (the canvas UI's theme, studio-canvas-ui-3: "Accent", in the person's words), else the CSS
+      // variable's name without its "--" — one list, the same rows (no mark of how the game makes it).
+      const name = v.label || v.name.replace(/^--/, '');
       const cells: HTMLElement[] = [];
       if (v.type === 'color') {
         const hex6 = /^#[0-9a-f]{6}$/i.test(v.value) ? v.value : '#000000';
@@ -63,7 +66,7 @@ export function createUiTheme(d: UiThemeDeps) {
         cells.push(h('div', { class: 'ui-colour' }, h('span', { class: 'ui-swatch', style: `--c:${v.value}` }, sw), field(v)));
       } else cells.push(field(v));
       if (d.changed(v.name)) cells.push(h('button', { type: 'button', class: 'icon-btn ui-back', dataset: { action: 'theme-back' }, title: d.t('uiLook.back'), 'aria-label': d.t('uiLook.back'), onclick: () => d.set(v.name, null) }, icon('undo')));
-      body.append(h('span', { class: 'f-l mono', title: v.name, text: name }), h('div', { class: 'f-cells ui-cells', dataset: { part: 'theme-row', name: v.name } }, ...cells));
+      body.append(h('span', { class: v.label ? 'f-l' : 'f-l mono', title: v.name, text: name }), h('div', { class: 'f-cells ui-cells', dataset: { part: 'theme-row', name: v.name } }, ...cells));
     }
     const el0 = h('div', { class: 'ui-theme', dataset: { part: 'ui-theme', open: open ? 'on' : 'off' } }, head, body);
     return (el = el0);

@@ -54,6 +54,10 @@ export const HANDS_OPS = Object.freeze({
   // after Save: the AI wrote the entry into the code, so it leaves placement.json (HTML elements too: "the code is the truth").
   'ui.code': { need: ['id'], may: [] },
   'ui.set': { need: ['id'], may: ['p', 's', 'from', 'set', 'clear'] },
+  // The theme (studio-canvas-ui-3, 2026-10-24): a CSS variable of the page or a codeTheme of the canvas UI, by name
+  // ("--accent" or "accent") — `v` = what the Theme row does, or `clear` after Save: the AI wrote it into the code (the
+  // CSS, or codeTheme()), so it leaves placement.json's `theme` without a change of the person's.
+  'ui.theme': { need: ['id'], may: ['v', 'clear'] },
   'level.new': { need: [], may: ['name'] },
   'level.duplicate': { need: [], may: ['id', 'name'] },
   'level.rename': { need: ['to'], may: ['id'] },
@@ -118,8 +122,9 @@ function readHandsOp(op, at, errors) {
     else out.name = op.name.trim();
   }
   const place = op.do.startsWith('place.');
-  // ui.code: one codeUi id or several ("score,hp-bar"); ui.set: one UI key (a codeUi id or an HTML data-studio-key).
-  if (op.do.startsWith('ui.') && has('id')) {
+  // ui.code: one codeUi id or several ("score,hp-bar"); ui.set: one UI key (a codeUi id or an HTML data-studio-key);
+  // ui.theme: a theme variable's name (readHandsUiTheme).
+  if (op.do.startsWith('ui.') && op.do !== 'ui.theme' && has('id')) {
     const ids = typeof op.id === 'string' ? op.id.split(',').map((x) => x.trim()).filter(Boolean) : [];
     if (op.do === 'ui.code') {
       if (!ids.length || ids.length > LIMITS.maxUi || !ids.every((x) => CODE_ID_RE.test(x)) || new Set(ids).size !== ids.length) fail('"id" must be the codeUi ids in the game\'s code, each once ("score" or "score,hp-bar,jump-button")');
@@ -151,6 +156,7 @@ function readHandsOp(op, at, errors) {
     else out.fold = f.parts;
   }
   if (op.do === 'ui.set') readHandsUiSet(op, out, fail);
+  if (op.do === 'ui.theme') readHandsUiTheme(op, out, fail);
   for (const f of ['all', 'replace', 'deg', 'editor', 'hand', 'off']) {
     if (!has(f) || (f === 'replace' && op.do === 'place.code')) continue;
     if (typeof op[f] !== 'boolean') fail(`"${f}" must be true or false`);
@@ -275,6 +281,23 @@ function readHandsUiSet(op, out, fail) {
     if (!look(v, false) || !Object.keys(v).length) fail('"set" must be the card\'s look: { "text", "fontSize", "color", "background", "@hover" | "@active" | "@disabled": { "color", "background" } }');
     else out.set = structuredClone(v);
   }
+}
+
+/** ui.theme's fields: the variable's name ("--accent" / "accent": the file's "--accent"), and `v` or `clear` alone. */
+function readHandsUiTheme(op, out, fail) {
+  const id = typeof op.id === 'string' ? op.id.trim() : '';
+  if (!/^(--)?[A-Za-z][A-Za-z0-9_-]{0,59}$/.test(id)) fail('"id" must be a theme variable\'s name: "--accent" (a CSS variable) or "accent" (a codeTheme key)');
+  else out.id = id.startsWith('--') ? id : `--${id}`;
+  const has = (f) => op[f] !== undefined;
+  if (has('clear')) {
+    if (op.clear !== true) fail('"clear" must be true (the theme variable leaves placement.json: your code has it now)');
+    else if (has('v')) fail('"clear" alone (after Save: you wrote it into the code)');
+    else out.clear = true;
+    return;
+  }
+  if (!has('v')) fail('needs "v" (the new value) or "clear"');
+  else if (typeof op.v !== 'string' || !/^[^;{}<>\\\u0000-\u001f\u007f]{1,200}$/.test(op.v.trim())) fail('"v" must be a CSS value without ; { } < > (a colour "#7fd1ff", a font list)');
+  else out.v = op.v.trim();
 }
 
 /** `to` / `by` mean different things per op: a position, an angle, a size, or a new name. */
@@ -516,6 +539,8 @@ export function handsSaid(op, x = {}) {
     case 'ui.code': return `showed ${handsUiIds(op).map((id) => `codeUi('${id}')`).join(', ')} in the editor's UI list${x.checked ? ' — each box moved 40 px and drawn once: its picture follows it' : ''}${typeof x.note === 'string' ? x.note : ''}`;
     case 'ui.set': return op.clear ? `took ${op.id} out of placement.json${x.cleared === false ? ' (it had nothing for it)' : ''} — your code has it now`
       : `set the UI ${op.id}: ${[op.p ? (op.from ? `at [${op.p.join(', ')}] from ${op.from}` : `offset [${op.p.join(', ')}]`) : '', op.s !== undefined ? `size ${op.s}` : '', op.set ? `look ${JSON.stringify(op.set)}` : ''].filter(Boolean).join(', ')}`;
+    case 'ui.theme': return op.clear ? `took the theme's ${op.id} out of placement.json${x.cleared === false ? ' (it had nothing for it)' : ''} — your code has it now`
+      : `set the theme's ${op.id} to ${op.v}`;
     case 'list': return 'listed the objects, motions, code layouts, levels and the UI';
     default: return op.do;
   }
@@ -553,6 +578,13 @@ export function applyHandsToFile(file, ops, o = {}) {
  */
 function handsFileUi(f, op) {
   if (op.do === 'ui.code') return { note: ' — no editor is open: it lists them when it opens (nothing to write)' };
+  if (op.do === 'ui.theme') {
+    if (!op.clear) return { error: `no editor is open: change ${op.id} in the game's code directly (its CSS variable, or codeTheme())` };
+    const had = !!(f.theme && Object.hasOwn(f.theme, op.id));
+    if (had) delete f.theme[op.id];
+    if (f.theme && !Object.keys(f.theme).length) delete f.theme;
+    return { cleared: had };
+  }
   if (op.clear) {
     const had = !!(f.ui && Object.hasOwn(f.ui, op.id));
     if (had) delete f.ui[op.id];

@@ -24,6 +24,12 @@ line, then one line of what changed ("Took “Row” off the blue pillar; it onl
 back."). WHY (a request, 2026-10-24): "I asked Claude, and it asked me to do the Studio's hand work. That is the worst
 experience."
 
+**Reply in the language the person wrote in** — your reply, its one line, and every `--note` — whatever language this
+file, the code and the editor's `studio:` lines are in. A request in Japanese gets a Japanese reply; an ask from the
+editor is in the person's words too (its `text`, and `lang` on the request: `ja` / `en`). WHY (2026-10-24): asked in
+Japanese ("I asked from the editor", in Japanese), the AI answered in English — the editor's lines it had just read
+were English.
+
 Typing coordinates back and forth ("a bit more to the right… no, less") is the slowest part of building a game with
 an AI. This skill opens a small local editor where the **user** moves things by hand and the **editor writes a file**.
 You (the agent) then read that file and change the code. The editor never edits the game's code by itself, with one
@@ -118,7 +124,8 @@ marks (§5) go into that same file.
 - When the game mixes several, pick the one that **owns the objects the user wants to move** (a three.js world with a
   DOM menu is three.js).
 - **A UI drawn in the canvas** (a score, a health bar, a button, a minimap painted with `fillText` / `fillRect` /
-  `drawImage` over the game — often in a second 2D canvas on top of a three.js one, and no `data-studio-key`): make it
+  `drawImage` over the game — often in a second 2D canvas on top of a three.js one, and no `data-studio-key`; in Phaser
+  a `this.add.text(…)` score or a `setScrollFactor(0)` HUD, in Pixi a HUD `Text` / container): make it
   editable the first time you look at the game, **without asking** — all of it at once — and say so in one line in
   the game's words ("I made the score, the health bar and the JUMP button movable in the editor; they look the same").
   How: "UI drawn in the canvas" (§4). Decided on 2026-10-24: do not ask — it is a rewrite of
@@ -544,6 +551,7 @@ page CSS px, `from` `hud-canvas` / `left-out` — the dotted frames; "UI drawn i
 | `save` | — | The person's Save. **Only when they say "save"** — otherwise Save stays theirs |
 | `editor.reload` | `editor: true` = the editor page itself | Reload the game in the editor (or the page: after a change to `.studio/adapter.js`, `studio.json`, `tools.js`, `.studio/ui/`) |
 | `ui.code` | `id` (`"score"`, or several: `"score,hp-bar,jump"`) | After you rewrote the drawing with `codeUi()` ("UI drawn in the canvas", §4): the editor reads the game again, lists them in its UI layer with the HTML UI, and **checks each box**: it moves it 40 px, draws one frame and looks whether the picture moved with it. `studio: do failed ui.code hp-bar - moving it 40 px changed nothing on screen: the drawing does not read codeUi('hp-bar').box()` / `- the box is smaller than what is drawn (232×34, drawn 260×36)` = your rewrite is off: fix it and send it again (the person sees nothing of it). With no editor open: nothing to do (the editor lists them when it opens) |
+| `ui.theme` | `id` (`"--accent"`, or a codeTheme key `"accent"`), `v` or `clear` | A Theme row (a CSS variable of the page or a codeTheme of the canvas UI): `v` = what the row does (one ⌘Z, counted on Save); `clear` = after Save you wrote it into the code (the CSS, or `codeTheme()`): out of `theme` in placement.json, not a change of the person's. With no editor open: `clear` takes it out of the file |
 | `ui.set` | `id` + `p` (`[dx, dy]` CSS px from where the game draws it; with `from`: the `at()` numbers from that place, `{"from":"top","p":[0,20]}`), `s`, `set` (the card's look: `text`, `fontSize`, `color`, `background`, `"@hover"` / `"@active"` / `"@disabled"`: `{ color, background }`); or `clear: true` alone | What the UI card does, on screen, one ⌘Z. `clear`: **after Save, once you wrote that entry into the code**: it leaves `placement.json` (not a change of the person's: no ⌘Z, no Save count) and the editor draws it where your code now puts it. With no editor open only `clear` works (change the code itself otherwise) |
 
 `when`: `"start"`, `"click"`, `"touch"`, `"key:E"` (any `KeyboardEvent.code`: `"key:Space"`), `"time:2"`,
@@ -775,6 +783,18 @@ element where your CSS now puts it; no Save count comes back). An entry with `"c
    editor open; `uiView` too when `ui` is empty). The loader would otherwise apply the offset a second time on top of
    `left` / `top` numbers you changed.
 
+**The nearest edge** (`from` / `at` on an entry that moved or grew, since 2026-10-24): where the person left it, measured
+from the nearest of 9 places of the game's window — `top-left`, `top`, `top-right`, `left`, `center`, `right`,
+`bottom-left`, `bottom`, `bottom-right` — and its CSS px from there (`at` = [x, y], inward; for a middle one x / y is
+across from the middle). "Top right" must stay top right on a phone and on a wide screen, so when the element is
+placed on the screen (`position: fixed` / `absolute` against the game's window), **write its CSS by `from`** instead of
+adding the offset: `top-right` [16, 24] → `right: 16px; top: 24px;` (and `left: auto` when its rule had a `left`);
+`top` [0, 20] → `left: 50%; top: 20px; translate: -50% 0;` (x ≠ 0: `translate: calc(-50% + <x>px) 0`); `center`
+[0, 0] → `left: 50%; top: 50%; translate: -50% -50%;`; `bottom-left` [20, 24] → `left: 20px; bottom: 24px; top: auto`.
+With a size (`s`), also `transform-origin` at that place (`top right`, `top center`, `center`, `bottom left`) so it
+grows away from the edge it keeps to. An element laid out in the flow (a flex row, a grid cell) keeps the offset way
+above. Then `ui.set --clear` as above. `--do list` → each HTML element's `edge` (`from` / `at` now) and `box`.
+
 Check after applying: shoot the game **without the editor** (`--shot`, §3.3) and compare with what the user saw; the
 editor reloads the game by itself, and Save then shows no unsaved count.
 
@@ -822,8 +842,8 @@ the same frame, strip and card — the person sees no difference between the two
 editable": an `ask` with `intent: "ui-code"`, from the ✦ on the line "This UI can't be selected yet"):
 
 1. **Find every one** the game draws fixed on the screen: `fillText` / `fillRect` / `arc` / `drawImage` of a score, a
-   bar, a button, a minimap; Phaser's `setScrollFactor(0)` texts, a Pixi HUD container (those engines: later — tell
-   the person in one line). **All of them in one go**, never one per request — a `ui-code` ask names ONE place the
+   bar, a button, a minimap; in Phaser a HUD text (`this.add.text`, often `setScrollFactor(0)`), in Pixi a HUD `Text` or
+   container — those are kept as objects: see "Phaser / Pixi" below. **All of them in one go**, never one per request — a `ui-code` ask names ONE place the
    person pressed (`pressed`, its picture `shot`), but they mean "this UI": deliver that one and every other part not
    delivered yet. Your clues: `found` in the ask / `uiFound` in `--do list` (the dotted frames: each is a part, or a few
    parts close together, of a 2D canvas over the game's or of what the engine's adapter leaves out as UI), the picture,
@@ -878,12 +898,42 @@ editable": an `ask` with `intent: "ui-code"`, from the ✦ on the line "This UI 
      and the game must draw that screen's UI — and change nothing else (not the score, not the time, not the game's own
      state). So the drawing asks the editor first: `const screen = globalThis.studio?.screen?.() || state.screen;` then
      draws the parts of `screen`. Outside the editor `studio.screen()` is absent / null: the game decides as before.
+   - **Phaser / Pixi — UI kept as objects** (a `Text` the engine draws by itself; nothing calls `box()` each frame). Give
+     the object itself as `size` (the editor measures its `getBounds()` at its own scale 1, and the engine adapter
+     leaves it out of the scene's objects: it is UI now), and move it in `onChange` — called once at once and again
+     whenever the person moves, sizes or recolours it (the game's update does not run while the editor holds it):
+
+     ```js
+     import { applyPlacement as applyUi, codeTheme, codeUi } from './studio-placement.js'; // the editor's loader
+     await applyUi(document, './placement.json'); // the file's UI and theme until Save (your world loader stays)
+     // Phaser, in create(): its own pixels (Scale.FIT) → units: 'canvas'
+     this.hudUi = codeUi('distance', { name: 'Distance', kind: 'text', at: { from: 'top-left', x: 16, y: 20 }, size: this.hud,
+       units: 'canvas', look: { fontSize: 22, color: '#2b1d3a' }, sample: '9,999 m' });
+     this.hudUi.onChange((b, L) => this.hud.setPosition(b.x, b.y).setScale(b.s).setFontSize(L.fontSize).setColor(L.color));
+     // Pixi (autoDensity: CSS px, the default units):
+     scoreUi.onChange((b, L) => { hud.position.set(b.x, b.y); hud.scale.set(b.s); hud.style.fill = L.color; });
+     ```
+
+     `b.x` / `b.y` is the box's top-left: for an origin / anchor other than 0, add `b.w * originX` (Phaser) or
+     `b.w * anchor.x` (Pixi). The words stay the game's (`setText` / `text =` as before, through `value(v)` where it
+     sets them); a text left empty while the game waits to start shows its `sample` in the editor (on the object
+     itself), so give a text a `sample`. A container (a panel) works the same, its position offset from its bounds'
+     top-left kept. Phaser: `units: 'canvas'`; Pixi with `autoDensity`: the default (`css`).
+   - **The theme** — colours (and fonts) the UI shares (an ink, an accent): once, in the person's words for `label`,
+     `const T = codeTheme({ ink: { v: '#2b1d3a', label: 'Ink' }, accent: { v: '#ffcf6e', label: 'Accent' } })`.
+     The editor lists them under "Theme" with the page's CSS variables (`--ink`, `--accent`: the same name is one row).
+     A part in that colour says so in its look — `look: { color: 'var(--ink)' }` — so it follows the theme until the
+     person gives that one part a colour of its own; elsewhere read `T.ink` where you draw (a getter: the value now),
+     and an object kept from frame to frame takes `T.onChange((v) => panel.setStrokeStyle(3, v.ink))`. Only colours
+     the game really shares; a part's own colour stays in its look.
 4. **The picture must not change by one pixel**: shoot again (`--shot`) and compare with step 2. Different → fix the
    drawing (a rounding, a missing `* b.s`) and shoot again.
 5. `--do ui.code --id score,hp-bar,jump,minimap` (all of them). The editor checks each box (§3.4); `do failed` → fix and
    send again. Then **one line** in the game's words, no editor steps: "I made the score, the health bar and the JUMP
    button movable in the editor (they look the same)". Nothing about pressing Save, picking or dragging: the editor
-   says that itself, and the person already knows Save is how they hand it to you. For a `ui-code` ask that line is the
+   says that itself, and the person already knows Save is how they hand it to you. **The reply is the link and that
+   one line** — no lists of what you checked, what you changed in which file, or what they can do now (a real run of
+   2026-10-25 answered with three bullet points: the person reads one line). For a `ui-code` ask that line is the
    `--status done` note of that request (§3.1), the same words: "I made the minimap movable in the editor, and the
    score and the health bar too (they look the same)".
 
@@ -915,6 +965,10 @@ place and add the bounce on top of `box()`).
    `--do '[{"do":"ui.code","id":"hp-bar,jump"},{"do":"ui.set","id":"hp-bar","clear":true},{"do":"ui.set","id":"jump","clear":true}]'`.
    The editor shows them where your code now puts them (the same place: no jump, no Save count).
 3. One line: "I wrote the health bar's place and size into the game".
+4. **The theme** (`theme` in the file: `{ "--ink": { "v": "#3a2a55", "was": "#2b1d3a" } }`): a codeTheme's — write `v`
+   into `codeTheme({ ink: { v: '#3a2a55', … } })`; a CSS variable's — where `:root` declares it. Then take it out of the
+   file in the same `--do`: `{"do":"ui.theme","id":"--ink","clear":true}` (`--do list` → `theme` says which are which:
+   a `label` = a codeTheme). Never `clear` one you did not write.
 
 ### Motion (`motions`, `motion`)
 

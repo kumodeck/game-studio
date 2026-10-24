@@ -47,6 +47,12 @@
 // picture), then says in the AI's window that they asked from the editor → the AI delivers ALL the HUD's parts at once
 // (codeUi + --do ui.code, the check passed, the picture the same), the dotted frames are gone (`uiFound` empty), it marks
 // the request done, and it hands no steps back.
+// `--steps canvas-ui-phaser` / `--steps canvas-ui-pixi` (studio-canvas-ui-3, 2026-10-24 — Phaser / Pixi UI kept as
+// objects): examples/phaser-runner (the distance text, empty until a run starts) or examples/pixi-bubbles (the score and
+// the note), nothing delivered; "make this UI editable" (in Japanese) → the AI rewrites them with codeUi() kept as
+// objects (onChange) and sends --do ui.code: the check passed, listed in the editor, each object where it was drawn with
+// its own size and colour (the same look), the reply in Japanese (SKILL.md: reply in the person's language — the stage 2
+// run answered a Japanese ask in English), no steps handed back.
 // The game is Pillar Plaza (`pillars/`: a blue pillar that already sways), copied to a temporary folder. The editor
 // runs with its own HOME (so no KUMODeck sign-in on this computer is read) and is open in a headless Chrome the whole
 // time, as the person's editor would be; the AI's `--do` reaches it there. The skill is the package's own
@@ -85,9 +91,13 @@ const TO_COORDS = take('--steps') === 'to-coords';
 const WRITEBACK = take('--steps') === 'writeback';
 const CANVAS2 = take('--steps') === 'canvas-ui-2';
 const CANVAS = take('--steps') === 'canvas-ui';
-// The game's main script (the canvas-ui sets' game is examples/three-canvas-hud: game.js).
-const MAIN = CANVAS || CANVAS2 ? 'game.js' : 'main.js';
-const STEPS = CANVAS2 ? [
+// Stage 3: a Phaser or a Pixi game's UI kept as objects.
+const ENGINE = take('--steps') === 'canvas-ui-phaser' ? 'phaser' : take('--steps') === 'canvas-ui-pixi' ? 'pixi' : null;
+// The game's main script (the canvas-ui sets' game is examples/three-canvas-hud: game.js; stage 3's Phaser / Pixi game.js).
+const MAIN = CANVAS || CANVAS2 || ENGINE ? 'game.js' : 'main.js';
+const STEPS = ENGINE ? [
+  { say: 'このUIを編集できるようにして', first: true, kind: 'canvas-engine' },
+] : CANVAS2 ? [
   { say: 'エディタから頼んだよ', first: true, kind: 'canvas-ask' },
 ] : CANVAS ? [
   { say: 'このUIを編集できるようにして', first: true, kind: 'canvas-deliver' },
@@ -129,7 +139,7 @@ const home = join(base, 'home');
 const out = take('--out') ? resolve(take('--out')) : join(base, 'report');
 mkdirSync(home, { recursive: true });
 mkdirSync(out, { recursive: true });
-cpSync(join(PKG, CANVAS || CANVAS2 ? 'examples/three-canvas-hud' : 'test/ai-feel/pillars'), game, { recursive: true });
+cpSync(join(PKG, ENGINE ? `examples/${ENGINE === 'phaser' ? 'phaser-runner' : 'pixi-bubbles'}` : CANVAS || CANVAS2 ? 'examples/three-canvas-hud' : 'test/ai-feel/pillars'), game, { recursive: true });
 rmSync(join(game, 'README.md'), { force: true });
 mkdirSync(join(game, '.claude/skills'), { recursive: true });
 symlinkSync(join(PKG, 'skills/arrange'), join(game, '.claude/skills/arrange'));
@@ -502,6 +512,35 @@ try {
       const st = existsSync(join(game, '.studio/status.json')) ? JSON.parse(readFileSync(join(game, '.studio/status.json'), 'utf8')) : null;
       check(!!asked && !!st && st.state === 'done' && (st.request === asked.id || (st.handled ?? []).includes(asked.id)), `the ask marked done in the editor (${st ? JSON.stringify({ state: st.state, request: st.request, note: st.note }) : 'no status'})`);
       writeFileSync(join(out, 'canvas-ask.png'), await page.screenshot());
+    } else if (step.kind === 'canvas-engine') {
+      await waitFor(async () => (await page.eval(`document.querySelectorAll('iframe.game').length === 1 && !!${GW}?.__gameStudio?._debug`)), 30000);
+      await sleep(3000);
+      const l = listNow();
+      const ui = (l?.ui ?? []).filter((u) => u.code);
+      // Each delivered object where the game drew it, with its own size and colour (the original game: Phaser's distance
+      // at 16, 20 in its own pixels, 22px #2b1d3a; Pixi's score at 16, 16 and the note at 16, 46, CSS px, white / #8fc6d4).
+      const objs = JSON.parse((await page.eval(`(() => { const m = ${GW}?.[Symbol.for('game-studio.codeUis')]; const o = [];
+        if (m) for (const [k, e] of m) { const b = e.box(); const t = e.obj; const st = t && t.style;
+          o.push({ k, box: [b.x, b.y, b.w, b.h].map((v) => Math.round(v * 10) / 10), obj: t ? [t.x, t.y] : null, scale: t ? (t.scaleX ?? t.scale?.x) : null,
+            size: st ? String(st.fontSize) : null, colour: st ? String(st.color ?? st.fill) : null, text: t ? t.text : null }); }
+        return JSON.stringify(o); })()`)) || '[]');
+      console.log(`  editor's list: ui ${JSON.stringify(ui.map((u) => ({ key: u.key, name: u.name, kind: u.kind, box: u.box })))}; the game's objects ${JSON.stringify(objs)}; uiFound ${JSON.stringify(l?.uiFound ?? [])}`);
+      check(/codeUi\s*\(/.test(codeText), 'it wrote codeUi() into the game\'s code');
+      check(/onChange\s*\(/.test(codeText), 'kept as objects: it moves them in onChange()');
+      check(dos.some((c) => /ui\.code/.test(c)), 'it put them in the editor itself (--do ui.code)');
+      check(/its picture follows it/.test(r.s), 'the editor\'s check passed (each box moved 40 px: the picture followed)');
+      const want = ENGINE === 'phaser' ? [[16, 20]] : [[16, 16], [16, 46]];
+      const at = (o) => o.obj ?? o.box.slice(0, 2);
+      check(ui.length >= want.length && want.every(([x, y]) => objs.some((o) => Math.abs(at(o)[0] - x) <= 1.5 && Math.abs(at(o)[1] - y) <= 1.5)),
+        `each one where the game drew it (${want.map((w) => w.join(', ')).join(' · ')}): ${JSON.stringify(objs.map((o) => [o.k, at(o)]))}`);
+      const look = ENGINE === 'phaser' ? objs.find((o) => Math.abs(at(o)[0] - 16) <= 1.5 && Math.abs(at(o)[1] - 20) <= 1.5) : objs.find((o) => Math.abs(at(o)[0] - 16) <= 1.5 && Math.abs(at(o)[1] - 16) <= 1.5);
+      check(!look?.size || (ENGINE === 'phaser' ? /^22(px)?$/.test(look.size) && /2b1d3a/i.test(look.colour) && (look.scale ?? 1) === 1 : /^22(px)?$/.test(look.size) && (look.scale ?? 1) === 1),
+        `its own size and colour (${JSON.stringify(look && { size: look.size, colour: look.colour, scale: look.scale })})`);
+      check(/[ぁ-んァ-ヶ一-龠]/.test(reply.split('\n').slice(1).join('\n')), 'the reply is in Japanese (the person asked in Japanese)');
+      // SKILL.md "UI drawn in the canvas" step 5: the link and one line (a note in brackets — the link's own — aside).
+      const said = reply.split('\n').slice(1).map((x) => x.trim()).filter((x) => x && !/^[（(]/.test(x));
+      check(said.length <= 2, `said in a line or two (${said.length} lines)`);
+      writeFileSync(join(out, `canvas-${ENGINE}.png`), await page.screenshot());
     } else if (step.kind === 'canvas-save') {
       await waitFor(async () => (await page.eval(`document.querySelectorAll('iframe.game').length === 1 && !!${GW}?.__gameStudio?._debug`)), 30000);
       await sleep(3000);

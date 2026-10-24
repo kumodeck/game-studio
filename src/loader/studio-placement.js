@@ -89,6 +89,8 @@
 // UI drawn in the canvas (studio-canvas-ui, 2026-10-24): codeUi('score', { name, kind, at, size, look, … }) — a score, a
 // health bar, a button the game paints in a canvas, made editable like an HTML element: the game draws it where box()
 // says, with look(); the editor moves / resizes / recolours it and the game draws one frame. See "UI drawn in the canvas".
+// Stage 3 (studio-canvas-ui-3, 2026-10-24): onChange(fn) for engines that keep their UI as objects (Phaser, Pixi), `size`
+// as that object, and codeTheme({ accent: { v, label } }) — the canvas UI's theme, listed with the CSS variables.
 
 const KEY_CHARS = /[^A-Za-z0-9_:#.\-\/]/g;
 const cleanName = (s) => (typeof s === 'string' && s ? s.replace(KEY_CHARS, '_').slice(0, 80) : '');
@@ -126,7 +128,9 @@ export async function applyPlacement(root, source = './placement.json', opts = {
     return codeOnly();
   }
   if (data.theme && typeof data.theme === 'object' && typeof document !== 'undefined') applyTheme(document, data.theme);
-  // The UI drawn in the canvas (codeUi): its entries are read by the game's own drawing, from here on (none = the code's).
+  // The UI drawn in the canvas (codeUi) and its theme (codeTheme): read by the game's own drawing, from here on (none =
+  // the code's). The theme first: codeUiFile tells onChange, and a look of var(--accent) reads the file's theme.
+  codeThemeFile(data.theme);
   codeUiFile(data.ui);
   if (data.ui && typeof data.ui === 'object' && typeof document !== 'undefined') report.ui = applyUi(document, data.ui);
   if (root && root.nodeType === 9) return report; // applyPlacement(document): the UI only
@@ -1480,6 +1484,15 @@ function handObject(root, key, three, made) {
 //   hit(x, y)    true inside the box (a circle for `round`): the game's press test, so a moved button is pressed where
 //                it is drawn — an HTML button does that by itself; a canvas button only through this
 //   state()      the look the editor shows ('hover' | 'active' | 'disabled'), null in the game
+//   onChange(fn) stage 3 (studio-canvas-ui-3, 2026-10-24): fn(box, look) once now and again whenever either changes —
+//                for an engine that keeps its UI as objects (a Phaser text, a Pixi Text) instead of painting it every
+//                frame: `ui.onChange((b, L) => hud.setPosition(b.x, b.y).setScale(b.s).setColor(L.color))`. Returns a
+//                function that stops it. A codeUi() made again for the same id (a new round) starts with none.
+//
+// Stage 3 also lets `size` be the engine's object itself (size: this.hud): its getBounds() with its own scale taken
+// out — the object grows by box().s through onChange, and a size read with that scale in would grow it again on every
+// change. And a `look` colour may be `var(--accent)`: the theme's (codeTheme below, else the page's CSS variable), so a
+// part drawn in the theme's colour follows the theme until the person gives that one part a colour of its own.
 //
 // placement.json `ui.<id>` with `code: id` holds what the person changed until Save (the same entry as an HTML element's,
 // with `from` and `at`: where it is measured from, and the at() numbers from there — so a bar moved to the top middle
@@ -1511,6 +1524,7 @@ function codeUiFile(ui) {
     }
   }
   globalThis[CODE_UI_FILE] = m;
+  uiPokeAll();
 }
 const codeUiFileOf = (id) => (globalThis[CODE_UI_FILE] instanceof Map ? globalThis[CODE_UI_FILE].get(id) : undefined) || null;
 
@@ -1540,7 +1554,15 @@ export function uiNearest(bx, by, w, h, W, H) {
   return UI_FROMS[r * 3 + c];
 }
 
-const uiColorOk = (c) => typeof c === 'string' && UI_COLOR.test(c);
+// A look's colour from the theme: var(--accent) or var(--accent, #ffcf6e) (the CSS form, so the AI writes what it knows).
+const UI_VAR = /^var\(\s*(--[A-Za-z0-9_-]{1,60})\s*(?:,\s*([^();{}<>]{1,60}))?\)$/;
+const uiColorOk = (c) => typeof c === 'string' && (UI_COLOR.test(c) || UI_VAR.test(c.trim()));
+/** A look's value with var(--x) read now: the codeTheme's, else the page's CSS variable, else its fallback. */
+function uiResolve(v) {
+  const m = typeof v === 'string' ? UI_VAR.exec(v.trim()) : null;
+  if (!m) return v;
+  return themeNow(m[1]) || (m[2] ? m[2].trim() : v);
+}
 function uiLookOf(v) {
   const o = {};
   if (!v || typeof v !== 'object') return o;
@@ -1570,12 +1592,22 @@ export function codeUi(id, def) {
     // The editor's values while it edits (the bridge's src/bridge/code-ui.ts): { p, s, set, state, sample } — null in the
     // game. Kept when the game calls codeUi() again for the same id (a new round), like a code layout's objects.
     live: was ? was.live : null,
+    // onChange's functions (stage 3) and what they were last given (a new codeUi() = new objects: none kept).
+    subs: [], sig: '',
   };
   e.canvas = () => uiCanvas(e);
   e.frame = () => uiFrame(e);
   e.box = () => uiBox(e);
   e.lookNow = (st) => uiLookNow(e, st);
   e.atNow = () => uiAtNow(e);
+  // The editor's: give onChange the values now (before it draws a frame), and the code's look with var() read.
+  e.poke = () => uiPoke(e);
+  e.resolve = uiResolve;
+  // The engine's object a codeUi is measured by is UI now: the Phaser / Pixi adapters leave it out of the world's list.
+  if (d.size && typeof d.size === 'object' && typeof d.size.getBounds === 'function') {
+    e.obj = d.size;
+    (globalThis[UI_OBJECTS] instanceof WeakSet ? globalThis[UI_OBJECTS] : (globalThis[UI_OBJECTS] = new WeakSet())).add(d.size);
+  }
   if (ok) list.set(id, e);
   return {
     id: e.id,
@@ -1585,6 +1617,9 @@ export function codeUi(id, def) {
     },
     look: (st) => uiLookNow(e, st),
     value: (v) => {
+      // A text kept as an object grows when the game sets its words: told to onChange once this frame's code is done
+      // (a part measured from the right keeps its right edge).
+      if (e.subs.length && !e.soon) (e.soon = true), queueMicrotask(() => ((e.soon = false), uiPoke(e)));
       const sm = e.live && e.live.sample;
       if (typeof sm !== 'string') return v;
       return e.kind === 'bar' ? (isNum(Number(sm)) && sm !== '' ? Number(sm) : 0) : sm;
@@ -1599,7 +1634,145 @@ export function codeUi(id, def) {
       return x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h;
     },
     state: () => (e.live && UI_STATE_NAMES.includes(e.live.state) ? e.live.state : null),
+    onChange: (fn) => {
+      if (typeof fn !== 'function') return () => {};
+      e.subs.push(fn);
+      uiResize();
+      e.sig = '';
+      uiPoke(e);
+      return () => e.subs.splice(e.subs.indexOf(fn) >>> 0, 1);
+    },
   };
+}
+
+const UI_OBJECTS = Symbol.for('game-studio.codeUiObjects');
+
+/**
+ * Tell onChange the box and look when they differ from what it was told last (rounded to 0.01 px, so a frame that
+ * moved nothing calls nothing). Called: on onChange(), when the file comes (codeUiFile), on a window resize, after the
+ * game set a value (value()), and by the editor before it draws a frame (its live values: code-ui.ts). true = called.
+ */
+function uiPoke(e) {
+  // A text kept as an object (size: the Text) shows the editor's sample on itself: the game's update does not run while
+  // the editor holds the game (Phaser's loop sleeps, Pixi's ticker stops), so its value() is never asked. Its own
+  // words come back when the sample goes.
+  const o = e.obj && typeof e.obj.text === 'string' && e.kind !== 'bar' ? e.obj : null;
+  const sm = o && e.live && typeof e.live.sample === 'string' ? e.live.sample : null;
+  if (sm === null && o && e.textWas !== undefined) (uiText(o, e.textWas), (e.textWas = undefined));
+  if (!e.subs.length && !o) return false;
+  const b = uiBox(e), L = uiLookNow(e);
+  const box = { x: b.x, y: b.y, w: b.w, h: b.h, s: b.s };
+  const sig = [b.x, b.y, b.w, b.h, b.s].map((v) => Math.round(v * 100)).join() + JSON.stringify(L) + (sm === null ? '' : '\n' + sm);
+  if (sig === e.sig) return false;
+  e.sig = sig;
+  for (const fn of e.subs.slice()) {
+    try {
+      fn(box, L);
+    } catch (err) {
+      warnOnce(`codeUi('${e.id}'): onChange failed (${err && err.message})`);
+    }
+  }
+  if (sm !== null) {
+    if (e.textWas === undefined) e.textWas = o.text;
+    if (o.text !== sm) uiText(o, sm);
+  }
+  return true;
+}
+const uiText = (o, v) => (typeof o.setText === 'function' ? o.setText(v) : (o.text = v));
+/** Every codeUi's onChange and every codeTheme's (the file came, the window changed size). */
+function uiPokeAll() {
+  for (const e of codeList(CODE_UIS).values()) uiPoke(e);
+  for (const t of themeSubs()) t.poke();
+}
+let resizing = false;
+function uiResize() {
+  if (resizing || typeof addEventListener !== 'function') return;
+  resizing = true;
+  addEventListener('resize', () => setTimeout(uiPokeAll, 0));
+}
+
+// ---------------------------------------------------------------------------------------------
+// The theme of the UI drawn in the canvas (studio-canvas-ui-3, 2026-10-24; CONTRACT.md §1.13 "Theme"). An HTML game's
+// theme is its CSS variables: the editor's "Theme" under the UI list changes one and every rule that uses it follows.
+// A canvas has no CSS, so the AI writes the colours (and fonts) the game's UI shares here, once:
+//
+//   const T = codeTheme({ accent: { v: '#ffcf6e', label: 'Accent' }, ink: { v: '#2b1d3a', label: 'Ink' } });
+//   ctx.fillStyle = T.accent;                                    // read where it draws (a getter: the value now)
+//   codeUi('score', { …, look: { color: 'var(--accent)' } });    // or as a look's colour: the card shows it, and the
+//                                                                // part follows the theme until given its own colour
+//   T.onChange((v) => panel.setStrokeStyle(3, v.ink));           // objects kept from frame to frame (Phaser / Pixi)
+//
+// The rows are the same as the CSS variables' (the editor lists `--accent`, with the label), and so is the file:
+// `theme: { "--accent": { v, was } }` until Save; on Save the AI writes `v` into codeTheme() and takes it out of the file.
+// A CSS variable of the page with the same name is the same theme entry (both change).
+const CODE_THEMES = Symbol.for('game-studio.codeThemes');
+const CODE_THEME_FILE = Symbol.for('game-studio.codeThemeFile');
+const CODE_THEME_SUBS = Symbol.for('game-studio.codeThemeSubs');
+const THEME_KEY = /^[A-Za-z][A-Za-z0-9_-]{0,59}$/;
+const THEME_VALUE = /^[^;{}<>\\\u0000-\u001f\u007f]{1,200}$/;
+const themeSubs = () => (globalThis[CODE_THEME_SUBS] instanceof Set ? globalThis[CODE_THEME_SUBS] : (globalThis[CODE_THEME_SUBS] = new Set()));
+
+/** A theme value now: the editor's (live), else the file's, else the code's; a name no codeTheme has: the page's CSS. */
+function themeNow(name) {
+  const e = codeList(CODE_THEMES).get(name);
+  const f = globalThis[CODE_THEME_FILE] instanceof Map ? globalThis[CODE_THEME_FILE].get(name) : undefined;
+  if (e) return e.live || f || e.v;
+  if (f) return f;
+  try {
+    return typeof document !== 'undefined' ? getComputedStyle(document.documentElement).getPropertyValue(name).trim() : '';
+  } catch (err) {
+    return '';
+  }
+}
+
+/** The file's `theme` (until Save), read by every codeTheme getter and var() look. */
+function codeThemeFile(theme) {
+  const m = new Map();
+  if (theme && typeof theme === 'object') for (const [n, e] of Object.entries(theme)) if (/^--[A-Za-z0-9_-]{1,60}$/.test(n) && e && typeof e.v === 'string' && THEME_VALUE.test(e.v)) m.set(n, e.v);
+  globalThis[CODE_THEME_FILE] = m;
+}
+
+/**
+ * The colours and fonts the game's canvas UI shares, by name ({ accent: { v, label?, type? } } or { accent: '#ffcf6e' });
+ * returns an object whose properties read each value now, and onChange(fn): fn(values) now and on every change.
+ * type: 'color' | 'font' (none = a colour when it is one, a font when its name says font / family).
+ */
+export function codeTheme(def) {
+  const list = codeList(CODE_THEMES);
+  const out = {};
+  const names = [];
+  for (const [k, raw] of Object.entries(def && typeof def === 'object' ? def : {})) {
+    const d = typeof raw === 'string' ? { v: raw } : raw && typeof raw === 'object' ? raw : {};
+    if (!THEME_KEY.test(k) || typeof d.v !== 'string' || !THEME_VALUE.test(d.v.trim())) {
+      warnOnce(`codeTheme: "${k}" needs a name (letters, digits, - and _) and a value v ('#ffcf6e')`);
+      continue;
+    }
+    const name = '--' + k;
+    const was = list.get(name);
+    const type = d.type === 'font' || d.type === 'color' ? d.type : /font|family|typeface/i.test(k) ? 'font' : 'color';
+    list.set(name, { name, v: d.v.trim(), label: text(d.label, 40) || null, type, live: was ? was.live : null });
+    names.push([k, name]);
+    Object.defineProperty(out, k, { enumerable: true, get: () => themeNow(name) });
+  }
+  const values = () => Object.fromEntries(names.map(([k, n]) => [k, themeNow(n)]));
+  out.onChange = (fn) => {
+    if (typeof fn !== 'function') return () => {};
+    const sub = { sig: '', poke: () => {
+      const v = values(), sig = JSON.stringify(v);
+      if (sig === sub.sig) return false;
+      sub.sig = sig;
+      try {
+        fn(v);
+      } catch (err) {
+        warnOnce(`codeTheme: onChange failed (${err && err.message})`);
+      }
+      return true;
+    } };
+    themeSubs().add(sub);
+    sub.poke();
+    return () => themeSubs().delete(sub);
+  };
+  return out;
 }
 
 /** The canvas a codeUi is drawn in: its own `canvas`, else the last canvas of the page (an overlay is added after the game's). */
@@ -1639,6 +1812,18 @@ function uiSize(e) {
     }
   }
   if (isNum(s)) return [Math.max(0, s), Math.max(0, s)];
+  // The engine's object (Phaser / Pixi: getBounds()) at its scale 1, or a rectangle ({ width, height }).
+  if (s && typeof s === 'object' && !Array.isArray(s)) {
+    let r = null;
+    try {
+      r = typeof s.getBounds === 'function' ? s.getBounds() : s;
+    } catch (err) {
+      warnOnce(`codeUi('${e.id}'): getBounds() failed (${err && err.message})`);
+    }
+    const sc = (a, b) => Math.abs(isNum(a) ? a : isNum(b) ? b : 1) || 1;
+    const sx = s.getBounds ? sc(s.scaleX, s.scale && s.scale.x) : 1, sy = s.getBounds ? sc(s.scaleY, s.scale && s.scale.y) : 1;
+    return r && isNum(r.width) && isNum(r.height) ? [Math.max(0, r.width / sx), Math.max(0, r.height / sy)] : [0, 0];
+  }
   return Array.isArray(s) && s.length >= 2 && isNum(s[0]) && isNum(s[1]) ? [Math.max(0, s[0]), Math.max(0, s[1])] : [0, 0];
 }
 
@@ -1696,6 +1881,7 @@ function uiLookNow(e, st) {
       for (const k of ['color', 'background']) if (o[k]) out[k] = o[k];
     }
   }
+  for (const k of ['color', 'background']) if (out[k]) out[k] = uiResolve(out[k]);
   return out;
 }
 

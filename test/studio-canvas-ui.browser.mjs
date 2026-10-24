@@ -27,7 +27,19 @@
 //            lists and draws that screen's UI while the game's own state stays; the bar's samples Full / Half / Empty;
 //            a long sample widens the score's frame (its size is a function)
 //
-//   node test/studio-canvas-ui.browser.mjs [--only one|missing|screens] [--shots <dir>] [--lang ja,en]
+// Stage 3 (studio-canvas-ui-3, 2026-10-24: Phaser / Pixi, the theme, the HTML UI's edges):
+//   phaser   test/canvas-ui/phaser-runner (the distance text a codeUi kept as an object, its ink a codeTheme): ui.code's
+//            check passes on Phaser's WebGL canvas; its sample shown while the run waits; dragged to the top right the
+//            text itself goes there (onChange), the line says so, the file says from top-right; Size 1.5 scales the text
+//   pixi     test/canvas-ui/pixi-bubbles (the score and the note as objects): the check passes; the menu panel stays where
+//            the game draws it (the UI layer shows the 2D world as Play does); the score dragged to the top middle
+//   theme    the same Pixi game: the Theme under the list has the code's two rows by their labels; a colour changed there
+//            recolours the parts that use it in one frame; ⌘Z; Save → `theme` in the file; the AI writes it into
+//            codeTheme() and sends ui.theme --clear → no `theme` left, the same colour, nothing to save
+//   edges    examples/three-hud (HTML UI): the score dragged to the top right — the same line and words while held, and
+//            the file's ui.score has from top-right / at (what the AI's CSS keeps it to on Save)
+//
+//   node test/studio-canvas-ui.browser.mjs [--only one|missing|screens|phaser|pixi|theme|edges] [--shots <dir>] [--lang ja,en]
 // Exit 1 on failure.
 import assert from 'node:assert/strict';
 import { copyFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -43,7 +55,7 @@ const args = process.argv.slice(2);
 const opt = (name) => (args.includes(name) ? args[args.indexOf(name) + 1] : null);
 const SHOTS = opt('--shots') ? resolve(opt('--shots')) : null;
 const LANGS = (opt('--lang') || 'ja,en').split(',');
-const ONLY = opt('--only') ? opt('--only').split(',') : ['one', 'missing', 'screens'];
+const ONLY = opt('--only') ? opt('--only').split(',') : ['one', 'missing', 'screens', 'phaser', 'pixi', 'theme', 'edges'];
 if (SHOTS) mkdirSync(SHOTS, { recursive: true });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const WIN = `document.querySelector('iframe').contentWindow`;
@@ -563,10 +575,233 @@ async function screens(lang) {
 
 const readdirOf = (dir) => (existsSync(dir) ? readdirSync(dir) : []);
 
+// ---------------------------------------------------------------- stage 3
+const ENTRY = (id) => `${WIN}[Symbol.for('game-studio.codeUis')].get('${id}')`;
+/** A codeUi's box in the editor page (its canvas's place in the game frame, the canvas's units → CSS px). */
+const pageBox = async (page, id) => JSON.parse(await page.eval(`(() => { const e = ${ENTRY(id)}; const c = e.canvas().getBoundingClientRect(); const b = e.box();
+  const f = document.querySelector('iframe').getBoundingClientRect(); const k = c.width / b.W, ky = c.height / b.H;
+  return JSON.stringify({ x: f.left + c.left + b.x * k, y: f.top + c.top + b.y * ky, w: b.w * k, h: b.h * ky, canvas: { x: f.left + c.left, y: f.top + c.top, w: c.width, h: c.height }, b }); })()`));
+/** The line's place and words while one is held (null = none). */
+const lineNow = async (page) => JSON.parse(await page.eval(`(() => { const l = ${WIN}.document.querySelector('svg[data-studio-ui-line]'); return JSON.stringify(l && { from: l.getAttribute('data-from'), words: l.getAttribute('data-words') }); })()`));
+/** Open the Theme fold under the UI list (closed until pressed). */
+const openTheme = async (page) => {
+  if (await page.eval(`document.querySelector('[data-part=ui-theme]')?.dataset.open === 'on'`)) return;
+  await page.eval(`document.querySelector('[data-part=ui-theme-head]').click()`);
+  await sleep(300);
+};
+/** A Theme row's text field: type a value as the person does (Enter). */
+const setThemeRow = async (page, name, value) => {
+  await page.eval(`(() => { const i = document.querySelector('[data-part=theme-row][data-name="${name}"] input[data-part=theme-text]'); i.focus(); i.value = '${value}'; i.dispatchEvent(new Event('change')); i.blur(); })()`);
+  await sleep(500);
+};
+
+async function phaser(lang) {
+  console.log(`${lang} dark — Phaser: a text kept as an object`);
+  const J = lang === 'ja';
+  const g = await open(lang, 'examples/phaser-runner', 'test/canvas-ui/phaser-runner/game.js');
+  const { page } = g;
+  try {
+    await page.waitFor(`!!${DBG} && studioShell.items().length > 0`, 45000);
+    await sleep(2000);
+    await run('P1. ui.code: the check passes on Phaser\'s WebGL canvas; Distance in the UI list; its sample shown while the run waits', async () => {
+      const r = await g.ai([{ do: 'ui.code', id: 'distance' }]);
+      assert.equal(r.results?.[0]?.ok, true, `ui.code: ${JSON.stringify(r)}`);
+      assert.match(r.results[0].said, /picture follows it/);
+      await page.waitFor(`${DBG}.layer() === 'ui' && studioShell.items().length === 1`, 10000);
+      assert.equal(await page.eval(`studioShell.items()[0].key`), 'distance');
+      assert.equal(await page.eval(`${ENTRY('distance')}.obj.text`), '9,999 m', 'the sample on the text (the distance is empty before a run)');
+      // On the Scene layer the game's own picture: no sample (a real run of 2026-10-25 showed "9,999 m" over the world).
+      await page.eval(`document.querySelector('[data-part=layer-switch] [data-layer=world]').click()`);
+      await page.waitFor(`${DBG}.layer() === 'world'`, 5000);
+      await sleep(500);
+      assert.equal(await page.eval(`${ENTRY('distance')}.obj.text`), '', 'Scene: the distance\'s own (empty) words');
+      await toUi(page);
+      assert.equal(await page.eval(`${ENTRY('distance')}.obj.text`), '9,999 m', 'UI again: the sample');
+      const l = await g.ai([{ do: 'list' }]);
+      assert.ok(!(l.results?.[0]?.list?.uiFound ?? []).length, 'no dotted frame left');
+    });
+    await run('P2. dragged to the top right: the text itself goes there (onChange), the line says from where, the file says top-right; Size 1.5 scales it', async () => {
+      await page.eval(`document.querySelector('li.obj[data-key="distance"]').click()`);
+      await page.waitFor(`studioShell.selected() === 'distance'`, 3000);
+      await sleep(300);
+      const a = await pageBox(page, 'distance');
+      const from = { x: a.x + a.w / 2, y: a.y + a.h / 2 };
+      const to = { x: a.canvas.x + a.canvas.w - 20 - a.w / 2, y: from.y };
+      let held = null;
+      await drag(page, from, to, async () => {
+        held = await lineNow(page);
+      });
+      assert.equal(held?.from, 'top-right', `the line: ${JSON.stringify(held)}`);
+      assert.ok(held.words.includes(J ? '右上から' : 'from the top right'), held.words);
+      const e = JSON.parse(await page.eval(`(() => { const e = ${ENTRY('distance')}; const b = e.box(); return JSON.stringify({ b, x: e.obj.x, y: e.obj.y, s: e.obj.scaleX }); })()`));
+      near(e.x, e.b.x, 0.6, 'the text is where its box is (x)');
+      near(e.y, e.b.y, 0.6, 'the text is where its box is (y)');
+      assert.ok(e.b.x > e.b.W / 2, 'on the right');
+      await page.eval(`(() => { const i = document.querySelector('input[aria-label="×"]'); i.focus(); i.value = '1.5'; i.dispatchEvent(new Event('change')); i.blur(); })()`);
+      await sleep(600);
+      assert.equal(await page.eval(`${ENTRY('distance')}.obj.scaleX`), 1.5, 'the text is 1.5 times as big');
+      await sleep(1200);
+      const f = file(g.root)?.ui?.distance;
+      assert.equal(f?.code, 'distance', JSON.stringify(f));
+      assert.equal(f.from, 'top-right');
+      if (SHOTS) writeFileSync(join(SHOTS, `phaser-${lang}.png`), await page.screenshot());
+      await key(page, 'z', MOD);
+      assert.equal(await page.eval(`${ENTRY('distance')}.obj.scaleX`), 1, '⌘Z: the size back');
+    });
+  } finally {
+    await g.close();
+  }
+}
+
+async function pixi(lang) {
+  console.log(`${lang} dark — Pixi: the score and the note as objects`);
+  const J = lang === 'ja';
+  const g = await open(lang, 'examples/pixi-bubbles', 'test/canvas-ui/pixi-bubbles/game.js');
+  const { page } = g;
+  try {
+    await page.waitFor(`!!${DBG} && studioShell.items().length > 0`, 45000);
+    await sleep(2000);
+    await run('X1. ui.code score,note: the check passes; both listed; the menu panel where the game draws it (the 2D world as Play shows it)', async () => {
+      const r = await g.ai([{ do: 'ui.code', id: 'score,note' }]);
+      assert.equal(r.results?.[0]?.ok, true, `ui.code: ${JSON.stringify(r)}`);
+      await page.waitFor(`${DBG}.layer() === 'ui' && studioShell.items().length === 2`, 10000);
+      assert.equal(await page.eval(`studioShell.items().map((i) => i.key).join(' ')`), 'score note');
+      // The world's view is the game's own on the UI layer: the canvas UI is drawn in the world's canvas, through it.
+      const v = await g.ai([{ do: 'list' }]);
+      const panel = (v.results?.[0]?.list?.objects ?? []).find((o) => o.key === 'panel');
+      assert.ok(panel, 'the panel is the world\'s');
+      assert.equal(await page.eval(`${ENTRY('score')}.obj.text`), '999   ⏱ 45', 'the score\'s sample while the round waits');
+    });
+    await run('X2. the score dragged to the top middle: the Text goes there, "… from the top centre"', async () => {
+      await page.eval(`document.querySelector('li.obj[data-key="score"]').click()`);
+      await page.waitFor(`studioShell.selected() === 'score'`, 3000);
+      await sleep(300);
+      const a = await pageBox(page, 'score');
+      const from = { x: a.x + a.w / 2, y: a.y + a.h / 2 };
+      const to = { x: a.canvas.x + a.canvas.w / 2, y: from.y };
+      let held = null;
+      await drag(page, from, to, async () => {
+        held = await lineNow(page);
+        if (SHOTS) writeFileSync(join(SHOTS, `pixi-${lang}.png`), await page.screenshot());
+      });
+      assert.equal(held?.from, 'top', `the line: ${JSON.stringify(held)}`);
+      assert.ok(held.words.includes(J ? '上の真ん中から' : 'from the top centre'), held.words);
+      const e = JSON.parse(await page.eval(`(() => { const e = ${ENTRY('score')}; const b = e.box(); return JSON.stringify({ b, x: e.obj.position.x, y: e.obj.position.y }); })()`));
+      near(e.x, e.b.x, 0.6, 'the Text is where its box is');
+      near(e.b.x + e.b.w / 2, e.b.W / 2, 3, 'in the middle');
+    });
+  } finally {
+    await g.close();
+  }
+  // A game whose world has nothing left but UI (the real AI's Pixi run of 2026-10-25 made the menu panel UI too: every
+  // --do then said "the editor is still opening the game" for minutes).
+  const h = await open(lang, 'examples/pixi-bubbles', 'test/canvas-ui/pixi-bubbles/game.js', (code) => code.replace("const panel = new Container({ label: 'panel' }); // studio: label", "const panel = new Container({ label: 'panel' }); panel.studio = false;"));
+  try {
+    await h.page.waitFor(`!!${DBG}`, 45000);
+    await run('X3. no world object left, only UI: the AI\'s --do is answered (not "still opening")', async () => {
+      const t0 = Date.now();
+      const r = await h.ai([{ do: 'ui.code', id: 'score,note' }]);
+      assert.equal(r.results?.[0]?.ok, true, `ui.code: ${JSON.stringify(r)}`);
+      assert.ok(Date.now() - t0 < 30000, `answered in ${Date.now() - t0} ms`);
+      await h.page.waitFor(`studioShell.items().length === 2`, 10000);
+    });
+  } finally {
+    await h.close();
+  }
+}
+
+async function theme(lang) {
+  console.log(`${lang} dark — the canvas UI's theme`);
+  const g = await open(lang, 'examples/pixi-bubbles', 'test/canvas-ui/pixi-bubbles/game.js');
+  const { page } = g;
+  const fill = (id) => page.eval(`String(${ENTRY(id)}.obj.style.fill)`);
+  try {
+    await page.waitFor(`!!${DBG} && studioShell.items().length > 0`, 45000);
+    await sleep(2000);
+    await toUi(page);
+    await run('T1. the Theme under the UI list: the code\'s two rows by their labels, as the CSS variables\' rows', async () => {
+      await openTheme(page);
+      const rows = JSON.parse(await page.eval(`JSON.stringify([...document.querySelectorAll('[data-part=theme-row]')].map((r) => [r.dataset.name, r.previousElementSibling?.textContent, r.querySelector('input[data-part=theme-text]')?.value]))`));
+      assert.deepEqual(rows, [['--text', 'Text', '#ffffff'], ['--note', 'Note', '#8fc6d4']]);
+    });
+    await run('T2. Note changed on its row: the note recolours in one frame; ⌘Z back; again, and Save writes `theme`', async () => {
+      await setThemeRow(page, '--note', '#ffd166');
+      assert.match(await fill('note'), /ffd166/i, 'the note in the new colour');
+      assert.match(await fill('score'), /ffffff/i, 'the score keeps its own');
+      if (SHOTS) writeFileSync(join(SHOTS, `theme-${lang}.png`), await page.screenshot());
+      await key(page, 'z', MOD);
+      await sleep(400);
+      assert.match(await fill('note'), /8fc6d4/i, '⌘Z: back');
+      const r = await g.ai([{ do: 'ui.theme', id: 'note', v: '#ffd166' }]);
+      assert.equal(r.results?.[0]?.ok, true, `ui.theme: ${JSON.stringify(r)}`);
+      await sleep(400);
+      assert.match(await fill('note'), /ffd166/i, 'the AI\'s ui.theme: as the row');
+      await page.eval(`studioShell.actions.save()`);
+      await sleep(1500);
+      assert.deepEqual(file(g.root)?.theme, { '--note': { v: '#ffd166', was: '#8fc6d4' } });
+    });
+    await run('T3. the AI writes it into codeTheme() and sends ui.theme --clear: no `theme` in the file, the same colour, nothing to save', async () => {
+      writeFileSync(join(g.root, 'game.js'), readFileSync(join(g.root, 'game.js'), 'utf8').replace(`note: { v: '#8fc6d4', label: 'Note' }`, `note: { v: '#ffd166', label: 'Note' }`));
+      const r = await g.ai([{ do: 'ui.theme', id: '--note', clear: true }]);
+      assert.equal(r.results?.[0]?.ok, true, `ui.theme --clear: ${JSON.stringify(r)}`);
+      await sleep(4000);
+      await page.waitFor(`!!${DBG} && studioShell.items().length > 0`, 20000);
+      await sleep(1000);
+      assert.equal(file(g.root)?.theme, undefined, `no theme left: ${JSON.stringify(file(g.root)?.theme)}`);
+      assert.match(await fill('note'), /ffd166/i, 'the code\'s colour now');
+      const dirty = await page.eval(`document.querySelector('[data-part=save]')?.innerText ?? ''`);
+      assert.ok(!/·\s*\d/.test(dirty), `nothing to save: ${dirty}`);
+    });
+  } finally {
+    await g.close();
+  }
+}
+
+async function edges(lang) {
+  console.log(`${lang} dark — the HTML UI keeps to the nearest edge`);
+  const J = lang === 'ja';
+  const g = await open(lang, 'examples/three-hud');
+  const { page } = g;
+  try {
+    await page.waitFor(`!!${DBG} && studioShell.items().length > 0`, 45000);
+    await sleep(2000);
+    await toUi(page);
+    await run('E1. the score dragged to the top right: the line and words while held; the file says from top-right and its px', async () => {
+      await page.eval(`document.querySelector('li.obj[data-key="score"]').click()`);
+      await page.waitFor(`studioShell.selected() === 'score'`, 3000);
+      await sleep(300);
+      const r = JSON.parse(await page.eval(`(() => { const e = ${WIN}.document.querySelector('[data-studio-key=score]').getBoundingClientRect(); const f = document.querySelector('iframe').getBoundingClientRect();
+        return JSON.stringify({ x: f.left + e.left, y: f.top + e.top, w: e.width, h: e.height, W: ${WIN}.innerWidth, fx: f.left }); })()`));
+      const from = { x: r.x + r.w / 2, y: r.y + r.h / 2 };
+      const to = { x: r.fx + r.W - 24 - r.w / 2, y: from.y };
+      let held = null;
+      await drag(page, from, to, async () => {
+        held = await lineNow(page);
+        if (SHOTS) writeFileSync(join(SHOTS, `edges-${lang}.png`), await page.screenshot());
+      });
+      assert.equal(held?.from, 'top-right', `the line: ${JSON.stringify(held)}`);
+      assert.ok(held.words.includes(J ? '右上から' : 'from the top right'), held.words);
+      assert.equal(await page.eval(`!!${WIN}.document.querySelector('svg[data-studio-ui-line]')`), false, 'gone when let go');
+      await sleep(1500);
+      const e = file(g.root)?.ui?.score;
+      assert.equal(e?.from, 'top-right', JSON.stringify(e));
+      near(e.at[0], 24, 3, 'about 24 px from the right');
+      near(e.at[1], 16, 2, '16 px from the top (as its CSS)');
+      assert.equal(e.code, undefined, 'an HTML element: no code');
+    });
+  } finally {
+    await g.close();
+  }
+}
+
 for (const lang of LANGS) {
   if (ONLY.includes('one')) await one(lang);
   if (ONLY.includes('missing')) await missing(lang);
   if (ONLY.includes('screens')) await screens(lang);
+  if (ONLY.includes('phaser')) await phaser(lang);
+  if (ONLY.includes('pixi')) await pixi(lang);
+  if (ONLY.includes('theme')) await theme(lang);
+  if (ONLY.includes('edges')) await edges(lang);
 }
 console.log(failed ? `\n${failed} failed` : '\nall passed');
 process.exit(failed ? 1 : 0);

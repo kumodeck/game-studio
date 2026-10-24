@@ -34,8 +34,17 @@
     if (typeof prevRenderer === 'function') return prevRenderer.apply(this, arguments);
   };
   const theRenderer = () => (app && app.renderer) || renderer;
-  // Without an Application, the stage is whatever the game rendered last.
-  const stage = () => (app ? app.stage : renderer && renderer.lastObjectRendered) || null;
+  // Without an Application, the stage is whatever the game rendered last — a root (no parent): a thumbnail made by
+  // extract (capture() below) renders one object of the stage on its own, and that object became "the stage" until the
+  // game drew again — never, while the editor holds the game (studio-canvas-ui-3, 2026-10-24: Bubble Pop's editor showed
+  // its menu panel alone, zoomed to the canvas, after the Library made the panel's thumbnail).
+  let lastRoot = null;
+  const stage = () => {
+    if (app) return app.stage;
+    const o = renderer && renderer.lastObjectRendered;
+    if (o && !o.parent) lastRoot = o;
+    return lastRoot || o || null;
+  };
 
   // ---------------------------------------------------------------- which objects
   // Candidates (CONTRACT: "the meaningful top-most node"):
@@ -72,6 +81,10 @@
       c.children.forEach((o, i) => {
         if (o.studio === false || o.destroyed) return;
         const p = path.concat(i);
+        // A UI the game's code delivered as codeUi (its `size` is this object: studio-canvas-ui-3, 2026-10-24) is the UI
+        // layer's now: not listed in the world (its name is still counted below, so the keys match the loader's).
+        const ui = globalThis[Symbol.for('game-studio.codeUiObjects')];
+        const codeUi = !!(ui && ui.has(o));
         const own = ownName(o);
         let key;
         if (own) {
@@ -87,8 +100,8 @@
         // Hidden objects (and everything inside them) cannot be seen or
         // picked, but their names are still counted above so keys match the loader.
         const off = hidden || !o.visible;
-        if (!off && (own || depth === 0) && KEY_OK.test(key) && hasArea(o)) out.set(key, { o, own, unstable: !own || key.startsWith('path:') });
-        if (o.children && o.children.length) walk(o, p, depth + 1, off);
+        if (!off && !codeUi && (own || depth === 0) && KEY_OK.test(key) && hasArea(o)) out.set(key, { o, own, unstable: !own || key.startsWith('path:') });
+        if (o.children && o.children.length) walk(o, p, depth + 1, off || codeUi);
       });
     };
     walk(root, [], 0, false);
@@ -403,8 +416,10 @@
         const s = stage();
         if (!s || !theRenderer()) return [];
         const out = [];
+        const ui = globalThis[Symbol.for('game-studio.codeUiObjects')];
         const push = (o) => {
-          if (!o || o.destroyed || !o.visible || typeof o.getLocalBounds !== 'function') return;
+          // A codeUi's object is selectable already (stage 3): no dotted frame.
+          if (!o || o.destroyed || !o.visible || typeof o.getLocalBounds !== 'function' || (ui && ui.has(o))) return;
           const b = o.getLocalBounds();
           if (!(b.maxX - b.minX > 0 && b.maxY - b.minY > 0)) return;
           const m = mul(mul(css(), view), worldOf(o));

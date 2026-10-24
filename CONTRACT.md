@@ -805,8 +805,38 @@ const b = scoreUi.box(), L = scoreUi.look();   // every frame, where it is drawn
   starts from its own first screen. Editing starts on the HTML UI's screen shown, else `play`, else the first one.
   `ui.code` measures a box on another screen on its own screen. The card's States (a `button` with `states`) and the
   samples (a bar's full / half / empty; a text whose `size` is a function: its frame follows the sample) are stage 1's.
-- **Not yet** (stage 3): Phaser / Pixi through `codeUi` (`onChange`); a `codeTheme`. Tests: `test/code-ui.test.ts`,
-  `test/ui-found.test.ts`, `test/studio-canvas-ui.browser.mjs` (`--only one|missing|screens`).
+- **UI kept as objects — Phaser / Pixi** (stage 3, studio-canvas-ui-3, 2026-10-24). An engine that keeps its HUD as
+  objects (a Phaser text, a Pixi `Text`) does not call `box()` each frame, and its update does not run while the editor
+  holds it (the adapter sleeps Phaser's loop, stops Pixi's ticker). So: `size` may be the object itself (its
+  `getBounds()` with its own scale taken out: it grows by `box().s` through onChange, and a size read at that scale
+  would grow it again), and `onChange(fn)` → `fn(box, look)` once at once and again whenever either changes (told by
+  the loader when the file comes, on a window resize, after the game's `value()`; by the editor before it draws a
+  frame). A codeUi's object is UI: the Phaser / Pixi adapters leave it out of the world's list and of `leftOut()`
+  (`globalThis[Symbol.for('game-studio.codeUiObjects')]`, a WeakSet). One frame is drawn by the world adapter's
+  `render()` when it holds the engine's loop (`StudioAdapter.holdsLoop`: a Port2D with `pause()`), since no frame
+  callback waits for `time.step()` then. A text the game leaves empty while it waits to start shows its `sample`
+  while editing (on the object: `setText` / `text =`, its own words back after), so its frame has a size; `ui.code`'s
+  check reads a WebGL canvas through a 2D copy made right after the frame is drawn, and says `its box is 0×24 now
+  (nothing is drawn there yet …)` for a box still empty. On the UI layer a 2D world shows the identity view (what Play
+  shows), not "everything in frame": the UI drawn in the world's canvas is drawn through the world's view.
+- **Theme** (stage 3). The canvas UI's shared colours and fonts in the code, once:
+  `const T = codeTheme({ accent: { v: '#ffcf6e', label: 'Accent' } })` — `T.accent` reads the value now (the editor's,
+  else the file's `theme`, else the code's), `T.onChange(fn)` for objects; a look's colour may be `var(--accent)`
+  (`var(--accent, #fff)`): the codeTheme's value, else the page's CSS variable, else the fallback — the part follows the
+  theme until the person gives it a colour of its own (the card's colour back to the code's = following again). The
+  editor lists them in the Theme fold under the UI list as `--accent` rows (`UiThemeVar.label` = the code's word shown
+  in place of the name), one list with the CSS variables (§1.11; the same name is one row, both change); the same
+  undo, Save count and file (`theme: { "--accent": { v, was } }`). On Save the AI writes `v` into `codeTheme()` (a CSS
+  variable: into `:root`) and sends `ui.theme --id --accent --clear` (§3.6). Lists:
+  `globalThis[Symbol.for('game-studio.codeThemes')]` (and `…codeThemeFile`, `…codeThemeSubs`).
+- **Edges — the HTML UI too** (stage 3; Q2 = a). An HTML element that moved or grew is measured from the nearest of the
+  9 places of the game's window when let go (`src/bridge/ui-edge.ts`): while dragged, the same dotted place it was,
+  line and words as a codeUi's ("16 px · 24 px from the top right"); after every gesture (and ⌘Z) the bridge says
+  each element's `from` / `at` (CSS px) to the shell (`ui/edges`), and the file's `ui.<key>` has them beside `p`. The
+  loader still places an HTML element by `p` until Save; on Save the AI writes its CSS `left` / `right` / `top` /
+  `bottom` by `from` / `at` (SKILL.md) and clears the entry, so it keeps to that edge on every window size.
+- Tests: `test/code-ui.test.ts`, `test/code-ui-3.test.ts`, `test/ui-found.test.ts`, `test/studio-canvas-ui.browser.mjs`
+  (`--only one|missing|screens|phaser|pixi|theme|edges`).
 
 ## 2. Messages (bridge ⇄ shell)
 
@@ -828,7 +858,8 @@ origin, never `'*'`. Full payload types: `ShellToBridge`, `BridgeToShell`.
 | | `core/levels` | `{ levels: LevelInfo[], current }`: the game called `studio.levels()` (§1.10); `current` = the level this page shows |
 | | `placement/items` | `Item[]`; `layer?` whose list it is (UI stage 1; absent = the world). When editing starts in a game with a UI, the UI's list is sent once too, so its saved places are kept and shown |
 | | `ui/found` · `ui/missing` | studio-canvas-ui stage 2 (§1.13): the UI seen but not selectable yet (`UiFound[]`: `box`, `from`), when editing starts and when it changes; a press on the UI layer beside every UI box (`at`, `place` = one of the 9, `none` = nothing selectable, `shot` = the picture round it) or `at: null` = the cross went (the next press in the game) |
-| | `ui/screens` · `ui/props` · `ui/theme` | UI stages 2–3 (§1.11): the screens and the one shown (`forced` = the editor chose it), when editing starts and after `ui/screen` (only for a game with screens); the picked UI element's props (`text`, `fontSize`, `color`, `background`, `button`, `state`, `was` = the game's own, `sample`), after a UI pick and each `ui/*` change of it; the theme's variables (`name`, `type` color / font, `value`, `was`), when editing starts and after `ui/theme-set` (only when there are some) |
+| | `ui/screens` · `ui/props` · `ui/theme` | UI stages 2–3 (§1.11): the screens and the one shown (`forced` = the editor chose it), when editing starts and after `ui/screen` (only for a game with screens); the picked UI element's props (`text`, `fontSize`, `color`, `background`, `button`, `state`, `was` = the game's own, `sample`), after a UI pick and each `ui/*` change of it; the theme's variables (`name`, `type` color / font, `value`, `was`, `label` = a codeTheme's word, §1.13), when editing starts and after `ui/theme-set` (only when there are some) |
+| | `ui/edges` | studio-canvas-ui-3 (§1.13): the HTML UI's edges — per element `key`, `from` (the nearest of the 9 places of the window), `at` (CSS px from there), `box`, `frame` — after every gesture, ⌘Z or resize that changed them |
 | | `placement/selected` | `{ key, item? }` |
 | | `placement/moved` | `{ key, pose, end?, from?, press?, hold?, alone? }` (`alone`: ⌥ held — a rule's object put by hand, §1.12) |
 | | `placement/thumb` | `{ key, src }` (`data:image/png;base64,…` or null), one per key asked for by `placement/thumbs` |
@@ -1422,7 +1453,8 @@ stdout, one line per op: `studio: did <what it did> - in the editor (on screen n
 | `save` | — | the person's Save (only when they ask the AI for it) | nothing to do |
 | `editor.reload` | `editor` | the game page (`softReload`), or the editor page itself | refused |
 | `ui.code` | `id` (`"a"` or `"a,b,c"`: codeUi ids) | The game read again (always: the code changed), the UI layer shown, each id in the page's `studio:ui/codes` (`the game has no codeUi('x') (it has: …)`; an id an HTML key takes: said so), then each box measured (§1.13): `do failed ui.code hp-bar - moving it 40 px changed nothing on screen: …`. No undo step | nothing (said in the line) |
-| `ui.set` | `id` (a UI key), `p` (CSS px offset; with `from`: the at() numbers from that place), `s`, `set` (the card's look); or `clear` alone | the UI layer: the pose (one undo step on the UI layer) and each look path as the card's row; `clear` = the entry out of the file and of what is saved (`PlacementModel.settle`, `UiStyleModel.forget`: no Save count, no ⌘Z), the page drawing it as its code does (`studio:ui/code-clear`) | `clear`: the entry out of `ui` (`uiView` too when empty); anything else refused |
+| `ui.set` | `id` (a UI key), `p` (CSS px offset; with `from`: the at() numbers from that place — a codeUi's units, an HTML element's CSS px of the window, stage 3), `s`, `set` (the card's look); or `clear` alone | the UI layer: the pose (one undo step on the UI layer) and each look path as the card's row; `clear` = the entry out of the file and of what is saved (`PlacementModel.settle`, `UiStyleModel.forget`: no Save count, no ⌘Z), the page drawing it as its code does (`studio:ui/code-clear`) | `clear`: the entry out of `ui` (`uiView` too when empty); anything else refused |
+| `ui.theme` | `id` (`--accent`, or a codeTheme key `accent`), `v`; or `clear` alone | a Theme row (a CSS variable of the page or a codeTheme, §1.13): `v` as the row (one undo step, counted); `clear` = out of the file's `theme` and of what is saved (`UiStyleModel.forgetTheme`: no Save count, no ⌘Z) — the AI wrote it into the code | `clear`: out of `theme`; `v` refused |
 
 A motion `motion.make` puts on an object starts with the game unless `when` says otherwise (`HANDS_MAKE_WHEN`: the
 person asked for it to move now; the editor's attach rule, "after its last motion", never comes after a motion that
@@ -1504,7 +1536,10 @@ Validated by one module, `src/schema` (`validatePlacement`, `validateLibrary`,
 - Optional (studio-canvas-ui, 2026-10-24; §1.13): a UI drawn in the canvas has `code` (its codeUi id = the entry's key)
   and, when it moved or grew, `from` (one of the 9 places) with `at` (2 numbers, the code's units, ±10 000): the loader
   places it by them (`p` = the editor's offset, read by the editor only). `"hp-bar": { "code": "hp-bar", "p": [389,
-  -40], "s": 1.4, "from": "top", "at": [0, 16] }`. Absent for HTML UI: such files keep their bytes.
+  -40], "s": 1.4, "from": "top", "at": [0, 16] }`. Since studio-canvas-ui-3 an HTML element that moved or grew has
+  `from` / `at` too (no `code`): the nearest place of the game's window and its CSS px from there — the loader still
+  places it by `p`; the AI writes its CSS by them on Save (`"pause-button": { "p": [-900, 0], "from": "top-left", "at":
+  [20, 14] }`). A file written before has neither: the same bytes.
 - Optional (UI stages 2–3, 2026-10-22; §1.11): per `ui` entry, `screen` (the
   element's `data-studio-screen`), `set` (what the card changed: `text` ≤ 200
   characters, `fontSize` 1–500 px, `color`, `background`, and per state

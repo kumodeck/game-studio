@@ -12,7 +12,7 @@
 //
 // Pure of the DOM: every effect goes through HandsDeps (main.ts wires them), so test/ai-hands.test.ts runs it with
 // stand-ins.
-import type { CodeAvoidInfo, CodeKnob, CodeMotionInfo, CodePlaceInfo, CodeUiInfo, Dim, Item, KnobValue, LibraryMotion, Motion, MotionClip, MotionKey, MotionRepeat, MotionUntil, MotionWhen, PlacementPlace, PlacementUiEntry, PlaceOffset, Pose, UiFound } from '../contract.ts';
+import type { CodeAvoidInfo, CodeKnob, CodeMotionInfo, CodePlaceInfo, CodeUiInfo, Dim, Item, KnobValue, LibraryMotion, Motion, MotionClip, MotionKey, MotionRepeat, MotionUntil, MotionWhen, PlacementPlace, PlacementUiEntry, PlaceOffset, Pose, UiEdgeInfo, UiFound, UiThemeVar } from '../contract.ts';
 import { uiBoxAt } from '../loader/studio-placement.js';
 import { HANDS_MAKE_WHEN, handsAvoid, handsClip, handsMotion, handsPose, handsSaid, handsUiIds, readHandsInput } from '../schema/hands.mjs';
 import { roundKnob, turnKnobs } from './code-places.ts';
@@ -149,6 +149,19 @@ export interface HandsDeps {
      * (viewport CSS px boxes; 'hud-canvas' / 'left-out'). The AI's clues for what to deliver with codeUi.
      */
     found?(): UiFound[];
+    /** Stage 3 (studio-canvas-ui-3): the HTML UI's edges (where each is measured from now; ui-edge.ts). */
+    edges?(): UiEdgeInfo[];
+    /**
+     * Stage 3: the Theme (the CSS variables and the canvas UI's codeTheme, one list): its rows, a change as the row's
+     * (one undo change, counted), and `clear` — the AI wrote it into the code: out of the file, not a change of the person's.
+     */
+    theme?: {
+      vars(): UiThemeVar[];
+      set(name: string, v: string): void;
+      clear(name: string): boolean;
+      /** placement.json's `theme` as it would be written now. */
+      entries(): Record<string, { v: string; was?: string }>;
+    };
   };
   /** The person's Save (only when they asked the AI for it). */
   save(): Promise<boolean>;
@@ -573,6 +586,8 @@ export function createAiHands(d: HandsDeps) {
         return uiCode(op);
       case 'ui.set':
         return uiSet(op);
+      case 'ui.theme':
+        return uiTheme(op);
       default:
         return { error: `unknown op ${op.do}` };
     }
@@ -704,11 +719,14 @@ export function createAiHands(d: HandsDeps) {
       if (op.s !== undefined) pose.s = op.s;
       if (op.p && op.from) {
         // at() numbers from a place → the offset the card speaks: where the box would stand, against where it stands.
+        // A codeUi's are in its canvas's units; an HTML element's (stage 3, ui-edge.ts) in CSS px of the game's window.
         const c = u.codes().find((x) => x.key === op.id);
-        if (!c) return { error: `"from" is for a UI drawn in the canvas (codeUi): ${op.id} is an HTML element — give "p" alone (its offset in CSS px)` };
-        const [W, H, k, ky] = c.frame;
-        const [w, h] = c.size, f = (typeof pose.s === 'number' ? pose.s : 1) / s0;
-        const [x0, y0] = uiBoxAt(c.from, c.at[0], c.at[1], w, h, W, H);
+        const g = c ? null : u.edges?.().find((x) => x.key === op.id);
+        if (!c && !g) return { error: `${op.id}: the editor has not measured where it is yet — send it again in a moment, or give "p" alone (its offset in CSS px)` };
+        const [W, H, k, ky] = c ? c.frame : [g!.frame[0], g!.frame[1], 1, 1];
+        const [w, h] = c ? c.size : [g!.box[2], g!.box[3]];
+        const f = (typeof pose.s === 'number' ? pose.s : 1) / s0;
+        const [x0, y0] = c ? uiBoxAt(c.from, c.at[0], c.at[1], w, h, W, H) : [g!.box[0], g!.box[1]];
         const [x1, y1] = uiBoxAt(op.from, op.p[0], op.p[1], w * f, h * f, W, H);
         pose.p = [now.p[0]! + (x1 + (w * f) / 2 - x0 - w / 2) / k, now.p[1]! + (y1 + (h * f) / 2 - y0 - h / 2) / ky].map((v) => Math.round(v * 10) / 10);
       } else if (op.p) pose.p = op.p.slice();
@@ -723,6 +741,22 @@ export function createAiHands(d: HandsDeps) {
     return { words: { name: label } };
   }
 
+  /**
+   * ui.theme (studio-canvas-ui-3, 2026-10-24): a theme variable — a CSS variable of the page or a codeTheme of the canvas
+   * UI, one Theme — changed as its row does, or `clear` after Save: the AI wrote it into the code.
+   */
+  async function uiTheme(op: Op): Promise<Did> {
+    const t = d.ui?.theme;
+    if (!t) return { error: 'this editor has no UI layer (the Theme is under the UI list)' };
+    const vars = t.vars();
+    const v = vars.find((x) => x.name === op.id);
+    const label = v?.label ?? String(op.id).replace(/^--/, '');
+    if (op.clear) return { cleared: t.clear(op.id), words: { name: label }, wordsKey: 'hands.ui.themeClear' };
+    if (!v) return { error: `the game has no theme variable ${op.id} (its theme: ${vars.map((x) => x.name).join(', ') || 'none'}) — a CSS variable on :root, or a codeTheme() key` };
+    t.set(op.id, op.v);
+    return { words: { name: label, value: op.v } };
+  }
+
   /** `list` with the UI: every element of the UI layer (HTML and canvas), what the file holds for it, and for a codeUi what to write on Save. */
   function uiList(l: Record<string, unknown>): Record<string, unknown> {
     const u = d.ui;
@@ -731,6 +765,7 @@ export function createAiHands(d: HandsDeps) {
     if (found.length) l = { ...l, uiFound: found };
     if (!u || !u.items().length) return l;
     const codes = new Map(u.codes().map((c) => [c.key, c]));
+    const edges = new Map((u.edges?.() ?? []).map((g) => [g.key, g]));
     const file = u.entries();
     const ui = u.items().map((it) => {
       const c = codes.get(it.key);
@@ -738,7 +773,9 @@ export function createAiHands(d: HandsDeps) {
       const ps = u.pose(it.key);
       return { key: it.key, name: it.label, ...(it.screen ? { screen: it.screen } : {}),
         ...(ps ? { p: ps.p, s: typeof ps.s === 'number' ? ps.s : 1 } : {}), ...(e?.set ? { set: e.set, ...(e.setWas ? { setWas: e.setWas } : {}) } : {}),
-        ...(c ? { code: c.key, kind: c.kind, box: c.box, codeAt: c.code, write: { at: { from: c.from, x: c.at[0], y: c.at[1] }, scale: c.scale } } : { html: true }) };
+        ...(c ? { code: c.key, kind: c.kind, box: c.box, codeAt: c.code, write: { at: { from: c.from, x: c.at[0], y: c.at[1] }, scale: c.scale } }
+          // An HTML element (stage 3): where it keeps to on every window size once your CSS says so (left / right / top / bottom).
+          : { html: true, ...(edges.get(it.key) ? { box: edges.get(it.key)!.box, edge: { from: edges.get(it.key)!.from, at: edges.get(it.key)!.at } } : {}) }) };
     });
     // A canvas UI on another screen than the one shown (stage 2: not in the UI list now) — the AI writes it all the same.
     for (const c of codes.values()) {
@@ -748,7 +785,9 @@ export function createAiHands(d: HandsDeps) {
         code: c.key, kind: c.kind, box: c.box, codeAt: c.code, write: { at: { from: c.from, x: c.at[0], y: c.at[1] }, scale: c.scale } });
     }
     const clash = u.clash();
-    return { ...l, ui, ...(clash.length ? { uiClash: clash } : {}) };
+    // The Theme (stage 3): each variable's name, the code's word for it, the value now and the game's own.
+    const theme = u.theme?.vars() ?? [];
+    return { ...l, ui, ...(clash.length ? { uiClash: clash } : {}), ...(theme.length ? { theme: theme.map((v) => ({ name: v.name, ...(v.label ? { label: v.label } : {}), value: v.value, was: v.was })) } : {}) };
   }
 
   /** The person's words for one op ("Claude took “Row” off Blue pillar"), with the AI's name. */

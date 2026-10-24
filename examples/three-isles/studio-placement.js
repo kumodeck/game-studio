@@ -24,6 +24,7 @@ warn('not a placement file');
 return codeOnly();
 }
 if (data.theme && typeof data.theme === 'object' && typeof document !== 'undefined') applyTheme(document, data.theme);
+codeThemeFile(data.theme);
 codeUiFile(data.ui);
 if (data.ui && typeof data.ui === 'object' && typeof document !== 'undefined') report.ui = applyUi(document, data.ui);
 if (root && root.nodeType === 9) return report;
@@ -982,6 +983,7 @@ m.set(k, o);
 }
 }
 globalThis[CODE_UI_FILE] = m;
+uiPokeAll();
 }
 const codeUiFileOf = (id) => (globalThis[CODE_UI_FILE] instanceof Map ? globalThis[CODE_UI_FILE].get(id) : undefined) || null;
 function uiSides(from) {
@@ -1002,7 +1004,13 @@ const row = [Math.abs(by), Math.abs(by + h / 2 - H / 2), Math.abs(H - by - h)];
 const c = col.indexOf(Math.min(...col)), r = row.indexOf(Math.min(...row));
 return UI_FROMS[r * 3 + c];
 }
-const uiColorOk = (c) => typeof c === 'string' && UI_COLOR.test(c);
+const UI_VAR = /^var\(\s*(--[A-Za-z0-9_-]{1,60})\s*(?:,\s*([^();{}<>]{1,60}))?\)$/;
+const uiColorOk = (c) => typeof c === 'string' && (UI_COLOR.test(c) || UI_VAR.test(c.trim()));
+function uiResolve(v) {
+const m = typeof v === 'string' ? UI_VAR.exec(v.trim()) : null;
+if (!m) return v;
+return themeNow(m[1]) || (m[2] ? m[2].trim() : v);
+}
 function uiLookOf(v) {
 const o = {};
 if (!v || typeof v !== 'object') return o;
@@ -1028,12 +1036,19 @@ size: d.size, scale: isNum(d.scale) && d.scale > 0 ? d.scale : 1, look: uiLookOf
 sample: typeof d.sample === 'string' || isNum(d.sample) ? String(d.sample).slice(0, 200) : null, round: d.round === true,
 canvasOf: d.canvas, units: d.units === 'canvas' ? 'canvas' : 'css',
 live: was ? was.live : null,
+subs: [], sig: '',
 };
 e.canvas = () => uiCanvas(e);
 e.frame = () => uiFrame(e);
 e.box = () => uiBox(e);
 e.lookNow = (st) => uiLookNow(e, st);
 e.atNow = () => uiAtNow(e);
+e.poke = () => uiPoke(e);
+e.resolve = uiResolve;
+if (d.size && typeof d.size === 'object' && typeof d.size.getBounds === 'function') {
+e.obj = d.size;
+(globalThis[UI_OBJECTS] instanceof WeakSet ? globalThis[UI_OBJECTS] : (globalThis[UI_OBJECTS] = new WeakSet())).add(d.size);
+}
 if (ok) list.set(id, e);
 return {
 id: e.id,
@@ -1043,6 +1058,7 @@ return { x: b.x, y: b.y, w: b.w, h: b.h, s: b.s };
 },
 look: (st) => uiLookNow(e, st),
 value: (v) => {
+if (e.subs.length && !e.soon) (e.soon = true), queueMicrotask(() => ((e.soon = false), uiPoke(e)));
 const sm = e.live && e.live.sample;
 if (typeof sm !== 'string') return v;
 return e.kind === 'bar' ? (isNum(Number(sm)) && sm !== '' ? Number(sm) : 0) : sm;
@@ -1057,7 +1073,109 @@ return rx > 0 && ry > 0 && ((x - b.x - rx) / rx) ** 2 + ((y - b.y - ry) / ry) **
 return x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h;
 },
 state: () => (e.live && UI_STATE_NAMES.includes(e.live.state) ? e.live.state : null),
+onChange: (fn) => {
+if (typeof fn !== 'function') return () => {};
+e.subs.push(fn);
+uiResize();
+e.sig = '';
+uiPoke(e);
+return () => e.subs.splice(e.subs.indexOf(fn) >>> 0, 1);
+},
 };
+}
+const UI_OBJECTS = Symbol.for('game-studio.codeUiObjects');
+function uiPoke(e) {
+const o = e.obj && typeof e.obj.text === 'string' && e.kind !== 'bar' ? e.obj : null;
+const sm = o && e.live && typeof e.live.sample === 'string' ? e.live.sample : null;
+if (sm === null && o && e.textWas !== undefined) (uiText(o, e.textWas), (e.textWas = undefined));
+if (!e.subs.length && !o) return false;
+const b = uiBox(e), L = uiLookNow(e);
+const box = { x: b.x, y: b.y, w: b.w, h: b.h, s: b.s };
+const sig = [b.x, b.y, b.w, b.h, b.s].map((v) => Math.round(v * 100)).join() + JSON.stringify(L) + (sm === null ? '' : '\n' + sm);
+if (sig === e.sig) return false;
+e.sig = sig;
+for (const fn of e.subs.slice()) {
+try {
+fn(box, L);
+} catch (err) {
+warnOnce(`codeUi('${e.id}'): onChange failed (${err && err.message})`);
+}
+}
+if (sm !== null) {
+if (e.textWas === undefined) e.textWas = o.text;
+if (o.text !== sm) uiText(o, sm);
+}
+return true;
+}
+const uiText = (o, v) => (typeof o.setText === 'function' ? o.setText(v) : (o.text = v));
+function uiPokeAll() {
+for (const e of codeList(CODE_UIS).values()) uiPoke(e);
+for (const t of themeSubs()) t.poke();
+}
+let resizing = false;
+function uiResize() {
+if (resizing || typeof addEventListener !== 'function') return;
+resizing = true;
+addEventListener('resize', () => setTimeout(uiPokeAll, 0));
+}
+const CODE_THEMES = Symbol.for('game-studio.codeThemes');
+const CODE_THEME_FILE = Symbol.for('game-studio.codeThemeFile');
+const CODE_THEME_SUBS = Symbol.for('game-studio.codeThemeSubs');
+const THEME_KEY = /^[A-Za-z][A-Za-z0-9_-]{0,59}$/;
+const THEME_VALUE = /^[^;{}<>\\\u0000-\u001f\u007f]{1,200}$/;
+const themeSubs = () => (globalThis[CODE_THEME_SUBS] instanceof Set ? globalThis[CODE_THEME_SUBS] : (globalThis[CODE_THEME_SUBS] = new Set()));
+function themeNow(name) {
+const e = codeList(CODE_THEMES).get(name);
+const f = globalThis[CODE_THEME_FILE] instanceof Map ? globalThis[CODE_THEME_FILE].get(name) : undefined;
+if (e) return e.live || f || e.v;
+if (f) return f;
+try {
+return typeof document !== 'undefined' ? getComputedStyle(document.documentElement).getPropertyValue(name).trim() : '';
+} catch (err) {
+return '';
+}
+}
+function codeThemeFile(theme) {
+const m = new Map();
+if (theme && typeof theme === 'object') for (const [n, e] of Object.entries(theme)) if (/^--[A-Za-z0-9_-]{1,60}$/.test(n) && e && typeof e.v === 'string' && THEME_VALUE.test(e.v)) m.set(n, e.v);
+globalThis[CODE_THEME_FILE] = m;
+}
+export function codeTheme(def) {
+const list = codeList(CODE_THEMES);
+const out = {};
+const names = [];
+for (const [k, raw] of Object.entries(def && typeof def === 'object' ? def : {})) {
+const d = typeof raw === 'string' ? { v: raw } : raw && typeof raw === 'object' ? raw : {};
+if (!THEME_KEY.test(k) || typeof d.v !== 'string' || !THEME_VALUE.test(d.v.trim())) {
+warnOnce(`codeTheme: "${k}" needs a name (letters, digits, - and _) and a value v ('#ffcf6e')`);
+continue;
+}
+const name = '--' + k;
+const was = list.get(name);
+const type = d.type === 'font' || d.type === 'color' ? d.type : /font|family|typeface/i.test(k) ? 'font' : 'color';
+list.set(name, { name, v: d.v.trim(), label: text(d.label, 40) || null, type, live: was ? was.live : null });
+names.push([k, name]);
+Object.defineProperty(out, k, { enumerable: true, get: () => themeNow(name) });
+}
+const values = () => Object.fromEntries(names.map(([k, n]) => [k, themeNow(n)]));
+out.onChange = (fn) => {
+if (typeof fn !== 'function') return () => {};
+const sub = { sig: '', poke: () => {
+const v = values(), sig = JSON.stringify(v);
+if (sig === sub.sig) return false;
+sub.sig = sig;
+try {
+fn(v);
+} catch (err) {
+warnOnce(`codeTheme: onChange failed (${err && err.message})`);
+}
+return true;
+} };
+themeSubs().add(sub);
+sub.poke();
+return () => themeSubs().delete(sub);
+};
+return out;
 }
 function uiCanvas(e) {
 let c = e.canvasOf;
@@ -1091,6 +1209,17 @@ s = null;
 }
 }
 if (isNum(s)) return [Math.max(0, s), Math.max(0, s)];
+if (s && typeof s === 'object' && !Array.isArray(s)) {
+let r = null;
+try {
+r = typeof s.getBounds === 'function' ? s.getBounds() : s;
+} catch (err) {
+warnOnce(`codeUi('${e.id}'): getBounds() failed (${err && err.message})`);
+}
+const sc = (a, b) => Math.abs(isNum(a) ? a : isNum(b) ? b : 1) || 1;
+const sx = s.getBounds ? sc(s.scaleX, s.scale && s.scale.x) : 1, sy = s.getBounds ? sc(s.scaleY, s.scale && s.scale.y) : 1;
+return r && isNum(r.width) && isNum(r.height) ? [Math.max(0, r.width / sx), Math.max(0, r.height / sy)] : [0, 0];
+}
 return Array.isArray(s) && s.length >= 2 && isNum(s[0]) && isNum(s[1]) ? [Math.max(0, s[0]), Math.max(0, s[1])] : [0, 0];
 }
 function uiBox(e) {
@@ -1136,6 +1265,7 @@ const o = uiLookOf(set['@' + s]);
 for (const k of ['color', 'background']) if (o[k]) out[k] = o[k];
 }
 }
+for (const k of ['color', 'background']) if (out[k]) out[k] = uiResolve(out[k]);
 return out;
 }
 function applyUi(doc, ui) {

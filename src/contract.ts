@@ -119,6 +119,20 @@ export interface CodeUiInfo {
   frame: [number, number, number, number];
 }
 /**
+ * An HTML UI element's edge (studio-canvas-ui-3, 2026-10-24; CONTRACT.md §1.13 "Edges"): the nearest of the 9 places of
+ * the game's window it is measured from now, and its numbers from there (CSS px) — the file's `from` / `at` beside its
+ * offset, what the AI writes into its CSS `left` / `right` / `top` / `bottom` on Save (studio:ui/edges).
+ */
+export interface UiEdgeInfo {
+  key: string;
+  from: string;
+  at: [number, number];
+  /** Where it is on the game's window now, CSS px [x, y, w, h]. */
+  box: [number, number, number, number];
+  /** The window's size, CSS px [W, H]. */
+  frame: [number, number];
+}
+/**
  * The game's UI the editor can see but not select yet (studio-canvas-ui stage 2, 2026-10-24; CONTRACT.md §1.13 "Not
  * delivered yet"): `box` = viewport CSS px [x, y, w, h] of the game page. `from`: 'hud-canvas' = a lump of drawing in a 2D
  * canvas laid over the game's canvas (outside every codeUi box); 'left-out' = what the engine's adapter leaves out as UI
@@ -136,6 +150,11 @@ export interface UiThemeVar {
   value: string;
   /** The game's own value. */
   was: string;
+  /**
+   * studio-canvas-ui-3 (2026-10-24): the code's word for it — a codeTheme entry's `label` ("Accent"), shown in place of
+   * the name. Absent = the name without its "--" (a CSS variable).
+   */
+  label?: string;
 }
 
 /**
@@ -397,6 +416,12 @@ export interface StudioAdapter {
    * (the game's own loop is paused, so nothing else draws).
    */
   render(): void;
+  /**
+   * true = this adapter holds the engine's own loop while editing (a Port2D with pause(): Phaser's loop.sleep(), Pixi's
+   * ticker.stop()), so the game's frame callbacks never draw then — render() is the only draw. studio-canvas-ui-3
+   * (2026-10-24): the canvas UI kept as objects (codeUi onChange) is drawn through it. Absent = false.
+   */
+  holdsLoop?: boolean;
   /**
    * Keys of objects under the point, best first: visible before hidden,
    * nearest before farther, smaller before larger. The bridge cycles through
@@ -1389,6 +1414,8 @@ export type BridgeToShell =
    * codeUi ids an HTML element's data-studio-key already uses (the HTML one is listed, the codeUi is not).
    */
   | { type: 'studio:ui/codes'; list: CodeUiInfo[]; clash: string[] }
+  /** studio-canvas-ui-3: the HTML UI's edges after each gesture (the file's `from` / `at` of an HTML element). */
+  | { type: 'studio:ui/edges'; list: UiEdgeInfo[] }
   /**
    * studio-canvas-ui stage 2 (2026-10-24): the game's UI the editor sees but cannot select yet (UiFound; [] = none), when
    * editing starts and whenever it changes — the dotted frames' places, the AI's `list` (`uiFound`) and a ui-code ask's `found`.
@@ -2496,9 +2523,14 @@ export interface PlacementUiEntry {
    * `p` is the offset from where the code put it when the editor last wrote the file, and, when it moved or grew:
    */
   code?: string;
-  /** The nearest of the 9 places it is measured from (top-left top top-right left center right bottom-left bottom bottom-right). */
+  /**
+   * The nearest of the 9 places it is measured from (top-left top top-right left center right bottom-left bottom
+   * bottom-right). Since studio-canvas-ui-3 (2026-10-24) an HTML element that moved or grew has it too: the place of
+   * the game's window, what the AI's CSS keeps it to on Save (`left` / `right` / `top` / `bottom`); the loader still
+   * places an HTML element by `p` until then.
+   */
   from?: string;
-  /** With `from`: the at() numbers from there (the code's units): what the AI writes on Save, what the loader places by. */
+  /** With `from`: the numbers from there — a codeUi's at() (the code's units: what the loader places it by), an HTML element's CSS px. */
   at?: [number, number];
 }
 

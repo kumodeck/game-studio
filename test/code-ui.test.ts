@@ -196,11 +196,15 @@ test('the file: code / from / at read and checked; an HTML-only file keeps its b
   const r = validateStudioFile({ ...base, ui: { 'hp-bar': { code: 'hp-bar', p: [389.04, -40], s: 1.4, from: 'top', at: [0.04, 16] } } }) as { ok: boolean; value: { ui: Record<string, PlacementUiEntry> } };
   assert.ok(r.ok, JSON.stringify(r));
   assert.deepEqual(r.value.ui['hp-bar'], { p: [389, -40], s: 1.4, code: 'hp-bar', from: 'top', at: [0, 16] });
-  const bad = validateStudioFile({ ...base, ui: { a: { code: 'b', p: [0, 0] }, c: { p: [0, 0], from: 'top', at: [1, 2] }, d: { code: 'd', p: [0, 0], from: 'middle', at: [1, 2] } } }) as { ok: boolean; errors: string[] };
+  const bad = validateStudioFile({ ...base, ui: { a: { code: 'b', p: [0, 0] }, d: { code: 'd', p: [0, 0], from: 'middle', at: [1, 2] }, e: { p: [0, 0], from: 'top' } } }) as { ok: boolean; errors: string[] };
   assert.equal(bad.ok, false);
   assert.match(bad.errors.join('\n'), /ui\["a"\]\.code/);
-  assert.match(bad.errors.join('\n'), /ui\["c"\]\.from: "from" \/ "at" are a codeUi's/);
   assert.match(bad.errors.join('\n'), /ui\["d"\]\.from: must be one of/);
+  assert.match(bad.errors.join('\n'), /ui\["e"\]\.at: must be 2 numbers/);
+  // Stage 3 (studio-canvas-ui-3): an HTML element's from / at (the nearest place of the window, for the AI's CSS on Save).
+  const html3 = validateStudioFile({ ...base, ui: { c: { p: [300, 0], from: 'top-right', at: [16.04, 24] } } }) as { ok: boolean; value: { ui: Record<string, PlacementUiEntry> } };
+  assert.ok(html3.ok, JSON.stringify(html3));
+  assert.deepEqual(html3.value.ui.c, { p: [300, 0], from: 'top-right', at: [16, 24] });
   // withLooks: the codeUis' entries get code (and from / at when moved); HTML entries are exactly what they were.
   const moves = { title: { p: [0, -48] as [number, number], s: 1.2 }, 'hp-bar': { p: [10, 0] as [number, number] }, jump: { p: [0, 0] as [number, number] } };
   const looks = { jump: { set: { '@active': { background: '#ff8fb1' } }, setWas: { '@active': { background: '#2fb8d0' } } } };

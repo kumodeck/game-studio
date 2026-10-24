@@ -47,7 +47,10 @@ const OUT_DIR = path.join(PKG, 'skills/arrange/bin');
 // 56 KB since the UI drawn in the canvas (studio-canvas-ui, 2026-10-24: "edit the UI drawn INSIDE the canvas as UI"):
 // codeUi() and its handle (box / look / value / hit / state, the 9 places it is measured from, the file's `from` / `at`
 // read at draw time); 46.8 → 54.1 KB. Every game that draws its HUD in a canvas needs all of it.
-const LOADER_LIMIT = 56 * 1024;
+// 64 KB since the canvas UI's stage 3 (studio-canvas-ui-3, 2026-10-24: Phaser / Pixi UI kept as objects, the canvas
+// UI's theme): onChange and its pokes, `size` as the engine's object, codeTheme() and var(--x) looks; 54.1 → 58.7 KB.
+// A Phaser or Pixi game's HUD cannot be edited without onChange, and a canvas UI's theme without codeTheme.
+const LOADER_LIMIT = 64 * 1024;
 
 const IMPORT_RE = /^import\s+([\s\S]*?)\s+from\s+['"]([^'"]+)['"];?[ \t]*$/gm;
 const DECL_RE = /^(?:export\s+)?(?:async\s+)?(?:function\*?|const|let|var|class)\s+([A-Za-z_$][\w$]*)/gm;

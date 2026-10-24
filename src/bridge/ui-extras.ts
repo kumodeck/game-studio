@@ -26,6 +26,7 @@
 // when the game's own normal rule is more specific than one attribute (the same test as the loader's).
 import type { BridgeToShell, ShellToBridge, UiPropName, UiProps, UiScreenInfo, UiState, UiStyleSet, UiThemeVar } from '../contract.ts';
 import { uiTextNode, uiTextPart } from '../loader/studio-placement.js';
+import { mergeThemeVars } from './code-theme.ts';
 
 export interface UiExtrasDeps {
   win: Window;
@@ -38,6 +39,11 @@ export interface UiExtrasDeps {
    * codeUi('retry', { screen: 'over' }) are the same "Game over"). Absent / [] = the HTML screens alone, as before.
    */
   more?(): { screens: UiScreenInfo[]; current: string | null } | null;
+  /**
+   * studio-canvas-ui-3 (2026-10-24): the theme of the UI the game draws in its canvas (codeTheme, code-theme.ts) — one
+   * Theme with the CSS variables (the same name = one row). Absent / [] = the CSS variables alone, as before.
+   */
+  moreTheme?(): UiThemeVar[];
 }
 
 export interface UiExtras {
@@ -451,7 +457,7 @@ export function createUiExtras(deps: UiExtrasDeps): UiExtras {
     return out;
   };
   const postTheme = () => {
-    const vars = themeVars();
+    const vars = mergeThemeVars(themeVars(), deps.moreTheme?.() ?? []);
     if (vars.length) deps.post({ type: 'studio:ui/theme', vars });
   };
   const setTheme = (name: string, value: string | null) => {

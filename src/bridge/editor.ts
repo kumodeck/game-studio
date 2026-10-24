@@ -15,7 +15,9 @@ import { createHoldState, withHold } from './hold.ts';
 import { drivenBetween, WATCH_MS } from './observe.ts';
 import { runSelfCheck, SECOND_LOOK_MS, worthASecondLook } from './selfcheck.ts';
 import { createTimelineView } from './timeline-path.ts';
-import { createUiExtras } from './ui-extras.ts';
+import { createUiExtras, hexColor } from './ui-extras.ts';
+import { createCodeTheme } from './code-theme.ts';
+import { createUiEdges } from './ui-edge.ts';
 import { codeUiEntries, type CodeUi } from './code-ui.ts';
 import { createUiFound, type Rect } from './ui-found.ts';
 import { loaderPlay } from './play-switch.ts';
@@ -175,7 +177,14 @@ export function createEditor(deps: EditorDeps): Editor {
   // The canvas UI's screens (codeUi `screen`, studio-canvas-ui stage 2) for the screens' menu: with the HTML ones, or alone.
   const codeScreens = () => (deps.uiCode && deps.uiCode.screens().length ? { screens: deps.uiCode.screens(), current: deps.uiCode.screenNow() } : null);
   // UI stages 2–3 (ui-extras.ts): another screen shown = the UI layer's list again, without a pick that is gone.
-  const uiExtras = deps.ui && deps.uiDom ? createUiExtras({ win, post: (m) => post(m), more: codeScreens, relist: () => relistUi() }) : null;
+  // The canvas UI's theme (codeTheme, studio-canvas-ui-3; code-theme.ts): rows with the CSS variables' in one Theme.
+  const codeTheme = deps.ui ? createCodeTheme(win, hexColor) : null;
+  const uiExtras = deps.ui && deps.uiDom ? createUiExtras({ win, post: (m) => post(m), more: codeScreens, moreTheme: () => codeTheme?.vars() ?? [], relist: () => relistUi() }) : null;
+  /** A game whose only theme is its canvas UI's (no HTML UI): the Theme rows are said from here. */
+  const postCodeTheme = () => {
+    const vars = codeTheme?.vars() ?? [];
+    if (!uiExtras && vars.length) post({ type: 'studio:ui/theme', vars });
+  };
   /** A game whose only screens are its canvas UI's (no HTML UI): the menu is said from here (≥ 2 screens). */
   const postCodeScreens = () => {
     const c = codeScreens();
@@ -248,6 +257,19 @@ export function createEditor(deps: EditorDeps): Editor {
     } }) : null;
   // A drag of a UI box was going on in the last frame (the frames are worked out again when it is let go).
   let uiBusy = false;
+  /**
+   * The HTML UI keeps to the nearest edge of the window too (studio-canvas-ui-3, 2026-10-24; ui-edge.ts): the line while
+   * one is dragged, and where each is measured from for the file's `from` / `at` (the canvas UI's are code-ui.ts's).
+   */
+  const uiEdges = uiStack ? createUiEdges({ win, post: (m) => post(m), lang: () => (lang === 'ja' ? 'ja' : 'en'),
+    keys: () => {
+      try {
+        return uiStack.driven.list().map((i) => i.key).filter((k) => !deps.uiCode?.has(k));
+      } catch {
+        return [];
+      }
+    },
+    box: (k) => uiStack.driven.anchor(k)?.rect ?? null }) : null;
   // The timeline (studio-timeline, 2026-10-22; timeline-path.ts): the poses at the time line and the picked object's
   // path in 3D. Made here, before input.ts attaches, so a press on a path point reaches it first (timeline-path.ts says why).
   const timeline = createTimelineView({ win, adapter: () => adapter, poser: () => edits, post: (m) => post(m), lang: () => lang,
@@ -353,6 +375,7 @@ export function createEditor(deps: EditorDeps): Editor {
     input?.frame();
     // The UI drawn in the canvas: one frame of the game when it changed, the darker world around it, the line (code-ui.ts).
     deps.uiCode?.frame({ ui: layer === 'ui', editing: state.editing, inHand: layer === 'ui' ? input?.inHand() ?? [] : [] });
+    uiEdges?.frame({ on: state.editing, inHand: layer === 'ui' ? input?.inHand() ?? [] : [] });
     if (uiFound) {
       const busy = layer === 'ui' && (input?.inHand().length ?? 0) > 0;
       if (uiBusy && !busy) uiFound.stale();
@@ -1124,6 +1147,7 @@ export function createEditor(deps: EditorDeps): Editor {
       deps.uiCode?.begin(uiExtras?.screenNow() ?? null);
       uiExtras?.begin();
       postCodeScreens();
+      postCodeTheme();
       // The frames' places for the shell (the AI's `list`, a ui-code ask), on whichever layer editing starts.
       uiFound?.stale();
       uiFound?.list();
@@ -1200,6 +1224,7 @@ export function createEditor(deps: EditorDeps): Editor {
       // Screens, samples and a shown button look go back to the game's (its set / theme stay: the layout).
       uiExtras?.end();
       deps.uiCode?.end();
+      uiEdges?.end();
       uiFound?.end();
       for (const a of [adapter, ...others().map((o) => o.driven)]) {
         try {
@@ -1274,7 +1299,12 @@ export function createEditor(deps: EditorDeps): Editor {
     if (world) {
       if (to === 'ui') {
         worldView = world.driven.view.state();
-        if (world.driven.view.home) world.driven.view.home();
+        // The UI is edited over the game's own picture: 3D's home() is the game's camera; a 2D world's is "everything
+        // in frame" on a wide screen, so it gets the identity view instead — what Play shows. WHY (studio-canvas-ui-3,
+        // 2026-10-24): a Pixi / Phaser UI is drawn in the world's own canvas, through the world's view — Bubble Pop's
+        // score went off its frame and its menu panel filled the screen (framed alone: the score is UI, not world).
+        if (world.driven.dim === '2d' && world.driven.view.restore) world.driven.view.restore({ x: 0, y: 0, zoom: 1 });
+        else if (world.driven.view.home) world.driven.view.home();
       } else if (worldView !== undefined && world.driven.view.restore) world.driven.view.restore(worldView);
     }
     layer = to;
@@ -1448,8 +1478,11 @@ export function createEditor(deps: EditorDeps): Editor {
         case 'studio:ui/props-get':
           // What is drawn may change (a long sample, another screen): the frames are worked out again.
           uiFound?.stale();
+          // The canvas UI's theme (codeTheme) first: the HTML UI's then says the rows with it (or this page, below).
+          if (state.editing && msg.type === 'studio:ui/theme-set') codeTheme?.set(msg.name, typeof msg.value === 'string' ? msg.value : null);
           // A codeUi's key goes to its own card (code-ui.ts); the rest (and screens / theme) to the HTML UI's.
           if (state.editing && uiStack && !deps.uiCode?.handle(msg)) uiExtras?.handle(msg);
+          if (state.editing && msg.type === 'studio:ui/theme-set' && !msg.quiet) postCodeTheme();
           // A screen with no HTML UI to show it (the canvas UI's alone): its list and the menu from here.
           if (state.editing && msg.type === 'studio:ui/screen' && !uiExtras && codeScreens()) (relistUi(), postCodeScreens());
           dirtyFrame = true;

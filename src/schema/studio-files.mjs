@@ -746,14 +746,14 @@ function readUi(v, fail) {
     } else if (e.setWas !== undefined) readUiSet(e.setWas, `${where}.setWas`, fail);
     // studio-canvas-ui (2026-10-24): a UI the game draws in its canvas (codeUi). `code` = its codeUi id (the key itself:
     // one entry per codeUi); `from` + `at` = where it is measured from now and its at() numbers from there (both or
-    // neither; the code's units, so the same ±10,000 as an offset).
+    // neither; the code's units, so the same ±10,000 as an offset). Since studio-canvas-ui-3 an HTML element has them
+    // too (no `code`): the nearest place of the game's window and its CSS px from there, for the AI's CSS on Save.
     if (e.code !== undefined) {
       if (typeof e.code !== 'string' || !CODE_ID_RE.test(e.code) || e.code !== key) fail(`${where}.code`, 'must be the codeUi id, the same as the entry\'s key (lower case letters, digits and -)');
       else o.code = e.code;
     }
     if (e.from !== undefined || e.at !== undefined) {
-      if (o.code === undefined) fail(`${where}.from`, '"from" / "at" are a codeUi\'s (with "code")');
-      else if (!UI_FROMS.includes(e.from)) fail(`${where}.from`, `must be one of ${UI_FROMS.join(', ')}`);
+      if (!UI_FROMS.includes(e.from)) fail(`${where}.from`, `must be one of ${UI_FROMS.join(', ')}`);
       else if (!Array.isArray(e.at) || e.at.length !== 2) fail(`${where}.at`, 'must be 2 numbers: the at() numbers from "from"');
       else {
         const at = e.at.map((x, i) => readNumber(x, -LIMITS.maxUiCoord, LIMITS.maxUiCoord, `${where}.at[${i}]`, fail));

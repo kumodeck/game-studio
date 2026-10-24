@@ -169,6 +169,8 @@ export function start(host: StudioHost) {
   let codePlaceList: CodePlaceInfo[] = [];
   let codeAvoidList: CodeAvoidInfo[] = [];
   let uiItems: Item[] = [];
+  // The UI list came from the page shown now (cleared with `items` on a reload): the AI's hands are ready with it alone.
+  let uiListed = false;
   let uiSeen = false;
   let fileUi: PlacementFile['ui'];
   // The game's UI shown (faded) while the world is edited: the eye next to World | UI, ⇧U, ⌘K (layer-switch.ts).
@@ -3744,6 +3746,7 @@ export function start(host: StudioHost) {
         // the frame swap) is about it. Its saved places go to the UI layer by name, whichever layer is on.
         if (m.layer === 'ui') {
           uiSeen = true;
+          uiListed = true;
           uiItems = m.items;
           uiWire.noteItems(m.items);
           // A new page: the looks and the theme the editor holds go back on it too (UI stage 3), before the moves.
@@ -4783,6 +4786,8 @@ export function start(host: StudioHost) {
     filePick = [];
     addingToScene.clear();
     editing = false;
+    // The UI list is the new page's only once it says it (a soft reload keeps the one on screen, not this flag).
+    uiListed = false;
     // A soft reload keeps the list, the selection and the pictures on screen
     // until the new game answers (no flash of an empty list).
     if (!soft) {
@@ -5525,7 +5530,9 @@ export function start(host: StudioHost) {
   const aiHands = createAiHands({
     t,
     // The new page's own list (a level opened, a reload clears `items`): ops never land on the list of the page before.
-    ready: () => bridgeAlive && editing && !swapping && (editLayer === 'world' ? items.length > 0 : worldItems.length > 0),
+    // The UI's list counts too (studio-canvas-ui-3, 2026-10-25): a Pixi game whose menu panel the AI made UI had no world
+    // object left, and every --do said "the editor is still opening the game" for minutes.
+    ready: () => bridgeAlive && editing && !swapping && ((editLayer === 'world' ? items.length > 0 : worldItems.length > 0) || (uiListed && uiItems.length > 0)),
     playing: () => playing,
     stopPlay: async () => {
       if (playing) await togglePlay();
@@ -5574,6 +5581,19 @@ export function start(host: StudioHost) {
         return had;
       },
       entries: () => uiWire.entries(uiSeen ? uiEntries(uiModel.result()) : fileUi ?? {}),
+      // Stage 3 (studio-canvas-ui-3, 2026-10-24): the HTML UI's edges, and the Theme (CSS variables and codeTheme).
+      edges: () => uiWire.edges(),
+      theme: {
+        vars: () => uiWire.themeVars(),
+        set: (name, v) => uiWire.setThemeFor(name, v),
+        clear: (name) => {
+          const had = uiWire.forgetTheme(name);
+          keepSoon();
+          renderAll();
+          return had;
+        },
+        entries: () => uiWire.themeEntries(),
+      },
     },
     dim: () => worldDim,
     item: (k) => worldItems.find((i) => i.key === k),
@@ -5644,7 +5664,8 @@ export function start(host: StudioHost) {
       for (const end = Date.now() + 15_000; Date.now() < end;) {
         await new Promise((r) => setTimeout(r, 150));
         // The code's lists come right after the page's first list (their own messages): one more beat for them.
-        if (!swapping && bridgeAlive && editing && worldItems.length) return (await new Promise((r) => setTimeout(r, 150)), true);
+        // A game whose world has nothing left but UI (studio-canvas-ui-3): the new page's UI list is enough.
+        if (!swapping && bridgeAlive && editing && (worldItems.length || (uiListed && uiItems.length))) return (await new Promise((r) => setTimeout(r, 150)), true);
       }
       return false;
     },

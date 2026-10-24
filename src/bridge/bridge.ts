@@ -418,7 +418,9 @@ export function startBridge(opts: BridgeOptions): void {
       uiDom = !!dom;
       domKeys = new Set(dom ? dom.objects().map((o) => o.key) : []);
       // codeUis (none = exactly as before: the DOM port alone, in its page order).
-      const code = codeUiEntries(win).length ? createCodeUi({ win, core, post, lang: () => editorRef?.lang() ?? 'en', redraw: () => redrawFn, domKeys: () => domKeys }) : null;
+      const code = codeUiEntries(win).length ? createCodeUi({ win, core, post, lang: () => editorRef?.lang() ?? 'en', redraw: () => redrawFn, domKeys: () => domKeys,
+        // The world adapter draws the frame when the engine's loop sleeps while editing (Phaser, Pixi).
+        world: () => world }) : null;
       if (code && code.port.objects().length) {
         uiCode = code;
         return uiAdapterFromPort(mergeUiPorts(dom, code.port), core, win);

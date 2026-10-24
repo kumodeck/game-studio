@@ -21,6 +21,7 @@
 // keeps them until the AI writes them into the code on Save.
 import type { BridgeToShell, CodeUiInfo, Port2D, Pose, ShellToBridge, UiProps, UiScreenInfo, UiState, UiStyleSet } from '../contract.ts';
 import type { Core } from '../core/index.ts';
+import { paintEdgeLine } from './ui-edge.ts';
 
 /** A codeUi entry as the loader keeps it (src/loader/studio-placement.js codeUi). The methods are the game's copy's. */
 interface Entry {
@@ -40,6 +41,13 @@ interface Entry {
   box(): { x: number; y: number; w: number; h: number; s: number; W: number; H: number; k: number; ky: number };
   lookNow(st?: UiState | null): Record<string, string | number>;
   atNow(): { from: string; at: [number, number]; scale: number };
+  /**
+   * Stage 3 (studio-canvas-ui-3, 2026-10-24): tell the game's onChange the box and look now (a Phaser / Pixi UI kept as
+   * objects is moved by it, not drawn from box() each frame); true = it was told something new. Absent in an older loader.
+   */
+  poke?(): boolean;
+  /** A look's value with var(--x) read (the theme's colour): the code's look as the card shows it. */
+  resolve?(v: unknown): unknown;
 }
 interface Live {
   p: number[];
@@ -51,6 +59,7 @@ interface Live {
 
 const LIST = Symbol.for('game-studio.codeUis');
 const FILE = Symbol.for('game-studio.codeUiFile');
+const THEME_SUBS = Symbol.for('game-studio.codeThemeSubs');
 const STATES: UiState[] = ['hover', 'active', 'disabled'];
 const MIN_S = 0.1, MAX_S = 10;
 /** How far `ui.code` moves each box to see that its picture follows (decision 8). */
@@ -62,24 +71,8 @@ export function codeUiEntries(win: Window): Entry[] {
   return m instanceof Map ? (Array.from(m.values()) as Entry[]).filter((e) => e && typeof e.box === 'function' && typeof e.atNow === 'function') : [];
 }
 
-// ---- words of the 9 places (the line while dragging; the editor's own words, not the shell's i18n: drawn in the game page)
-const PLACE: Record<'ja' | 'en', Record<string, string>> = {
-  ja: { 'top-left': '左上', top: '上の真ん中', 'top-right': '右上', left: '左の真ん中', center: '真ん中', right: '右の真ん中', 'bottom-left': '左下', bottom: '下の真ん中', 'bottom-right': '右下' },
-  // The glossary's words ("20 px from the top centre", "16 px · 24 px from the top right").
-  en: { 'top-left': 'the top left', top: 'the top centre', 'top-right': 'the top right', left: 'the left centre', center: 'the centre', right: 'the right centre', 'bottom-left': 'the bottom left', bottom: 'the bottom centre', 'bottom-right': 'the bottom right' },
-};
-/** "20 px from the top centre" / "16 px · 24 px from the top right" (and the same in Japanese): a middle row / column says only the other number when it is 0. */
-export function placeWords(from: string, at: [number, number], lang: 'ja' | 'en'): string {
-  const [x, y] = [Math.round(at[0]), Math.round(at[1])];
-  // The top / bottom middle: x is across from the middle (0 = in the middle, said by the place alone); left / right
-  // middle: the same for y. A corner always has both.
-  const words = (from === 'top' || from === 'bottom') && x === 0 ? `${y} px`
-    : (from === 'left' || from === 'right') && y === 0 ? `${x} px`
-    : from === 'center' && x === 0 && y === 0 ? '0 px'
-    : `${x} px · ${y} px`;
-  const place = PLACE[lang][from] ?? from;
-  return lang === 'ja' ? `${place}から ${words}` : `${words} from ${place}`;
-}
+// The words of the 9 places and the line while dragging are ui-edge.ts's (the HTML UI's line is the same since stage 3).
+export { placeWords } from './ui-edge.ts';
 
 export interface CodeUiDeps {
   win: Window;
@@ -90,6 +83,12 @@ export interface CodeUiDeps {
   redraw(): (() => void) | null;
   /** Keys an HTML element already uses (data-studio-key): those codeUis are not listed (the HTML one is). */
   domKeys(): Set<string>;
+  /**
+   * Stage 3 (studio-canvas-ui-3, 2026-10-24): the world adapter. A Phaser / Pixi adapter holds the engine's own loop
+   * while editing (Phaser's loop.sleep(), Pixi's ticker.stop()) — then no frame callback waits for time.step(), and the
+   * picture is drawn by its render() (the engine's draw without its update). null = none (the game's frames draw it).
+   */
+  world?(): { render(): void; holdsLoop?: boolean } | null;
 }
 
 export interface CodeUi {
@@ -156,9 +155,22 @@ export function createCodeUi(d: CodeUiDeps): CodeUi | null {
     dirty = true;
     infoDirty = true;
   };
+  /**
+   * Stage 3: the game's onChange (codeUi's and codeTheme's) told the values now — before a frame is drawn, so a Phaser /
+   * Pixi UI moved by it is drawn where its frame is in that same frame (the game's own frame callbacks run in an order
+   * of their own). true = something was told (the picture changes: one frame to draw).
+   */
+  const pokeAll = (): boolean => {
+    let any = false;
+    for (const e of codeUiEntries(win)) if (e.poke?.()) any = true;
+    const subs = (win as unknown as Record<symbol, unknown>)[THEME_SUBS];
+    if (subs instanceof Set) for (const t of subs as Set<{ poke(): boolean }>) if (t.poke()) any = true;
+    return any;
+  };
   /** The game draws one frame now (time stopped). */
   const drawNow = () => {
     dirty = false;
+    pokeAll();
     const fn = d.redraw();
     if (fn) {
       try {
@@ -168,7 +180,18 @@ export function createCodeUi(d: CodeUiDeps): CodeUi | null {
       }
       return;
     }
-    d.core.time.step();
+    // A Phaser / Pixi game: its loop sleeps while editing (its adapter holds it), so its UI — objects onChange moved
+    // above — is drawn by the world adapter (a frame callback of something else may still have waited: Pixi's). Else
+    // only when no frame waited: a game that draws everything in its own frame (one canvas) would lose its UI under a
+    // world drawn again without it.
+    const stepped = d.core.time.step();
+    const w = d.world?.();
+    if (!w || (stepped && !w.holdsLoop)) return;
+    try {
+      w.render();
+    } catch (err) {
+      console.warn('[studio] the game failed drawing one frame:', err);
+    }
   };
 
   /** The canvas's place on screen and its units → CSS px. */
@@ -248,8 +271,10 @@ export function createCodeUi(d: CodeUiDeps): CodeUi | null {
   // ---------------------------------------------------------------- the card (the HTML UI's rows, from `look`)
   const was = (e: Entry): UiStyleSet => {
     const w: Record<string, unknown> = {};
-    for (const n of ['text', 'fontSize', 'color', 'background'] as const) if (e.look[n] !== undefined) w[n] = e.look[n];
-    for (const s of STATES) if (e.states[s] && Object.keys(e.states[s]!).length) w[`@${s}`] = { ...e.states[s] };
+    // A colour of the theme (var(--accent)) as the card shows it: the file's setWas holds colours, never var().
+    const r = (v: unknown) => (e.resolve ? e.resolve(v) : v);
+    for (const n of ['text', 'fontSize', 'color', 'background'] as const) if (e.look[n] !== undefined) w[n] = r(e.look[n]);
+    for (const s of STATES) if (e.states[s] && Object.keys(e.states[s]!).length) w[`@${s}`] = Object.fromEntries(Object.entries(e.states[s]!).map(([k, v]) => [k, r(v)]));
     return w as UiStyleSet;
   };
   const props = (key: string): UiProps | null => {
@@ -287,6 +312,9 @@ export function createCodeUi(d: CodeUiDeps): CodeUi | null {
       else o[name] = value;
       if (!Object.keys(o).length) delete set[`@${state}`];
     } else if (value === null) delete set[name];
+    // The code's own value back (↺, or the theme's colour typed in): none of the person's, so a part drawn in the
+    // theme's colour (var(--accent)) follows the theme again.
+    else if (e.look[name] !== undefined && String(e.resolve ? e.resolve(e.look[name]) : e.look[name]) === String(value)) delete set[name];
     else set[name] = name === 'fontSize' ? Math.max(1, Math.min(500, Number(value) || 0)) : String(value).slice(0, 200);
     changed();
   };
@@ -331,15 +359,28 @@ export function createCodeUi(d: CodeUiDeps): CodeUi | null {
     const c = e.canvas();
     let ctx: CanvasRenderingContext2D | null = null;
     try {
-      ctx = c ? (c.getContext('2d') as CanvasRenderingContext2D | null) : null;
+      ctx = c && c.width && c.height ? (c.getContext('2d') as CanvasRenderingContext2D | null) : null;
     } catch {
       ctx = null;
     }
-    if (!c || !ctx || !c.width || !c.height) return { key, ok: true, note: 'not measured (it is not drawn in a 2D canvas)' };
+    // Stage 3 (studio-canvas-ui-3, 2026-10-24): a WebGL canvas (Phaser, Pixi) has no 2D context to read; its picture is
+    // copied into a 2D one right after the frame is drawn — in the same task, before the browser shows it and may clear
+    // its buffer (preserveDrawingBuffer is off in most games).
+    let copy: CanvasRenderingContext2D | null = null;
+    if (c && c.width && c.height && !ctx) {
+      const m = doc.createElement('canvas');
+      m.width = c.width;
+      m.height = c.height;
+      copy = m.getContext('2d', { willReadFrequently: true });
+    }
+    if (!c || !(ctx || copy)) return { key, ok: true, note: 'not measured (it is not drawn in a canvas)' };
     if (!d.core.time.frozen && !d.redraw()) return { key, ok: true, note: 'not measured (the game was running)' };
     const read = () => {
       try {
-        return ctx!.getImageData(0, 0, c.width, c.height).data;
+        if (ctx) return ctx.getImageData(0, 0, c.width, c.height).data;
+        copy!.clearRect(0, 0, c.width, c.height);
+        copy!.drawImage(c, 0, 0);
+        return copy!.getImageData(0, 0, c.width, c.height).data;
       } catch {
         return null;
       }
@@ -347,6 +388,9 @@ export function createCodeUi(d: CodeUiDeps): CodeUi | null {
     const l = live(e);
     const p0 = l.p.slice();
     drawNow();
+    if (fillEmpty(e)) drawNow();
+    const b00 = e.box();
+    if (b00.w < 1 || b00.h < 1) return { key, ok: false, why: `its box is ${Math.round(b00.w)}×${Math.round(b00.h)} now (nothing is drawn there yet: an empty text?) — set its words through codeUi('${key}').value(…) every frame, also while the game waits to start, and give it a sample: the editor shows the sample while the text is empty` };
     const before = read();
     const b0 = e.box();
     l.p = [p0[0]! + PROBE_PX, p0[1]!];
@@ -480,51 +524,53 @@ export function createCodeUi(d: CodeUiDeps): CodeUi | null {
     }
   };
 
-  // The line and the words while one is dragged; where it was (dotted).
-  let line: SVGSVGElement | null = null;
+  // The line and the words while one is dragged; where it was (dotted) — ui-edge.ts draws it (the HTML UI's too).
+  const line: { el: SVGSVGElement | null } = { el: null };
   const lastBounds = new Map<string, { x: number; y: number; w: number; h: number }>();
   const startBounds = new Map<string, { x: number; y: number; w: number; h: number }>();
   const paintLine = (keys: string[]) => {
     const es = keys.map(byId).filter((e): e is Entry => !!e);
     if (es.length !== 1) {
-      line?.remove();
-      line = null;
+      paintEdgeLine(win, line, null);
       startBounds.clear();
       return;
     }
     const e = es[0]!;
     if (!startBounds.has(e.id)) startBounds.set(e.id, lastBounds.get(e.id) ?? boundsOf(e));
-    const was0 = startBounds.get(e.id)!;
     const c = e.canvas();
-    const r = c ? c.getBoundingClientRect() : ({ left: 0, top: 0, width: win.innerWidth, height: win.innerHeight, right: win.innerWidth, bottom: win.innerHeight } as DOMRect);
+    const r = c ? c.getBoundingClientRect() : ({ left: 0, top: 0, width: win.innerWidth, height: win.innerHeight } as DOMRect);
     const a = e.atNow();
-    const bb = boundsOf(e);
-    if (!line || !line.isConnected) {
-      line = doc.createElementNS(NS, 'svg') as SVGSVGElement;
-      line.setAttribute('data-studio-ui-line', '');
-      line.setAttribute('aria-hidden', 'true');
-      line.setAttribute('style', 'position:fixed;left:0;top:0;width:100vw;height:100vh;pointer-events:none;z-index:2147483646;overflow:visible');
-      (doc.body || doc.documentElement).appendChild(line);
+    paintEdgeLine(win, line, { frame: { x: r.left, y: r.top, w: r.width, h: r.height }, box: boundsOf(e), was: startBounds.get(e.id)!, from: a.from, at: a.at, lang: d.lang() });
+  };
+
+  /**
+   * A text the game leaves empty now (a distance shown once the run starts, a timer before the first round): its sample
+   * shown instead (stage 3, 2026-10-24 — phaser-runner's distance is '' until the first tap), so the person sees what
+   * they edit and its frame has a size. The card says that sample is on (its row pressed); Esc / another sample as usual.
+   * true = one was shown (the game draws a frame for it).
+   */
+  // Only on the UI layer (the Scene shows the game's own picture: a real run of 2026-10-25 showed "9,999 m" over the
+  // world); the person's own pick of a sample, or turning it off, is theirs (not filled again until editing ends).
+  const filledIds = new Set<string>();
+  const declined = new Set<string>();
+  const fillEmpty = (e: Entry): boolean => {
+    const l = live(e);
+    if (l.sample !== null || !e.sample || e.kind === 'bar' || e.kind === 'image' || declined.has(e.id)) return false;
+    const b = e.box();
+    if (b.w >= 1 && b.h >= 1) return false;
+    l.sample = e.sample;
+    filledIds.add(e.id);
+    changed();
+    return true;
+  };
+  /** Back to the game's own (empty) words: the samples shown by fillEmpty, when the person leaves the UI layer. */
+  const unfill = () => {
+    for (const id of filledIds) {
+      const e = codeUiEntries(win).find((x) => x.id === id);
+      if (e?.live && e.live.sample === e.sample) e.live.sample = null;
     }
-    // The point of the canvas it is measured from, and the box's point facing it.
-    const [hz, v] = a.from === 'center' ? ['m', 'm'] : a.from === 'left' ? ['l', 'm'] : a.from === 'right' ? ['r', 'm'] : a.from === 'top' ? ['m', 't'] : a.from === 'bottom' ? ['m', 'b'] : [a.from.endsWith('left') ? 'l' : 'r', a.from.startsWith('top') ? 't' : 'b'];
-    const ax = hz === 'l' ? r.left : hz === 'r' ? r.right : r.left + r.width / 2, ay = v === 't' ? r.top : v === 'b' ? r.bottom : r.top + r.height / 2;
-    const bx = hz === 'l' ? bb.x : hz === 'r' ? bb.x + bb.w : bb.x + bb.w / 2, by = v === 't' ? bb.y : v === 'b' ? bb.y + bb.h : bb.y + bb.h / 2;
-    const words = placeWords(a.from, a.at, d.lang());
-    const accent = '#ff8a3d';
-    const tw = Math.max(60, words.length * (d.lang() === 'ja' ? 12 : 6.6) + 16);
-    // Left of the box when there is room (the editor's card floats over the right of the game), else right of it; on the
-    // box's middle line, under the line's end.
-    const lx = bb.x - tw - 10 >= 4 ? bb.x - tw - 10 : Math.min(win.innerWidth - tw - 4, bb.x + bb.w + 10);
-    const ly = Math.min(win.innerHeight - 24, Math.max(4, bb.y + bb.h / 2 - 10));
-    line.innerHTML = `<rect x="${was0.x}" y="${was0.y}" width="${was0.w}" height="${was0.h}" rx="4" fill="none" stroke="${accent}" stroke-width="1.5" stroke-dasharray="5 4" opacity=".75"/>`
-      + `<line x1="${ax}" y1="${ay}" x2="${bx}" y2="${by}" stroke="${accent}" stroke-width="1" stroke-dasharray="3 3"/>`
-      + `<circle cx="${ax}" cy="${ay}" r="3" fill="${accent}"/>`
-      + `<g transform="translate(${lx},${ly})"><rect width="${tw}" height="20" rx="5" fill="rgba(20,20,24,.92)" stroke="${accent}" stroke-width="1"/>`
-      + `<text x="8" y="14" font-family="system-ui,-apple-system,'Hiragino Sans',sans-serif" font-size="11" fill="#ffd2b0"></text></g>`;
-    line.querySelector('text')!.textContent = words;
-    line.setAttribute('data-from', a.from);
-    line.setAttribute('data-words', words);
+    filledIds.clear();
+    changed();
   };
 
   /**
@@ -552,6 +598,10 @@ export function createCodeUi(d: CodeUiDeps): CodeUi | null {
           d.post({ type: 'studio:ui/code-checked', id: msg.id, results });
           return true;
         }
+        case 'studio:ui/theme-set':
+          // The theme changed (editor.ts set the codeTheme's value, ui-extras.ts the CSS one): one frame of the game.
+          changed();
+          return false;
         case 'studio:ui/screen': {
           // The codeUis' screens (with the HTML UI's: ui-extras.ts shows that one too, so this answers false). Another
           // screen = another list and another picture (the game draws studio.screen()'s UI).
@@ -585,6 +635,10 @@ export function createCodeUi(d: CodeUiDeps): CodeUi | null {
             if (!msg.quiet) postProps(e.id);
           } else if (msg.type === 'studio:ui/sample') {
             live(e).sample = typeof msg.text === 'string' ? msg.text.slice(0, 200) : null;
+            // The person's choice from now on (an empty text is not given its sample again while editing).
+            filledIds.delete(e.id);
+            if (msg.text === null) declined.add(e.id);
+            else declined.delete(e.id);
             changed();
             postProps(e.id);
           } else if (msg.type === 'studio:ui/state') {
@@ -612,6 +666,8 @@ export function createCodeUi(d: CodeUiDeps): CodeUi | null {
       screen = null;
       // The looks shown and the samples were for editing; the moves and the card's changes stay (the draft Play shows).
       for (const e of codeUiEntries(win)) if (e.live) (e.live.state = null, e.live.sample = null);
+      filledIds.clear();
+      declined.clear();
       paintBoards(false);
       paintLine([]);
       markOverlays(false);
@@ -619,6 +675,12 @@ export function createCodeUi(d: CodeUiDeps): CodeUi | null {
       if (d.core.time.frozen) drawNow();
     },
     frame(o) {
+      // An empty text's sample on the UI layer only (fillEmpty).
+      if (editingNow && o.editing && o.ui) {
+        for (const e of listed()) fillEmpty(e);
+      } else if (filledIds.size) unfill();
+      // A size or a window that changed (a text grown, the page resized): the onChange of a UI kept as objects.
+      if (editingNow && pokeAll()) dirty = true;
       if (dirty && d.core.time.frozen) drawNow();
       paintBoards(editingNow && o.editing && o.ui);
       const hand = o.ui && o.editing ? o.inHand.filter((k) => !!byId(k)) : [];

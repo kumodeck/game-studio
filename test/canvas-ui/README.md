@@ -10,3 +10,5 @@ example's plain drawing (the test compares them).
 
 - game.js - the example's game.js with drawHud() rewritten through codeUi() (the test copies the example folder, then this file over its game.js)
 - screens/ - a one-canvas game with two screens of canvas UI ('play', 'over') for the stage 2 screen test (studio-canvas-ui-2, 2026-10-24)
+- phaser-runner/ - examples/phaser-runner after the rewrite: the distance a codeUi kept as an object (onChange), its ink a codeTheme (stage 3, studio-canvas-ui-3, 2026-10-24)
+- pixi-bubbles/ - examples/pixi-bubbles after the rewrite: the score and the note as objects, their colours a codeTheme (stage 3)

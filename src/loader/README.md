@@ -24,6 +24,10 @@ button): its handle answers `box()` (measured from one of 9 places of the canvas
 `look(state?)`, `value(v)`, `hit(x, y)` and `state()` every frame — from the editor's live values while it edits, from the
 file's `ui.<id>` (`code`, `from`, `at`, read at draw time) before Save, else from the code. `uiBoxAt` / `uiAtOf` /
 `uiNearest` are the 9 places' maths, shared with the editor (`test/code-ui.test.ts`).
+Stage 3 (studio-canvas-ui-3, 2026-10-24): `onChange(fn)` for engines that keep their UI as objects (Phaser, Pixi: called
+once and on every change of the box or the look), `size` as that object (its `getBounds()` at its own scale 1), a sample
+shown on a Text object while the editor holds the game, and `codeTheme({ accent: { v, label } })` — the canvas UI's theme
+(getters, `onChange`, a look's `var(--accent)`), read from the file's `theme` before Save (`test/code-ui-3.test.ts`).
 
 - `studio-placement.test.mjs` - `node --test src/loader/studio-placement.test.mjs` (source and built copy)
 - `fixtures/` - two tiny games (three.js, PixiJS) for the headless end-to-end check

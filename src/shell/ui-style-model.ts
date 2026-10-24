@@ -138,6 +138,18 @@ export class UiStyleModel {
     this.was.delete(key);
   }
 
+  /**
+   * The AI wrote this theme variable into the code (`ui.theme --clear`, studio-canvas-ui-3): out of the file and the
+   * Save count, and its `was` forgotten (the page's next value is the code's new one). true = the file had it.
+   */
+  forgetTheme(name: string): boolean {
+    const had = this.themeCur.has(name) || this.themeSaved.has(name);
+    this.themeCur.delete(name);
+    this.themeSaved.delete(name);
+    this.themeWas.delete(name);
+    return had;
+  }
+
   theme(name: string): string | undefined {
     return this.themeCur.get(name);
   }

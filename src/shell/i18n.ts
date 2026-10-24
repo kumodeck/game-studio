@@ -961,6 +961,9 @@ const en = {
   'hands.ui.code': '{Ai} made {names} movable in the editor (they look the same)',
   'hands.ui.set': '{Ai} changed {name}',
   'hands.ui.clear': '{Ai} wrote {name} into the game',
+  // studio-canvas-ui-3 (2026-10-24): the AI's ui.theme — a Theme row changed, or written into the game after Save.
+  'hands.ui.theme': '{Ai} changed the theme’s {name}',
+  'hands.ui.themeClear': '{Ai} wrote the theme’s {name} into the game',
   'hands.ui.and': ', ',
   'hands.place.codeReplace': '{Ai} turned {n:1 object|# objects} into the rule layout “{name}” ({what})',
   'hands.place.count': '{n:1 object|# objects}',
@@ -1989,6 +1992,8 @@ const ja: Partial<Record<Key, string>> = {
   'hands.ui.code': '{ai}が{names}をエディタで動かせるようにしました（見た目はそのまま）',
   'hands.ui.set': '{ai}が{name}を変えました',
   'hands.ui.clear': '{ai}が{name}をゲームに書き込みました',
+  'hands.ui.theme': '{ai}がテーマの{name}を変えました',
+  'hands.ui.themeClear': '{ai}がテーマの{name}をゲームに書き込みました',
   'hands.ui.and': '・',
   'hands.place.codeReplace': '{ai}が {n} 個をルール「{name}」にしました（{what}）',
   'hands.place.count': '{n} 個',
