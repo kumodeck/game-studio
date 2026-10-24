@@ -46,12 +46,15 @@ const JA_RETIRED = ['場面', 'ワールド', 'オブジェクト', '写す', '�
   '繰り返し', '表示する行', 'ステージ', 'モーション', '保存してゲームへ', '（エディタの外のゲームも変わります）', 'コードで描いた形',
   'まだどの物にも付いていません', '動き出し方', '配置に入れる',
   // studio-words-rule (2026-10-24, the review's choice (a)): a thing to press says its result; the word rule only on tags and headings.
-  'ルールにする', '近いルールにして', 'ルールに戻す', 'ルールに書き込む', '元の配置'];
+  'ルールにする', '近いルールにして', 'ルールに戻す', 'ルールに書き込む', '元の配置',
+  // studio-words-formula (2026-10-25, the review's (c): "I don't get what it means") → "{ai} rebuild it as a formula".
+  '数字で調整できるようにする'];
 const EN_RETIRED: RegExp[] = [/\bplacement\b/i, /\badapter\b/i, /\bclips?\b/i, /\bRows\b/, /\bTracks\b/, /\bcues?\b/i, /Auto key/i,
   /Held still/, /Make movable/, /Drop to floor/, /On Game Start/, /On Tap \/ Click/, /When Near/, /After Delay/, /On Key Press/,
   /After Previous Move/, /On Collision/, /On Signal/, /Set Up/, /\bAsk AI\b/, /Ask my AI/, /Drawn in code/, /Not on anything yet/,
   /thing changed/, /Copy of/, /keyframe/i, /Put in layout/,
-  /Turn into a (close )?rule/, /back to rule/i, /back on the rule/, /Write into the rule/];
+  /Turn into a (close )?rule/, /back to rule/i, /back on the rule/, /Write into the rule/,
+  /adjustable with numbers/i]; // studio-words-formula (2026-10-25) → "Have {ai} rebuild it as a formula"
 // Words handed to the AI as they are (the person copies or sends them): the adapter is the AI's word.
 const TO_THE_AI = new Set(['status.noAdapterHint', 'status.adapterError']);
 

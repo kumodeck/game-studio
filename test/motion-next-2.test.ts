@@ -6,7 +6,7 @@
 //   2. ● Rec motion on → "Recording · press ● when you're done" (with the change, in place of ✦); the line's ● = Rec off;
 //   3. another object picked (or none) → "Not saved: <motion>" (each Library motion once);
 //   4. ✦ Ask's menu: three rows by what is wanted, each with its own grey example and its own draft; "Ask anything" gone;
-//   5. the words: the result ("adjustable with numbers"), never "rule" / "knob" on what is pressed.
+//   5. the words: the result ("Have {ai} rebuild it as a formula", studio-words-formula 10/25), never "rule" / "knob" on what is pressed.
 // On screen (both languages, dark): test/studio-motion-next-2.browser.mjs.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -91,7 +91,7 @@ test('the review\'s checks 1–4: a point dragged → the line; Steady → still
   r.tl.onMessage({ type: 'studio:timeline/point', key: 'lamp', i: 1, v: [2, 1, 0], end: true } as never);
   const n1 = r.note()!;
   assert.deepEqual(n1.change, { where: 'here', motion: { key: 'lamp', label: 'lamp', name, made: false, canRule: true }, more: 0 }, '"lamp’s motion changed · Save puts it in the game"');
-  assert.equal(n1.rule, true, '· ✦ Make it adjustable with numbers');
+  assert.equal(n1.rule, true, '· ✦ Have Claude rebuild it as a formula');
   assert.ok(r.notes() > 0, 'the plate\'s redraws ask the shell to draw the line again');
   // 2. The ease of the picked keys to Steady (after a Save, so it is the ease that makes the change).
   r.save();
@@ -136,7 +136,7 @@ test('a new motion says "is made"; ● Rec motion on → recording, its ● turn
   assert.equal(r.tl.state().auto, false, 'the line\'s ● = Rec motion off');
   assert.equal(r.view().making, null, 'making ends with it');
   assert.equal(r.note()!.rec, false);
-  assert.equal(r.note()!.rule, true, 'now ✦ Make it adjustable with numbers');
+  assert.equal(r.note()!.rule, true, 'now ✦ Have Claude rebuild it as a formula');
   // A saved motion, ● on, nothing changed: recording only.
   r.save();
   r.acts().auto(true);
@@ -174,7 +174,7 @@ test('✦ Ask\'s menu: three rows by what is wanted, each its own example and dr
     ['tl-ask-add', 'mnext2.add', 'mnext2.addSub', true],
   ]);
   rows[0]!.run();
-  assert.deepEqual(r.asked.at(-1), { key: 'lamp', name, rule: true }, 'adjustable with numbers = the plate\'s ✦ Turn into a rule (its draft, to-code)');
+  assert.deepEqual(r.asked.at(-1), { key: 'lamp', name, rule: true }, 'rebuild it as a formula = the plate\'s ✦ Turn into a rule (its draft, to-code)');
   rows[1]!.run();
   assert.deepEqual(r.asked.at(-1), { key: 'lamp', name, draft: 'mnext2.fixDraft' });
   rows[2]!.run();
@@ -193,8 +193,8 @@ test('the words: the result on what is pressed, three different drafts, never "r
   const ja = (k: string, v: Record<string, string | number> = {}) => translate('ja', k, { ai: 'Claude', Ai: 'Claude', ...v });
   const en = (k: string, v: Record<string, string | number> = {}) => translate('en', k, { ai: 'Claude', Ai: 'Claude', ...v });
   // The review's words: the menu, and the line's example ("<the lamp>'s motion changed · Save puts it in the game · ✦ …").
-  assert.equal(ja('mnext2.toNumbersMenu', { what: ja('mnext2.toNumbers') }), 'この動きを数字で調整できるようにする');
-  assert.equal(ja('mnext2.toNumbersSub'), '速さ・大きさなど');
+  assert.equal(ja('mnext2.toNumbersMenu', { what: ja('mnext2.toNumbers') }), 'この動きを Claudeに式で作り直してもらう');
+  assert.equal(ja('mnext2.toNumbersSub'), '半径・速さなどをカードで変えられるように');
   assert.equal(ja('mnext2.fix'), 'この動きを直してもらう…');
   assert.equal(ja('mnext2.fixSub'), '例：もっとゆっくり・高く跳ねる');
   assert.equal(ja('mnext2.add'), '別の動きを足してもらう…');
@@ -202,10 +202,11 @@ test('the words: the result on what is pressed, three different drafts, never "r
   assert.equal(ja('mnext2.changed', { name: '街灯 5 の動き' }), '街灯 5 の動きを変えました');
   assert.equal(ja('mnext2.made', { name: '街灯 5 の動き' }), '街灯 5 の動きができました');
   assert.equal(ja('mnext2.save', { save: ja('btn.save') }), '保存するとゲームに入ります');
-  assert.equal(ja('mnext2.line', { what: ja('mnext2.toNumbers') }), '数字で調整できるようにする');
+  assert.equal(ja('mnext2.line', { what: ja('mnext2.toNumbers') }), 'Claudeに式で作り直してもらう');
   assert.equal(`${ja('mnext2.rec')} · ${ja('mnext2.recEnd', { dot: '●' })}`, '記録中 · 終わったら ● を押す');
-  assert.equal(en('mnext2.toNumbersMenu', { what: en('mnext2.toNumbers') }), 'Make this motion adjustable with numbers');
-  assert.equal(en('mnext2.line', { what: en('mnext2.toNumbers') }), 'Make it adjustable with numbers');
+  assert.equal(en('mnext2.toNumbersMenu', { what: en('mnext2.toNumbers') }), 'Have Claude rebuild this motion as a formula');
+  assert.equal(en('mnext2.toNumbersSub'), 'then change radius, speed… on the card');
+  assert.equal(en('mnext2.line', { what: en('mnext2.toNumbers') }), 'Have Claude rebuild it as a formula');
   // Three drafts, three different first words.
   for (const tr of [ja, en]) {
     const drafts = [tr('toRule.draft'), tr('mnext2.fixDraft'), tr('mnext2.addDraft')];

@@ -209,13 +209,18 @@ test('the request: intent "to-code" on an ask (dropped elsewhere), a motion\'s p
 
 test('the words: "rule", never "code" on screen; the glossary\'s (chosen on 10/24, Gemini G7 / G13)', () => {
   const vars = { ai: 'Claude', Ai: 'Claude', name: 'lamp', n: 6, what: '6', obj: 'lamp-3', gap: '0.6 m', t: '1.2' };
-  for (const k of ['toRule.place', 'toRule.placeTip', 'toRule.motion', 'toRule.draft', 'toRule.compare', 'toRule.compareMotion', 'toRule.compareTip', 'toRule.maxPlace', 'toRule.maxMotion', 'toRule.atTime', 'hands.place.toRule', 'hands.motion.toRule', 'hands.motion.toRuleSame']) {
+  // toRule.placeTip is left out: since studio-words-formula (10/25, the review's (c)) the tip says what the AI rewrites — "a formula
+  // in the game's code". What is pressed and every other line still never says "code".
+  for (const k of ['toRule.place', 'toRule.motion', 'toRule.draft', 'toRule.compare', 'toRule.compareMotion', 'toRule.compareTip', 'toRule.maxPlace', 'toRule.maxMotion', 'toRule.atTime', 'hands.place.toRule', 'hands.motion.toRule', 'hands.motion.toRuleSame']) {
     assert.doesNotMatch(translate('en', k, vars), /\bcode\b/i, `en ${k}`);
     assert.doesNotMatch(translate('ja', k, vars), /コード/, `ja ${k}`);
   }
-  assert.equal(translate('ja', 'toRule.place'), '数字で調整できるようにする', 'the ✦ is the spark icon before it (studio-words-rule: the result, not 「ルールにする」)');
-  assert.equal(translate('ja', 'toRule.motion'), 'この動きを数字で調整できるようにする');
-  assert.equal(translate('en', 'toRule.place'), 'Make it adjustable with numbers');
+  assert.equal(translate('ja', 'toRule.place', vars), 'Claudeに式で作り直してもらう', 'the ✦ is the spark icon before it (studio-words-formula: who does it and what comes out, not 「数字で調整できるようにする」)');
+  assert.equal(translate('ja', 'toRule.motion', vars), 'この動きを Claudeに式で作り直してもらう');
+  assert.equal(translate('ja', 'toRule.draft'), '式で作り直して');
+  assert.equal(translate('en', 'toRule.place', vars), 'Have Claude rebuild it as a formula');
+  assert.equal(translate('en', 'toRule.motion', vars), 'Have Claude rebuild this motion as a formula');
+  assert.equal(translate('en', 'toRule.draft'), 'Rebuild it as a formula');
   assert.equal(translate('ja', 'toRule.compare'), '元の位置と比べる');
   assert.equal(translate('en', 'toRule.compare'), 'Compare with original');
   assert.equal(translate('ja', 'toRule.maxPlace', vars), '最大のずれ: lamp-3（0.6 m）');
