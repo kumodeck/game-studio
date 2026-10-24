@@ -2,7 +2,9 @@
 // (studio-motion-next-2, 2026-10-24; a hands-on review of v0.1.58). Lantern Cove, PC 1280×800, the stand-in AI watching (test/ai-feel/fake-agent.mjs), one
 // language a run (`--lang en|ja`), dark by default (`--themes dark,light`):
 //   0. the lighthouse's motion made and saved (the strip's Motion → Make a motion → two moves → Done → Save): "a motion
-//      that is already there". ● Rec motion is still on: the line says "● Recording · press ● when you're done";
+//      that is already there". Done turns ● Rec motion off with it (studio-done-stops-rec, 2026-10-24, a review's answer):
+//      the line says "… is made · Save puts it in the game · ✦ Make it adjustable with numbers", no "Recording";
+//      after Save, ● turned back on (the plate's ●): the line says "● Recording · press ● when you're done";
 //   1. the review's check 1: one point of its path dragged (the bridge's own timeline/point, as at a drag's end) → "lighthouse’s
 //      motion changed · Save puts it in the game · ● Recording · press ● when you're done", the top bar's Save ringed in the
 //      line's orange; the line's ● → Rec motion off → "… · ✦ Make it adjustable with numbers";
@@ -13,7 +15,7 @@
 //   6. ✦ Ask: three rows — "Make this motion adjustable with numbers / Have this motion changed… / Have another motion
 //      added…", each with its grey example; each pressed puts a different draft in the field (nothing sent);
 //   7. no page errors.
-// Pictures (`--shots <dir>`): <after|before>-<lang>-<theme>-<0-rec|1-drag|1b-rec-off|1c-save-a|2-ease|3-folded|4-saved|5-other|6-menu|6a-fix|6b-add>.png
+// Pictures (`--shots <dir>`): <after|before>-<lang>-<theme>-<0a-done|0-rec|1-drag|1b-rec-off|1c-save-a|2-ease|3-folded|4-saved|5-other|6-menu|6a-fix|6b-add>.png
 // (1c: A of the two ways to tie the line to Save — a Save pressable in the line — drawn into the page for the picture only, to
 // compare with 1b, B, which is what is built). `--before --ui <dir>` (the v0.1.58 build): the same steps, pictures only, no checks.
 //
@@ -147,9 +149,16 @@ async function run(browser, theme) {
     const motion = await page.eval(`${TL}.shownName('lighthouse') ?? ''`);
     const fresh = await page.eval(NOTE);
     check(fresh.startsWith(W.made(motion)) && fresh.includes(W.save), `${tag}: made, not saved yet → "${fresh}"`);
+    // studio-done-stops-rec: Done = done recording too — ● off, and the line in its "made" form, not "● Recording".
+    check((await page.eval(`${TL}.state().auto`)) === false, `${tag}: Done → ● Rec motion off`);
+    check(fresh === `${W.made(motion)} · ${W.save} · ${W.rule}` && !fresh.includes(W.rec), `${tag}: Done → the line "made" ("${fresh}"), no "Recording"`);
+    await shot('0a-done');
     check(await saveNow(), `${tag}: Save (the top bar)`);
     await until(`${LINE}.includes('${LANG === 'ja' ? 'ゲームに入りました' : 'In the game'}') || (document.querySelector('[data-part=ai-tuck]')?.offsetParent && document.querySelector('[data-part=ai-tuck]').textContent.length > 0)`, 25000);
     await select('lighthouse');
+    // ● back on (Done turned it off), for the checks below that speak of recording.
+    await page.eval(`${TL}.setAuto(true)`);
+    await sleep(400);
     const rec0 = await page.eval(NOTE);
     check(rec0 === W.rec, `${tag}: saved, ● Rec motion on: "${rec0}" (check 4)`);
     check(!(await glow()), `${tag}: nothing to save: the Save is not ringed`);

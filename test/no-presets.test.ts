@@ -137,21 +137,28 @@ test('making: each next move / turn adds a key one second after the last, and pl
   assert.deepEqual(c.keys.p!.map((k) => k.t), [0, 1, 2], 'the position keys as they were');
 }));
 
-test('Esc before the drag: nothing made, the time line back at 0 s; Esc / Done after: what was made stays, the next move is a plain key', () => frames(() => {
+test('Esc before the drag: nothing made, the time line back at 0 s; Esc / Done after: what was made stays, ● Rec off, ● back on: the next move is a plain key', () => frames(() => {
   const r = rig();
   r.tl.make('crate');
   assert.equal(r.tl.onKey({ key: 'Escape', ctrl: false, meta: false, shift: false }), true, 'Esc is taken');
   assert.equal(r.view().making, null);
   assert.equal(r.tl.state().time, 0);
+  assert.equal(r.tl.state().auto, false, 'Esc ends recording too (studio-done-stops-rec)');
   assert.equal(r.tl.motionOf('crate'), null);
   assert.equal(r.undo.peekUndo(), null, 'nothing to undo');
   // Again, then Done after the first move.
   r.tl.make('crate');
   r.tl.moved('crate', at(2), true, at(0));
+  const steps = r.undo.size;
+  const top = r.undo.peekUndo();
   r.acts().done!();
   assert.equal(r.view().making, null);
+  assert.equal(r.tl.state().auto, false, 'Done ends recording too (a review answer, 2026-10-24)');
+  assert.equal(r.undo.peekUndo(), top, 'Rec off is not an undo step: ⌘Z takes the last key, as before');
+  assert.equal(r.undo.size, steps, 'the same number of ⌘Z steps');
   assert.equal(r.tl.motionOf('crate')!.clips![0]!.keys.p!.length, 2, 'kept');
-  // The time line where the person puts it: a move there is a key there (no second added).
+  // ● back on, the time line where the person puts it: a move there is a key there (no second added).
+  r.tl.setAuto(true);
   r.tl.setTime(0.5);
   r.tl.moved('crate', at(3), true, at(1));
   assert.deepEqual(r.tl.motionOf('crate')!.clips![0]!.keys.p!.map((k) => k.t), [0, 0.5, 1]);

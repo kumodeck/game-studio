@@ -1,4 +1,4 @@
-/* KUMODeck Game Studio 0.1.59 — MIT License — built file, edit src/ instead */
+/* KUMODeck Game Studio 0.1.60 — MIT License — built file, edit src/ instead */
 (() => {
 const __defs = [];
 const __cache = [];
@@ -22628,7 +22628,7 @@ function createTimeline(d              , makePanel                             =
    * move (Esc to cancel)", and the object shows as it stands (a thing that moves already: its other motions hidden,
    * the next move starts a new one). `shown` true: the first move made the motion and it played; each next move / turn
    * / resize adds a key one second after the last (`from` = that last key's time) and plays the new second.
-   * Ends with Esc or "Done" (what was made stays: ⌘Z takes one key at a time), another object, the time line moved by
+   * Ends with Esc or "Done" (what was made stays: ⌘Z takes one key at a time; ● Rec motion goes off too — endMaking), another object, the time line moved by
    * hand, or the timeline folded.
    * WHY one second each: the person shows poses, not times (Blender / Unity ask for the time first — the ruler — which
    * the hands-on tries never found); the length of a step is then dragged on the timeline (keys move), as there.
@@ -23570,11 +23570,19 @@ function createTimeline(d              , makePanel                             =
     time = first ? 0 : making.from;
     play();
   }
-  /** Esc / "Done": making ends (before the first move: nothing was made, the time line goes back to 0 s). */
+  /**
+   * Esc / "Done": making ends (before the first move: nothing was made, the time line goes back to 0 s), and ● Rec motion
+   * goes off with it, as pressing ● does (acts.auto(false)) — studio-done-stops-rec, 2026-10-24, a review's answer ("a"): in
+   * v0.1.59 Done left Rec on, and the line over the field kept saying "● Recording · press ● when you're done" right after
+   * the person said they were done. Now it says "… is made · Save puts it in the game · ✦ …". Not an undo step (Rec is a
+   * mode, not a change to the game), so ⌘Z counts the same keys as before.
+   */
   function endMaking()          {
     if (!making) return false;
     if (!making.shown) time = 0;
     making = null;
+    auto = false;
+    sendRec();
     refresh();
     panel.render();
     return true;
