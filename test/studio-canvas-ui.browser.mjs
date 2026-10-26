@@ -13,7 +13,8 @@
 //   3. the JUMP button: State Pressed, Fill #ff8fb1 → the game draws its pressed look pink                [one-3.png]
 //   4. JUMP moved 300 px left, ▶ Play: a tap on its new place jumps, a tap on its old place does not
 //   5. Save, then the AI's part: it writes the file's numbers into codeUi() and sends [ui.code, ui.set --clear] → the
-//      file has no `ui`, and the picture is the same as before it wrote them
+//      file has no `ui`, and the picture is the same as before it wrote them; the editor's line leads with "wrote … into
+//      the game" (studio-fix-0168)
 //
 // Stage 2 (studio-canvas-ui-2, 2026-10-24: the UI not selectable yet, screens, samples):
 //   missing  A. the example with score / bar / JUMP through codeUi and the minimap still plain: the minimap has a dotted
@@ -320,6 +321,10 @@ async function one(lang) {
       const r = await ai([{ do: 'ui.code', id: 'hp-bar,jump' }, { do: 'ui.set', id: 'hp-bar', clear: true }, { do: 'ui.set', id: 'jump', clear: true }]);
       assert.ok(r.results?.every((x) => x.ok), `the AI's write-back: ${JSON.stringify(r)}`);
       await sleep(1500);
+      // studio-fix-0168 (2026-10-26): the editor's line leads with the writing, not ui.code's "made … movable" (which
+      // hid it in "and 2 more changes": the x clips 0168, found 2).
+      const line = await page.eval(`document.body.innerText`);
+      assert.ok(line.includes(J ? 'をゲームに書き込みました（ほか 2 件）' : 'into the game, and 2 more changes'), `the line says it was written into the game: ${line.match(/.*(書き込み|into the game|movable|動かせる).*/)?.[0]}`);
       const after = file(root);
       assert.equal(after.ui, undefined, `no ui left: ${JSON.stringify(after.ui)}`);
       for (const id of Object.keys(boxes)) {

@@ -273,3 +273,34 @@ test('the shell keeps code motions and places through a save: a file with them, 
   assert.deepEqual(st.result(), { crystal: { avoid: [{ code: 'road', off: true }] } });
   assert.deepEqual(st.changedIds(), []);
 });
+
+// studio-fix-0168 (2026-10-26; the x clips' "found 2"): after Save, the AI sends [ui.code, ui.set --clear] in one job
+// (SKILL.md). The editor's line led with ui.code ("Claude made Distance movable in the editor…, and 1 more change"), so
+// what was done — the place written into the game — hid in "1 more change". After a Save the writing leads.
+test('ui.code + ui.set --clear in one job: the line leads with "wrote it into the game"', async () => {
+  const e = editor();
+  const ui: Item[] = [{ key: 'distance', label: 'Distance', kinds: ['ui'] }];
+  let had = true;
+  e.d.reloadGame = async () => true;
+  e.d.ui = {
+    show: () => true,
+    items: () => ui,
+    codes: () => [{ key: 'distance', name: 'Distance' }] as never,
+    clash: () => [],
+    resetCodes: () => undefined,
+    pose: () => ({ p: [0, 0, 0] }),
+    setPose: () => undefined,
+    setLook: () => undefined,
+    check: async (keys) => keys.map((key) => ({ key, ok: true })),
+    clear: () => (had ? ((had = false), true) : false),
+    entries: () => ({}),
+  };
+  const hands = createAiHands(e.d);
+  await hands.run({ id: 'w', by: 'claude', ops: [{ do: 'ui.code', id: 'distance' }, { do: 'ui.set', id: 'distance', clear: true }] });
+  assert.equal(e.lines().length, 1);
+  assert.match(e.lines()[0]!, /^Claude wrote Distance into the game, and 1 more change/);
+  // ui.code alone (no writing yet): its own words, as before.
+  e.clear();
+  await hands.run({ id: 'c', by: 'claude', ops: [{ do: 'ui.code', id: 'distance' }] });
+  assert.match(e.lines()[0]!, /^Claude made Distance movable in the editor/);
+});

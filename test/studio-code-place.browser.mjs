@@ -434,6 +434,34 @@ async function run(theme, first) {
       check(JSON.parse(await page.eval(ROW)).join() === '-4,-8,-12,-16', `the row as at Gap 4 (${await page.eval(ROW)})`);
       await shot('6-undo');
 
+      // ---- 6b. Count dragged 4 → 7 in one drag (studio-fix-0168, 2026-10-26; the x clips' "found 1"): a new count makes
+      // new objects, the list and the card were drawn again under the finger and the drag stopped at +1. The box under
+      // the pointer stays the same box to the end, the count goes on, one ⌘Z takes it back ----
+      await page.eval(`studioShell.actions.select('hex-2')`);
+      await sleep(700);
+      await card();
+      const nAt = JSON.parse(await page.eval(`(() => { const b = document.querySelector('[data-part=rule-knob-n]'); b.__same = 1; const r = b.getBoundingClientRect(); return JSON.stringify({ x: r.x + r.width / 2, y: r.y + r.height / 2 }); })()`));
+      const count = () => page.eval(`${GW}[Symbol.for('game-studio.codePlaces')].get('hex').objs.length`);
+      const n0 = await count();
+      let mid = '';
+      // 70 px right: Count's range 1–8 across 160 px = +3 (4 → 7); the pointer's steps as a hand's, the game moves as it goes.
+      await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: nAt.x, y: nAt.y });
+      await page.send('Input.dispatchMouseEvent', { type: 'mousePressed', x: nAt.x, y: nAt.y, button: 'left', buttons: 1, clickCount: 1 });
+      for (let i = 1; i <= 14; i++) (await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: nAt.x + i * 5, y: nAt.y, button: 'left', buttons: 1 }), await sleep(60));
+      await sleep(400);
+      mid = await page.eval(`(() => { const b = document.querySelector('[data-part=rule-knob-n]'); return (b?.__same ? 'same ' : 'new ') + (b?.textContent ?? ''); })()`);
+      await page.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: nAt.x + 70, y: nAt.y, button: 'left', buttons: 0, clickCount: 1 });
+      await sleep(900);
+      check(mid.startsWith('same '), `while the finger is down: the same Count box under it (${mid})`);
+      const n6 = (await hexPlace())?.knobs?.n?.v;
+      check(n0 === 4 && n6 === 7 && (await count()) === 7, `one drag: Count 4 → ${n6}, ${await count()} hexagons (not stopped at 5)`);
+      check(/7/.test(await page.eval(`document.querySelector('[data-part=rule-knob-n]')?.textContent ?? ''`)), 'the card after: Count 7');
+      await shot('6b-count');
+      await page.eval(`document.activeElement?.blur()`);
+      await undoKey();
+      await sleep(700);
+      check((await hexPlace())?.knobs?.n?.v !== 7 && (await count()) === 4, `⌘Z: Count back to 4 (${await count()} hexagons)`);
+
       // ---- 7. Save: the receipt says the rule's number ("Saved: hex Gap → 4 m") ----
       await page.eval(`document.querySelector('[data-part=save]')?.click()`);
       await sleep(1500);

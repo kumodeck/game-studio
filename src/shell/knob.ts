@@ -59,6 +59,31 @@ export function snapKnob(v: number, o: Pick<KnobOpts, 'step' | 'v' | 'min' | 'ma
   return Math.round(v / q) * q;
 }
 
+// The knob being dragged now (its box), and what waits for the drag to end (studio-fix-0168, 2026-10-26; the x clips'
+// "found 1"): Count dragged 6 → 12 stopped at 7 — a new count makes new objects, the editor drew the list and the card
+// again, and the box holding the pointer (setPointerCapture) left the page with the drag in it. Gap never stopped (the
+// same objects, no redraw). So a panel holding a dragged knob waits (knobHeld) and draws once the drag ends (afterKnob):
+// the same box keeps the drag to the end; the card's other lines ("Line · 6") catch up on release.
+let held: HTMLElement | null = null;
+let after: Array<() => void> = [];
+/** A knob inside `root` is being dragged now (draw `root` again after it: afterKnob). */
+export function knobHeld(root: Node): boolean {
+  return !!held && held.isConnected && root.contains(held);
+}
+/** Run `fn` when the knob being dragged is let go (right away when none is). */
+export function afterKnob(fn: () => void): void {
+  if (held && held.isConnected) after.push(fn);
+  else fn();
+}
+/** The drag of `box` is over: what waited for it, to run (after the knob's own end). */
+function letGo(box: HTMLElement): Array<() => void> {
+  if (held !== box) return [];
+  held = null;
+  const fns = after;
+  after = [];
+  return fns;
+}
+
 export function knobEl(o: KnobOpts): HTMLElement {
   const [lo, hi] = rangeOf(o);
   const whole = !!o.step && o.step >= 1;
@@ -88,6 +113,7 @@ export function knobEl(o: KnobOpts): HTMLElement {
     e.preventDefault();
     box.setPointerCapture(e.pointerId);
     drag = { x: e.clientX, v: now, moved: false };
+    held = box;
     box.classList.add('on');
   });
   const valueAt = (dr: { x: number; v: number }, e: PointerEvent) => {
@@ -108,12 +134,17 @@ export function knobEl(o: KnobOpts): HTMLElement {
     drag = null;
     box.classList.remove('on');
     if (!dr.moved) {
+      // A press: the waiting panels draw now (nothing changed), then the box becomes a field.
+      for (const fn of letGo(box)) fn();
       if (keep) type();
       return;
     }
     const v = keep ? valueAt(dr, e) : dr.v;
     show(v);
+    // The end (one ⌘Z) first, then what waited: the card drawn once, with the count the drag ended on.
+    const waits = letGo(box);
     o.set(v, true, dr.v);
+    for (const fn of waits) fn();
   };
   box.addEventListener('pointerup', (e) => finish(e, true));
   box.addEventListener('pointercancel', (e) => finish(e, false));

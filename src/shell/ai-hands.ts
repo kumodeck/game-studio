@@ -820,6 +820,8 @@ export function createAiHands(d: HandsDeps) {
     let levelLast: 'made' | 'other' | null = null;
     // The job's line leads with what the person asked for: a motion made or put on (the detach before it is the tidy-up).
     let lead = -1;
+    // …unless the job wrote a canvas UI into the game (ui.set / ui.theme --clear): that leads (below).
+    let wrote = -1;
     d.undoBegin();
     for (const op of ops) {
       let did: Did;
@@ -836,12 +838,17 @@ export function createAiHands(d: HandsDeps) {
         // Save, a reload and a look are not changes to undo: the line names only what changed.
         if (op.do !== 'save' && op.do !== 'editor.reload' && op.do !== 'list') {
           if (lead < 0 && ['motion.make', 'motion.attach', 'motion.code', 'place.code', 'ui.code'].includes(op.do)) lead = said.length;
+          // studio-fix-0168 (2026-10-26): after a Save the AI sends [ui.code, ui.set --clear] (SKILL.md) — what the person
+          // waited for is the writing ("Claude wrote Distance into the game"), so it leads over ui.code's "made … movable",
+          // which used to hide it in "and 1 more change" (the x clips 0168, found 2). Only a clear that took something out; a
+          // theme's clear (ui.theme --clear) is the same writing.
+          if (wrote < 0 && (op.do === 'ui.set' || op.do === 'ui.theme') && op.clear && did.cleared) wrote = said.length;
           said.push(words(op, did, ai));
         }
         else if (!said.length && op.do === 'save') said.push(d.t('hands.save', ai));
       }
     }
-    const first = said[Math.max(0, lead)] ?? '';
+    const first = said[wrote >= 0 ? wrote : Math.max(0, lead)] ?? '';
     const text = said.length > 1 ? d.t('hands.more', { text: first, n: said.length - 1 }) : first;
     const step = d.undoEnd(text);
     if (text) d.done(text, levelLast ? levelLast === 'made' : step);

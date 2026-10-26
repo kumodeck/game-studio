@@ -1,4 +1,4 @@
-/* KUMODeck Game Studio 0.1.68 — MIT License — built file, edit src/ instead */
+/* KUMODeck Game Studio 0.1.69 — MIT License — built file, edit src/ instead */
 (() => {
 const __defs = [];
 const __cache = [];
@@ -12538,6 +12538,31 @@ function snapKnob(v        , o                                              )   
   return Math.round(v / q) * q;
 }
 
+// The knob being dragged now (its box), and what waits for the drag to end (studio-fix-0168, 2026-10-26; the x clips'
+// "found 1"): Count dragged 6 → 12 stopped at 7 — a new count makes new objects, the editor drew the list and the card
+// again, and the box holding the pointer (setPointerCapture) left the page with the drag in it. Gap never stopped (the
+// same objects, no redraw). So a panel holding a dragged knob waits (knobHeld) and draws once the drag ends (afterKnob):
+// the same box keeps the drag to the end; the card's other lines ("Line · 6") catch up on release.
+let held                     = null;
+let after                    = [];
+/** A knob inside `root` is being dragged now (draw `root` again after it: afterKnob). */
+function knobHeld(root      )          {
+  return !!held && held.isConnected && root.contains(held);
+}
+/** Run `fn` when the knob being dragged is let go (right away when none is). */
+function afterKnob(fn            )       {
+  if (held && held.isConnected) after.push(fn);
+  else fn();
+}
+/** The drag of `box` is over: what waited for it, to run (after the knob's own end). */
+function letGo(box             )                    {
+  if (held !== box) return [];
+  held = null;
+  const fns = after;
+  after = [];
+  return fns;
+}
+
 function knobEl(o          )              {
   const [lo, hi] = rangeOf(o);
   const whole = !!o.step && o.step >= 1;
@@ -12567,6 +12592,7 @@ function knobEl(o          )              {
     e.preventDefault();
     box.setPointerCapture(e.pointerId);
     drag = { x: e.clientX, v: now, moved: false };
+    held = box;
     box.classList.add('on');
   });
   const valueAt = (dr                          , e              ) => {
@@ -12587,12 +12613,17 @@ function knobEl(o          )              {
     drag = null;
     box.classList.remove('on');
     if (!dr.moved) {
+      // A press: the waiting panels draw now (nothing changed), then the box becomes a field.
+      for (const fn of letGo(box)) fn();
       if (keep) type();
       return;
     }
     const v = keep ? valueAt(dr, e) : dr.v;
     show(v);
+    // The end (one ⌘Z) first, then what waited: the card drawn once, with the count the drag ended on.
+    const waits = letGo(box);
     o.set(v, true, dr.v);
+    for (const fn of waits) fn();
   };
   box.addEventListener('pointerup', (e) => finish(e, true));
   box.addEventListener('pointercancel', (e) => finish(e, false));
@@ -12646,6 +12677,8 @@ function knobEl(o          )              {
 __def(__exports, "rangeOf", () => rangeOf);
 __def(__exports, "knobNumber", () => knobNumber);
 __def(__exports, "snapKnob", () => snapKnob);
+__def(__exports, "knobHeld", () => knobHeld);
+__def(__exports, "afterKnob", () => afterKnob);
 __def(__exports, "knobEl", () => knobEl);
 };
 __defs[26] = function (__exports) {
@@ -21248,6 +21281,7 @@ const { h, safeImageSrc } = __require(16);
 const { hasLayer, layerBlocks, layerTarget, siblingsOf } = __require(32);
 const { groupLayerPossible, sameKind } = __require(49);
 const { icon, setButton } = __require(21);
+const { afterKnob, knobHeld } = __require(25);
 const { tipText } = __require(50);
 const { displayName, isGuessed, nameParts } = __require(14);
 const { toneThumb } = __require(17);
@@ -21862,7 +21896,14 @@ function createPlacementPanel(d                    )                 {
     card.append(body);
   };
 
+  // studio-fix-0168: a knob on the card being dragged (a rule's Count) is not drawn again under the pointer — that dropped
+  // the drag at +1 — the card is drawn once when it is let go (knob.ts knobHeld / afterKnob).
+  let cardWaits = false;
   const renderCard = () => {
+    if (knobHeld(card)) {
+      if (!cardWaits) (cardWaits = true, afterKnob(() => ((cardWaits = false), renderCard())));
+      return;
+    }
     card.replaceChildren();
     inputs = [];
     renderMin();
@@ -28958,6 +28999,8 @@ function createAiHands(d           ) {
     let levelLast                          = null;
     // The job's line leads with what the person asked for: a motion made or put on (the detach before it is the tidy-up).
     let lead = -1;
+    // …unless the job wrote a canvas UI into the game (ui.set / ui.theme --clear): that leads (below).
+    let wrote = -1;
     d.undoBegin();
     for (const op of ops) {
       let did     ;
@@ -28974,12 +29017,17 @@ function createAiHands(d           ) {
         // Save, a reload and a look are not changes to undo: the line names only what changed.
         if (op.do !== 'save' && op.do !== 'editor.reload' && op.do !== 'list') {
           if (lead < 0 && ['motion.make', 'motion.attach', 'motion.code', 'place.code', 'ui.code'].includes(op.do)) lead = said.length;
+          // studio-fix-0168 (2026-10-26): after a Save the AI sends [ui.code, ui.set --clear] (SKILL.md) — what the person
+          // waited for is the writing ("Claude wrote Distance into the game"), so it leads over ui.code's "made … movable",
+          // which used to hide it in "and 1 more change" (the x clips 0168, found 2). Only a clear that took something out; a
+          // theme's clear (ui.theme --clear) is the same writing.
+          if (wrote < 0 && (op.do === 'ui.set' || op.do === 'ui.theme') && op.clear && did.cleared) wrote = said.length;
           said.push(words(op, did, ai));
         }
         else if (!said.length && op.do === 'save') said.push(d.t('hands.save', ai));
       }
     }
-    const first = said[Math.max(0, lead)] ?? '';
+    const first = said[wrote >= 0 ? wrote : Math.max(0, lead)] ?? '';
     const text = said.length > 1 ? d.t('hands.more', { text: first, n: said.length - 1 }) : first;
     const step = d.undoEnd(text);
     if (text) d.done(text, levelLast ? levelLast === 'made' : step);

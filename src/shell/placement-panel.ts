@@ -29,6 +29,7 @@ import { h, safeImageSrc } from './dom.ts';
 import { hasLayer, layerBlocks, layerTarget, siblingsOf, type LayerOp } from './layers.ts';
 import { groupLayerPossible, sameKind } from './edit-ops.ts';
 import { icon, setButton } from './icons.ts';
+import { afterKnob, knobHeld } from './knob.ts';
 import { tipText } from './keymap.ts';
 import { displayName, isGuessed, nameParts } from './names.ts';
 import { toneThumb } from './thumb-tone.ts';
@@ -643,7 +644,14 @@ export function createPlacementPanel(d: PlacementPanelDeps): PlacementPanel {
     card.append(body);
   };
 
+  // studio-fix-0168: a knob on the card being dragged (a rule's Count) is not drawn again under the pointer — that dropped
+  // the drag at +1 — the card is drawn once when it is let go (knob.ts knobHeld / afterKnob).
+  let cardWaits = false;
   const renderCard = () => {
+    if (knobHeld(card)) {
+      if (!cardWaits) (cardWaits = true, afterKnob(() => ((cardWaits = false), renderCard())));
+      return;
+    }
     card.replaceChildren();
     inputs = [];
     renderMin();
