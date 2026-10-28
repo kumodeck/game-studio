@@ -59,6 +59,46 @@ export interface TimeControlImpl extends TimeControl {
    * as at the switch between Play and Edit). Callbacks the frame asks for again wait as before. false = nothing waited.
    */
   step(): boolean;
+  /**
+   * Speed (pause-edit, 2026-10-28; "1× · ½× · ¼×"): the game's frames run on 1 of every 1 / r of the browser's frames
+   * (¼× = every 4th). With the clock at r × (play-clock.ts setRate) a game that moves by the time between frames and
+   * one that moves a fixed step each frame both run at r: Studio cannot tell which kind a game is, so it slows both
+   * ways at once (the picture steps at 15 frames a second at ¼×). 1 = every frame, as before.
+   */
+  setRate(r: number): void;
+  readonly rate: number;
+}
+
+/**
+ * The pure part (test/pause.test.ts): does the browser's frame at timestamp `t` run the game's frames? One answer per
+ * frame (every callback of a frame gets the same timestamp, so a game with two loops never runs one of them only).
+ * Credit adds up by the rate; a frame runs when there is a whole one.
+ */
+export function frameGate() {
+  let rate = 1;
+  let credit = 0;
+  let lastT = NaN;
+  let last = true;
+  return {
+    get rate() {
+      return rate;
+    },
+    setRate(r: number) {
+      rate = Number.isFinite(r) && r > 0 ? Math.min(1, r) : 1;
+      // The next frame runs (its own share makes the whole one): a new speed shows at once, then every 1 / r.
+      credit = 1 - rate;
+      lastT = NaN;
+    },
+    runs(t: number): boolean {
+      if (rate >= 1) return true;
+      if (t === lastT) return last;
+      lastT = t;
+      credit += rate;
+      last = credit >= 1 - 1e-9;
+      if (last) credit -= 1;
+      return last;
+    },
+  };
 }
 
 export function installTime(opts: TimeOptions): TimeControlImpl {
@@ -80,6 +120,8 @@ export function installTime(opts: TimeOptions): TimeControlImpl {
   let readyCalled = false;
   // Game callbacks waiting for a frame: our id -> { cb, real id (when scheduled) }.
   const pending = new Map<number, { cb: FrameCb; real: number | null }>();
+  // Speed (setRate): which browser frames run the game's.
+  const gate = frameGate();
 
   let resolveFirst!: () => void;
   const first = new Promise<void>((r) => (resolveFirst = r));
@@ -100,6 +142,12 @@ export function installTime(opts: TimeOptions): TimeControlImpl {
       if (frozen) {
         // Frozen between scheduling and the frame: keep it for thaw().
         e.real = null;
+        return;
+      }
+      // Slowed: not this frame — it waits for the next one (still pending, so a freeze or a cancel finds it).
+      if (!gate.runs(t)) {
+        e.real = null;
+        schedule(id);
         return;
       }
       pending.delete(id);
@@ -202,6 +250,12 @@ export function installTime(opts: TimeOptions): TimeControlImpl {
     ready() {
       readyCalled = true;
       markFirst();
+    },
+    setRate(r) {
+      gate.setRate(r);
+    },
+    get rate() {
+      return gate.rate;
     },
   };
 }

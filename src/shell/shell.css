@@ -214,7 +214,66 @@ img.thumb:not([src]) { content: url("data:image/gif;base64,R0lGODlhAQABAIAAAAAAA
 /* Playing: everything but the top bar steps away. */
 .shell[data-playing="on"]:not([data-layout="phone"]) { grid-template-columns: 0 minmax(0, 1fr); }
 .shell[data-playing="on"][data-panel="right"]:not([data-layout="phone"]) { grid-template-columns: minmax(0, 1fr) 0; }
-.shell[data-playing="on"] .side, .shell[data-playing="on"] .dock, .shell[data-playing="on"] .inspector, .shell[data-playing="on"] .assets-page { display: none; }
+.shell[data-playing="on"]:not([data-moment="on"]) .side, .shell[data-playing="on"]:not([data-moment="on"]) .dock, .shell[data-playing="on"]:not([data-moment="on"]) .inspector, .shell[data-playing="on"] .assets-page { display: none; }
+/* The paused moment (pause-edit, 2026-10-28; moment.ts): Edit's tools on the frame the game stopped at. The list FLOATS
+   over the game's top left (decision 4) — the game keeps its size (data-playing stays on: the column stays 0), so the
+   frame it stopped on does not move (a resize would make the game draw again). Opaque, not glass: the game's own HUD
+   under it showed through the mock's first try. The card and the field at the foot are where they are in Edit. No
+   timeline, no Library (the list is the moment's: what the game made too). */
+/* Measured from its own place in the editor's grid (the area under the top bar; the shell is the grid's containing
+   block), not the window's: the web demo has its line above the editor. */
+.shell[data-moment="on"]:not([data-layout="phone"]) { position: relative; }
+.shell[data-moment="on"]:not([data-layout="phone"]) .side { position: absolute; z-index: 4; top: 12px; left: 20px; width: min(var(--studio-panel-w), 40vw);
+  max-height: calc(100dvh - var(--bar) - 112px); border-radius: var(--R); background: var(--col); box-shadow: var(--plate-shadow), var(--shadow); padding-top: 8px;
+  animation: studio-rise var(--dur-in) var(--ease); }
+.shell[data-moment="on"]:not([data-layout="phone"])[data-panel="right"] .side { left: auto; right: 20px; }
+/* Under the windows over the game (fix 1 ✕7 of walk 1, 2026-10-28): the floating list sat OVER the keyboard shortcuts
+   (?), ⌘K, Save's checks — they live in the game's plate (.stage), which isolates its own stack, so all of it stayed
+   under the list's z-index 4. Over a paused moment the plate does not isolate: its windows (scrim 4 after the list in
+   the page, the dock 5, the keys 6–7, Save's checks 30) come over the list, the game's frame (no z-index) stays under
+   it. The strip's line in the game keeps clear of the list itself (bridge/handles.ts: inset.left). */
+.shell[data-moment="on"]:not([data-layout="phone"]) .stage { isolation: auto; }
+.shell[data-moment="on"]:not([data-layout="phone"])[data-moment-fold="on"] .side { display: none; }
+/* ‹ on the floating list folds it; › at the game's top left brings it back. Only in a paused moment, on a PC. */
+.side > .moment-fold, .stage > .moment-unfold { display: none; }
+.shell[data-moment="on"]:not([data-layout="phone"]) .side > .moment-fold { display: inline-flex; position: absolute; top: 8px; right: 6px; z-index: 1; }
+.shell[data-moment="on"]:not([data-layout="phone"])[data-moment-fold="on"] .stage > .moment-unfold { display: inline-flex; position: absolute; top: 12px; left: 12px; z-index: 4;
+  background: var(--col); box-shadow: var(--shadow); border-radius: 999px; }
+.shell[data-moment="on"] .nav-row[data-tool="library"], .shell[data-moment="on"] .timeline-panel, .shell[data-moment="on"] .layer-switch { display: none; }
+/* The moment's line over the field on a phone (fix 1 ✕5; main.ts momentLine): the card's ✦ chip, under the words. */
+.moment-line.has-appear { flex-direction: column; gap: 4px; }
+.moment-line .moment-appear { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; min-height: 28px; padding: 2px 10px; border: 0; border-radius: 8px;
+  background: var(--ai-soft); color: var(--ai-text); font: inherit; font-weight: 600; white-space: nowrap; cursor: pointer; }
+.moment-line .moment-appear .icon { width: 12px; height: 12px; color: var(--ai-text); }
+.moment-line .moment-appear .label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+/* ↻ on a row the game moves (fix 1 ✕11): small and grey right after the name, the strip's Turn sign. */
+.objects .moves-mark { flex: none; display: inline-grid; place-items: center; width: 14px; height: 14px; color: var(--text-3); }
+.objects .moves-mark .icon { width: 12px; height: 12px; }
+/* "Made by the game · 6": a heading row in the list, like the list's own title (not pressable). */
+.objects .made-head { display: flex; align-items: center; gap: 8px; padding: 12px 8px 4px; list-style: none; cursor: default; }
+.objects .made-head .count { margin-left: auto; }
+/* The card's "Just for this moment" (decision 5): one line, then ✦ appear here (the AI's) and Revert (a text button). */
+.moment-note { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; padding: 8px 0 2px; min-width: 0; max-width: 100%; white-space: normal; }
+.moment-note .moment-why { margin: 0; color: var(--text-2); line-height: 1.45; overflow-wrap: anywhere; }
+.moment-note .moment-why strong { color: var(--text); font-weight: 600; }
+/* ✦ Have Claude make it appear here (it only puts a draft in the field: studio-uniforms' ✦). One line (fix 1 ✕14 of
+   walk 1, 2026-10-28): the card's other ✦ chip's size (.to-rule: small type, the AI's soft plate) — the outlined pill
+   at the body's size wrapped "…appear / here" (and the Japanese words' last three letters) onto a second line at the card's width. The words
+   stay whole when they fit; cut with "…" only if a longer AI name would not (the tip has them all). */
+.moment-note .moment-appear { display: inline-flex; align-items: center; gap: 4px; min-height: 22px; max-width: 100%; padding: 2px 7px; border-radius: 6px;
+  background: var(--ai-soft); color: var(--ai-text); font-size: var(--fs-s); font-weight: 600; white-space: nowrap; line-height: 1.35; text-decoration: none; }
+.moment-note .moment-appear:hover:not(:disabled) { background: var(--ai-soft); filter: brightness(1.15); text-decoration: none; }
+.moment-note .moment-appear .ai-spark { display: inline-grid; flex: none; }
+.moment-note .moment-appear .icon { width: 12px; height: 12px; color: var(--ai-text); }
+.moment-note .moment-appear .label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.moment-note .moment-revert { color: var(--text-2); }
+/* "▴ Earlier · N" over the line (decision 7): the talk of this pause, opened on a press. */
+.moment-earlier { display: grid; gap: 4px; }
+.moment-earlier .moment-earlier-btn { justify-self: start; color: var(--text-2); font-size: var(--fs-s); }
+.moment-earlier .moment-turns { margin: 0; padding: 0 8px; list-style: none; display: grid; gap: 4px; max-height: 30vh; overflow: auto; }
+.moment-earlier .moment-turn { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px; font-size: var(--fs-s); }
+.moment-earlier .moment-turn .who { color: var(--text-3); }
+.moment-earlier .moment-turn.ai .who { color: var(--ai); }
 .stage { grid-area: stage; position: relative; min-width: 0; min-height: 0; overflow: hidden; background: #000; }
 /* PC: the game is one plate on the desk (rule 1), 8 in from the window's edges, corners of a part.
    The list side keeps no gap: the column is the desk itself, its rows end where the plate begins. */
@@ -236,6 +295,50 @@ img.thumb:not([src]) { content: url("data:image/gif;base64,R0lGODlhAQABAIAAAAAAA
 .brand .sep { color: var(--text-3); }
 .brand .title { font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .brand .here { color: var(--text-2); }
+/* While playing (pause-edit; moment.ts): "● Playing 0:41.8 · 1× ⌄", "❚❚ Paused 0:42.3 ▶| ¼× ⌄". The words replace "Playing"
+   in the guide (.here steps away); the time in tabular figures on a quiet plate, so it does not jitter as it runs. */
+.shell[data-playing="on"] .brand .here { display: none; }
+/* The guide never shrinks (fix 1 ✕4 of walk 1, 2026-10-28): the game's name (.brand .title, ellipsis) gives way first.
+   It was min-width 0 and a phone's bar cut it: "0:01." and Speed under ✦, not pressable. */
+.play-guide { display: inline-flex; align-items: center; gap: 6px; flex: none; }
+.play-where { display: inline-flex; align-items: center; gap: 6px; color: var(--text-2); white-space: nowrap; }
+.play-where .play-mark { display: inline-grid; place-items: center; width: 12px; }
+.play-where .play-mark .icon { width: 12px; height: 12px; color: var(--text); }
+/* Small filled marks (❚❚, ▶|) drawn without their outline: at 12–14 px the outline closed the gap between the bars and
+   ❚❚ read as ■ (Edit's own mark). */
+.play-where .play-mark .icon, .play-guide .play-step .icon, .top-actions > button.play-pause .icon { stroke-width: 0; }
+.play-where .play-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--you); box-shadow: 0 0 0 3px color-mix(in srgb, var(--you) 22%, transparent); }
+.play-guide[data-state="paused"] .play-where { color: var(--text); font-weight: 600; }
+.play-where .play-time { font-variant-numeric: tabular-nums; font-size: var(--fs-s); padding: 2px 6px; border-radius: 6px; background: var(--raise); color: var(--text); font-weight: 500; }
+.play-guide button { min-height: 24px; border-radius: 999px; padding: 0 8px; background: var(--raise); color: var(--text-2); font-size: var(--fs-s); }
+.play-guide button:hover:not(:disabled) { color: var(--text); }
+.play-guide .play-step { width: 28px; padding: 0; color: var(--text); }
+.play-guide .play-step .icon { width: 15px; height: 15px; }
+.play-guide .play-speed { gap: 2px; padding: 0 6px 0 8px; }
+.play-guide .play-speed .icon { width: 12px; height: 12px; }
+.play-guide .play-speed:not([data-rate="1"]) { color: var(--you-text); background: var(--you-soft); }
+/* ❚❚ Pause to edit P / ▶ Resume P: left of Edit, the bar's raised capsule (Edit is the white one). */
+.top-actions > button.play-pause { background: var(--raise); color: var(--text); padding: 0 10px 0 9px; }
+.top-actions > button.play-pause kbd { margin-left: 2px; }
+.top-actions > button.play-pause .icon { width: 13px; height: 13px; }
+.top-actions > button.play-pause[data-state="paused"] { background: var(--solid); color: var(--solid-fg); }
+.top-actions > button.play-pause[data-state="paused"] kbd { color: color-mix(in srgb, var(--solid-fg) 45%, transparent); }
+/* Edit while paused (fix 1 ✕9): one step quieter than ▶ Resume beside it — the paused moment is already an editor, and
+   Edit leaves it for the scene before Play (its tip says so). It was the same black button as Resume. */
+.shell[data-paused="on"] .top-actions .play-split > :is(.play, .play-more) { background: var(--raise); color: var(--text); }
+.shell[data-paused="on"] .top-actions .play-split > :is(.play, .play-more):hover:not(:disabled) { background: var(--raise-2); }
+.shell[data-paused="on"] .top-actions .play-split > .play-more { color: var(--text-2); }
+/* The first ▶ Play's line under it (02-find.md), and "▶ Resumed from 0:42.3" at the game's foot: small glass pills. */
+.play-tip, .play-flash { position: absolute; z-index: 6; display: flex; align-items: center; gap: 8px; padding: 6px 12px; border-radius: 999px;
+  background: var(--glass); -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur); box-shadow: var(--shadow); font-size: var(--fs-s);
+  white-space: nowrap; animation: studio-rise var(--dur-in) var(--ease); pointer-events: none; }
+.play-tip { top: 8px; right: 8px; }
+.play-tip::before { content: ""; position: absolute; top: -5px; right: 34px; width: 10px; height: 10px; background: inherit; transform: rotate(45deg); }
+/* "Next frame ." under ▶| at the first pause (fix 1 ✕8): placed by main.ts placePlayTip, its arrow at the left. */
+.play-tip.step-tip { right: auto; }
+.play-tip.step-tip::before { right: auto; left: 14px; }
+.play-flash { left: 50%; bottom: 24px; transform: translateX(-50%); }
+.play-flash .icon { width: 12px; height: 12px; }
 .brand .adapter { color: var(--text-3); font-size: var(--fs-s); }
 .brand .lang { font-size: var(--fs-s); color: var(--text-2); }
 .top-right { flex: none; display: flex; align-items: center; gap: 12px; }
@@ -470,6 +573,9 @@ span.foot-row { display: flex; align-items: center; min-height: var(--h); }
 .card-body:not(:has(.fields, .f-row, .fine)) { background: none; padding: 0 8px 4px; margin-top: 4px; }
 .card-body:empty { display: none; }
 .fine { display: grid; gap: 8px; }
+/* A grid item's minimum is its content's: without this a long line (the paused moment's note, a long ✦) widened the
+   column past the card. */
+.fine > * { min-width: 0; }
 .fine > summary { list-style: none; }
 .fine > summary::-webkit-details-marker { display: none; }
 .shell:not([data-layout="phone"]) .fine > summary { display: none; }
@@ -1008,13 +1114,25 @@ button.shelf-file.to:hover { background: var(--raise-2); }
    tool button). Undo / Redo step away while playing (disabled then anyway); ✦ takes their place, Edit does not move.
    A pulse while the AI looks / fixes, a glow while a fix waits for Reload (the game's corner mark did both). */
 .shell[data-layout="phone"][data-playing="on"] .top .actions { display: none; }
+/* A phone while playing (pause-edit 02-find.md): "Neon Run 0:41 · ¼× · ❚❚ · ■ Edit"; paused, the name steps away for
+   "❚❚ 0:42.3 · ▶| · ¼× · ▶ · ■ Edit" (Undo / Redo too, as while playing: ⌘K and the card keep them). The guide is the
+   mark and the time (no words: the bar has no room). Never under the buttons: the brand clips. */
+.shell[data-layout="phone"] .play-where .play-word { display: none; }
+.shell[data-layout="phone"] .play-guide { gap: 4px; }
+.shell[data-layout="phone"][data-playing="on"] .brand { overflow: hidden; }
+.shell[data-layout="phone"][data-paused="on"] .brand .title, .shell[data-layout="phone"][data-paused="on"] .brand > .mark { display: none; }
 .top-actions > button.play-ask { background: none; color: var(--ai); }
 .top-actions > button.play-ask .icon { width: 18px; height: 18px; filter: drop-shadow(0 0 3px color-mix(in srgb, var(--ai) 45%, transparent)); }
 .top-actions > button.play-ask[data-state="busy"] .icon { animation: studio-pulse 1.2s var(--ease) infinite; }
 .top-actions > button.play-ask[data-state="ready"] .icon { filter: drop-shadow(0 0 2px var(--ai)) drop-shadow(0 0 6px color-mix(in srgb, var(--ai) 80%, transparent)); }
 /* Pause (2026-10-22): ❚❚ left of ✦, no plate either; the text colour, not the AI's (pausing is the person's, not the AI's). */
-.top-actions > button.play-pause { background: none; color: var(--text); }
-.top-actions > button.play-pause .icon { width: 16px; height: 16px; }
+.shell[data-layout="phone"] .top-actions > button.play-pause { background: none; color: var(--text); padding: 0; width: 44px; }
+.shell[data-layout="phone"] .top-actions > button.play-pause .icon { width: 16px; height: 16px; }
+/* Paused on a phone: "▶ Resume" in words (fix 1 ✕15), Edit's size and the solid plate (the bar's first button then;
+   Edit beside it is quieter). The name is away while paused, so there is room. */
+.shell[data-layout="phone"] .top-actions > button.play-pause[data-state="paused"] { width: auto; min-height: 36px; padding: 0 14px 0 12px; gap: 6px;
+  background: var(--solid); color: var(--solid-fg); font-size: var(--fs-s); font-weight: 600; }
+.shell[data-layout="phone"] .top-actions > button.play-pause[data-state="paused"] .icon { width: 12px; height: 12px; }
 /* Play is drawn 36 high (a 44 capsule filled the 48 bar edge to edge) and pressed 44 high (::after). */
 .shell[data-layout="phone"] .top-actions .play { min-height: 36px; padding: 0 14px 0 12px; font-size: var(--fs-s); }
 .shell[data-layout="phone"] .top-actions > button.top-save { min-height: 36px; padding: 0 14px; font-size: var(--fs-s); }

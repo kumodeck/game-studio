@@ -80,5 +80,7 @@ window.DEMO_LIST_TEXT = {
     // Translations of each starter.json "blurb" (update when starters/<id>/starter.json changes).
     'lantern-cove': '夕暮れの静かな港。澄んだ水、灯台、本当に浮かぶ舟。水をタップすると舟が進みます。',
     'firefly-ruins': '夕日の池のほとりに古い石の門。ホタルが出てきて、タップすると風が吹きます。',
+    // The paused moment's sample (examples/three-neon-boss, added with --also; pause-edit fix 1).
+    'three-neon-boss': 'ネオンの道を走るゲーム。数秒でボスが来ます。来たら ❚❚ で止めて、その瞬間だけ動かせます。',
   },
 };

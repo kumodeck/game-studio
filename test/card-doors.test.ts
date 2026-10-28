@@ -34,6 +34,10 @@ test('the ask box gets words only from ✦ buttons (focusAsk callers)', () => {
     // studio-canvas-ui stage 2 (2026-10-24): the line "This UI can't be selected yet · ✦ Ask Claude to make this UI
     // editable" puts the draft "Make this UI editable" and the chip of the place pressed in the box (the person sends it).
     [/^draft: host\.offline \? undefined : \(text\) => focusAsk\(text\),$/, 'ui-missing.ts: ✦ Ask … to make this UI editable (a draft)'],
+    // pause-edit (2026-10-28): words typed in the ✦ field over the game when P paused it move to the field at the foot
+    // (the person was about to ask; nothing sent), and the card's ✦ Have Claude make it appear here (a draft).
+    [/^if \(m\.draft && !host\.offline\) focusAsk\(m\.draft\);$/, 'a pause: the ✦ field\'s words over the game go on in the field (a draft)'],
+    [/^focusAsk\(t\('moment\.appearDraft', \{ name \}\)\);$/, 'the paused moment\'s ✦ Have Claude make it appear here (a draft)'],
   ];
   for (const l of lines) assert.ok(allowed.some(([re]) => re.test(l)), `a new caller writes in the ask box: ${l}`);
 });
@@ -47,7 +51,9 @@ test('nothing is sent at once except what the person sends (askAi callers)', () 
     // studio-canvas-ui stage 2: the same send when the box's words came from ✦ Ask … to make this UI editable (`intent: 'ui-code'`).
     [/^return askAi\(\{ kind: 'ask', text, layer: 'ui', intent: 'ui-code'/, 'the ask box\'s own send (with ✦ make this UI editable\'s intent)'],
     [/^return askAi\(\{ kind: 'answer'/, 'the answer the person typed to the AI\'s question'],
-    [/^void askAi\(\{ kind: 'play'/, 'the pause ask box\'s own send'],
+    [/^void askAi\(\{ kind: 'play'/, 'the ✦ field over the game: its own send (ask while playing)'],
+    // pause-edit (2026-10-28): the paused moment's field at the foot — its own send, the `play` request of the pause.
+    [/^const ok = await askAi\(\{ kind: 'play', text, paused: true/, 'the paused moment\'s field: its own send'],
     [/^ask: \(r\) => askAi\(r\),$/, 'the Library tool\'s ctx.ask (its own buttons: studio-library, not this step)'],
     // The web demo (host.offline) has no ask box to draft in: these stay its way, and askAi tells it cannot send.
     [/^askName: \(keys\) => askAi\(\{ kind: 'name'/, 'askName: only when nameDraft is absent (host.offline)'],

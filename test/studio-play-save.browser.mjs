@@ -6,9 +6,10 @@
 //          · 2 more · In the game" with ▶ Play (studio-motion-next, 2026-10-24: the names, not "In the game (5)").
 //   noai   (nobody watching) the same Save: "Saved. Claude puts it in the code when it opens" — never "putting it in".
 //   play   a move not saved → ▶ Play: the window is the title and three buttons, no line about the AI → Try without
-//          saving → the corner has ONE button, "❚❚ Pause and talk P" (no ✦ mark) → P: "Paused · Claude sees this
-//          moment", the field "Ask Claude about this moment…", Move and "▶ Resume P" → a message gets the stand-in's
-//          reply → P resumes → ? lists ` as "Ask Claude without pausing".
+//          saving → nothing in the corner (no ✦ mark), "❚❚ Pause to edit P" in the top bar (pause-edit, 2026-10-28) → P:
+//          the paused moment ("❚❚ Paused" in the guide, "▶ Resume P"), the field at the foot "Ask Claude about this
+//          moment…" → a message gets the stand-in's reply on the line → ▶ Resume → ? lists ` as "Ask Claude without
+//          pausing".
 //
 //   node test/studio-play-save.browser.mjs [--only save,noai,play] [--lang en|ja] [--shots <dir>] [--prefix after]
 //                                          [--ui <studio-ui dir>] [--before] [--theme dark|light]
@@ -50,14 +51,13 @@ const EDIT_READY = `document.querySelectorAll('.obj').length > 0 && !!${DBG}`;
 const PLAYING = `document.querySelector('.shell')?.dataset.playing === 'on' && !${DBG}`;
 const OV = `${FR}.contentDocument.querySelector('game-studio-play')`;
 const LINE = `(() => { const l = document.querySelector('.ai-line'); return l && !l.hidden ? l.innerText.replace(/\\s+/g, ' ').trim() : ''; })()`;
-// The overlay over the game while playing: the corner, the paused panel.
+// The overlay over the game while playing (its corner) and the editor's paused moment (pause-edit, 2026-10-28).
 const PLAY_UI = `JSON.stringify((() => { const h = ${OV}; if (!h) return null; const r = h.shadowRoot; const q = (s) => r.querySelector(s);
-  const vis = (e) => !!e && !e.hidden && e.getClientRects().length > 0;
-  const chat = q('[data-part=pause-chat]');
-  return { pause: vis(q('[data-part=pause-button]')) ? q('[data-part=pause-button]').textContent : null, mark: vis(q('.mark')),
-    chat: vis(chat), title: chat ? chat.querySelector('.title b')?.textContent : '', sees: chat ? chat.querySelector('.title .sees')?.textContent : '',
-    placeholder: chat ? chat.querySelector('form input')?.placeholder : '', resume: q('[data-action=pause-resume]')?.textContent || '',
-    move: q('[data-action=pause-move]')?.textContent || '', replies: [...r.querySelectorAll('[data-part=pause-reply]')].map((e) => e.textContent) }; })())`;
+  const vis = (e) => !!e && !e.hidden && e.getClientRects().length > 0; const shell = document.querySelector('.shell');
+  const pb = document.querySelector('[data-part=play-pause]');
+  return { corner: vis(q('[data-part=pause-button]')), mark: vis(q('.mark')), pause: pb && !pb.hidden ? pb.textContent : null,
+    moment: shell.dataset.moment === 'on', guide: document.querySelector('[data-part=play-guide]')?.textContent || '',
+    placeholder: document.querySelector('.ask-input')?.placeholder || '' }; })())`;
 
 function gameFolder() {
   const root = mkdtempSync(join(tmpdir(), 'play-save-'));
@@ -184,27 +184,26 @@ try {
       await sleep(1500);
       let u = await g.j(PLAY_UI);
       await g.shot('play-2-corner');
-      check(!!u && u.mark === false, 'playing: no ✦ mark in the corner');
-      check(!!u?.pause && (ja ? /止めて話す\s*P/ : /Pause and talk\s*P/).test(u.pause), `playing: one button "❚❚ Pause and talk P" ("${u?.pause}")`);
+      check(!!u && u.mark === false && u.corner === false, 'playing: nothing in the corner (no ✦ mark, no ❚❚ out of full screen)');
+      check(!!u?.pause && (ja ? /止めて編集\s*P/ : /Pause to edit\s*P/).test(u.pause), `playing: "❚❚ Pause to edit P" in the top bar ("${u?.pause}")`);
       await g.key('p', 'KeyP', 80, 'p');
-      await g.until(`JSON.parse(${PLAY_UI})?.chat === true`, 8000);
+      await g.until(`JSON.parse(${PLAY_UI})?.moment === true`, 8000);
       u = await g.j(PLAY_UI);
       await g.shot('play-3-paused');
-      check(u.title === (ja ? '止めています' : 'Paused'), `paused: "${u.title}"`);
-      check(u.sees.startsWith(ja ? 'Claude はこの瞬間を見ています' : 'Claude sees this moment'), `paused: "${u.sees}"`);
+      check((ja ? /止めています/ : /Paused/).test(u.guide), `paused: the guide says so ("${u.guide}")`);
       check(u.placeholder === (ja ? 'この瞬間について Claude に頼む…' : 'Ask Claude about this moment…'), `the field: "${u.placeholder}"`);
-      check((ja ? /続ける\s*P/ : /Resume\s*P/).test(u.resume) && !!u.move, `Move and ▶ Resume P ("${u.move}" / "${u.resume}")`);
-      await g.page.eval(`(${OV}.shadowRoot.querySelector('[data-part=pause-chat] form input').focus(), true)`);
+      check((ja ? /続ける\s*P/ : /Resume\s*P/).test(u.pause || ''), `▶ Resume P in the top bar ("${u.pause}")`);
+      await g.page.eval(`(document.querySelector('.ask-input').focus(), true)`);
       await g.page.send('Input.insertText', { text: ja ? 'ゲートが道に近すぎる？' : 'Is the gate too close to the road?' });
       await g.key('Enter', 'Enter', 13, '\r');
-      const replied = await g.until(`JSON.parse(${PLAY_UI})?.replies.length > 0`, 20000);
+      const replied = await g.until(`/止めた瞬間を見ました|I see the moment/.test(${LINE})`, 20000);
       await g.shot('play-4-reply');
-      check(replied, 'paused: the stand-in answers in the chat');
+      check(replied, 'paused: the stand-in answers on the line over the field');
       await g.page.eval(`(document.activeElement?.blur?.(), ${FR}.contentDocument.activeElement?.blur?.(), true)`);
-      await g.press('[data-action=pause-resume]');
-      if (!(await g.until(`JSON.parse(${PLAY_UI})?.chat === false`, 4000))) await g.key('p', 'KeyP', 80, 'p');
+      await g.press('[data-part=play-pause]');
+      await g.until(`JSON.parse(${PLAY_UI})?.moment === false`, 6000);
       u = await g.j(PLAY_UI);
-      check(u.chat === false && !!u.pause, 'resumed: the corner button is back');
+      check(u.moment === false && (ja ? /止めて編集/ : /Pause to edit/).test(u.pause || ''), 'resumed: ❚❚ Pause to edit again');
       // ? while playing: the sheet lists ` (asking without pausing).
       // The sheet opens with ? from the editor page (as studio-camera-p): a press on the top bar's empty middle first.
       await g.page.click(640, 22);

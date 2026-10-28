@@ -5,7 +5,8 @@
 //   node test/studio-play-ask.browser.mjs [--only pc|others|phone] [--shots <dir>] [--lang ja]
 //
 // PC 1280×800 (mouse, keys):
-// 1. ▶ Play shows the corner's one button, "❚❚ Pause and talk P" (plan step 6; the ✦ mark is the ` key only); the game
+// 1. ▶ Play: nothing in the corner out of full screen (pause-edit, 2026-10-28: "❚❚ Pause to edit P" is in the editor's top
+//    bar, left of Edit; the ✦ mark is the ` key only — plan step 6); the game
 //    runs (no edit flag).
 // 2. ` in the game opens the field over the game, focused; the game does not get the key (or the letters typed).
 // 3. Enter keeps ONE `play` request: the words, a picture file (.studio/play/<id>.jpg, not black), the player's
@@ -157,9 +158,12 @@ async function pc() {
   const ag = agent(root);
   try {
     let o = await j(page, IN.ov);
-    // Plan step 6: one button in the corner, with its words; the ✦ mark is not there (` still opens the field, below).
+    // Pause-edit (2026-10-28): the corner is empty out of full screen — ❚❚ Pause to edit P is in the top bar, left of
+    // Edit; the ✦ mark is not there either (` still opens the field, below).
     assert.equal(o.mark, false, 'no ✦ mark in the corner');
-    assert.match(o.pause?.text || '', LANG === 'ja' ? /止めて話す.*P/ : /Pause and talk.*P/, `"❚❚ Pause and talk P" in the corner: ${o.pause?.text}`);
+    assert.equal(o.pause, null, 'no ❚❚ in the corner out of full screen');
+    const tb = await page.eval(`(() => { const b = document.querySelector('[data-part=play-pause]'); return b && !b.hidden ? b.textContent : ''; })()`);
+    assert.match(tb, LANG === 'ja' ? /止めて編集\s*P/ : /Pause to edit\s*P/, `"❚❚ Pause to edit P" in the top bar: ${tb}`);
     assert.equal(o.bar, false);
     assert.equal(o.open, true, 'the overlay is in the top layer');
     assert.equal(o.spark, true, 'the field carries ✦');

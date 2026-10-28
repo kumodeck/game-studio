@@ -53,6 +53,12 @@
 // objects (onChange) and sends --do ui.code: the check passed, listed in the editor, each object where it was drawn with
 // its own size and colour (the same look), the reply in Japanese (SKILL.md: reply in the person's language — the stage 2
 // run answered a Japanese ask in English), no steps handed back.
+// `--steps made` (pause-edit, 2026-10-28 — "pause in the middle and give instructions, by hand or to the AI"): the game is
+// examples/three-neon-boss (the game makes a boss a few seconds in, in plain code); the person (this test, in the editor)
+// plays at ¼×, pauses when the boss comes, moves the boss to the left lane in the paused moment, presses ✦ "Have
+// Claude make it appear here" and sends the draft (a `play` request with `made` and `here`), then says in the AI's
+// window that they asked from the editor → the AI changes where the game makes the boss in the code (to the left), marks
+// the request done with one line, hands no steps back; Play from the start (a new page): the boss comes in on the left.
 // The game is Pillar Plaza (`pillars/`: a blue pillar that already sways), copied to a temporary folder. The editor
 // runs with its own HOME (so no KUMODeck sign-in on this computer is read) and is open in a headless Chrome the whole
 // time, as the person's editor would be; the AI's `--do` reaches it there. The skill is the package's own
@@ -91,11 +97,14 @@ const TO_COORDS = take('--steps') === 'to-coords';
 const WRITEBACK = take('--steps') === 'writeback';
 const CANVAS2 = take('--steps') === 'canvas-ui-2';
 const CANVAS = take('--steps') === 'canvas-ui';
+const MADE = take('--steps') === 'made';
 // Stage 3: a Phaser or a Pixi game's UI kept as objects.
 const ENGINE = take('--steps') === 'canvas-ui-phaser' ? 'phaser' : take('--steps') === 'canvas-ui-pixi' ? 'pixi' : null;
 // The game's main script (the canvas-ui sets' game is examples/three-canvas-hud: game.js; stage 3's Phaser / Pixi game.js).
-const MAIN = CANVAS || CANVAS2 || ENGINE ? 'game.js' : 'main.js';
-const STEPS = ENGINE ? [
+const MAIN = CANVAS || CANVAS2 || ENGINE || MADE ? 'game.js' : 'main.js';
+const STEPS = MADE ? [
+  { say: 'エディタから頼んだよ', first: true, kind: 'made' },
+] : ENGINE ? [
   { say: 'このUIを編集できるようにして', first: true, kind: 'canvas-engine' },
 ] : CANVAS2 ? [
   { say: 'エディタから頼んだよ', first: true, kind: 'canvas-ask' },
@@ -139,7 +148,7 @@ const home = join(base, 'home');
 const out = take('--out') ? resolve(take('--out')) : join(base, 'report');
 mkdirSync(home, { recursive: true });
 mkdirSync(out, { recursive: true });
-cpSync(join(PKG, ENGINE ? `examples/${ENGINE === 'phaser' ? 'phaser-runner' : 'pixi-bubbles'}` : CANVAS || CANVAS2 ? 'examples/three-canvas-hud' : 'test/ai-feel/pillars'), game, { recursive: true });
+cpSync(join(PKG, MADE ? 'examples/three-neon-boss' : ENGINE ? `examples/${ENGINE === 'phaser' ? 'phaser-runner' : 'pixi-bubbles'}` : CANVAS || CANVAS2 ? 'examples/three-canvas-hud' : 'test/ai-feel/pillars'), game, { recursive: true });
 rmSync(join(game, 'README.md'), { force: true });
 mkdirSync(join(game, '.claude/skills'), { recursive: true });
 symlinkSync(join(PKG, 'skills/arrange'), join(game, '.claude/skills/arrange'));
@@ -351,6 +360,36 @@ try {
       check(!!asked && asked.intent === 'ui-code' && Array.isArray(asked.pressed) && (asked.found ?? []).length >= 4 && /^\.studio\/play\//.test(asked.shot ?? ''),
         `the editor sent the ask: intent ui-code, the place, the frames, the picture (${asked ? JSON.stringify({ intent: asked.intent, pressed: asked.pressed, found: asked.found?.length, shot: asked.shot }) : 'none'})`);
     }
+    // The paused moment's person (pause-edit): Play at ¼×, pause when the boss comes, the boss to the left lane, ✦, Send.
+    if (step.kind === 'made') {
+      await page.eval(`document.querySelector('button.play').click()`);
+      await page.waitFor(`document.querySelector('.shell').dataset.playing === 'on' && !!document.querySelector('[data-part=play-pause]:not([hidden])')`, 30000);
+      await sleep(800);
+      await page.eval(`document.querySelector('[data-part=play-speed]').click()`);
+      await sleep(300);
+      await page.eval(`document.querySelector('[data-action="ctx-speed-0.25"]').click()`);
+      await waitFor(async () => (await page.eval(`JSON.stringify(${GW}.__gameStudio._move.list().map((i) => i.key))`)).includes('"boss"'), 90000);
+      await page.eval(`document.querySelector('[data-part=play-pause]').click()`);
+      await waitFor(() => page.eval(`document.querySelector('.shell').dataset.moment === 'on'`), 10000);
+      await sleep(800);
+      const at = await page.eval(`JSON.stringify(${GW}.__gameStudio._move.list().find((i) => i.key === 'boss')?.pose)`);
+      await page.eval(`studioShell.actions.select('boss')`);
+      await sleep(700);
+      await page.eval(`(() => { const i = document.querySelector('[data-part=card] input[aria-label=x]'); i.value = '-3.4'; i.dispatchEvent(new Event('change')); return 1; })()`);
+      await sleep(700);
+      await page.eval(`document.querySelector('[data-action=moment-appear]')?.click()`);
+      await sleep(600);
+      const box = await page.eval(`(() => { const a = document.querySelector('[data-part=ask]'); return a.querySelector('.ask-chip:not([hidden])')?.textContent + ' | ' + a.querySelector('.ask-input').value; })()`);
+      console.log(`  (the person: ¼×, paused at the boss ${at}, the boss to x -3.4, ✦ — the box: ${box}; sends it)`);
+      writeFileSync(join(out, `step${i + 1}-before.png`), await page.screenshot());
+      await page.eval(`document.querySelector('[data-part=ask] .ask-send')?.click()`);
+      await sleep(1500);
+      const dir = join(game, '.studio/requests');
+      const name = existsSync(dir) ? readdirSync(dir).filter((n) => n.includes('-play-')).sort().pop() : null;
+      asked = name ? JSON.parse(readFileSync(join(dir, name), 'utf8')) : null;
+      check(!!asked && asked.paused === true && asked.made === true && asked.here?.key === 'boss' && Math.abs((asked.here?.to?.p?.[0] ?? 0) + 3.4) < 0.01 && /^\.studio\/play\//.test(asked.shot ?? ''),
+        `the editor sent the ask: paused, made, here = the boss at x -3.4, the picture (${asked ? JSON.stringify({ made: asked.made, here: asked.here, shot: asked.shot }) : 'none'})`);
+    }
     let boxes0 = null;
     if (PERSON[step.kind]) {
       console.log(`  (the person: ${PERSON[step.kind]().split('\n')[0].replace(/ - in the editor.*/, '')})`);
@@ -401,7 +440,8 @@ try {
     const codeNow = { main: readFileSync(join(game, MAIN), 'utf8'), index: readFileSync(join(game, 'index.html'), 'utf8') };
     check(r.code === 0 && !!reply, 'the AI answered');
     // A rule that does not come close is no change at all: it may just say so (it may still read the editor's --do list).
-    if (step.kind !== 'to-rule-none') check(dos.length > 0, 'it used --do (the editor\'s own work)');
+    // A rule that does not come close is no change at all, and "make it appear here" is a change of the game's code only.
+    if (step.kind !== 'to-rule-none' && step.kind !== 'made') check(dos.length > 0, 'it used --do (the editor\'s own work)');
     check(!HANDBACK.test(reply), 'no steps, reload or Save handed back to the person');
     check(/^https?:\/\/127\.0\.0\.1:\d+\/__studio\/\?t=/.test(reply.trim()), 'the editor\'s link is the first line');
     const codeText = Object.values(codeNow).join('\n') + readGameJs();
@@ -553,6 +593,22 @@ try {
       check(sameBoxes(boxes0 ?? {}, boxes1), `every box where the person saw it: ${JSON.stringify(Object.fromEntries(Object.keys(boxes0 ?? {}).map((k) => [k, (boxes1[k] ?? []).map((v, i) => Math.round((v - boxes0[k][i]) * 10) / 10)])))}`);
       check(!(await unsavedNow()), `nothing left to save in the editor ("${await page.eval(`document.querySelector('[data-part=save]')?.textContent ?? ''`)}")`);
       writeFileSync(join(out, 'canvas-save.png'), await page.screenshot());
+    } else if (step.kind === 'made') {
+      const spawnAt = /function spawnBoss[\s\S]*?boss\.position\.set\(\s*(-?[\d.]+)/.exec(codeNow.main);
+      console.log(`  where the game makes the boss now: ${spawnAt ? spawnAt[0].split('\n').pop().trim() : 'not found'}`);
+      check(codeNow.main !== code0.main, 'it changed the game\'s code');
+      check(!!spawnAt && Number(spawnAt[1]) < -2.5, `the boss is made on the left (x ${spawnAt?.[1]}; it was 0, the person put it at -3.4)`);
+      const st = existsSync(join(game, '.studio/status.json')) ? JSON.parse(readFileSync(join(game, '.studio/status.json'), 'utf8')) : null;
+      check(!!st && st.request === asked?.id && st.state === 'done', `the request is done (${st ? `${st.state} · ${st.note ?? ''}` : 'no status'})`);
+      // Play from the start (a new page, the new code): the boss comes in on the left.
+      await page.eval(`document.querySelector('[data-part=play-more]').click()`);
+      await sleep(400);
+      await page.eval(`document.querySelector('[data-action=ctx-play-fresh]').click()`);
+      await sleep(3000);
+      const ok = await waitFor(async () => (await page.eval(`JSON.stringify(${GW}?.__gameStudio?._move?.list()?.map((i) => i.key) ?? [])`)).includes('"boss"'), 60000);
+      const bx = ok ? JSON.parse(await page.eval(`JSON.stringify(${GW}.__gameStudio._move.list().find((i) => i.key === 'boss').pose)`)) : null;
+      check(!!bx && bx.p[0] < -2.5, `Play from the start: the boss comes in on the left (x ${bx?.p?.[0]?.toFixed?.(2)})`);
+      writeFileSync(join(out, 'made-after.png'), await page.screenshot());
     } else if (step.kind === 'code-place') {
       const l = listNow();
       console.log(`  editor's list: places ${JSON.stringify((l?.places ?? []).map((p) => ({ id: p.id, name: p.name, n: p.keys?.length, knobs: p.knobs })))}`);

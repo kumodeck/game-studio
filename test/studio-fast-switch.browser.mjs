@@ -466,22 +466,23 @@ async function cove() {
       console.log('    play parts:', await page.eval(PLAY_PARTS));
       throw e;
     });
-    check((await page.eval(`${OV}.shadowRoot.querySelector('[data-part=pause-button] .word').offsetParent !== null`)) === true, 'Play again: the corner button is back');
-    await page.eval(`${OV}.shadowRoot.querySelector('[data-part=pause-button]').click()`);
-    await page.waitFor(`!!${OV}.shadowRoot.querySelector('[data-part=pause-chat]:not([hidden])')`, 5000);
+    // Pause-edit (2026-10-28): ❚❚ Pause to edit in the top bar; the paused moment is the editor (data-moment).
+    check((await page.eval(`!!document.querySelector('[data-part=play-pause]:not([hidden])')?.offsetParent`)) === true, 'Play again: ❚❚ Pause to edit is back');
+    await page.eval(`document.querySelector('[data-part=play-pause]').click()`);
+    await page.waitFor(`document.querySelector('.shell').dataset.moment === 'on'`, 8000);
     const p0 = await j(page, IN.pp);
     await sleep(800);
     check((await j(page, IN.pp)).f - p0.f <= 1, 'Pause: held');
     await page.eval(`document.querySelector('button.play').click()`);
     await page.waitFor(IN.edit, 20000);
     check(samePoses(await j(page, IN.list), editList).length === 0, 'Edit from a pause: the layout');
-    check((await page.eval(`${OV}.style.display`)) === 'none', 'Edit from a pause: the pause panel put away with the overlay');
+    check((await page.eval(`${OV}.style.display`)) === 'none' && (await page.eval(`document.querySelector('.shell').dataset.moment`)) !== 'on', 'Edit from a pause: the paused moment ended, the overlay put away');
     await pressPlay(page);
     await page.waitFor(IN.play, 20000);
     const r0 = await j(page, IN.pp);
     await sleep(1200);
     check((await j(page, IN.pp)).f - r0.f >= 2, 'Play after a pause and Edit: the game runs');
-    check(!(await page.eval(`!!${OV}.shadowRoot.querySelector('[data-part=pause-chat]:not([hidden])')`)), 'Play after a pause and Edit: no pause panel left');
+    check((await page.eval(`document.querySelector('.shell').dataset.moment !== 'on' && document.querySelector('.shell').dataset.paused !== 'on'`)) === true, 'Play after a pause and Edit: not paused');
     await page.eval(`document.querySelector('button.play').click()`);
     await page.waitFor(IN.edit, 20000);
     check((await page.eval(`${GW}.__fastSwitchMark`)) === 'the first page', 'after three rounds: still the first page');

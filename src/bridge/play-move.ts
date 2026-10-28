@@ -1,31 +1,29 @@
-// Move things where the game stopped (pause stage 2, 2026-10-22: "stop in the middle of the game and move things").
+// The paused moment's objects (pause-edit, 2026-10-28; before: "Move things where the game stopped", pause stage 2,
+// 2026-10-22). A request of 2026-10-28: "pause in the middle of a scene and give instructions, by hand or to the AI" —
+// answered as "the paused moment becomes the editor". CONTRACT.md §3.5.1.
 //
-// The person paused ▶ Play (play-pause.ts) and pressed "Move" in the pause panel (or M). The editor's own editor
-// (editor.ts, the one Edit uses) wakes up INSIDE the paused game page: the same pick, the same orange outline, the same
-// strip under the object (move · height · turn · size), the same snap onto surfaces. Everything stays where it was at
-// the pause — the camera too: the view is the player's, not the edit camera (EditorDeps.paused).
+// The person pressed P (or ❚❚ Pause to edit) in ▶ Play. The game is held where it was (play-pause.ts) and the
+// editor's own editor (editor.ts, the one Edit uses) wakes over it: the same pick, outline, strip, card, list — the
+// editor page's whole Edit set, not a panel of its own (stage 2 had a card in a chat panel, "✥ Move / Talk" and M;
+// gone). Nothing goes back to where Play started: the view is the player's, the enemy is mid-jump, the score is the
+// score. Two ways the editor wakes:
+//   - an edit page that became Play (fast switch, play-switch.ts): its own editor, told `core/edit {moment: true}`;
+//   - a page opened for Play (Play from the start, the AI's Reload): createMomentEditor below, as stage 2 did, but its
+//     messages now go to the editor page (the list, the card, Save · N, ⌘Z all are the editor page's).
+// Either way the editor is EditorDeps.paused: the player's camera kept (no saved edit camera, no "everything in frame"),
+// the game never let run (no watch), no self-check, key releases reach the game.
 //
-// What happens after (design.md §5):
-//   - Resume: the game goes on from where things now stand (the objects themselves were moved; nothing to apply).
-//   - "Put in layout": that object's place goes to the editor as a move made in Edit would (studio:placement/moved,
-//     with `end` and `from`) — an unsaved change like any other: Save · N counts it, the draft carries it, ▶ Play asks
-//     "Save and play / Try without saving" about it next time, and Edit shows it. Nothing else does that: a place not
-//     put in the layout lives only in this play ("Only in this play") and is gone when the game opens again.
-//   - What the game moves itself — an enemy, a bullet, a boat the game sails, a motion given in Edit — says "Just for
-//     this moment" and has no "Put in layout": its place now is a point in the middle of a run, and kept, the next
-//     start would put it there (and the game would move it away again at once). Found by comparing where each object
-//     is at the pause with where it was when Play started (or where the person last left it): anything that moved by
-//     itself in between, anything the game made since (not there at the start), and anything the draft's motions move.
-//   - "Put back": where it was at the pause.
-//
-// WHY not the editor page's own Edit mode (send the shell to Edit): Edit opens a new game page — the moment (the enemy
-// mid-jump, the ball in the air) would be gone, which is the whole point of pausing. And the game can be full screen,
-// where only its own page shows: so the card lives in the pause panel, in the game page, like the chat.
-//
-// WHY nothing of the editor's chatter reaches the editor page: its messages are Edit's (core/ready says "editing",
-// view-state would replace the edit camera kept for Edit, core/key would run the editor's shortcuts — P there is ▶
-// Play). Only "Put in layout" goes out, as the one message Edit itself sends for a move.
-import type { BridgeToShell, GameConfig, Inset, Item, Lang, Pose, ShellToBridge, StudioAdapter } from '../contract.ts';
+// What each object is (decision 5; the call made 2026-10-28: a placed thing moved in a moment goes in the scene, as in
+// Edit) — momentWhy, sent with play/paused `why`:
+//   - placed (null): moving it is the same as in Edit — it goes in the scene (Save · N, ⌘Z, the list's dot), stays
+//     after Resume, and is still there back in Edit.
+//   - the game moves it ('game'), a motion moves it ('motion'), the game made it since Play ('new'): just for this
+//     moment. Resume and the game goes on from where it was put; Edit shows the scene before Play (it is not in it).
+//     What the game made gets "✦ Have Claude make it appear here" on its card (the AI changes the game's code).
+// Found by comparing where each object is at the pause with where it was when Play started (or where the person last
+// left it in an earlier pause of this play): anything that moved by itself in between, anything the game made since
+// (not there at the start), and anything the draft's motions move.
+import type { BridgeToShell, GameConfig, Item, Lang, MomentKind, Pose, ShellToBridge, StudioAdapter } from '../contract.ts';
 import { UI } from '../contract.ts';
 import type { Core } from '../core/index.ts';
 import type { RulesHolder } from '../core/rules.ts';
@@ -36,13 +34,14 @@ import { nativeSetTimeout } from '../core/native.ts';
 /** One pose as observe.ts compares them (it reads only key and pose). */
 const one = (key: string, pose: Pose) => [{ key, pose } as unknown as Item];
 
-/** Why an object can only be moved for this moment (null = it can go in the layout). */
-export type MomentWhy = 'game' | 'new' | 'motion' | null;
+/** Why an object can only be moved for this moment (null = placed: moved as in Edit). */
+export type MomentWhy = MomentKind | null;
 
 /**
- * The pure part (test/pause.test.ts): can this object's place go in the layout? `start` = the poses when Play started
- * (after the editor's draft was shown), `mine` = where the person left objects in an earlier pause of this play (the
- * game did not move those: the person did), `moving` = the keys the draft's motions move, `now` = its pose at the pause.
+ * The pure part (test/pause.test.ts): is this object placed, or the game's for this moment? `start` = the poses when
+ * Play started (after the editor's draft was shown), `mine` = where the person left objects in an earlier pause of this
+ * play (the game did not move those: the person did), `moving` = the keys the draft's motions move, `now` = its pose
+ * at the pause.
  */
 export function momentWhy(key: string, now: Pose, start: Map<string, Pose>, mine: Map<string, Pose>, moving: Set<string>, dim: '2d' | '3d'): MomentWhy {
   if (moving.has(key)) return 'motion';
@@ -57,116 +56,66 @@ export function samePose(a: Pose | undefined, b: Pose | undefined, dim: '2d' | '
   return !drivenBetween(one('k', a), one('k', b), dim).size;
 }
 
-/** "X 8.5 · Y 0.0 · Z 9.6" (3D, metres) / "X 120 · Y 40" (2D, px): the card's numbers, as Edit's card rounds them. */
+/** "X 8.5 · Y 0.0 · Z 9.6" (3D, metres) / "X 120 · Y 40" (2D, px), as Edit's card rounds them. */
 export function poseWords(p: Pose, dim: '2d' | '3d'): string {
   // `+ 0` after rounding: no "-0.0" for a height a hair under the ground.
   const n = (v: number | undefined) => (dim === '3d' ? (Math.round((v ?? 0) * 10) / 10 + 0).toFixed(1) : String(Math.round(v ?? 0) + 0));
   return dim === '3d' ? `X ${n(p.p[0])} · Y ${n(p.p[1])} · Z ${n(p.p[2])}` : `X ${n(p.p[0])} · Y ${n(p.p[1])}`;
 }
 
-export const MOVE_CSS = `
-.chat .card { padding: 12px 14px 14px; display: flex; flex-direction: column; gap: 8px; }
-.chat .card .name { font-weight: 600; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.chat .card .nums { color: rgba(255,255,255,.55); font: 500 12px/1.3 ui-monospace, SFMono-Regular, Menlo, monospace; }
-.chat .card .why { color: rgba(255,255,255,.7); line-height: 1.45; }
-.chat .card .why b { font-weight: 600; color: #f4f4f6; }
-.chat .card .acts { display: flex; gap: 6px; flex-wrap: wrap; }
-.chat .card .hint { color: rgba(255,255,255,.55); font-size: 12px; line-height: 1.45; }
-/* "Put in layout" is the person's own hand (orange, as Edit's outline and Save), not the AI's violet. */
-.chat .card button.b.keep { background: #ff6b1a; color: #fff; }
-.chat .card button.b.keep:hover { background: #ff7d36; }
-button.b.on { background: rgba(255,255,255,.22); }
-button.b .ic { display: inline-grid; vertical-align: -2px; margin-right: 6px; }
-button.b .ic svg { width: 14px; height: 14px; }
-`;
-
-export interface PlayMoveOptions {
-  win: Window & typeof globalThis;
-  core: Core;
-  rules: RulesHolder;
-  /** The world's adapter (play-ask's findAdapter: the game's own probes first). */
-  adapter: () => StudioAdapter | null;
-  /** The draft shown at Play (bridge showFileEditsInPlay): settles with the keys its motions move. */
-  arranged: Promise<string[]>;
-  /** To the editor page. Only "Put in layout" goes there. */
-  post: (m: BridgeToShell) => void;
-  el: <K extends keyof HTMLElementTagNameMap>(tag: K, cls: string, text?: string) => HTMLElementTagNameMap[K];
-  w: (k: string) => string;
-  lang: () => Lang;
-  config: () => GameConfig | null;
-  handlePx: () => number;
-  /** The pause panel (the strip keeps clear of it: core/ui inset). */
-  panel: () => HTMLElement | null;
-  /** A press on the overlay (the panel): not a press in the game. */
-  ignore: (e: Event) => boolean;
-  /** The card changed: draw the panel again. */
-  changed: () => void;
+/**
+ * Who wakes the editor over the paused game (play-ask.ts pauseNow): an edit page's own editor (play-switch.ts
+ * momentHost) or the one a Play page makes (createMomentEditor).
+ */
+export interface MomentHost {
+  /** Wake the editor over the paused game; everything stays where it is. false = nothing to edit with (no adapter). */
+  wake(): boolean;
+  /** Put it away (what was moved stays where it is now). */
+  sleep(): void;
+  /** The world as the editor drives it (copies and rules applied): the list the editor page sees, and the kinds. */
+  driven(): StudioAdapter | null;
+  /** A Play page only: the editor page's messages while the editor is up (an edit page's bridge routes its own). */
+  handle?(m: ShellToBridge): void;
 }
 
-export interface PlayMove {
-  /** The editor is up (the panel shows the card). */
-  readonly on: boolean;
-  /** The card, for the panel. */
-  readonly card: HTMLElement;
-  /** Something is picked (Escape then goes to the editor: it drops the tool, then the pick). */
-  picked(): boolean;
-  /** Wake the editor over the paused game. false = nothing to move with (no adapter found). */
-  start(): boolean;
-  /** Put the editor away (the moved objects stay where they are). */
-  stop(): void;
-  /** The pause ends (Resume): what the person moved is theirs from now on, not the game's. */
-  resumed(): void;
-  /** The words again (play/on). */
-  render(): void;
-  /**
-   * ▶ Play in the same page (fast switch, 2026-10-22; play-switch.ts): a new Play of the same page. Everything this
-   * module knew of the last one goes (where things were at its start, what the person moved, what went in the layout:
-   * the page is back at the edit layout), and `arranged` (the draft's motions started now) gives the new start.
-   */
+/** Where things were when Play started, what the person moved, what the motions move: the kinds of each pause. */
+export interface MomentKinds {
+  /** A new Play of the same page (fast switch): `arranged` settles with the keys the draft's motions move. */
   restart(arranged: Promise<string[]>): void;
+  /** Each object's kind at a pause, before any drag (only the game's ones are listed). */
+  pause(list: Item[], dim: '2d' | '3d'): Record<string, MomentKind>;
+  /** Resume: what the person moved is theirs from now on (the next pause does not take it for the game's motion). */
+  resumed(list: Item[], dim: '2d' | '3d'): void;
+  why(key: string): MomentWhy;
 }
 
-export function createPlayMove(o: PlayMoveOptions): PlayMove {
-  const { win, el, w } = o;
-  let editor: Editor | null = null;
-  let editorOf: StudioAdapter | null = null;
-  let on = false;
-  // Play's start, the person's own places, and the motions (see momentWhy).
+/**
+ * `startList` = the objects as Play started them (an edit page: what its editor drives; a Play page: the adapter
+ * found). Looked for once the draft is shown and the game lists its objects (every 150 ms for up to ~30 s after the
+ * first frame: a big scene on a slow machine lists late — Lantern Cove in the headless test's software GL took more than
+ * the 5 s showFileEditsInPlay waits). A pause before that takes the pause's own list.
+ */
+export function createMomentKinds(startList: () => Item[], firstFrame: () => Promise<void>, arranged: Promise<string[]>): MomentKinds {
   let start: Map<string, Pose> | null = null;
   const mine = new Map<string, Pose>();
   let moving = new Set<string>();
-  // This pause: each object's pose at the pause and why it is "this moment only" (computed once per pause, before any
-  // drag), the objects moved since, and what went in the layout (its pose then).
   let atPause: Map<string, Pose> | null = null;
-  let why = new Map<string, MomentWhy>();
-  const kept = new Map<string, Pose>();
-  let pick: string | null = null;
-  const items = new Map<string, Item>();
-  let insetSig = '';
-
-  const list = (a: StudioAdapter): Item[] => {
-    try {
-      return a.list();
-    } catch {
-      return [];
-    }
-  };
-  // Where everything was when Play started: once the draft is shown and the game lists its objects (looked for every
-  // 150 ms for up to ~30 s after the first frame: a big scene on a slow machine lists late — Lantern Cove in the
-  // headless test's software GL took more than the 5 s showFileEditsInPlay waits). A pause before that takes the
-  // pause's own list.
-  // `run`: which Play this is (▶ Play in the same page, fast switch 2026-10-22: each Play of an edit page starts these
-  // again, restart() below); a look still going from an earlier Play stops.
+  let why = new Map<string, MomentKind>();
+  // Which Play this is (▶ Play in the same page starts these again, restart()); a look still going from an earlier one stops.
   let run = 0;
-  const findStart = (arranged: Promise<string[]>) => {
+  const findStart = (a: Promise<string[]>) => {
     const mine0 = ++run;
-    void arranged.then(async (keys) => {
+    void a.then(async (keys) => {
       if (mine0 !== run) return;
       moving = new Set(keys);
-      await o.core.time.firstFrame();
+      await firstFrame();
       for (let i = 0; i < 200 && !start && !atPause && mine0 === run; i++) {
-        const a = o.adapter();
-        const l = a ? list(a) : [];
+        let l: Item[] = [];
+        try {
+          l = startList();
+        } catch {
+          l = [];
+        }
         if (l.length) {
           if (!atPause) start = new Map(l.map((it) => [it.key, it.pose] as const));
           return;
@@ -175,210 +124,99 @@ export function createPlayMove(o: PlayMoveOptions): PlayMove {
       }
     }).catch(() => {});
   };
-  findStart(o.arranged);
-
-  const card = el('div', 'card');
-  card.dataset.part = 'pause-move-card';
-
-  const dimOf = () => editorOf?.dim ?? '3d';
-  const poseNow = (key: string): Pose | undefined => {
-    const a = editor?.driven;
-    if (!a) return undefined;
-    return list(a).find((i) => i.key === key)?.pose;
-  };
-
-  /** The editor's messages: the card follows the pick and the moves; nothing goes to the editor page. */
-  const fromEditor = (m: BridgeToShell) => {
-    if (m.type === 'studio:placement/selected') {
-      pick = m.key;
-      if (m.item) items.set(m.item.key, m.item);
-      draw();
-    } else if (m.type === 'studio:placement/items') {
-      for (const it of m.items) items.set(it.key, it);
-    } else if (m.type === 'studio:placement/moved') {
-      if (m.key === pick) draw();
-    } else if (m.type === 'studio:placement/moved-group') {
-      if (m.poses.some((p) => p.key === pick)) draw();
-    }
-  };
-
-  const tell = (m: ShellToBridge) => editor?.handle(m);
-
-  /** What the panel covers, so the strip and the camera-height buttons stay clear of it (Edit's core/ui inset). */
-  const sendInset = () => {
-    const p = o.panel();
-    if (!p || !on) return;
-    const r = p.getBoundingClientRect();
-    const W = win.innerWidth, H = win.innerHeight;
-    // A sheet across the foot (narrow screens) covers the bottom; the card at the top right covers the right.
-    const inset: Inset = r.width > W * 0.7 ? { top: 0, right: 0, bottom: Math.max(0, Math.round(H - r.top)), left: 0 } : { top: 0, right: Math.max(0, Math.round(W - r.left)), bottom: 0, left: 0 };
-    const sig = JSON.stringify(inset);
-    if (sig === insetSig) return;
-    insetSig = sig;
-    tell({ type: 'studio:core/ui', handlePx: o.handlePx(), theme: 'dark', inset });
-  };
-
-  function button(cls: string, text: string, tip: string, action: string, fn: () => void) {
-    const b = el('button', `b ${cls}`.trim(), text) as HTMLButtonElement;
-    b.type = 'button';
-    b.title = tip;
-    b.dataset.action = action;
-    b.addEventListener('click', (e) => {
-      fn();
-      // Pressed with the mouse or a finger: the keys go back to the game page (the editor's M / T / arrows), not to the
-      // panel. From the keyboard (Enter on it: detail 0) the focus stays.
-      if (e.detail > 0) b.blur();
-    });
-    return b;
-  }
-
-  function putInLayout(key: string) {
-    const pose = poseNow(key);
-    if (!pose) return;
-    // `from`: where the editor page has it now (what Undo in Edit goes back to) — the last place put in the layout in
-    // this play, else Play's start (the draft and the code, as the game opened).
-    const from = kept.get(key) ?? start?.get(key) ?? atPause?.get(key);
-    o.post({ type: 'studio:placement/moved', key, pose, end: true, ...(from ? { from } : {}) });
-    kept.set(key, pose);
-    draw();
-  }
-  function putBack(key: string) {
-    const to = atPause?.get(key);
-    if (!to) return;
-    tell({ type: 'studio:placement/pose', key, pose: to });
-    // Put in the layout during this pause: the layout goes back with it (to the editor page, one more move — its Undo
-    // in Edit steps through both).
-    const k = kept.get(key);
-    if (k && !samePose(k, to, dimOf())) {
-      o.post({ type: 'studio:placement/moved', key, pose: to, end: true, from: k });
-      kept.delete(key);
-    }
-    draw();
-  }
-
-  function draw() {
-    card.replaceChildren();
-    if (!on) return;
-    const key = pick;
-    if (!key) {
-      card.append(el('div', 'hint', w('moveHow')));
-      done();
-      return;
-    }
-    const it = items.get(key);
-    const pose = poseNow(key) ?? it?.pose;
-    const dim = dimOf();
-    card.append(el('div', 'name', it?.label || key));
-    if (pose) card.append(el('div', 'nums', poseWords(pose, dim)));
-    const moved = !!pose && !samePose(pose, atPause?.get(key), dim);
-    const acts = el('div', 'acts');
-    const reason = why.get(key) ?? null;
-    if (reason) {
-      const p = el('div', 'why');
-      p.dataset.part = 'pause-move-moment';
-      p.append(el('b', '', w('moveMoment')), o.win.document.createTextNode(' · ' + w('moveMomentWhy')));
-      card.append(p);
-    } else {
-      const inLayout = !!pose && kept.has(key) && samePose(kept.get(key), pose, dim);
-      if (inLayout) {
-        const p = el('div', 'why', w('moveIn'));
-        p.dataset.part = 'pause-move-in';
-        card.append(p);
-      } else if (moved) {
-        const p = el('div', 'why', w('moveOnly'));
-        p.dataset.part = 'pause-move-only';
-        card.append(p);
-        acts.append(button('keep', w('toLayout'), w('toLayoutTip'), 'pause-to-layout', () => putInLayout(key)));
-      } else card.append(el('div', 'hint', w('moveHow')));
-    }
-    if (moved) acts.append(button('', w('putBack'), w('putBackTip'), 'pause-put-back', () => putBack(key)));
-    if (acts.childNodes.length) card.append(acts);
-    done();
-  }
-  /** The panel drawn with the new card, then what it covers now (a phone's sheet grows with the card: the strip under
-   * the pick must stay above it — measured before the card was drawn, the strip sat under the sheet's top). */
-  function done() {
-    o.changed();
-    sendInset();
-  }
-
+  findStart(arranged);
   return {
-    get on() {
-      return on;
+    restart(a) {
+      start = null;
+      mine.clear();
+      moving = new Set();
+      atPause = null;
+      why = new Map();
+      findStart(a);
     },
-    card,
-    picked: () => !!pick,
-    start() {
-      if (on) return true;
-      const a = o.adapter();
-      if (!a) return false;
-      if (!editor || editorOf !== a) {
-        editorOf = a;
-        // The world only: the game's HTML UI is not moved from a pause (it is laid out by the page, not by a moment).
-        editor = createEditor({ adapter: a, ui: null, core: o.core, win, post: fromEditor, rules: o.rules, tools: [], paused: true, ignore: o.ignore });
-        // For tests (test/studio-pause.browser.mjs), like `_debug` in Edit and `_play`: where an object is on screen,
-        // what is right under a point, and why it is "this moment only". Not enumerable, nothing else uses it.
-        const api = (win as unknown as { __gameStudio?: object }).__gameStudio;
-        const ed = editor;
-        if (api && !Object.prototype.hasOwnProperty.call(api, '_move')) {
-          Object.defineProperty(api, '_move', {
-            value: Object.freeze({
-              anchor: (k: string) => ed.driven.anchor(k),
-              // `r`: the pick's own slack (UI.pickRadiusMouse / Touch) to ask what a press there picks; 0 = right under it.
-              under: (x: number, y: number, r = 0) => { try { return ed.driven.pickNear(x, y, r)[0] ?? null; } catch { return null; } },
-              list: () => list(ed.driven),
-              why: (k: string) => why.get(k) ?? null,
-            }),
-            enumerable: false,
-          });
-        }
+    pause(list, dim) {
+      atPause = new Map(list.map((i) => [i.key, i.pose] as const));
+      if (!start) start = new Map(atPause);
+      why = new Map();
+      for (const i of list) {
+        const w = momentWhy(i.key, i.pose, start, mine, moving, dim);
+        if (w) why.set(i.key, w);
       }
-      // Once per pause, before any drag: each object's pose now, and which ones the game moves itself.
-      if (!atPause) {
-        const now = list(a);
-        atPause = new Map(now.map((i) => [i.key, i.pose] as const));
-        if (!start) start = new Map(atPause);
-        why = new Map(now.map((i) => [i.key, momentWhy(i.key, i.pose, start!, mine, moving, a.dim)] as const));
-      }
-      on = true;
-      insetSig = '';
-      tell({ type: 'studio:core/lang', lang: o.lang() });
-      tell({ type: 'studio:core/config', config: o.config() });
-      tell({ type: 'studio:core/edit', on: true });
-      sendInset();
-      draw();
-      return true;
+      return Object.fromEntries(why);
     },
-    stop() {
-      if (!on) return;
-      tell({ type: 'studio:placement/select', key: null });
-      tell({ type: 'studio:core/edit', on: false });
-      on = false;
-      pick = null;
-      draw();
-    },
-    resumed() {
-      // What the person moved stays theirs: the next pause does not take it for the game's own motion.
-      if (atPause && editorOf) {
-        for (const it of list(editorOf)) {
+    resumed(list, dim) {
+      if (atPause) {
+        for (const it of list) {
           const was = atPause.get(it.key);
-          if (why.get(it.key) || !was || samePose(was, it.pose, editorOf.dim)) continue;
+          if (why.get(it.key) || !was || samePose(was, it.pose, dim)) continue;
           mine.set(it.key, it.pose);
         }
       }
       atPause = null;
       why = new Map();
     },
-    render: () => draw(),
-    restart(arranged) {
-      start = null;
-      mine.clear();
-      kept.clear();
-      moving = new Set();
-      atPause = null;
-      why = new Map();
-      pick = null;
-      findStart(arranged);
+    why: (key) => why.get(key) ?? null,
+  };
+}
+
+export interface MomentEditorOptions {
+  win: Window & typeof globalThis;
+  core: Core;
+  rules: RulesHolder;
+  /** The world's adapter (play-ask's findAdapter: the game's own probes first). */
+  adapter: () => StudioAdapter | null;
+  /** To the editor page: everything the editor says, as an edit page's editor would (but its edit camera). */
+  post: (m: BridgeToShell) => void;
+  lang: () => Lang;
+  config: () => GameConfig | null;
+  handlePx: () => number;
+  /** A press on the overlay (the corner, the ✦ field): not a press in the game. */
+  ignore: (e: Event) => boolean;
+}
+
+/**
+ * The editor of a page opened for Play (a MomentHost). Its messages go to the editor page like an edit page's — but
+ * not core/view-state: that is the edit camera the editor page keeps for its next edit page, and the moment's camera is
+ * the player's.
+ */
+export function createMomentEditor(o: MomentEditorOptions): MomentHost & { readonly editor: Editor | null } {
+  const { win } = o;
+  let editor: Editor | null = null;
+  let editorOf: StudioAdapter | null = null;
+  let on = false;
+  const toShell = (m: BridgeToShell) => {
+    if (m.type === 'studio:core/view-state') return;
+    o.post(m);
+  };
+  return {
+    get editor() {
+      return editor;
+    },
+    wake() {
+      if (on) return true;
+      const a = o.adapter();
+      if (!a) return false;
+      if (!editor || editorOf !== a) {
+        editorOf = a;
+        // The world only: the game's HTML UI is not moved from a pause (it is laid out by the page, not by a moment).
+        editor = createEditor({ adapter: a, ui: null, core: o.core, win, post: toShell, rules: o.rules, tools: [], paused: true, ignore: o.ignore });
+      }
+      on = true;
+      editor.handle({ type: 'studio:core/lang', lang: o.lang() });
+      editor.handle({ type: 'studio:core/config', config: o.config() });
+      editor.handle({ type: 'studio:core/ui', handlePx: o.handlePx(), theme: 'dark' });
+      editor.handle({ type: 'studio:core/edit', on: true });
+      return true;
+    },
+    sleep() {
+      if (!on || !editor) return;
+      editor.handle({ type: 'studio:placement/select', key: null });
+      editor.handle({ type: 'studio:core/edit', on: false });
+      on = false;
+    },
+    driven: () => (editor && on ? editor.driven : null),
+    handle(m) {
+      if (on && editor) editor.handle(m);
     },
   };
 }

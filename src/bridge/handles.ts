@@ -747,7 +747,9 @@ export function createHandles(doc: Document, hasLift: boolean): Handles {
     noteEl.style.visibility = '';
     const rr = row.getBoundingClientRect();
     const w = noteEl.offsetWidth, nh = noteEl.offsetHeight;
-    const x = Math.max(8 + w / 2, Math.min(win.innerWidth - 8 - w / 2, rr.left + rr.width / 2));
+    // Clear of the editor's panels on the left too (inset.left: the paused moment's floating list, fix 1 ✕7 — the line's
+    // left end, the first words of the Japanese line, was under it).
+    const x = Math.max(8 + inset.left + w / 2, Math.min(win.innerWidth - 8 - w / 2, rr.left + rr.width / 2));
     let y = stripBelow ? rr.bottom + 4 : rr.top - 4 - nh;
     if (y + nh > win.innerHeight - 8 - inset.bottom) y = rr.top - 4 - nh;
     if (y < 8 + inset.top) y = rr.bottom + 4;

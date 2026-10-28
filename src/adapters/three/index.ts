@@ -40,7 +40,7 @@ export function fitThreeAdapter(raw: Raw, canvas: HTMLCanvasElement): StudioAdap
     dim: '3d',
     version: (globalThis as Raw).__THREE__ ? String((globalThis as Raw).__THREE__) : undefined,
     list: () => raw.list(),
-    begin: () => raw.begin(),
+    begin: (o) => raw.begin(o),
     end: () => raw.end(),
     watch: (on, whole) => raw.watch(on, whole),
     // adapter.js repaints from its own loop whenever something changed.

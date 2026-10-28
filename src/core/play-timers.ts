@@ -44,6 +44,16 @@ export interface TimerHold {
   stop(): void;
   go(): void;
   readonly stopped: boolean;
+  /**
+   * Speed (pause-edit, 2026-10-28; play-clock.ts setRate): each timer waits 1 / r as long in real time (a 2 s interval
+   * at ¼× fires every 8 real seconds), from the time it had left.
+   */
+  setRate(r: number): void;
+  /**
+   * "Next frame" while stopped (pause-edit): `ms` of the game's time go by — what falls due in it runs, in time order
+   * (an interval as often as it fits), and the rest wait that much less.
+   */
+  advance(ms: number): void;
   /** Timers set and not done (tests). */
   readonly count: number;
 }
@@ -57,10 +67,12 @@ export function makeTimerHold(n: TimerNatives, compile?: (code: string) => () =>
   const timers = new Map<number, Timer>();
   let nextId = 1;
   let stopped = false;
+  // The speed (setRate): the timers count the game's time; a real wait is the game's wait / rate.
+  let rate = 1;
 
   const arm = (id: number, t: Timer, wait: number) => {
-    t.due = n.now() + wait;
-    t.real = n.setTimeout(() => fire(id), wait);
+    t.due = n.now() + wait / rate;
+    t.real = n.setTimeout(() => fire(id), wait / rate);
   };
   function fire(id: number) {
     const t = timers.get(id);
@@ -70,8 +82,8 @@ export function makeTimerHold(n: TimerNatives, compile?: (code: string) => () =>
     else {
       // The next tick from when this one was due, not from now: no drift. Far behind (a background tab the browser
       // throttled): from now, so it does not fire a burst to catch up (the browser's own setInterval never does).
-      const next = t.due + t.every;
-      const wait = next - n.now();
+      // In the game's ms (× rate): `due` is real.
+      const wait = (t.due - n.now()) * rate + t.every;
       arm(id, t, wait >= -t.every ? Math.max(0, wait) : t.every);
     }
     t.run();
@@ -89,6 +101,15 @@ export function makeTimerHold(n: TimerNatives, compile?: (code: string) => () =>
     else arm(id, t, wait);
     return id;
   }
+  /** Each going timer's game ms left, its browser timer cleared (stop, a new speed). */
+  const holdAll = () => {
+    const now = n.now();
+    for (const t of timers.values()) {
+      if (t.real != null) n.clearTimeout(t.real);
+      t.real = null;
+      t.left = Math.max(0, (t.due - now) * rate);
+    }
+  };
 
   return {
     setTimeout: (h, ms, ...args) => add(h, ms, args, false),
@@ -101,19 +122,49 @@ export function makeTimerHold(n: TimerNatives, compile?: (code: string) => () =>
     },
     stop() {
       if (stopped) return;
+      holdAll();
       stopped = true;
-      const now = n.now();
-      for (const t of timers.values()) {
-        if (t.real != null) n.clearTimeout(t.real);
-        t.real = null;
-        t.left = Math.max(0, t.due - now);
-      }
     },
     go() {
       if (!stopped) return;
       stopped = false;
       // In the order they were set (a Map keeps it): two timers with the same time left fire in the game's order.
       for (const [id, t] of timers) arm(id, t, t.left);
+    },
+    setRate(r) {
+      const next = Number.isFinite(r) && r > 0 ? r : 1;
+      if (next === rate) return;
+      if (stopped) {
+        rate = next;
+        return;
+      }
+      holdAll();
+      rate = next;
+      for (const [id, t] of timers) arm(id, t, t.left);
+    },
+    advance(ms) {
+      if (!stopped || !(ms > 0)) return;
+      // Due within the step, soonest first; an interval that fires goes back in with its next wait. A timer set by
+      // one that fires waits from the end of the step (its whole wait is still ahead).
+      let left = ms;
+      for (;;) {
+        let id = -1;
+        let t: Timer | null = null;
+        for (const [k, x] of timers) if (x.left <= left && (!t || x.left < t.left)) (id = k), (t = x);
+        if (!t) break;
+        const spent = t.left;
+        left -= spent;
+        for (const x of timers.values()) x.left = Math.max(0, x.left - spent);
+        if (t.every === null) timers.delete(id);
+        else t.left = t.every;
+        try {
+          t.run();
+        } catch (e) {
+          // The game's own error: reported by the page as a timer's would be; the step goes on.
+          console.warn('[studio] a game timer failed during a step:', e);
+        }
+      }
+      for (const x of timers.values()) x.left = Math.max(0, x.left - left);
     },
     get stopped() {
       return stopped;
@@ -161,10 +212,16 @@ export function installTimerHold(win: Window & typeof globalThis, real: { setTim
     return null;
   }
   // Stopped: one value, taken when it stopped. Going: whole ms like the browser's, never going back.
-  const { stop, go } = hold;
+  const { stop, go, advance } = hold;
   hold.stop = () => {
     if (!hold.stopped) frozen = dateNow();
     stop();
+  };
+  // "Next frame" (pause-edit): the clock moved on first (play-clock.ts advance), so Date.now reads the step too —
+  // the stopped value moves on by it, never back.
+  hold.advance = (ms) => {
+    if (hold.stopped && frozen !== null) frozen = Math.max(frozen, Math.floor(real.dateNow() - (real.now() - gameNow())));
+    advance(ms);
   };
   hold.go = () => {
     go();

@@ -1,4 +1,4 @@
-/* KUMODeck Game Studio 0.1.69 — MIT License — built file, edit src/ instead */
+/* KUMODeck Game Studio 0.1.70 — MIT License — built file, edit src/ instead */
 (() => {
 const __defs = [];
 const __cache = [];
@@ -2709,8 +2709,15 @@ function createThreeAdapter({ scene, renderer, camera }) {
    * Not the UI the game marked with data-studio-key (or a box holding it): that is the editor's UI layer (UI stage 1,
    * 2026-10-19), shown — faded while the world is edited (bridge/editor.ts paintLayers). A game without the mark
    * hides exactly what it did before.
+   * `still` = over a paused moment of Play (begin({ moment: true }); pause-edit fix 1, ✕1 of walk 1, 2026-10-28): the
+   * same DOM stays SEEN and only stops taking the pointer. The score, the time left and "⚠ BOSS" are part of the frame
+   * the person stopped on; hidden, the moment read as "the score is gone / it started over" (Neon Run's #hud, Glow
+   * Garden's title and Start). No pointer: a press on it goes to the game's world behind, as a press on the scene
+   * (the editor picks there), and the game's own buttons cannot be pressed while paused.
    */
-  function hideOverlays() {
+  function hideOverlays(still) {
+    const prop = still ? 'pointer-events' : 'visibility';
+    const val = still ? 'none' : 'hidden';
     const uiCanvases = codeUiCanvases();
     for (let el = canvas; el && el.parentElement; el = el.parentElement) {
       for (const sib of el.parentElement.children) {
@@ -2722,8 +2729,8 @@ function createThreeAdapter({ scene, renderer, camera }) {
         // A HUD canvas (a 2D canvas over the game's) the bridge marked for the UI layer before editing (studio-canvas-ui
         // stage 2, 2026-10-24): its UI is seen there with "Not selectable yet" frames; the layer style hides it on the world.
         if (sib.matches('canvas[data-studio-ui-layer]') || sib.querySelector('canvas[data-studio-ui-layer]')) continue;
-        restoreDom.push([sib, sib.style.getPropertyValue('visibility'), sib.style.getPropertyPriority('visibility')]);
-        sib.style.setProperty('visibility', 'hidden', 'important');
+        restoreDom.push([sib, prop, sib.style.getPropertyValue(prop), sib.style.getPropertyPriority(prop)]);
+        sib.style.setProperty(prop, val, 'important');
       }
       if (el.parentElement === document.body) break;
     }
@@ -2743,9 +2750,9 @@ function createThreeAdapter({ scene, renderer, camera }) {
     return out;
   }
   function showOverlays() {
-    for (const [el, val, prio] of restoreDom.splice(0)) {
-      if (val) el.style.setProperty('visibility', val, prio);
-      else el.style.removeProperty('visibility');
+    for (const [el, prop, val, prio] of restoreDom.splice(0)) {
+      if (val) el.style.setProperty(prop, val, prio);
+      else el.style.removeProperty(prop);
     }
   }
 
@@ -2769,7 +2776,8 @@ function createThreeAdapter({ scene, renderer, camera }) {
       return cs.map((c) => (grounds.has(c.key) ? { ...item(c), backdrop: true } : item(c)));
     },
 
-    begin() {
+    /** `o.moment`: over a paused moment of Play — the game's DOM stays seen (hideOverlays). */
+    begin(o) {
       if (editing) return adapter.list();
       if (!boot.held) boot.hold('begin');
       editing = true;
@@ -2777,7 +2785,7 @@ function createThreeAdapter({ scene, renderer, camera }) {
       gc.updateMatrixWorld(true);
       view = createEditView(gc);
       view.set({ yaw: yawOfCamera(gc) });
-      hideOverlays();
+      hideOverlays(!!(o && o.moment));
       // Keep our framing even if the game's scene.onBeforeRender moves "the camera" it is given (follow cams do).
       origBefore = scene.onBeforeRender;
       guard = function (r, s, cam, ...rest) {
@@ -3511,7 +3519,7 @@ function fitThreeAdapter(raw     , canvas                   )                {
     dim: '3d',
     version: (globalThis       ).__THREE__ ? String((globalThis       ).__THREE__) : undefined,
     list: () => raw.list(),
-    begin: () => raw.begin(),
+    begin: (o) => raw.begin(o),
     end: () => raw.end(),
     watch: (on, whole) => raw.watch(on, whole),
     // adapter.js repaints from its own loop whenever something changed.
@@ -4029,6 +4037,11 @@ const CONTRACT_VERSION = 1;
  * (PointerEvent.clientX/Y). The bridge never converts to NDC because only the
  * adapter knows which canvas the game renders into and how it is letterboxed.
  */
+/** StudioAdapter.begin's options (pause-edit fix 1). */
+                               
+                   
+ 
+
                                 
                     
            
@@ -4041,8 +4054,12 @@ const CONTRACT_VERSION = 1;
      
                                                                             
                                                                       
+                                                                                                                      
+                                                                                                                   
+                                                                                                                       
+                   
      
-                  
+                                  
                                                                 
               
      
@@ -4719,7 +4736,14 @@ const MSG_PREFIX = 'studio:';
 
 /** shell -> bridge */
                            
-                                                                  
+                                                                 
+         
+                                                                                                                       
+                                                                                                                       
+                                                                                                                  
+                                                                           
+         
+                        
                                                   
                                             
                                      
@@ -4950,6 +4974,11 @@ const MSG_PREFIX = 'studio:';
      
                                                                                         
          
+                                                                                                                     
+                                                                                                                 
+         
+                   
+         
                                                                                                                      
                                                                                                                      
          
@@ -4959,10 +4988,21 @@ const MSG_PREFIX = 'studio:';
                                                                                                                     
                                                          
      
-                                                                                                                       
-                                                              
+                                                                                                                       
+                                                                                                                      
+                                       
      
-                                 
+                                               
+     
+                                                                                                                      
+                                                                     
+     
+                                               
+     
+                                                                                                                         
+                                                        
+     
+                                             
      
                                                                                                                   
                                                                                    
@@ -5005,6 +5045,8 @@ const MSG_PREFIX = 'studio:';
                                                                                                                      
                                                                                                               
                                                                                                                                 
+                                                                                                                                       
+                       
                                                                                                                   
                      
          
@@ -5207,12 +5249,32 @@ const MSG_PREFIX = 'studio:';
                                                                                          
                                                                                                                      
                                                              
-                                                                                     
-                                               
+     
+                                                                                                                    
+                                                                                                                       
+                                                                                                                       
+                                                                                                                      
+                                                                       
+     
+                                                                                                
+                                                                                                        
+     
+                                                                                                                       
+                                                                                                                        
+                                              
+     
+                                                                           
                                                                                
                                                 
                                                                                          
                                    
+
+/**
+ * Why an object of a paused moment is the game's, just for this moment (pause-edit, 2026-10-28; bridge/play-move.ts
+ * momentWhy): 'game' = it moved by itself since ▶ Play, 'new' = the game made it since (a boss, an enemy, a bullet),
+ * 'motion' = a motion from the draft moves it. Anything else was placed: moving it is the same as in Edit.
+ */
+                                                   
 
 /** One turn of the chat over a paused game, as a request carries the talk so far (pause, 2026-10-22). */
                            
@@ -5392,6 +5454,14 @@ function isStudioMessage(x         )                     {
                    
                 
                        
+     
+                                                                                                                      
+                                                                                                                         
+                                                                                                                          
+                                                                
+     
+                 
+                                                                            
  
 
 /**
@@ -6725,7 +6795,47 @@ const { nativeCancelRaf, nativeNow, nativeRaf, nativeSetTimeout } = __require(0)
                                                                                                                         
      
                   
+     
+                                                                                                                      
+                                                                                                                     
+                                                                                                                    
+                                                                                              
+     
+                           
+                        
  
+
+/**
+ * The pure part (test/pause.test.ts): does the browser's frame at timestamp `t` run the game's frames? One answer per
+ * frame (every callback of a frame gets the same timestamp, so a game with two loops never runs one of them only).
+ * Credit adds up by the rate; a frame runs when there is a whole one.
+ */
+function frameGate() {
+  let rate = 1;
+  let credit = 0;
+  let lastT = NaN;
+  let last = true;
+  return {
+    get rate() {
+      return rate;
+    },
+    setRate(r        ) {
+      rate = Number.isFinite(r) && r > 0 ? Math.min(1, r) : 1;
+      // The next frame runs (its own share makes the whole one): a new speed shows at once, then every 1 / r.
+      credit = 1 - rate;
+      lastT = NaN;
+    },
+    runs(t        )          {
+      if (rate >= 1) return true;
+      if (t === lastT) return last;
+      lastT = t;
+      credit += rate;
+      last = credit >= 1 - 1e-9;
+      if (last) credit -= 1;
+      return last;
+    },
+  };
+}
 
 function installTime(opts             )                  {
   const win = opts.win || window;
@@ -6746,6 +6856,8 @@ function installTime(opts             )                  {
   let readyCalled = false;
   // Game callbacks waiting for a frame: our id -> { cb, real id (when scheduled) }.
   const pending = new Map                                              ();
+  // Speed (setRate): which browser frames run the game's.
+  const gate = frameGate();
 
   let resolveFirst             ;
   const first = new Promise      ((r) => (resolveFirst = r));
@@ -6766,6 +6878,12 @@ function installTime(opts             )                  {
       if (frozen) {
         // Frozen between scheduling and the frame: keep it for thaw().
         e.real = null;
+        return;
+      }
+      // Slowed: not this frame — it waits for the next one (still pending, so a freeze or a cancel finds it).
+      if (!gate.runs(t)) {
+        e.real = null;
+        schedule(id);
         return;
       }
       pending.delete(id);
@@ -6869,9 +6987,16 @@ function installTime(opts             )                  {
       readyCalled = true;
       markFirst();
     },
+    setRate(r) {
+      gate.setRate(r);
+    },
+    get rate() {
+      return gate.rate;
+    },
   };
 }
 
+__def(__exports, "frameGate", () => frameGate);
 __def(__exports, "installTime", () => installTime);
 };
 __defs[16] = function (__exports) {
@@ -6944,6 +7069,16 @@ __defs[17] = function (__exports) {
                
              
                             
+     
+                                                                                                                       
+                                                                  
+     
+                           
+     
+                                                                                                                      
+                                                                         
+     
+                            
                                          
                          
  
@@ -6957,10 +7092,12 @@ function makeTimerHold(n              , compile                               ) 
   const timers = new Map               ();
   let nextId = 1;
   let stopped = false;
+  // The speed (setRate): the timers count the game's time; a real wait is the game's wait / rate.
+  let rate = 1;
 
   const arm = (id        , t       , wait        ) => {
-    t.due = n.now() + wait;
-    t.real = n.setTimeout(() => fire(id), wait);
+    t.due = n.now() + wait / rate;
+    t.real = n.setTimeout(() => fire(id), wait / rate);
   };
   function fire(id        ) {
     const t = timers.get(id);
@@ -6970,8 +7107,8 @@ function makeTimerHold(n              , compile                               ) 
     else {
       // The next tick from when this one was due, not from now: no drift. Far behind (a background tab the browser
       // throttled): from now, so it does not fire a burst to catch up (the browser's own setInterval never does).
-      const next = t.due + t.every;
-      const wait = next - n.now();
+      // In the game's ms (× rate): `due` is real.
+      const wait = (t.due - n.now()) * rate + t.every;
       arm(id, t, wait >= -t.every ? Math.max(0, wait) : t.every);
     }
     t.run();
@@ -6989,6 +7126,15 @@ function makeTimerHold(n              , compile                               ) 
     else arm(id, t, wait);
     return id;
   }
+  /** Each going timer's game ms left, its browser timer cleared (stop, a new speed). */
+  const holdAll = () => {
+    const now = n.now();
+    for (const t of timers.values()) {
+      if (t.real != null) n.clearTimeout(t.real);
+      t.real = null;
+      t.left = Math.max(0, (t.due - now) * rate);
+    }
+  };
 
   return {
     setTimeout: (h, ms, ...args) => add(h, ms, args, false),
@@ -7001,19 +7147,49 @@ function makeTimerHold(n              , compile                               ) 
     },
     stop() {
       if (stopped) return;
+      holdAll();
       stopped = true;
-      const now = n.now();
-      for (const t of timers.values()) {
-        if (t.real != null) n.clearTimeout(t.real);
-        t.real = null;
-        t.left = Math.max(0, t.due - now);
-      }
     },
     go() {
       if (!stopped) return;
       stopped = false;
       // In the order they were set (a Map keeps it): two timers with the same time left fire in the game's order.
       for (const [id, t] of timers) arm(id, t, t.left);
+    },
+    setRate(r) {
+      const next = Number.isFinite(r) && r > 0 ? r : 1;
+      if (next === rate) return;
+      if (stopped) {
+        rate = next;
+        return;
+      }
+      holdAll();
+      rate = next;
+      for (const [id, t] of timers) arm(id, t, t.left);
+    },
+    advance(ms) {
+      if (!stopped || !(ms > 0)) return;
+      // Due within the step, soonest first; an interval that fires goes back in with its next wait. A timer set by
+      // one that fires waits from the end of the step (its whole wait is still ahead).
+      let left = ms;
+      for (;;) {
+        let id = -1;
+        let t               = null;
+        for (const [k, x] of timers) if (x.left <= left && (!t || x.left < t.left)) (id = k), (t = x);
+        if (!t) break;
+        const spent = t.left;
+        left -= spent;
+        for (const x of timers.values()) x.left = Math.max(0, x.left - spent);
+        if (t.every === null) timers.delete(id);
+        else t.left = t.every;
+        try {
+          t.run();
+        } catch (e) {
+          // The game's own error: reported by the page as a timer's would be; the step goes on.
+          console.warn('[studio] a game timer failed during a step:', e);
+        }
+      }
+      for (const x of timers.values()) x.left = Math.max(0, x.left - left);
     },
     get stopped() {
       return stopped;
@@ -7061,10 +7237,16 @@ function installTimerHold(win                            , real                 
     return null;
   }
   // Stopped: one value, taken when it stopped. Going: whole ms like the browser's, never going back.
-  const { stop, go } = hold;
+  const { stop, go, advance } = hold;
   hold.stop = () => {
     if (!hold.stopped) frozen = dateNow();
     stop();
+  };
+  // "Next frame" (pause-edit): the clock moved on first (play-clock.ts advance), so Date.now reads the step too —
+  // the stopped value moves on by it, never back.
+  hold.advance = (ms) => {
+    if (hold.stopped && frozen !== null) frozen = Math.max(frozen, Math.floor(real.dateNow() - (real.now() - gameNow())));
+    advance(ms);
   };
   hold.go = () => {
     go();
@@ -7105,6 +7287,14 @@ const { installTimerHold } = __require(17);
                
              
                             
+     
+                                                                                                                      
+                                                                                                  
+     
+                           
+                        
+                                                                                                                 
+                            
                                                                                                            
                         
                                                                                                                      
@@ -7115,29 +7305,62 @@ const { installTimerHold } = __require(17);
                                     
  
 
-/** The pure part (test/pause.test.ts): real time in, game time out. */
+/**
+ * The pure part (test/pause.test.ts): real time in, game time out.
+ *
+ * Game time = where it was at the last change (`g0`) + the real time since then (`r0`) × the speed. Every change —
+ * stop, go, a new speed, a step — starts a new piece from where the game's time is now, so the game's time never
+ * jumps: a pause takes nothing out of it, ¼× makes each real second a quarter of one, and "Next frame" moves the
+ * stopped time on by one frame. (Before pause-edit, 2026-10-28, it was `t − skipped` with no speed; the same numbers
+ * at 1×.)
+ */
 function makeClock(real              ) {
-  let skipped = 0;
-  let stoppedAt                = null;
+  const start = real();
+  let g0 = start;
+  let r0 = start;
+  let rate = 1;
+  // While stopped: the game's time it stopped at (moved on by advance()); null = going.
+  let held                = null;
+  const going = (t        ) => g0 + (t - r0) * rate;
   return {
     stop() {
-      if (stoppedAt === null) stoppedAt = real();
+      if (held === null) held = going(real());
     },
     go() {
-      if (stoppedAt === null) return;
-      skipped += Math.max(0, real() - stoppedAt);
-      stoppedAt = null;
+      if (held === null) return;
+      g0 = held;
+      r0 = real();
+      held = null;
     },
     get stopped() {
-      return stoppedAt !== null;
+      return held !== null;
     },
+    /** Real ms minus game ms: how much of the real time the game has not seen (pauses, slow time). */
     get skipped() {
-      return skipped;
+      const now = real();
+      return now - (held !== null ? Math.min(going(now), held) : going(now));
+    },
+    get rate() {
+      return rate;
+    },
+    setRate(r        ) {
+      const next = Number.isFinite(r) && r > 0 ? r : 1;
+      if (next === rate) return;
+      // A new piece from now (stopped: from when it goes again, go() above).
+      if (held === null) {
+        g0 = going(real());
+        r0 = real();
+      }
+      rate = next;
+    },
+    advance(ms        ) {
+      if (held === null || !(ms > 0)) return;
+      held += ms;
     },
     /** While stopped every time reads as the moment it stopped; never earlier than that. */
     at(t        ) {
-      if (stoppedAt !== null) return Math.min(t, stoppedAt) - skipped;
-      return t - skipped;
+      if (held !== null) return Math.min(going(t), held);
+      return going(t);
     },
   };
 }
@@ -7171,6 +7394,18 @@ function installPlayClock(win                            )            {
     go() {
       c.go();
       timers?.go();
+    },
+    setRate(r        ) {
+      c.setRate(r);
+      timers?.setRate(c.rate);
+    },
+    get rate() {
+      return c.rate;
+    },
+    advance(ms        ) {
+      if (!c.stopped) return;
+      c.advance(ms);
+      timers?.advance(ms);
     },
     timers,
     get stopped() {
@@ -12114,7 +12349,7 @@ function withRules(inner               , holder             )                {
   const ruled                = {
     ...inner,
     list: () => decorate(inner.list()),
-    begin: () => decorate(inner.begin()),
+    begin: (o) => decorate(inner.begin(o)),
     pickNear(x, y, radius) {
       return inner.pickNear(x, y, radius).filter((k) => !ruleOf(k)?.hidden);
     },
@@ -12349,8 +12584,8 @@ function withEdits(inner               )               {
   const edits               = {
     ...inner,
     list,
-    begin: () => {
-      inner.begin();
+    begin: (o) => {
+      inner.begin(o);
       return list();
     },
     pickNear(x, y, radius) {
@@ -12657,7 +12892,7 @@ function withHold(inner               , s           )                {
   const held                = {
     ...inner,
     list: () => decorate(inner.list()),
-    begin: () => decorate(inner.begin()),
+    begin: (o) => decorate(inner.begin(o)),
     grab: (key, x, y) => (itemOf(key)?.movable === false ? false : inner.grab(key, x, y)),
     drag: (key, x, y) => (itemOf(key)?.movable === false ? now(key) : inner.drag(key, x, y)),
     rotate: (key, d) => (itemOf(key)?.rotatable === false ? now(key) : inner.rotate(key, d)),
@@ -14113,7 +14348,9 @@ function createHandles(doc          , hasLift         )          {
     noteEl.style.visibility = '';
     const rr = row.getBoundingClientRect();
     const w = noteEl.offsetWidth, nh = noteEl.offsetHeight;
-    const x = Math.max(8 + w / 2, Math.min(win.innerWidth - 8 - w / 2, rr.left + rr.width / 2));
+    // Clear of the editor's panels on the left too (inset.left: the paused moment's floating list, fix 1 ✕7 — the line's
+    // left end, the first words of the Japanese line, was under it).
+    const x = Math.max(8 + inset.left + w / 2, Math.min(win.innerWidth - 8 - w / 2, rr.left + rr.width / 2));
     let y = stripBelow ? rr.bottom + 4 : rr.top - 4 - nh;
     if (y + nh > win.innerHeight - 8 - inset.bottom) y = rr.top - 4 - nh;
     if (y < 8 + inset.top) y = rr.bottom + 4;
@@ -16370,6 +16607,12 @@ const CODE_FREE = 3;
                                                                                                         
                       
      
+                                                                                                                    
+                                                                                                                     
+                                                                                                             
+     
+                   
+     
                                                                                                                      
                                                                                           
      
@@ -16733,7 +16976,7 @@ function attachInput(deps           )              {
     // ("hex ×4 (rule): Drag to adjust Gap · ⌥-drag to move one") or place just it by hand.
     const rule = picked.length === 1 ? deps.codePlace?.note(picked[0] .key, tool) : null;
     if (rule) return rule;
-    const moved = picked.find((i) => i.held === 'game' && i.driven?.length);
+    const moved = deps.moment ? undefined : picked.find((i) => i.held === 'game' && i.driven?.length);
     if (moved) {
       const g = gameNote(lang, moved.driven .filter((k) => k !== 'lift' || adapter.dim === '3d'), !!moved.meets);
       if (g) return g;
@@ -20190,7 +20433,7 @@ __defs[50] = function (__exports) {
 // play-switch.ts
 
 // ▶ Play and back in the same page (fast switch, 2026-10-22; a try of the editor: "every time I play and go back to edit it loads
-// again — tedious"). CONTRACT.md §3.5.2, contract.ts `studio:core/play`.
+// again — tedious"). CONTRACT.md §3.5.3, contract.ts `studio:core/play`.
 //
 // Before: Play and Edit each opened the game page again (`?studio=edit` or not). Going back to Edit took seconds: the
 // game loads, the adapter is found, the list is made, every row's picture drawn again. Now the edit page itself becomes
@@ -20205,7 +20448,10 @@ __defs[50] = function (__exports) {
 //               5. the game goes on: frames, clock (core/time.ts `clock`: the time spent editing is not a frame step),
 //                  sound (a pause's hold, when Edit held it); play-ask wakes (play/hello: ask, pause, move work as on a
 //                  Play page)
-//   Edit (back) 1. play-ask sleeps (Move, the chat, the field put away), the motions stop
+//   Paused      (pause-edit, 2026-10-28) the paused moment is this page's own editor, woken over the game where it
+//   (moment)    stopped (momentHost: core/edit `moment` — the player's view, nothing put back, the game not let run).
+//               Resume puts it away and the game goes on from there; Edit (back) ends the moment first.
+//   Edit (back) 1. play-ask sleeps (the paused moment, the field put away), the motions stop
 //               2. the game is held as a pause holds it (frames, clock, sound, the mouse let go)
 //               3. everything goes back to where Play found it: what the game moved while playing (the hero, an enemy,
 //                  the camera) is not kept. "Put in layout" from a pause is the shell's: it sends those after this.
@@ -20238,6 +20484,7 @@ __defs[50] = function (__exports) {
                                           
 const { moveInPlay } = __require(49);
                                                    
+                                                 
 
                                  
                                   
@@ -20338,6 +20585,8 @@ function createPlaySwitch(d                )             {
       }
     }
     playAsk.wake(Promise.resolve(moving));
+    // Every ▶ Play at 1× (pause-edit decision 10: a slow speed kept would read as "the game is slow").
+    playAsk.hold?.speed(1);
     // Held by a pause before (Edit holds the game with it, back below): its resume brings the sound back too.
     if (playAsk.hold?.paused) playAsk.hold.resume();
     else core.time.thaw();
@@ -20380,6 +20629,25 @@ function createPlaySwitch(d                )             {
     editView = undefined;
     editor.handle({ type: 'studio:core/edit', on: true, viewState: view });
   }
+
+  // The paused moment (pause-edit): this page's own editor over the paused game (play-ask.ts pauseNow wakes it).
+  let momentOn = false;
+  const momentHost             = {
+    wake() {
+      if (!playing) return false;
+      editor.handle({ type: 'studio:core/edit', on: true, moment: true });
+      momentOn = true;
+      return true;
+    },
+    sleep() {
+      if (!momentOn) return;
+      momentOn = false;
+      editor.handle({ type: 'studio:placement/select', key: null });
+      editor.handle({ type: 'studio:core/edit', on: false });
+    },
+    driven: () => editor.driven,
+  };
+  playAsk.useHost(momentHost);
 
   return {
     get playing() {
@@ -22370,6 +22638,10 @@ function createEditor(deps            )         {
   let dirtyFrame = true;
   let input                     = null;
   let checked = false;
+  // Over a paused moment (pause-edit, 2026-10-28; core/edit `moment`): this editor (an edit page's, playing) behaves as
+  // a Play page's paused one until it is put away. `still()` = either: the game's moment is kept as it stopped.
+  let moment = false;
+  const still = () => !!deps.paused || moment;
   let pendingHandlePx = 0;
   // Viewport px the shell's floating panels cover (core/ui inset), and the AI's last marks.
   let inset        = { top: 0, right: 0, bottom: 0, left: 0 };
@@ -22401,7 +22673,9 @@ function createEditor(deps            )         {
     if (layer === 'world') post({ type: 'studio:core/view-state', state: adapter.view.state() });
   };
   const ready = () => {
-    post({ type: 'studio:core/ready', kind: adapter.kind, dim: adapter.dim, version: adapter.version, editing: state.editing, rise: adapter.dim === '3d' && !!adapter.view.rise, fly: adapter.dim === '3d' && !!adapter.view.fly,
+    post({ type: 'studio:core/ready', kind: adapter.kind, dim: adapter.dim, version: adapter.version, editing: state.editing,
+      // Over a paused moment (pause-edit): the editor page keeps its Play and shows Edit's tools on the moment.
+      ...(still() ? { moment: true } : {}), rise: adapter.dim === '3d' && !!adapter.view.rise, fly: adapter.dim === '3d' && !!adapter.view.fly,
       drop: adapter.dim === '3d' && !!adapter.drop,
       // The game's loader can run every motion in this page (play-switch.ts): ▶ Play then never needs a new page for them.
       ...(loaderPlay(win).length ? { motionHere: true } : {}),
@@ -22431,9 +22705,16 @@ function createEditor(deps            )         {
       (doc.head || doc.documentElement).appendChild(el);
     }
     const top = '[data-studio-key]:not([data-studio-key] [data-studio-key])';
+    // The UI takes no pointer while the world is edited (a click goes to the tree behind the title).
+    const noPointer = '[data-studio-key],[data-studio-key] *,canvas[data-studio-ui-layer]{pointer-events:none!important}';
+    // Over a paused moment (pause-edit fix 1, ✕1 of walk 1, 2026-10-28): the game's UI stays AS IT WAS — the score, the
+    // time left, "⚠ BOSS" are part of the frame the person stopped on. Hidden (Edit's rule above), the moment read as
+    // "the score is gone / it started over", and stage 1 has nowhere else that shows the score (This moment is stage 2).
+    // Still no pointer (it cannot be pressed or picked) and no UI layer to edit (decision 16: the UI is edited in Edit).
     el.textContent = layer === 'ui'
       ? 'canvas:not([data-studio-key]):not([data-studio-ui-canvas]){filter:brightness(.85)}'
-      : `${top},canvas[data-studio-ui-layer]{filter:opacity(${uiPeek ? '.5' : '0'})}[data-studio-key],[data-studio-key] *,canvas[data-studio-ui-layer]{pointer-events:none!important}`;
+      : still() ? noPointer
+      : `${top},canvas[data-studio-ui-layer]{filter:opacity(${uiPeek ? '.5' : '0'})}${noPointer}`;
   };
 
   const frame = () => {
@@ -23185,7 +23466,8 @@ function createEditor(deps            )         {
     if (on) {
       core.time.freeze();
       try {
-        state.items = adapter.begin();
+        // Over a paused moment the game's own HTML stays seen (a score, the time left: part of the frame; ✕1 of walk 1).
+        state.items = adapter.begin(still() ? { moment: true } : undefined);
       } catch (e) {
         post({ type: 'studio:core/error', message: `begin() failed: ${(e         ).message}` });
       }
@@ -23195,7 +23477,7 @@ function createEditor(deps            )         {
       const early = deps.earlyTaps?.take() ?? null;
       const earlyKey = early ? (tappableAt(adapter, state.items, win, early.x, early.y, early.type === 'mouse' ? UI.pickRadiusMouse : UI.pickRadiusTouch)[0] ?? null) : null;
       // Paused in Play: the view the person paused on (three.js begin() stands the edit camera where the player's was).
-      if (deps.paused) { /* keep it */ }
+      if (still()) { /* keep it */ }
       else if (viewState !== undefined && adapter.view.restore) adapter.view.restore(viewState);
       else {
         // The opening view: the game's own camera when the adapter has one (three.js, polish pass 2026-10-16),
@@ -23220,13 +23502,16 @@ function createEditor(deps            )         {
       // The screen chosen before (Play → Edit in the same page) again, the person's looks, and the screens / theme
       // for the shell (UI stages 2–3). Before the lists, so they list that screen's elements.
       // The canvas UI's screen first (it starts on the HTML UI's screen shown), so the screens' menu has both.
-      deps.uiCode?.begin(uiExtras?.screenNow() ?? null);
-      uiExtras?.begin();
-      postCodeScreens();
-      postCodeTheme();
-      // The frames' places for the shell (the AI's `list`, a ui-code ask), on whichever layer editing starts.
-      uiFound?.stale();
-      uiFound?.list();
+      // Not over a paused moment (pause-edit): the game's own screen and looks are part of the moment it stopped at.
+      if (!moment) {
+        deps.uiCode?.begin(uiExtras?.screenNow() ?? null);
+        uiExtras?.begin();
+        postCodeScreens();
+        postCodeTheme();
+        // The frames' places for the shell (the AI's `list`, a ui-code ask), on whichever layer editing starts.
+        uiFound?.stale();
+        uiFound?.list();
+      }
       if (layer === 'ui') state.items = adapter.list();
       post({ type: 'studio:placement/items', items: state.items, ...itemsLayer() });
       // The other layer's list too, once (UI stage 1): the shell keeps the UI's saved places in the file and shows them
@@ -23244,9 +23529,9 @@ function createEditor(deps            )         {
       paintLayers();
       if (!loopId) loopId = core.time.raf(frame);
       // Paused in Play: the game stays still (no watch) and no check (see EditorDeps.paused).
-      const watching = deps.paused ? Promise.resolve() : watchGame();
-      if (!checked) firstMoments = watching;
-      if (!checked && !deps.paused) {
+      const watching = still() ? Promise.resolve() : watchGame();
+      if (!checked && !still()) firstMoments = watching;
+      if (!checked && !still()) {
         // Self-check once, in edit mode (3D adapters only know screen
         // positions once their edit camera exists).
         checked = true;
@@ -23297,9 +23582,12 @@ function createEditor(deps            )         {
       input?.detach();
       input = null;
       state.editing = false;
-      // Screens, samples and a shown button look go back to the game's (its set / theme stay: the layout).
-      uiExtras?.end();
-      deps.uiCode?.end();
+      // Screens, samples and a shown button look go back to the game's (its set / theme stay: the layout). A paused
+      // moment never set them (above).
+      if (!moment) {
+        uiExtras?.end();
+        deps.uiCode?.end();
+      }
       uiEdges?.end();
       uiFound?.end();
       for (const a of [adapter, ...others().map((o) => o.driven)]) {
@@ -23333,7 +23621,7 @@ function createEditor(deps            )         {
       if (m.type !== 'studio:core/view-state' || layer === 'world') post(m);
     };
     input = attachInput({ adapter, edits, core, win, post: inPost, state, select, selectMany, step, tools: toolHost, markDirty: () => (dirtyFrame = true),
-      ...(deps.paused ? { passKeyUp: true } : { unhold }), ...(deps.ignore ? { ignore: deps.ignore } : {}),
+      ...(still() ? { passKeyUp: true, moment: true } : { unhold }), ...(deps.ignore ? { ignore: deps.ignore } : {}),
       ...(layer === 'world' && !deps.paused ? { codePlace } : {}),
       // studio-canvas-ui stage 2: a press on the UI layer that selected nothing → ui-found.ts says why (or nothing, as before).
       ...(layer === 'ui' && uiFound ? { missed: (x        , y        ) => void uiFound.missed(x, y), pressed: () => uiFound.clear(true) } : {}) });
@@ -23532,6 +23820,9 @@ function createEditor(deps            )         {
           break;
         case 'studio:core/edit':
           if (!msg.on) (timeline.clear(), codePlace.clear(), codeMotion.clear(), keepOut.clear());
+          // The paused moment of an edit page playing (pause-edit; play-switch.ts momentHost): as a Play page's paused
+          // editor until it is put away. Read only when it comes on, so the off that ends it ends it the same way.
+          if (msg.on && !state.editing) moment = !!msg.moment;
           setEditing(msg.on, msg.viewState);
           if (msg.on && wantLayer) {
             const w = wantLayer;
@@ -23854,6 +24145,8 @@ const PATHS                         = {
   trash: 'M3.5 5.5h13|M8 5.5V4.25a.75.75 0 0 1 .75-.75h2.5a.75.75 0 0 1 .75.75V5.5|M5.5 5.5l.75 10.1a1 1 0 0 0 1 .9h5.5a1 1 0 0 0 1-.9l.75-10.1|M8.5 8.5v5|M11.5 8.5v5',
   chevronUp: 'M5.5 12.5 10 8l4.5 4.5',
   chevronDown: 'M5.5 7.5 10 12l4.5-4.5',
+  // ▶| Next frame (pause-edit, 2026-10-28): Play's triangle and a bar after it, as on a video player's step button.
+  stepFrame: 'M4.5 5.6v8.8a.8.8 0 0 0 1.22.68l6.6-4.4a.8.8 0 0 0 0-1.36l-6.6-4.4A.8.8 0 0 0 4.5 5.6z|M14.25 5h1.5a.75.75 0 0 1 .75.75v8.5a.75.75 0 0 1-.75.75h-1.5a.75.75 0 0 1-.75-.75v-8.5a.75.75 0 0 1 .75-.75z',
   chevronLeft: 'M12 5l-5 5 5 5',
   chevronRight: 'M8 5l5 5-5 5',
   check: 'M4.5 10.5l3.5 3.5 7.5-8',
@@ -23907,7 +24200,7 @@ const PATHS                         = {
 };
 
 /** Icons drawn filled as well as stroked (they read too thin as outlines). */
-const FILLED = new Set(['play', 'stop', 'spark', 'pause']);
+const FILLED = new Set(['play', 'stop', 'spark', 'pause', 'stepFrame']);
 /** Icons whose LAST part is filled (the mark's front card). */
 const LAST_FILLED = new Set(['mark']);
 
@@ -24000,13 +24293,24 @@ __defs[59] = function (__exports) {
 //
 // Not held (CONTRACT.md §3.5.1): new Date(), promises and microtasks, requestIdleCallback, a Worker's own timers.
 // Until polish-1022 (2026-10-22) a game stepped only by setTimeout / setInterval or Date.now() was not held either.
-                                                  
+//
+// Speed and "Next frame" (pause-edit, 2026-10-28; decision 10): the hold also slows the game (the clock at r × and the
+// frames on 1 of every 1 / r: time.ts setRate, play-clock.ts setRate — a game that moves by time and one that moves by
+// frame both run at r) and, while paused, steps it one frame (the clock 1/60 s on, the game's frame once: time.ts
+// step). The sound is quiet while slow too: an AudioContext's speed cannot be changed from outside, and sound at full
+// speed over a quarter-speed picture is out of step with it. Back at 1×, it plays again.
+                                                       
                                                        
 
                              
-                                                        
-                                                    
+                                                                                          
+                                                                                                        
  
+
+/** One step of "Next frame": a 60-frames-a-second frame of the game's time (decision 10). */
+const STEP_MS = 1000 / 60;
+/** The speeds of the top bar's menu (02-find.md): 1× · ½× · ¼×. */
+const SPEEDS = [1, 0.5, 0.25]         ;
 
 /** Is this key press "pause / resume"? P with no modifier, never while the game's own text field (or ours) has focus. */
 function isPauseKey(e                                                                                                               , typing         )          {
@@ -24057,20 +24361,72 @@ function watchAudio(win                            )                    {
                    
                                
                     
+                             
+                        
+                                                                                                        
+                         
+                                                                                                                             
+                  
+                                                                                                                
+                
  
 
 function createPauseHold(win                            , parts            )            {
   const doc = win.document;
   const contexts = watchAudio(win);
   let paused = false;
-  // What the pause itself stopped, so Resume brings back only that.
+  // The sound is quiet while paused or slower than 1× (`quiet`); what the hold itself stopped, so it brings back only that.
+  let quiet = false;
   let quieted              = [];
   let stilled                     = [];
   let wasFrozen = false;
 
+  // Slowed (not paused): a sound the game starts on an <audio> / <video> meanwhile waits too (an AudioContext's own
+  // sounds are quiet with the context). Media events do not bubble; the capture phase still sees them on the document.
+  doc.addEventListener('play', (e) => {
+    if (!quiet) return;
+    const m = e.target                           ;
+    if (!m || typeof m.pause !== 'function') return;
+    try {
+      m.pause();
+      if (!stilled.includes(m)) stilled.push(m);
+    } catch {
+      /* fine */
+    }
+  }, true);
+
+  const hush = () => {
+    if (quiet) return;
+    quiet = true;
+    quieted = contexts().filter((c) => c.state === 'running');
+    for (const c of quieted) c.suspend().catch(() => {});
+    stilled = [...doc.querySelectorAll('audio, video')].filter((m)                        => {
+      const e = m                    ;
+      return !e.paused && !e.ended;
+    });
+    for (const m of stilled) {
+      try {
+        m.pause();
+      } catch {
+        /* fine */
+      }
+    }
+  };
+  const sound = () => {
+    if (!quiet) return;
+    quiet = false;
+    for (const c of quieted) c.resume().catch(() => {});
+    for (const m of stilled) m.play().catch(() => {});
+    quieted = [];
+    stilled = [];
+  };
+
   return {
     get paused() {
       return paused;
+    },
+    get rate() {
+      return parts.time.rate;
     },
     pause() {
       if (paused) return false;
@@ -24079,20 +24435,8 @@ function createPauseHold(win                            , parts            )    
       wasFrozen = parts.time.frozen;
       parts.time.freeze();
       parts.clock.stop();
-      quieted = contexts().filter((c) => c.state === 'running');
-      for (const c of quieted) c.suspend().catch(() => {});
-      stilled = [...doc.querySelectorAll('audio, video')].filter((m)                        => {
-        const e = m                    ;
-        return !e.paused && !e.ended;
-      });
-      for (const m of stilled) {
-        try {
-          m.pause();
-        } catch {
-          /* fine */
-        }
-      }
-      // A first-person game holds the mouse: let go, so the person can use the chat.
+      hush();
+      // A first-person game holds the mouse: let go, so the person can use the editor's tools.
       try {
         if (doc.pointerLockElement) doc.exitPointerLock();
       } catch {
@@ -24105,407 +24449,63 @@ function createPauseHold(win                            , parts            )    
       paused = false;
       parts.clock.go();
       if (!wasFrozen) parts.time.thaw();
-      for (const c of quieted) c.resume().catch(() => {});
-      for (const m of stilled) m.play().catch(() => {});
-      quieted = [];
-      stilled = [];
+      if (parts.time.rate >= 1) sound();
       return true;
+    },
+    speed(r) {
+      const next = (SPEEDS                     ).includes(r) ? r : 1;
+      parts.time.setRate(next);
+      parts.clock.setRate(next);
+      if (paused) return;
+      if (next < 1) hush();
+      else sound();
+    },
+    step() {
+      if (!paused) return false;
+      parts.clock.advance(STEP_MS);
+      return parts.time.step();
+    },
+    now() {
+      return parts.clock.at(parts.clock.realNow());
     },
   };
 }
 
+__def(__exports, "STEP_MS", () => STEP_MS);
+__def(__exports, "SPEEDS", () => SPEEDS);
 __def(__exports, "isPauseKey", () => isPauseKey);
 __def(__exports, "createPauseHold", () => createPauseHold);
 };
 __defs[60] = function (__exports) {
 'use strict';
-// play-chat.ts
-
-// The chat over a paused game (pause, 2026-10-22; CONTRACT.md §3.5.1).
-//
-// The person pressed P (or ❚❚) in ▶ Play: the game is held where it was (play-pause.ts) and this panel opens over it —
-// on the right on a wide screen, as a sheet at the foot on a narrow one. They write, their AI answers, as many times as
-// they like; P or "Resume" goes back to the game exactly where it stopped.
-//
-// WHY no new path to the AI: each message is the same `play` request as the ✦ field's (play-ask.ts), marked `paused`.
-// The first one carries the moment taken when the game stopped (picture, player's camera, what was near, the console);
-// the next ones carry the talk so far (`history`) and the first one's id (`chat`), so the AI reads one record and
-// knows the whole conversation (the host also keeps it as .studio/chat/<id>.json). The AI's replies are the same
-// status line the editor already turns into the line over the game (shell/play-ask.ts playLine): its `done` /
-// `asking` / `failed` note becomes a reply here, its `received` / `working` the "looking" row while it works.
-//
-// Lives in play-ask.ts's shadow root and top layer, so it draws over a full-screen game and the game's CSS cannot
-// reach it. No colour but the AI's violet, as everywhere in the editor.
-                                               
-const { icon } = __require(58);
-
-                           
-                    
-               
-                                                                                                       
-                            
-                     
-                   
-                
- 
-
-/** The turns the next request carries (`history`): the last 12, each cut to 300 characters (HANDOFF_LIMITS). */
-const HISTORY_MAX = 12;
-function historyOf(turns            )                                             {
-  return turns.slice(-HISTORY_MAX).map((t) => ({ who: t.who, text: t.text.length > 300 ? t.text.slice(0, 299) + '…' : t.text }));
-}
-
-/**
- * The pure part (test/pause.test.ts): what a new line from the editor does to the chat.
- * - `awaiting`: a message was kept (play/sent ok) and its answer has not come yet. Only then does a finished line
- *   (fixed / failed / asking) become a NEW reply: before the request is kept, the editor may still be showing the
- *   previous request's line, which is already in the chat.
- * - A finished line while not awaiting updates the last reply in place (the AI's files settled and Reload appeared,
- *   "More in Claude" came) — never a second copy of it.
- * - looking / fixing / kept: the row under the talk that says the AI is on it (`live`); a reply clears it. Always
- *   shown: the editor sends these only for the latest request made in this Play, which is the person's own.
- */
-                            
-                    
-                    
-                        
- 
-function chatOnLine(m           , s                 )            {
-  if (!s) return { ...m, live: null };
-  const finished = s.state === 'fixed' || s.state === 'failed' || s.state === 'asking';
-  if (!finished) return { ...m, live: s };
-  const turn           = { who: 'ai', text: s.text, state: s.state };
-  if (s.choices?.length) turn.choices = s.choices.slice();
-  if (s.reload) turn.reload = true;
-  if (s.more) turn.more = s.more;
-  if (m.awaiting) return { turns: [...m.turns, turn], awaiting: false, live: null };
-  const last = m.turns[m.turns.length - 1];
-  if (last && last.who === 'ai') return { turns: [...m.turns.slice(0, -1), turn], awaiting: false, live: null };
-  return { ...m, live: null };
-}
-
-const CHAT_CSS = `
-.veil { position: absolute; inset: 0; pointer-events: auto; background: rgba(8, 8, 14, .22); }
-/* As tall as the talk, up to the game's height (the first look had it full height: a dark slab with one line of help in
-   its middle, over a third of the game the person had stopped to look at). */
-.chat { position: absolute; top: 14px; right: 14px; max-height: calc(100% - 28px); width: min(360px, calc(100% - 28px)); pointer-events: auto;
-  border-radius: 16px; display: flex; flex-direction: column; overflow: hidden; }
-.chat .top { display: flex; align-items: center; gap: 10px; padding: 12px 10px 10px 14px; border-bottom: 1px solid rgba(255,255,255,.08); }
-.chat .title { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-.chat .title b { font-weight: 600; font-size: 14px; }
-/* Wraps instead of "Claude sees this mo…" (plan step 6: with ✥ Move and ▶ Resume P beside it the line was cut).
-   keep-all (studio-fix-0142 ⑮, 2026-10-24): Japanese wraps only at a space or at the zero-width spaces its strings put
-   between phrases (i18n.ts play.sees / play.chatEmpty) — before, it broke mid-word ("…sees this mome / nt" in Japanese).
-   English is unchanged (it breaks at spaces anyway); overflow-wrap: anywhere stays as the last resort for a long word. */
-.chat .title .sees { color: rgba(255,255,255,.55); font-size: 12px; word-break: keep-all; overflow-wrap: anywhere; }
-.chat .talk { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; overscroll-behavior: contain; }
-.chat .empty { color: rgba(255,255,255,.55); font-size: 13px; line-height: 1.45; word-break: keep-all; overflow-wrap: anywhere; }
-.chat .you { align-self: flex-end; max-width: 85%; background: rgba(255,255,255,.12); padding: 7px 11px; border-radius: 12px 12px 4px 12px;
-  white-space: pre-wrap; overflow-wrap: anywhere; }
-.chat .ai { align-self: stretch; display: flex; gap: 9px; }
-.chat .ai .dot { margin-top: 5px; }
-.chat .ai .body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
-.chat .ai .said { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.45; }
-.chat .ai.failed .said { color: rgba(255,255,255,.75); }
-.chat .ai .more { color: rgba(255,255,255,.5); font-size: 12px; }
-.chat .ai .acts { display: flex; gap: 6px; flex-wrap: wrap; }
-.chat .live { display: flex; gap: 9px; align-items: center; color: rgba(255,255,255,.7); }
-.chat .live .dot { animation: pulse 1.1s ease-in-out infinite; }
-.chat form { display: flex; align-items: center; gap: 8px; margin: 0 10px 10px; padding: 6px 6px 6px 12px; border-radius: 12px;
-  background: rgba(255,255,255,.07); border: 1px solid rgba(139,124,255,.45); }
-.chat form:focus-within { box-shadow: 0 0 0 3px rgba(139,124,255,.18); }
-.chat form input { all: unset; flex: 1; min-width: 0; font: 500 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; color: #fff; padding: 5px 0; }
-.chat form input::placeholder { color: rgba(255,255,255,.5); }
-.chat .send { all: unset; cursor: pointer; width: 28px; height: 28px; border-radius: 8px; display: grid; place-items: center; background: #8b7cff; color: #fff; flex: none; }
-.chat .send:disabled { background: rgba(255,255,255,.12); color: rgba(255,255,255,.4); cursor: default; }
-.chat .send svg { width: 14px; height: 14px; stroke-width: 2px; }
-.chat .send:focus-visible { outline: 2px solid #8b7cff; outline-offset: 2px; }
-button.b .k { opacity: .55; font-weight: 500; margin-left: 6px; font-size: 11px; }
-/* "❚❚ Pause and talk P" (plan step 6): the corner's one button, with its words always (it was a bare 32 px ❚❚ beside the
-   ✦ mark; alone now, the words are what say it is the way to talk). The mark's glass, height and key cap. */
-.pause { pointer-events: auto; height: 32px; padding: 0 10px 0 11px; border-radius: 16px; display: flex; align-items: center; gap: 8px;
-  cursor: pointer; color: inherit; font: inherit; white-space: nowrap; transition: opacity .3s; opacity: .92; }
-.pause:hover { opacity: 1; }
-.pause .ic { display: grid; place-items: center; }
-.pause svg { width: 14px; height: 14px; }
-.pause:focus-visible { outline: 2px solid #8b7cff; outline-offset: 2px; }
-@media (max-width: 639px) {
-  .chat { top: auto; left: 0; right: 0; bottom: 0; width: auto; max-height: 55%; border-radius: 16px 16px 0 0; border-bottom: 0; }
-  .chat form { margin-bottom: max(10px, env(safe-area-inset-bottom)); }
-}
-@media (pointer: coarse) {
-  .pause { height: 44px; border-radius: 22px; padding: 0 16px 0 14px; }
-  .chat .send { width: 36px; height: 36px; }
-  button.b .k { display: none; }
-}
-@media (prefers-reduced-motion: reduce) { .chat .live .dot { animation: none; } }
-`;
-
-                              
-                
-                                                          
-                                                                                                              
-                           
-                                                                                
-                 
-                 
-     
-                                                                                                                   
-                                                                                                
-     
-                                                                                                 
- 
-
-                       
-                                                                    
-                                
-                                   
-                                                                                                             
-                                           
-                
-                           
-                         
-                                 
-                          
-                                                              
-                 
- 
-
-function createChat(o             )       {
-  const { el, w } = o;
-  let model            = { turns: [], awaiting: false, live: null };
-  let open = false;
-  let sending = false;
-  let sendFailed = false;
-  let sees = '';
-
-  const veil = el('div', 'veil');
-  veil.dataset.part = 'pause-veil';
-  veil.hidden = true;
-  const panel = el('section', 'chat glass');
-  panel.dataset.part = 'pause-chat';
-  panel.hidden = true;
-  panel.setAttribute('role', 'dialog');
-  const top = el('div', 'top');
-  const title = el('div', 'title');
-  const head = el('b', '');
-  const seesEl = el('span', 'sees');
-  title.append(head, seesEl);
-  const resumeBtn = el('button', 'b', '')                     ;
-  resumeBtn.type = 'button';
-  resumeBtn.dataset.action = 'pause-resume';
-  resumeBtn.addEventListener('click', () => o.resume());
-  // "Move" left of Resume: the panel's one other way, so both are where the eye already is (design.md §5).
-  const moveBtn = o.move ? (el('button', 'b', '')                     ) : null;
-  if (moveBtn && o.move) {
-    moveBtn.type = 'button';
-    moveBtn.dataset.action = 'pause-move';
-    const m = o.move;
-    moveBtn.addEventListener('click', () => m.toggle());
-  }
-  top.append(title, ...(moveBtn ? [moveBtn] : []), resumeBtn);
-  const talk = el('div', 'talk');
-  talk.setAttribute('aria-live', 'polite');
-  const form = el('form', '');
-  const input = el('input', '')                    ;
-  input.type = 'text';
-  input.maxLength = 500;
-  input.autocomplete = 'off';
-  input.spellcheck = false;
-  input.setAttribute('enterkeyhint', 'send');
-  const sendBtn = el('button', 'send')                     ;
-  sendBtn.type = 'submit';
-  sendBtn.append(icon('send'));
-  form.append(input, sendBtn);
-  form.addEventListener('submit', (e) => {
-    e.preventDefault();
-    submit(input.value);
-  });
-  input.addEventListener('input', () => {
-    sendFailed = false;
-    sendBtn.disabled = !input.value.trim() || sending;
-  });
-  panel.append(top, talk, form, ...(o.move ? [o.move.card] : []));
-
-  function submit(text        ) {
-    const t = text.trim();
-    if (!t || sending) return;
-    sending = true;
-    sendFailed = false;
-    // The talk so far goes with it (the AI's question included, so a choice answers it).
-    const history = historyOf(model.turns);
-    model = { ...model, turns: [...model.turns, { who: 'you', text: t }], live: null };
-    input.value = '';
-    render();
-    o.send(t, history);
-  }
-
-  function render() {
-    const moving = !!o.move?.on();
-    // Moving: no veil (the objects are what the person looks at, and the presses go to them) and the card in the
-    // talk's place. The talk is kept as it was for "Chat".
-    veil.hidden = !open || moving;
-    panel.hidden = !open;
-    panel.classList.toggle('moving', moving);
-    if (!open) return;
-    // Words only: a 12 px ❚❚ before "Paused" read as a stray mark (design pass, 2026-10-22).
-    head.textContent = w('paused');
-    // Moving: the line under "Paused" says what to do (the card says what happened to the picked one).
-    seesEl.textContent = moving ? w('movePick') : sees;
-    talk.hidden = moving;
-    form.hidden = moving;
-    if (o.move) o.move.card.hidden = !moving;
-    if (moveBtn) {
-      moveBtn.replaceChildren();
-      const ic = el('span', 'ic');
-      ic.append(icon(moving ? 'spark' : 'move'));
-      moveBtn.append(ic, o.doc.createTextNode(moving ? w('talk') : w('move')));
-      moveBtn.title = moving ? w('talkTip') : w('moveTip');
-      moveBtn.setAttribute('aria-pressed', String(moving));
-      // Nothing to move with (no adapter found for this game): no button that would do nothing.
-      moveBtn.hidden = !moving && !o.move .can();
-    }
-    // "▶ Resume P" (plan step 6): the play mark says it is the game going on, beside "✥ Move".
-    const playIc = el('span', 'ic');
-    playIc.append(icon('play'));
-    resumeBtn.replaceChildren(playIc, o.doc.createTextNode(w('resume')), el('span', 'k', 'P'));
-    resumeBtn.title = w('resumeTip');
-    input.placeholder = sending ? w('sending') : sendFailed ? w('sendFail') : w('chatPlaceholder');
-    input.disabled = sending;
-    sendBtn.disabled = sending || !input.value.trim();
-    sendBtn.setAttribute('aria-label', w('send'));
-    talk.replaceChildren();
-    if (!model.turns.length) talk.append(el('div', 'empty', w('chatEmpty')));
-    model.turns.forEach((t, i) => {
-      if (t.who === 'you') {
-        talk.append(el('div', 'you', t.text));
-        return;
-      }
-      const row = el('div', `ai${t.state === 'failed' ? ' failed' : ''}`);
-      row.dataset.part = 'pause-reply';
-      const body = el('div', 'body');
-      body.append(el('div', 'said', t.text));
-      const last = i === model.turns.length - 1;
-      const acts = el('div', 'acts');
-      // Choices answer only the question still open (the last turn): an old question's buttons would answer nothing.
-      if (last && t.state === 'asking' && t.choices) {
-        t.choices.forEach((c, n) => {
-          const b = el('button', n === 0 ? 'b primary' : 'b', c)                     ;
-          b.type = 'button';
-          b.addEventListener('click', () => submit(c));
-          acts.append(b);
-        });
-      }
-      if (last && t.reload) {
-        const b = el('button', 'b primary', w('reload'))                     ;
-        b.type = 'button';
-        b.dataset.action = 'pause-reload';
-        b.title = w('reloadTip');
-        b.addEventListener('click', () => o.reload());
-        acts.append(b);
-      }
-      if (acts.childNodes.length) body.append(acts);
-      // "More in Claude": words, not a button (a web page cannot bring the AI's window forward), as the line's.
-      if (last && t.more) body.append(el('div', 'more', t.more));
-      row.append(el('span', 'dot'), body);
-      talk.append(row);
-    });
-    const live = model.live;
-    if (live && (live.state === 'looking' || live.state === 'fixing' || live.state === 'kept')) {
-      const row = el('div', 'live');
-      row.dataset.part = 'pause-live';
-      row.append(el('span', 'dot'), el('span', '', live.text));
-      talk.append(row);
-    }
-    talk.scrollTop = talk.scrollHeight;
-  }
-
-  return {
-    parts: [veil, panel],
-    input,
-    get isOpen() {
-      return open;
-    },
-    get busy() {
-      return sending;
-    },
-    open(s, draft) {
-      // A new pause is a new moment, so a new talk (showing the last one is for a later stage).
-      model = { turns: [], awaiting: false, live: null };
-      sending = false;
-      sendFailed = false;
-      sees = s;
-      open = true;
-      input.value = draft || '';
-      render();
-      input.focus({ preventScroll: true });
-    },
-    close() {
-      open = false;
-      input.blur();
-      render();
-    },
-    line(s) {
-      model = chatOnLine(model, s);
-      render();
-    },
-    sent(ok) {
-      sending = false;
-      if (ok) model = { ...model, awaiting: true };
-      else {
-        // Not kept: the words go back in the field to send again.
-        sendFailed = true;
-        const last = model.turns[model.turns.length - 1];
-        if (last && last.who === 'you') {
-          input.value = last.text;
-          model = { ...model, turns: model.turns.slice(0, -1) };
-        }
-      }
-      render();
-      if (open) input.focus({ preventScroll: true });
-    },
-    render,
-  };
-}
-
-__def(__exports, "HISTORY_MAX", () => HISTORY_MAX);
-__def(__exports, "historyOf", () => historyOf);
-__def(__exports, "chatOnLine", () => chatOnLine);
-__def(__exports, "CHAT_CSS", () => CHAT_CSS);
-__def(__exports, "createChat", () => createChat);
-};
-__defs[61] = function (__exports) {
-'use strict';
 // play-move.ts
 
-// Move things where the game stopped (pause stage 2, 2026-10-22: "stop in the middle of the game and move things").
+// The paused moment's objects (pause-edit, 2026-10-28; before: "Move things where the game stopped", pause stage 2,
+// 2026-10-22). A request of 2026-10-28: "pause in the middle of a scene and give instructions, by hand or to the AI" —
+// answered as "the paused moment becomes the editor". CONTRACT.md §3.5.1.
 //
-// The person paused ▶ Play (play-pause.ts) and pressed "Move" in the pause panel (or M). The editor's own editor
-// (editor.ts, the one Edit uses) wakes up INSIDE the paused game page: the same pick, the same orange outline, the same
-// strip under the object (move · height · turn · size), the same snap onto surfaces. Everything stays where it was at
-// the pause — the camera too: the view is the player's, not the edit camera (EditorDeps.paused).
+// The person pressed P (or ❚❚ Pause to edit) in ▶ Play. The game is held where it was (play-pause.ts) and the
+// editor's own editor (editor.ts, the one Edit uses) wakes over it: the same pick, outline, strip, card, list — the
+// editor page's whole Edit set, not a panel of its own (stage 2 had a card in a chat panel, "✥ Move / Talk" and M;
+// gone). Nothing goes back to where Play started: the view is the player's, the enemy is mid-jump, the score is the
+// score. Two ways the editor wakes:
+//   - an edit page that became Play (fast switch, play-switch.ts): its own editor, told `core/edit {moment: true}`;
+//   - a page opened for Play (Play from the start, the AI's Reload): createMomentEditor below, as stage 2 did, but its
+//     messages now go to the editor page (the list, the card, Save · N, ⌘Z all are the editor page's).
+// Either way the editor is EditorDeps.paused: the player's camera kept (no saved edit camera, no "everything in frame"),
+// the game never let run (no watch), no self-check, key releases reach the game.
 //
-// What happens after (design.md §5):
-//   - Resume: the game goes on from where things now stand (the objects themselves were moved; nothing to apply).
-//   - "Put in layout": that object's place goes to the editor as a move made in Edit would (studio:placement/moved,
-//     with `end` and `from`) — an unsaved change like any other: Save · N counts it, the draft carries it, ▶ Play asks
-//     "Save and play / Try without saving" about it next time, and Edit shows it. Nothing else does that: a place not
-//     put in the layout lives only in this play ("Only in this play") and is gone when the game opens again.
-//   - What the game moves itself — an enemy, a bullet, a boat the game sails, a motion given in Edit — says "Just for
-//     this moment" and has no "Put in layout": its place now is a point in the middle of a run, and kept, the next
-//     start would put it there (and the game would move it away again at once). Found by comparing where each object
-//     is at the pause with where it was when Play started (or where the person last left it): anything that moved by
-//     itself in between, anything the game made since (not there at the start), and anything the draft's motions move.
-//   - "Put back": where it was at the pause.
-//
-// WHY not the editor page's own Edit mode (send the shell to Edit): Edit opens a new game page — the moment (the enemy
-// mid-jump, the ball in the air) would be gone, which is the whole point of pausing. And the game can be full screen,
-// where only its own page shows: so the card lives in the pause panel, in the game page, like the chat.
-//
-// WHY nothing of the editor's chatter reaches the editor page: its messages are Edit's (core/ready says "editing",
-// view-state would replace the edit camera kept for Edit, core/key would run the editor's shortcuts — P there is ▶
-// Play). Only "Put in layout" goes out, as the one message Edit itself sends for a move.
-                                                                                                                       
+// What each object is (decision 5; the call made 2026-10-28: a placed thing moved in a moment goes in the scene, as in
+// Edit) — momentWhy, sent with play/paused `why`:
+//   - placed (null): moving it is the same as in Edit — it goes in the scene (Save · N, ⌘Z, the list's dot), stays
+//     after Resume, and is still there back in Edit.
+//   - the game moves it ('game'), a motion moves it ('motion'), the game made it since Play ('new'): just for this
+//     moment. Resume and the game goes on from where it was put; Edit shows the scene before Play (it is not in it).
+//     What the game made gets "✦ Have Claude make it appear here" on its card (the AI changes the game's code).
+// Found by comparing where each object is at the pause with where it was when Play started (or where the person last
+// left it in an earlier pause of this play): anything that moved by itself in between, anything the game made since
+// (not there at the start), and anything the draft's motions move.
+                                                                                                                            
 const { UI } = __require(13);
                                              
                                                     
@@ -24516,13 +24516,14 @@ const { nativeSetTimeout } = __require(0);
 /** One pose as observe.ts compares them (it reads only key and pose). */
 const one = (key        , pose      ) => [{ key, pose }                   ];
 
-/** Why an object can only be moved for this moment (null = it can go in the layout). */
-                                                         
+/** Why an object can only be moved for this moment (null = placed: moved as in Edit). */
+                                          
 
 /**
- * The pure part (test/pause.test.ts): can this object's place go in the layout? `start` = the poses when Play started
- * (after the editor's draft was shown), `mine` = where the person left objects in an earlier pause of this play (the
- * game did not move those: the person did), `moving` = the keys the draft's motions move, `now` = its pose at the pause.
+ * The pure part (test/pause.test.ts): is this object placed, or the game's for this moment? `start` = the poses when
+ * Play started (after the editor's draft was shown), `mine` = where the person left objects in an earlier pause of this
+ * play (the game did not move those: the person did), `moving` = the keys the draft's motions move, `now` = its pose
+ * at the pause.
  */
 function momentWhy(key        , now      , start                   , mine                   , moving             , dim             )            {
   if (moving.has(key)) return 'motion';
@@ -24537,116 +24538,66 @@ function samePose(a                  , b                  , dim             )   
   return !drivenBetween(one('k', a), one('k', b), dim).size;
 }
 
-/** "X 8.5 · Y 0.0 · Z 9.6" (3D, metres) / "X 120 · Y 40" (2D, px): the card's numbers, as Edit's card rounds them. */
+/** "X 8.5 · Y 0.0 · Z 9.6" (3D, metres) / "X 120 · Y 40" (2D, px), as Edit's card rounds them. */
 function poseWords(p      , dim             )         {
   // `+ 0` after rounding: no "-0.0" for a height a hair under the ground.
   const n = (v                    ) => (dim === '3d' ? (Math.round((v ?? 0) * 10) / 10 + 0).toFixed(1) : String(Math.round(v ?? 0) + 0));
   return dim === '3d' ? `X ${n(p.p[0])} · Y ${n(p.p[1])} · Z ${n(p.p[2])}` : `X ${n(p.p[0])} · Y ${n(p.p[1])}`;
 }
 
-const MOVE_CSS = `
-.chat .card { padding: 12px 14px 14px; display: flex; flex-direction: column; gap: 8px; }
-.chat .card .name { font-weight: 600; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.chat .card .nums { color: rgba(255,255,255,.55); font: 500 12px/1.3 ui-monospace, SFMono-Regular, Menlo, monospace; }
-.chat .card .why { color: rgba(255,255,255,.7); line-height: 1.45; }
-.chat .card .why b { font-weight: 600; color: #f4f4f6; }
-.chat .card .acts { display: flex; gap: 6px; flex-wrap: wrap; }
-.chat .card .hint { color: rgba(255,255,255,.55); font-size: 12px; line-height: 1.45; }
-/* "Put in layout" is the person's own hand (orange, as Edit's outline and Save), not the AI's violet. */
-.chat .card button.b.keep { background: #ff6b1a; color: #fff; }
-.chat .card button.b.keep:hover { background: #ff7d36; }
-button.b.on { background: rgba(255,255,255,.22); }
-button.b .ic { display: inline-grid; vertical-align: -2px; margin-right: 6px; }
-button.b .ic svg { width: 14px; height: 14px; }
-`;
-
-                                  
-                                  
-             
-                     
-                                                                                   
-                                      
-                                                                                                      
-                              
-                                                             
-                                   
-                                                                                                              
-                           
-                   
-                                  
-                         
-                                                                      
-                                  
-                                                                     
-                                
-                                                
-                      
- 
-
-                           
-                                                     
-                       
-                                 
+/**
+ * Who wakes the editor over the paused game (play-ask.ts pauseNow): an edit page's own editor (play-switch.ts
+ * momentHost) or the one a Play page makes (createMomentEditor).
+ */
                              
-                                                                                                
-                    
-                                                                                               
-                   
-                                                                     
-               
-                                                                                              
+                                                                                                                       
                   
-                                   
-                 
-     
-                                                                                                                    
-                                                                                                                      
-                                                                                                                
-     
-                                             
+                                                            
+                
+                                                                                                                    
+                                 
+                                                                                                                    
+                                  
  
 
-function createPlayMove(o                 )           {
-  const { win, el, w } = o;
-  let editor                = null;
-  let editorOf                       = null;
-  let on = false;
-  // Play's start, the person's own places, and the motions (see momentWhy).
+/** Where things were when Play started, what the person moved, what the motions move: the kinds of each pause. */
+                              
+                                                                                                              
+                                             
+                                                                                          
+                                                                    
+                                                                                                                     
+                                                
+                              
+ 
+
+/**
+ * `startList` = the objects as Play started them (an edit page: what its editor drives; a Play page: the adapter
+ * found). Looked for once the draft is shown and the game lists its objects (every 150 ms for up to ~30 s after the
+ * first frame: a big scene on a slow machine lists late — Lantern Cove in the headless test's software GL took more than
+ * the 5 s showFileEditsInPlay waits). A pause before that takes the pause's own list.
+ */
+function createMomentKinds(startList              , firstFrame                     , arranged                   )              {
   let start                           = null;
   const mine = new Map              ();
   let moving = new Set        ();
-  // This pause: each object's pose at the pause and why it is "this moment only" (computed once per pause, before any
-  // drag), the objects moved since, and what went in the layout (its pose then).
   let atPause                           = null;
-  let why = new Map                   ();
-  const kept = new Map              ();
-  let pick                = null;
-  const items = new Map              ();
-  let insetSig = '';
-
-  const list = (a               )         => {
-    try {
-      return a.list();
-    } catch {
-      return [];
-    }
-  };
-  // Where everything was when Play started: once the draft is shown and the game lists its objects (looked for every
-  // 150 ms for up to ~30 s after the first frame: a big scene on a slow machine lists late — Lantern Cove in the
-  // headless test's software GL took more than the 5 s showFileEditsInPlay waits). A pause before that takes the
-  // pause's own list.
-  // `run`: which Play this is (▶ Play in the same page, fast switch 2026-10-22: each Play of an edit page starts these
-  // again, restart() below); a look still going from an earlier Play stops.
+  let why = new Map                    ();
+  // Which Play this is (▶ Play in the same page starts these again, restart()); a look still going from an earlier one stops.
   let run = 0;
-  const findStart = (arranged                   ) => {
+  const findStart = (a                   ) => {
     const mine0 = ++run;
-    void arranged.then(async (keys) => {
+    void a.then(async (keys) => {
       if (mine0 !== run) return;
       moving = new Set(keys);
-      await o.core.time.firstFrame();
+      await firstFrame();
       for (let i = 0; i < 200 && !start && !atPause && mine0 === run; i++) {
-        const a = o.adapter();
-        const l = a ? list(a) : [];
+        let l         = [];
+        try {
+          l = startList();
+        } catch {
+          l = [];
+        }
         if (l.length) {
           if (!atPause) start = new Map(l.map((it) => [it.key, it.pose]         ));
           return;
@@ -24655,210 +24606,99 @@ function createPlayMove(o                 )           {
       }
     }).catch(() => {});
   };
-  findStart(o.arranged);
-
-  const card = el('div', 'card');
-  card.dataset.part = 'pause-move-card';
-
-  const dimOf = () => editorOf?.dim ?? '3d';
-  const poseNow = (key        )                   => {
-    const a = editor?.driven;
-    if (!a) return undefined;
-    return list(a).find((i) => i.key === key)?.pose;
-  };
-
-  /** The editor's messages: the card follows the pick and the moves; nothing goes to the editor page. */
-  const fromEditor = (m               ) => {
-    if (m.type === 'studio:placement/selected') {
-      pick = m.key;
-      if (m.item) items.set(m.item.key, m.item);
-      draw();
-    } else if (m.type === 'studio:placement/items') {
-      for (const it of m.items) items.set(it.key, it);
-    } else if (m.type === 'studio:placement/moved') {
-      if (m.key === pick) draw();
-    } else if (m.type === 'studio:placement/moved-group') {
-      if (m.poses.some((p) => p.key === pick)) draw();
-    }
-  };
-
-  const tell = (m               ) => editor?.handle(m);
-
-  /** What the panel covers, so the strip and the camera-height buttons stay clear of it (Edit's core/ui inset). */
-  const sendInset = () => {
-    const p = o.panel();
-    if (!p || !on) return;
-    const r = p.getBoundingClientRect();
-    const W = win.innerWidth, H = win.innerHeight;
-    // A sheet across the foot (narrow screens) covers the bottom; the card at the top right covers the right.
-    const inset        = r.width > W * 0.7 ? { top: 0, right: 0, bottom: Math.max(0, Math.round(H - r.top)), left: 0 } : { top: 0, right: Math.max(0, Math.round(W - r.left)), bottom: 0, left: 0 };
-    const sig = JSON.stringify(inset);
-    if (sig === insetSig) return;
-    insetSig = sig;
-    tell({ type: 'studio:core/ui', handlePx: o.handlePx(), theme: 'dark', inset });
-  };
-
-  function button(cls        , text        , tip        , action        , fn            ) {
-    const b = el('button', `b ${cls}`.trim(), text)                     ;
-    b.type = 'button';
-    b.title = tip;
-    b.dataset.action = action;
-    b.addEventListener('click', (e) => {
-      fn();
-      // Pressed with the mouse or a finger: the keys go back to the game page (the editor's M / T / arrows), not to the
-      // panel. From the keyboard (Enter on it: detail 0) the focus stays.
-      if (e.detail > 0) b.blur();
-    });
-    return b;
-  }
-
-  function putInLayout(key        ) {
-    const pose = poseNow(key);
-    if (!pose) return;
-    // `from`: where the editor page has it now (what Undo in Edit goes back to) — the last place put in the layout in
-    // this play, else Play's start (the draft and the code, as the game opened).
-    const from = kept.get(key) ?? start?.get(key) ?? atPause?.get(key);
-    o.post({ type: 'studio:placement/moved', key, pose, end: true, ...(from ? { from } : {}) });
-    kept.set(key, pose);
-    draw();
-  }
-  function putBack(key        ) {
-    const to = atPause?.get(key);
-    if (!to) return;
-    tell({ type: 'studio:placement/pose', key, pose: to });
-    // Put in the layout during this pause: the layout goes back with it (to the editor page, one more move — its Undo
-    // in Edit steps through both).
-    const k = kept.get(key);
-    if (k && !samePose(k, to, dimOf())) {
-      o.post({ type: 'studio:placement/moved', key, pose: to, end: true, from: k });
-      kept.delete(key);
-    }
-    draw();
-  }
-
-  function draw() {
-    card.replaceChildren();
-    if (!on) return;
-    const key = pick;
-    if (!key) {
-      card.append(el('div', 'hint', w('moveHow')));
-      done();
-      return;
-    }
-    const it = items.get(key);
-    const pose = poseNow(key) ?? it?.pose;
-    const dim = dimOf();
-    card.append(el('div', 'name', it?.label || key));
-    if (pose) card.append(el('div', 'nums', poseWords(pose, dim)));
-    const moved = !!pose && !samePose(pose, atPause?.get(key), dim);
-    const acts = el('div', 'acts');
-    const reason = why.get(key) ?? null;
-    if (reason) {
-      const p = el('div', 'why');
-      p.dataset.part = 'pause-move-moment';
-      p.append(el('b', '', w('moveMoment')), o.win.document.createTextNode(' · ' + w('moveMomentWhy')));
-      card.append(p);
-    } else {
-      const inLayout = !!pose && kept.has(key) && samePose(kept.get(key), pose, dim);
-      if (inLayout) {
-        const p = el('div', 'why', w('moveIn'));
-        p.dataset.part = 'pause-move-in';
-        card.append(p);
-      } else if (moved) {
-        const p = el('div', 'why', w('moveOnly'));
-        p.dataset.part = 'pause-move-only';
-        card.append(p);
-        acts.append(button('keep', w('toLayout'), w('toLayoutTip'), 'pause-to-layout', () => putInLayout(key)));
-      } else card.append(el('div', 'hint', w('moveHow')));
-    }
-    if (moved) acts.append(button('', w('putBack'), w('putBackTip'), 'pause-put-back', () => putBack(key)));
-    if (acts.childNodes.length) card.append(acts);
-    done();
-  }
-  /** The panel drawn with the new card, then what it covers now (a phone's sheet grows with the card: the strip under
-   * the pick must stay above it — measured before the card was drawn, the strip sat under the sheet's top). */
-  function done() {
-    o.changed();
-    sendInset();
-  }
-
+  findStart(arranged);
   return {
-    get on() {
-      return on;
+    restart(a) {
+      start = null;
+      mine.clear();
+      moving = new Set();
+      atPause = null;
+      why = new Map();
+      findStart(a);
     },
-    card,
-    picked: () => !!pick,
-    start() {
-      if (on) return true;
-      const a = o.adapter();
-      if (!a) return false;
-      if (!editor || editorOf !== a) {
-        editorOf = a;
-        // The world only: the game's HTML UI is not moved from a pause (it is laid out by the page, not by a moment).
-        editor = createEditor({ adapter: a, ui: null, core: o.core, win, post: fromEditor, rules: o.rules, tools: [], paused: true, ignore: o.ignore });
-        // For tests (test/studio-pause.browser.mjs), like `_debug` in Edit and `_play`: where an object is on screen,
-        // what is right under a point, and why it is "this moment only". Not enumerable, nothing else uses it.
-        const api = (win                                        ).__gameStudio;
-        const ed = editor;
-        if (api && !Object.prototype.hasOwnProperty.call(api, '_move')) {
-          Object.defineProperty(api, '_move', {
-            value: Object.freeze({
-              anchor: (k        ) => ed.driven.anchor(k),
-              // `r`: the pick's own slack (UI.pickRadiusMouse / Touch) to ask what a press there picks; 0 = right under it.
-              under: (x        , y        , r = 0) => { try { return ed.driven.pickNear(x, y, r)[0] ?? null; } catch { return null; } },
-              list: () => list(ed.driven),
-              why: (k        ) => why.get(k) ?? null,
-            }),
-            enumerable: false,
-          });
-        }
+    pause(list, dim) {
+      atPause = new Map(list.map((i) => [i.key, i.pose]         ));
+      if (!start) start = new Map(atPause);
+      why = new Map();
+      for (const i of list) {
+        const w = momentWhy(i.key, i.pose, start, mine, moving, dim);
+        if (w) why.set(i.key, w);
       }
-      // Once per pause, before any drag: each object's pose now, and which ones the game moves itself.
-      if (!atPause) {
-        const now = list(a);
-        atPause = new Map(now.map((i) => [i.key, i.pose]         ));
-        if (!start) start = new Map(atPause);
-        why = new Map(now.map((i) => [i.key, momentWhy(i.key, i.pose, start , mine, moving, a.dim)]         ));
-      }
-      on = true;
-      insetSig = '';
-      tell({ type: 'studio:core/lang', lang: o.lang() });
-      tell({ type: 'studio:core/config', config: o.config() });
-      tell({ type: 'studio:core/edit', on: true });
-      sendInset();
-      draw();
-      return true;
+      return Object.fromEntries(why);
     },
-    stop() {
-      if (!on) return;
-      tell({ type: 'studio:placement/select', key: null });
-      tell({ type: 'studio:core/edit', on: false });
-      on = false;
-      pick = null;
-      draw();
-    },
-    resumed() {
-      // What the person moved stays theirs: the next pause does not take it for the game's own motion.
-      if (atPause && editorOf) {
-        for (const it of list(editorOf)) {
+    resumed(list, dim) {
+      if (atPause) {
+        for (const it of list) {
           const was = atPause.get(it.key);
-          if (why.get(it.key) || !was || samePose(was, it.pose, editorOf.dim)) continue;
+          if (why.get(it.key) || !was || samePose(was, it.pose, dim)) continue;
           mine.set(it.key, it.pose);
         }
       }
       atPause = null;
       why = new Map();
     },
-    render: () => draw(),
-    restart(arranged) {
-      start = null;
-      mine.clear();
-      kept.clear();
-      moving = new Set();
-      atPause = null;
-      why = new Map();
-      pick = null;
-      findStart(arranged);
+    why: (key) => why.get(key) ?? null,
+  };
+}
+
+                                      
+                                  
+             
+                     
+                                                                                   
+                                      
+                                                                                                              
+                                   
+                   
+                                  
+                         
+                                                                                   
+                                
+ 
+
+/**
+ * The editor of a page opened for Play (a MomentHost). Its messages go to the editor page like an edit page's — but
+ * not core/view-state: that is the edit camera the editor page keeps for its next edit page, and the moment's camera is
+ * the player's.
+ */
+function createMomentEditor(o                     )                                                  {
+  const { win } = o;
+  let editor                = null;
+  let editorOf                       = null;
+  let on = false;
+  const toShell = (m               ) => {
+    if (m.type === 'studio:core/view-state') return;
+    o.post(m);
+  };
+  return {
+    get editor() {
+      return editor;
+    },
+    wake() {
+      if (on) return true;
+      const a = o.adapter();
+      if (!a) return false;
+      if (!editor || editorOf !== a) {
+        editorOf = a;
+        // The world only: the game's HTML UI is not moved from a pause (it is laid out by the page, not by a moment).
+        editor = createEditor({ adapter: a, ui: null, core: o.core, win, post: toShell, rules: o.rules, tools: [], paused: true, ignore: o.ignore });
+      }
+      on = true;
+      editor.handle({ type: 'studio:core/lang', lang: o.lang() });
+      editor.handle({ type: 'studio:core/config', config: o.config() });
+      editor.handle({ type: 'studio:core/ui', handlePx: o.handlePx(), theme: 'dark' });
+      editor.handle({ type: 'studio:core/edit', on: true });
+      return true;
+    },
+    sleep() {
+      if (!on || !editor) return;
+      editor.handle({ type: 'studio:placement/select', key: null });
+      editor.handle({ type: 'studio:core/edit', on: false });
+      on = false;
+    },
+    driven: () => (editor && on ? editor.driven : null),
+    handle(m) {
+      if (on && editor) editor.handle(m);
     },
   };
 }
@@ -24871,11 +24711,11 @@ function defaultHandlePx(win        )         {
 __def(__exports, "momentWhy", () => momentWhy);
 __def(__exports, "samePose", () => samePose);
 __def(__exports, "poseWords", () => poseWords);
-__def(__exports, "MOVE_CSS", () => MOVE_CSS);
-__def(__exports, "createPlayMove", () => createPlayMove);
+__def(__exports, "createMomentKinds", () => createMomentKinds);
+__def(__exports, "createMomentEditor", () => createMomentEditor);
 __def(__exports, "defaultHandlePx", () => defaultHandlePx);
 };
-__defs[62] = function (__exports) {
+__defs[61] = function (__exports) {
 'use strict';
 // play-ask.ts
 
@@ -24898,15 +24738,24 @@ __defs[62] = function (__exports) {
 // all are; "/" opens chat in many). Enter, R or a letter would fight the game. On a Japanese keyboard ` is Shift+@;
 // the corner mark is there for every keyboard and for touch.
 //
-// Nothing here runs unless the editor says an AI can get the request (play/on): the offline web demo shows nothing.
-                                                                                                                                         
+// Nothing here runs until the editor says so (play/on). Pause-edit (2026-10-28): the offline web demo says so too — the
+// pause, the paused moment, Next frame and Speed need no AI (decision 12) — but with `ai: false`, so the ✦ field and
+// its line stay away there, as the demo's Edit has no AI either.
+//
+// The pause (play-pause.ts holds the game) is the way into the paused MOMENT (pause-edit, a request of 2026-10-28:
+// "pause in the middle of a scene and give instructions, by hand or to the AI"): P, the editor's top-bar ❚❚ Pause to edit, or
+// in full screen the corner's ❚❚. Here: the game held, the moment's picture taken (it goes with the first request of
+// the pause), full screen left (the editor's tools are outside it), the editor woken over the moment (play-move.ts
+// MomentHost) and the editor page told which objects are the game's for this moment only. Everything else of the
+// moment — the list, the card, the field, Save, ⌘Z — is the editor page's. Stage 1–2's chat panel over the paused
+// game, "✥ Move / Talk" and M are gone (decision 2).
+                                                                                                                                               
 const { isStudioMessage } = __require(13);
 const { LINE_FADE_MS, LINE_GRACE_MS, lineStayMs } = __require(57);
 const { icon } = __require(58);
 const { shootPage } = __require(25);
-const { createPauseHold, isPauseKey } = __require(59);
-const { CHAT_CSS, createChat } = __require(60);
-const { createPlayMove, defaultHandlePx, MOVE_CSS } = __require(61);
+const { createPauseHold, isPauseKey, STEP_MS } = __require(59);
+const { createMomentEditor, createMomentKinds, defaultHandlePx } = __require(60);
                                              
                                                     
 const { nativeSetTimeout, nativeClearTimeout } = __require(0);
@@ -24918,7 +24767,10 @@ const { nativeSetTimeout, nativeClearTimeout } = __require(0);
                                
                                                                                                               
                      
-                                                                                                                  
+     
+                                                                                                                      
+                                                                                                                      
+     
                                                                          
      
                                                                                                                         
@@ -24933,8 +24785,10 @@ const { nativeSetTimeout, nativeClearTimeout } = __require(0);
                                   
                                                                                                                     
                                           
-                                                                                                                       
+                                                                                                                                
                 
+                                                                                                            
+                                  
  
 
 // ---------------------------------------------------------------------------
@@ -25119,19 +24973,34 @@ button.b:focus-visible, .mark:focus-visible { outline: 2px solid #8b7cff; outlin
   .mark.small { padding: 0 17px; }
 }
 @media (prefers-reduced-motion: reduce) { .busy .dot, .busy .spark { animation: none; } .line { transition: none; } }
-/* The corner (pause, 2026-10-22): ❚❚ left of the mark, the same glass and height. The two sit in one row at the corner
-   so the button follows the mark when it grows (hover) or shrinks (after 5 s). */
+/* The corner's ❚❚ Pause to edit P (pause-edit, 2026-10-28): in full screen only — the editor's top bar, where it sits
+   next to Edit on every screen (02-find.md), is not seen there. The mark's glass, height and key cap. */
 .corner { position: absolute; right: 14px; bottom: 14px; display: flex; align-items: center; gap: 8px; pointer-events: none; }
 .corner .mark { position: static; }
-` + CHAT_CSS + MOVE_CSS;
+.pause { pointer-events: auto; height: 32px; padding: 0 10px 0 11px; border-radius: 16px; display: flex; align-items: center; gap: 8px;
+  cursor: pointer; color: inherit; font: inherit; white-space: nowrap; transition: opacity .3s; opacity: .92; }
+.pause:hover { opacity: 1; }
+.pause .ic { display: grid; place-items: center; }
+.pause svg { width: 14px; height: 14px; }
+.pause:focus-visible { outline: 2px solid #8b7cff; outline-offset: 2px; }
+@media (pointer: coarse) { .pause { height: 44px; border-radius: 22px; padding: 0 16px 0 14px; } }
+`;
 
                                     
+
+/** Is this key "Next frame" (pause-edit; the . key while paused)? By the character, or the key when a layout gives another. */
+function isStepKey(e                                                                                                               , typing         )          {
+  if (typing || e.isComposing || e.ctrlKey || e.metaKey || e.altKey) return false;
+  return e.key === '.' || e.code === 'Period';
+}
+
+/** Held down, Next frame steps on at the speed after this long (a press shorter than it is one frame). */
+const STEP_HOLD_MS = 300;
 
 function startPlayAsk(o                )                {
   const { win, parentOrigin } = o;
   // Play in the same page (fast switch): false while the edit page is in Edit (see PlayAskOptions.standby).
   let awake = !o.standby;
-  let arranged = o.move?.arranged ?? Promise.resolve([]            );
   const doc = win.document;
   keepWebGLPictures(win);
   // Made now, before the game's code: it keeps the AudioContexts the game makes so a pause can quiet them.
@@ -25176,23 +25045,23 @@ function startPlayAsk(o                )                {
     }
   };
 
-  // ----- the overlay, built when the editor says an AI can get the request -----
+  // ----- the overlay, built when the editor says so (play/on) -----
   let words               = null;
+  // An AI can get a request (play/on `ai`, false in the offline web demo): the ✦ field and its line.
+  let aiOn = true;
   let host                     = null;
   let root                    = null;
   let mark                   , bar             , input                  , hint             , line             ;
-  // Pause (2026-10-22): the corner's ❚❚, the chat over the paused game, and what the first message of a pause carries.
+  // The full-screen corner's ❚❚ Pause to edit P.
   let pauseBtn                           = null;
-  let chat              = null;
-  // Stage 2: moving things while paused (the editor in the paused page, its card in the panel), and what play/on gave it.
-  let move                  = null;
+  // The paused moment (play-move.ts): who wakes the editor, whether it is up, and the kinds of the objects.
   let moveConfig                    = null;
   let moveHandlePx = 0;
   let lang              = 'en';
-  let pausedMoment                       = null;
-  let chatId = '';
-  // Which field is waiting for play/sent: the ✦ field's, or the chat's.
-  let sentTo                 = 'bar';
+  let momentHost                    = null;
+  let momentUp = false;
+  // The picture taken at the last pause (tests: the paused frame against what the editor then shows, _move.shot).
+  let momentShot = '';
   let state                  = null;
   let barOpen = false;
   let sending = false;
@@ -25223,6 +25092,57 @@ function startPlayAsk(o                )                {
     return e;
   };
 
+  let adapter                       = null;
+  function findAdapter()                       {
+    if (adapter) return adapter;
+    for (const p of o.probes()) {
+      try {
+        const a = p.found();
+        if (a) return (adapter = a);
+      } catch {
+        /* the next one */
+      }
+    }
+    return null;
+  }
+  const listOf = (a                      )         => {
+    try {
+      return a ? a.list() : [];
+    } catch {
+      return [];
+    }
+  };
+  /** The world as the editor drives it while the moment is up (an edit page: always its editor's), else the game's. */
+  const world = () => momentHost?.driven() ?? findAdapter();
+
+  // The kinds of each pause (play-move.ts): Play's start, the person's own places, the motions.
+  const firstFrame = () => o.move?.core.time.firstFrame() ?? Promise.resolve();
+  const kinds                     = hold ? createMomentKinds(() => listOf(world()), firstFrame, o.move?.arranged ?? Promise.resolve([]            )) : null;
+  // A page opened for Play makes its own editor for the moment (an edit page hands its own over, useHost).
+  if (hold && o.move && !o.standby) {
+    const mv = o.move;
+    momentHost = createMomentEditor({ win, core: mv.core, rules: mv.rules, adapter: () => findAdapter(), post,
+      lang: () => lang, config: () => moveConfig, handlePx: () => moveHandlePx || defaultHandlePx(win), ignore: (e) => isOurs(e) });
+  }
+
+  // ----- the game's time since ▶ Play, for the top bar's 0:41.8 (play/time) -----
+  // `t0` = the game's time when this Play began: a Play page's first frame, an edit page's wake().
+  // `before` = the seconds of this page's earlier Plays (fix 1 ✕10 of walk 1, 2026-10-28): ▶ Play from Edit in the same
+  // page goes on with the same game (the boss already there, SCORE 13,507, the game's TIME going on), so the top bar's
+  // clock goes on too — it started at 0:00 and read as "from the start". Only a new page (Play from the start, a
+  // Reload) starts at 0:00.
+  let t0 = 0;
+  let before = 0;
+  if (hold && !o.standby) void firstFrame().then(() => {
+    t0 = hold.now();
+    tellTime();
+  });
+  const playSeconds = () => (hold ? Math.max(0, (hold.now() - t0) / 1000) : 0);
+  function tellTime() {
+    if (!hold || !awake) return;
+    post({ type: 'studio:play/time', t: Math.round(playSeconds() * 1000) / 1000, rate: hold.rate, running: !hold.paused });
+  }
+
   /** Over everything, full screen too: the top layer. Shown again after each full-screen change so it is on top. */
   const lift = () => {
     if (!host || !awake) return;
@@ -25246,8 +25166,8 @@ function startPlayAsk(o                )                {
     if (host) return;
     host = doc.createElement('game-studio-play');
     host.setAttribute('popover', 'manual');
-    // Kept when an adapter hides the game's own HUD for editing (three.js hideOverlays, data-studio-keep): moving things
-    // while paused (play-move.ts) wakes the editor, and this overlay holds its panel.
+    // Kept when an adapter hides the game's own HUD for editing (three.js hideOverlays, data-studio-keep): the paused
+    // moment wakes the editor (play-move.ts), and this overlay holds the full-screen ❚❚ and the ✦ field.
     host.setAttribute('data-studio-keep', '');
     // The popover's own box: invisible and click-through; only the parts inside take the pointer.
     host.style.cssText = 'all:initial;position:fixed;inset:0;width:100%;height:100%;max-width:none;max-height:none;margin:0;padding:0;border:0;background:transparent;overflow:visible;pointer-events:none;z-index:2147483647;';
@@ -25292,37 +25212,17 @@ function startPlayAsk(o                )                {
       pauseBtn = el('button', 'pause glass')                     ;
       pauseBtn.type = 'button';
       pauseBtn.dataset.part = 'pause-button';
-      // "❚❚ Pause and talk P" (plan step 6, decided 2026-10-23): the corner's ONE way in while playing. It was
-      // ❚❚ alone beside "✦ Ask your AI `" — two doors to the same AI, a finger apart. Stopping to show the moment says
-      // more than a line typed over a running game (the picture goes with it), so the pause is the one kept; asking
-      // without pausing stays as the ` key (the ? sheet lists it) and the ✦ field it opens.
+      // "❚❚ Pause to edit P" (pause-edit, 2026-10-28; it was "❚❚ Pause and talk P", the corner's one way in while
+      // playing). Now the editor's top bar has it, next to Edit, on every screen; this one is for full screen only.
       const ic = el('span', 'ic');
       ic.append(icon('pause'));
-      pauseBtn.append(ic, el('span', 'word', w('pauseTalk')), el('kbd', '', 'P'));
+      pauseBtn.append(ic, el('span', 'word', w('pauseEdit')), el('kbd', '', 'P'));
       pauseBtn.addEventListener('click', () => void pauseNow());
-      if (o.move) {
-        const mv = o.move;
-        move = createPlayMove({
-          win, core: mv.core, rules: mv.rules, arranged, adapter: () => findAdapter(), post, el, w,
-          lang: () => lang, config: () => moveConfig, handlePx: () => moveHandlePx || defaultHandlePx(win),
-          panel: () => (chat ? chat.parts[1]  : null), ignore: (e) => isOurs(e), changed: () => chat?.render(),
-        });
-      }
-      const m = move;
-      chat = createChat({
-        doc, el, w,
-        send: (text, history) => void sendChat(text, history),
-        resume: () => resumeNow(),
-        reload: () => post({ type: 'studio:play/reload' }),
-        ...(m ? { move: { card: m.card, on: () => m.on, picked: () => m.picked(), can: () => !!findAdapter(), toggle: () => toggleMove() } } : {}),
-      });
       corner.append(pauseBtn);
     }
-    // With a pause the ✦ mark is not in the corner (above); it is still built: the ` field and its line use its state.
+    // With a pause the ✦ mark is not in the corner (below); it is still built: the ` field and its line use its state.
     corner.append(mark);
-    // The veil and the chat last: the ✦ field stays the overlay's first input (what reads the overlay finds it as
-    // before), and they are never shown with the line or the field anyway.
-    wrap.append(corner, line, bar, ...(chat ? chat.parts : []));
+    wrap.append(corner, line, bar);
     root.append(style, wrap);
     // A press on the overlay is not a press in the game (a game that shoots on click must not shoot). Stopped where
     // it leaves the overlay, so the overlay's own buttons still get it; a game listening in the capture phase on the
@@ -25333,7 +25233,7 @@ function startPlayAsk(o                )                {
     (doc.body || doc.documentElement).appendChild(host);
     lift();
     // The short or the long placeholder (NARROW_PX) follows the window.
-    win.addEventListener('resize', () => (render(), move?.render()));
+    win.addEventListener('resize', () => render());
     // "Ask your AI `" for a few seconds when Play starts, then only the dot and the key: seen once, then out of the way.
     smallTimer = nativeSetTimeout(() => mark.classList.add('small'), 5000);
     render();
@@ -25350,19 +25250,27 @@ function startPlayAsk(o                )                {
   for (const type of ['keydown', 'keyup', 'keypress']         ) {
     win.addEventListener(type, (e               ) => {
       if (!words) return;
-      // Moving while paused: the keys are the editor's (M / H / T / S, arrows, Escape…) unless the chat's field has them.
-      if (hold?.paused && move?.on && !(isOurs(e) && root?.activeElement === chat?.input)) {
+      if (hold?.paused) {
+        // The paused moment: P resumes, . steps (held: on at the speed), everything else is the editor's (its input.ts
+        // keeps them from the game; key RELEASES still reach the game — play-pause.ts). Escape is the editor's too
+        // (it drops the tool, then the pick): it does not resume, as in Edit (02-find.md).
+        if (isOurs(e)) {
+          e.stopImmediatePropagation();
+          return;
+        }
         if (type === 'keydown' && isPauseKey(e, gameTyping())) {
           e.preventDefault();
           e.stopImmediatePropagation();
           resumeNow();
-        } else if (type === 'keydown' && e.key === 'Escape' && !move.picked()) {
-          // Escape: the editor drops its tool, then the pick; with nothing picked it takes the person back to the talk.
+        } else if (isStepKey(e, gameTyping())) {
           e.preventDefault();
           e.stopImmediatePropagation();
-          toggleMove();
-        } else if (isOurs(e)) e.stopImmediatePropagation();
-        // Anything else goes on to the editor's input (input.ts), which keeps it from the game.
+          if (type === 'keydown' && !e.repeat) stepOn();
+          else if (type === 'keyup') stepOff();
+        } else if (!momentUp && type !== 'keyup') {
+          // No editor over the moment (nothing to edit with): the game gets no key press while paused.
+          e.stopImmediatePropagation();
+        }
         return;
       }
       if (isOurs(e)) {
@@ -25370,23 +25278,7 @@ function startPlayAsk(o                )                {
         // the only way to keep them from a game's own listeners, and it also keeps them from the field's, so Enter
         // and Escape are read here. Letters still type (nothing prevents their default).
         e.stopImmediatePropagation();
-        if (type === 'keydown') (hold?.paused ? chatKey(e) : fieldKey(e));
-        return;
-      }
-      if (hold?.paused) {
-        // Paused: no key press reaches the game. Releases do (play-pause.ts: a key held at the pause must not stay
-        // down in the game). P or Escape resumes; any other key is the person reaching for the chat: it gets focus.
-        if (type === 'keyup') return;
-        e.stopImmediatePropagation();
-        if (type !== 'keydown') return;
-        if (isPauseKey(e, gameTyping()) || e.key === 'Escape') {
-          e.preventDefault();
-          resumeNow();
-        } else if (move && (e.key === 'm' || e.key === 'M' || e.code === 'KeyM') && !e.ctrlKey && !e.metaKey && !e.altKey && !gameTyping()) {
-          // M: Move (its tooltip says so), as the editor's own key for the Move tool.
-          e.preventDefault();
-          toggleMove();
-        }
+        if (type === 'keydown') fieldKey(e);
         return;
       }
       if (type === 'keydown' && !barOpen && hold && isPauseKey(e, gameTyping())) {
@@ -25396,25 +25288,14 @@ function startPlayAsk(o                )                {
       } else if (type !== 'keydown' && hold && !barOpen && (e.key === 'p' || e.key === 'P' || e.code === 'KeyP') && !gameTyping()) {
         // The release (and keypress) of the P that paused: not the game's either.
         e.stopImmediatePropagation();
-      } else if (type === 'keydown' && !barOpen && isAskKey(e, gameTyping())) {
+      } else if (type === 'keydown' && !barOpen && aiOn && isAskKey(e, gameTyping())) {
         e.preventDefault();
         e.stopImmediatePropagation();
         openBar();
-      } else if (type !== 'keydown' && e.key === '`' && !gameTyping()) {
+      } else if (type !== 'keydown' && aiOn && e.key === '`' && !gameTyping()) {
         e.stopImmediatePropagation();
       }
     }, true);
-  }
-  /** The chat's field while paused: Enter sends, Escape resumes (the words stay in the field for the next pause). */
-  function chatKey(e               ) {
-    if (!chat || e.target !== host || !root || root.activeElement !== chat.input) return;
-    if (e.key === 'Escape') {
-      e.preventDefault();
-      resumeNow();
-    } else if (e.key === 'Enter' && !e.isComposing && e.keyCode !== 229) {
-      e.preventDefault();
-      chat.input.form?.requestSubmit();
-    }
   }
   function fieldKey(e               ) {
     if (e.target !== host || !root || root.activeElement !== input) return;
@@ -25427,12 +25308,19 @@ function startPlayAsk(o                )                {
       void submit();
     }
   }
-  // Full screen changes whether the mark is drawn here (markOn), so draw again too.
-  doc.addEventListener('fullscreenchange', () => (lift(), render()));
-  doc.addEventListener('webkitfullscreenchange', () => (lift(), render()));
+  // Full screen changes whether the mark is drawn here (markOn), so draw again too. Left while paused (pauseNow): the
+  // game's picture changed size — one frame drawn again with time stopped (decision 15: a game that moves by frame
+  // steps one frame; said nowhere, it is small).
+  const onFullscreen = () => {
+    lift();
+    render();
+    if (hold?.paused) nativeSetTimeout(() => o.pause?.time.step(), 60);
+  };
+  doc.addEventListener('fullscreenchange', onFullscreen);
+  doc.addEventListener('webkitfullscreenchange', onFullscreen);
 
   function openBar() {
-    if (!host) return;
+    if (!host || !aiOn || hold?.paused) return;
     barOpen = true;
     // The field open again = the person looks for what happened: a "fixed" line that faded comes back (and goes again).
     if (state && state.state === 'fixed' && dismissed === JSON.stringify(state) && dismissed === fadeSig) {
@@ -25461,57 +25349,53 @@ function startPlayAsk(o                )                {
     }
   }
 
-  // ----- pause (play-pause.ts holds the game; play-chat.ts is the talk over it) -----
+  // ----- the paused moment (play-pause.ts holds the game; play-move.ts wakes the editor over it) -----
+  let pausing = false;
   async function pauseNow() {
-    if (!hold || !chat || !host || hold.paused) return;
-    // Words already typed in the ✦ field move to the chat (the person was about to ask; now they can talk).
-    const draft = barOpen ? input.value.trim() : '';
-    if (barOpen) closeBar();
-    hold.pause();
-    // The moment, taken at once: the picture is of the game as it stopped (the overlay is never in it), the console
-    // as it was. The first message of this pause carries it.
-    pausedMoment = await moment('');
-    chatId = '';
-    const logs = pausedMoment.type === 'studio:play/ask' ? pausedMoment.logs || [] : [];
-    const errs = logs.filter((l) => l.level === 'error').length;
-    const sees = errs ? `${w('sees')} · ${(errs === 1 ? w('seesError') : w('seesErrors')).replace('#', String(errs))}` : w('sees');
-    if (!hold.paused) return; // resumed while the picture was taken
-    chat.open(sees, draft);
-    post({ type: 'studio:play/paused', on: true });
-    render();
-  }
-  /** Move ↔ Chat in the paused panel (play-move.ts). */
-  function toggleMove() {
-    if (!move || !chat || !hold?.paused) return;
-    if (move.on) {
-      move.stop();
-      chat.render();
-      chat.input.focus({ preventScroll: true });
-      return;
-    }
-    chat.input.blur();
-    (root?.activeElement                      )?.blur();
-    if (!move.start()) return;
-    chat.render();
-    // The keys go to the page (the editor's), not to a button of the panel that kept the focus.
+    if (!hold || hold.paused || pausing) return;
+    pausing = true;
     try {
-      win.focus();
-    } catch {
-      /* fine */
+      // Words already typed in the ✦ field go to the editor page's field (the person was about to ask; now they can).
+      const draft = barOpen ? input.value.trim() : '';
+      if (barOpen) closeBar();
+      stepOff();
+      hold.pause();
+      // The moment, taken at once: the picture is of the game as it stopped (the overlay is never in it), the console
+      // as it was. The first request of this pause carries it (the editor page sends it, from its field).
+      const ask = await moment('');
+      if (!hold.paused) return; // resumed while the picture was taken
+      momentShot = ask.type === 'studio:play/ask' ? ask.shot ?? '' : '';
+      // Out of full screen: the editor's tools are outside the game's page (decision 15).
+      try {
+        if (doc.fullscreenElement) await doc.exitFullscreen();
+      } catch {
+        /* the browser said no: the moment is still up, behind the full screen */
+      }
+      if (!hold.paused) return;
+      // Which objects are the game's for this moment, before the editor or the person moves anything.
+      const w0 = world();
+      const why = kinds && w0 ? kinds.pause(listOf(w0), w0.dim) : {};
+      momentUp = !!momentHost?.wake();
+      const { type: _t, text: _x, ...rest } = ask                                                       ;
+      post({ type: 'studio:play/paused', on: true, edit: momentUp, why, ask: rest, ...(draft ? { draft } : {}) });
+      tellTime();
+      render();
+    } finally {
+      pausing = false;
     }
   }
   function resumeNow() {
     if (!hold || !hold.paused) return;
+    stepOff();
     // The editor goes first (its own frame loop and the adapter's edit view end), then the game runs on from where the
-    // objects now are.
-    if (move) {
-      move.stop();
-      move.resumed();
-    }
+    // objects now are. What the person moved is theirs from now on (kinds.resumed).
+    const w0 = world();
+    if (momentUp) momentHost?.sleep();
+    momentUp = false;
+    if (kinds && w0) kinds.resumed(listOf(w0), w0.dim);
     hold.resume();
-    chat?.close();
-    pausedMoment = null;
     post({ type: 'studio:play/paused', on: false });
+    tellTime();
     render();
     try {
       win.focus();
@@ -25519,17 +25403,27 @@ function startPlayAsk(o                )                {
       /* fine */
     }
   }
-  async function sendChat(text        , history                                            ) {
-    sentTo = 'chat';
-    // The first message: the moment of the pause. The next ones: the talk so far and the first one's id; the moment
-    // is in that first record (and in .studio/chat/<id>.json), the game has not moved since.
-    const base                = !chatId && pausedMoment && pausedMoment.type === 'studio:play/ask' ? { ...pausedMoment } : { type: 'studio:play/ask', text, size: [win.innerWidth, win.innerHeight] };
-    if (base.type !== 'studio:play/ask') return;
-    base.text = text;
-    base.paused = true;
-    if (chatId) base.chat = chatId;
-    if (history.length) base.history = history;
-    post(base);
+
+  // ----- Next frame and Speed (play-pause.ts; the top bar's ▶| and 1× ⌄, the . key) -----
+  let stepTimer = 0;
+  let stepping = false;
+  function stepOn() {
+    if (!hold?.paused) return;
+    stepOff();
+    stepping = true;
+    hold.step();
+    tellTime();
+    // Held: on at the chosen speed (1/60 s of game time each 1/60 / r s), until let go.
+    stepTimer = nativeSetTimeout(function again() {
+      if (!stepping || !hold.paused) return;
+      hold.step();
+      tellTime();
+      stepTimer = nativeSetTimeout(again, STEP_MS / Math.max(0.05, hold.rate));
+    }, STEP_HOLD_MS);
+  }
+  function stepOff() {
+    stepping = false;
+    nativeClearTimeout(stepTimer);
   }
 
   /** The state's line in reply to Enter on an empty field: a fix to load (Reload), or nothing to do. */
@@ -25543,7 +25437,6 @@ function startPlayAsk(o                )                {
       return;
     }
     if (sending) return;
-    sentTo = 'bar';
     if (state && state.state === 'asking') {
       sending = true;
       post({ type: 'studio:play/answer', text });
@@ -25601,20 +25494,6 @@ function startPlayAsk(o                )                {
     return out;
   }
 
-  let adapter                       = null;
-  function findAdapter()                       {
-    if (adapter) return adapter;
-    for (const p of o.probes()) {
-      try {
-        const a = p.found();
-        if (a) return (adapter = a);
-      } catch {
-        /* the next one */
-      }
-    }
-    return null;
-  }
-
   // ----- the "fixed" line's own clock -----
   function fadeFor(s                 , sig        ) {
     if (!s || s.state !== 'fixed' || sig === dismissed) {
@@ -25651,24 +25530,24 @@ function startPlayAsk(o                )                {
     fadeTimer = nativeSetTimeout(lineDue, LINE_GRACE_MS);
   }
 
-  // ----- drawing: the corner mark, the field, the line -----
+  // ----- drawing: the corner, the field, the line -----
   function render() {
     if (!host) return;
     const s = state;
     const busy = !!s && (s.state === 'looking' || s.state === 'fixing');
     mark.classList.toggle('busy', busy);
     const paused = !!hold?.paused;
-    const cornerOn = !barOpen && !paused && (markOn || !!doc.fullscreenElement);
-    // One door in the corner (plan step 6): ❚❚ when this game can pause, else the ✦ mark as before.
-    mark.hidden = !cornerOn || !!pauseBtn;
+    const full = !!doc.fullscreenElement;
+    // The corner: in full screen only ❚❚ Pause to edit (the editor's top bar has it otherwise); a page that cannot pause
+    // keeps the ✦ mark as before.
+    mark.hidden = barOpen || paused || !!pauseBtn || !aiOn || !(markOn || full);
     if (pauseBtn) {
-      pauseBtn.hidden = !cornerOn;
+      pauseBtn.hidden = barOpen || paused || !full;
       pauseBtn.title = w('pauseTip');
       pauseBtn.setAttribute('aria-label', w('pauseTip'));
       const word = pauseBtn.querySelector('.word');
-      if (word) word.textContent = w('pauseTalk');
+      if (word) word.textContent = w('pauseEdit');
     }
-    chat?.render();
     bar.hidden = !barOpen;
     bar.classList.toggle('busy', sending);
     input.disabled = sending;
@@ -25680,8 +25559,8 @@ function startPlayAsk(o                )                {
 
     line.replaceChildren();
     const sig = s ? JSON.stringify(s) : '';
-    // Paused: the chat says what the AI does (its replies are the same lines), so the line over the game waits.
-    line.hidden = !s || sig === dismissed || paused;
+    // Paused: the editor page's own line over its field says what the AI does (the moment is its editor), so this waits.
+    line.hidden = !s || sig === dismissed || paused || !aiOn;
     fadeFor(s, sig);
     // A fix that waits for Reload after its line went: the corner dot says so (` or the mark, then Enter reloads).
     const waiting = !!s && s.state === 'fixed' && !!s.reload && line.hidden;
@@ -25754,6 +25633,7 @@ function startPlayAsk(o                )                {
     if (m.type === 'studio:play/on') {
       words = m.words;
       lang = m.lang === 'ja' ? 'ja' : 'en';
+      aiOn = m.ai !== false;
       if (m.config !== undefined) moveConfig = m.config ?? null;
       if (typeof m.handlePx === 'number' && m.handlePx > 0) moveHandlePx = m.handlePx;
       markOn = m.mark !== false;
@@ -25763,22 +25643,24 @@ function startPlayAsk(o                )                {
       else if (host) render();
       else if (doc.body) build();
       else doc.addEventListener('DOMContentLoaded', build, { once: true });
+      tellTime();
     } else if (m.type === 'studio:play/open') {
-      // The editor's ✦ (phone): the same as ` or the corner mark. Paused: the chat is the way to ask; its field.
-      if (hold?.paused && chat) chat.input.focus({ preventScroll: true });
-      else if (host && !barOpen) openBar();
+      // The editor's ✦ (phone): the same as ` or the corner mark. Paused: the editor page's own field is the way.
+      if (host && !barOpen && !hold?.paused) openBar();
     } else if (m.type === 'studio:play/pause') {
-      // The editor's ❚❚ (phone): the same as P or the corner button.
-      if (hold?.paused) resumeNow();
+      // The editor's ❚❚ Pause to edit / ▶ Resume (and P while its page has the keys): the same as P here.
+      const want = m.on ?? !hold?.paused;
+      if (!want) resumeNow();
       else void pauseNow();
+    } else if (m.type === 'studio:play/speed') {
+      hold?.speed(m.rate);
+      tellTime();
+    } else if (m.type === 'studio:play/step') {
+      if (m.on) stepOn();
+      else stepOff();
     } else if (m.type === 'studio:play/state') {
       state = m.state;
-      if (hold?.paused && chat) chat.line(m.state);
       render();
-    } else if (m.type === 'studio:play/sent' && sentTo === 'chat' && chat) {
-      sentTo = 'bar';
-      if (m.ok && m.id && !chatId) chatId = m.id;
-      chat.sent(m.ok);
     } else if (m.type === 'studio:play/sent') {
       sending = false;
       sendFailed = !m.ok;
@@ -25787,6 +25669,10 @@ function startPlayAsk(o                )                {
         render();
         input.focus({ preventScroll: true });
       }
+    } else if (hold?.paused && momentUp && momentHost?.handle) {
+      // A page opened for Play: the editor page's messages while the moment is up are its editor's (an edit page's
+      // bridge routes them itself).
+      momentHost.handle(m);
     }
   });
   /** The overlay again after sleep(): as build() shows it the first time. */
@@ -25800,24 +25686,46 @@ function startPlayAsk(o                )                {
     render();
   }
 
+  // For tests (test/studio-pause.browser.mjs), like `_debug` in Edit and `_play`: where an object of the moment is on
+  // screen, what is right under a point, its kind, the game's time. Not enumerable, nothing else uses it.
+  const api = (win                                        ).__gameStudio;
+  if (hold && api && !Object.prototype.hasOwnProperty.call(api, '_move')) {
+    Object.defineProperty(api, '_move', {
+      value: Object.freeze({
+        up: () => momentUp,
+        anchor: (k        ) => world()?.anchor(k) ?? null,
+        // `r`: the pick's own slack (UI.pickRadiusMouse / Touch) to ask what a press there picks; 0 = right under it.
+        under: (x        , y        , r = 0) => { try { return world()?.pickNear(x, y, r)[0] ?? null; } catch { return null; } },
+        list: () => listOf(world()),
+        why: (k        ) => kinds?.why(k) ?? null,
+        seconds: () => playSeconds(),
+        rate: () => hold.rate,
+        shot: () => momentShot,
+      }),
+      enumerable: false,
+    });
+  }
+
   if (awake) post({ type: 'studio:play/hello' });
   return {
     hold,
     wake(next) {
       if (awake) return;
       awake = true;
-      arranged = next;
-      move?.restart(next);
+      kinds?.restart(next);
+      // The game's time from this Play (the edit page's clock went on through earlier Plays), on from the last Play's.
+      if (hold) t0 = hold.now() - before * 1000;
       post({ type: 'studio:play/hello' });
     },
     sleep() {
       if (!awake) return;
-      // Moving while paused: its editor goes first (the edit page's own editor comes up right after, play-switch.ts).
-      if (move?.on) move.stop();
-      if (hold?.paused && chat) {
-        chat.close();
-        pausedMoment = null;
-        chatId = '';
+      stepOff();
+      // Where this Play's clock got to: the next ▶ Play in this page goes on from it (wake()).
+      before = playSeconds();
+      // The paused moment ends: its editor goes first (the edit page's own editor comes up right after, play-switch.ts).
+      if (hold?.paused) {
+        if (momentUp) momentHost?.sleep();
+        momentUp = false;
         post({ type: 'studio:play/paused', on: false });
       }
       if (barOpen) closeBar();
@@ -25839,6 +25747,9 @@ function startPlayAsk(o                )                {
         }
       }
     },
+    useHost(h) {
+      momentHost = h;
+    },
   };
 }
 
@@ -25849,9 +25760,10 @@ __def(__exports, "logText", () => logText);
 __def(__exports, "pickLogs", () => pickLogs);
 __def(__exports, "isAskKey", () => isAskKey);
 __def(__exports, "near2D", () => near2D);
+__def(__exports, "isStepKey", () => isStepKey);
 __def(__exports, "startPlayAsk", () => startPlayAsk);
 };
-__defs[63] = function (__exports) {
+__defs[62] = function (__exports) {
 'use strict';
 // levels.ts
 
@@ -25906,7 +25818,7 @@ function pickLevel(list         , href        , inFrame         )               
 __def(__exports, "cleanLevels", () => cleanLevels);
 __def(__exports, "pickLevel", () => pickLevel);
 };
-__defs[64] = function (__exports) {
+__defs[63] = function (__exports) {
 'use strict';
 // early-press.ts
 
@@ -25988,7 +25900,7 @@ function watchEarlyTaps(win        )            {
 
 __def(__exports, "watchEarlyTaps", () => watchEarlyTaps);
 };
-__defs[65] = function (__exports) {
+__defs[64] = function (__exports) {
 'use strict';
 // bridge.ts
 
@@ -26007,12 +25919,12 @@ const { codeUiEntries, createCodeUi, mergeUiPorts } = __require(24);
 const { findUi: findUiNow, markHudCanvases } = __require(26);
 const { runSelfCheck } = __require(27);
 const { createEditor } = __require(56);
-const { startPlayAsk } = __require(62);
+const { startPlayAsk } = __require(61);
 const { createPlaySwitch } = __require(50);
 const { arrangeInPlay, moveInPlay } = __require(49);
 const { applyPlacement, placementForLevel } = __require(20);
-const { pickLevel } = __require(63);
-const { watchEarlyTaps } = __require(64);
+const { pickLevel } = __require(62);
+const { watchEarlyTaps } = __require(63);
                                                     
 const { nativeSetTimeout } = __require(0);
 
@@ -26506,7 +26418,7 @@ function startBridge(opts               )       {
 __def(__exports, "readEditParams", () => readEditParams);
 __def(__exports, "startBridge", () => startBridge);
 };
-__defs[66] = function (__exports) {
+__defs[65] = function (__exports) {
 'use strict';
 // main.ts
 
@@ -26525,11 +26437,11 @@ __require(0);
 // the three.js adapter: it installs __THREE_DEVTOOLS__ and wraps rAF/render.
 __require(1);
 const { threeProbe } = __require(12);
-const { startBridge } = __require(65);
+const { startBridge } = __require(64);
 
 startBridge({ builtins: [threeProbe] });
 
 
 };
-__require(66);
+__require(65);
 })();

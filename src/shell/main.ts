@@ -19,6 +19,7 @@ import {
   type EditLayer,
   type FlyKey,
   type MotionKey,
+  type MomentKind,
   type GameConfig,
   type Inset,
   type GameToolInfo,
@@ -71,6 +72,8 @@ import { aiNameKey, aiPresence, presenceSure, QUIET_WORK_MS, UNSEEN_MS, type AiP
 import { bounces, saveLoud } from './save-loud.ts';
 import { askView as questionView } from './ai-ask.ts';
 import { playLine, playWords } from './play-ask.ts';
+import { clockNow, clockText, createMomentBar, madeRows, speedText, splitMoves, type HeardClock } from './moment.ts';
+import { chatOnLine, historyOf, type ChatModel } from './moment-talk.ts';
 import { LINE_FADE_MS, LINE_GRACE_MS, lineFades, lineKey, lineStayMs } from './line-fade.ts';
 import { renderSettings } from './settings-page.ts';
 import { DEFAULT_UI, effectiveTheme, normalizeUi } from './ui-prefs.ts';
@@ -469,6 +472,9 @@ export function start(host: StudioHost) {
   // The one line when it opens (renderSheet): seen in this game once something was picked. `prefsLoaded`: the game's
   // prefs have been read (until then nobody knows whether this game has seen it).
   const INTRO_SEEN = 'open-line';
+  // The first ▶ Play's one line under ❚❚ Pause to edit (pause-edit 02-find.md): once per person on this device.
+  const PAUSE_TIP_SEEN = 'pause-tip';
+  const STEP_TIP_SEEN = 'step-tip';
   let prefsLoaded = false;
   function hintSeen(id: string): boolean {
     if (uiPrefs.seen?.includes(id)) return true;
@@ -503,6 +509,12 @@ export function start(host: StudioHost) {
   // handed to your AI…', then '"make it glow" → done'): what was asked and what
   // the AI did read side by side (verganti review 2026-10-16).
   // `saved` / `savedTotal` (plan step 6): what a Save kept, by name, for the line after it (save-receipt.ts).
+  // The requests asked from a paused moment, and of those the ✦ "make it appear here" ones (`made: true`), by id (fix 1
+  // ✕6 of walk 1, 2026-10-28; renderAiLine): a made reply never says "1 object changed" (the AI changed where the game
+  // makes it, no object of the scene), and back in Edit a finished reply of the moment leaves the line (it spoke of a
+  // moment that is gone: "Reload and it appears there" over a scene with no boss).
+  const momentAsks = new Set<string>();
+  const momentMadeAsks = new Set<string>();
   let pending: { kind: StudioRequestInput['kind'] | 'saved'; id?: string; at: number; sent: number; text?: string; saved?: SavedThing[]; savedTotal?: number } | null = null;
   let aiStatus: StudioStatus | null = null;
   // The "done" status the person reloaded for: its line then shows what changed instead of "Reload".
@@ -740,9 +752,33 @@ export function start(host: StudioHost) {
   // screen where this bar is gone. Undo / Redo step away while playing there (they are disabled in Play anyway) so the
   // bar keeps its room. ✦ is the editor's "ask your AI" sign (the ask field's spark), violet as the AI's hand.
   const playAskBtn = btn('play-ask', () => postGame({ type: 'studio:play/open' }), { class: 'icon-btn play-ask', hidden: true, dataset: { action: 'play-ask', part: 'play-ask' } });
-  // Pause while playing (2026-10-22, bridge/play-pause.ts) on the same narrow screens: ❚❚ left of ✦, for the same reason
-  // (the game page draws nothing in its corner there). Pressed again while paused (it shows ▶ then), it resumes.
-  const playPauseBtn = btn('play-pause', () => postGame({ type: 'studio:play/pause' }), { class: 'icon-btn play-pause', hidden: true, dataset: { action: 'play-pause', part: 'play-pause' } });
+  // ❚❚ Pause to edit P (pause-edit, 2026-10-28; moment.ts): left of Edit on EVERY screen while playing (it was the game's
+  // corner on PC and this bar on a phone only, 2026-10-22), with the game's clock, Next frame and Speed in the guide.
+  const momentBar = createMomentBar({
+    t, phone: () => phone(), mac: () => isMac(), playing: () => playing, paused: () => playPaused, clock: () => playHeard,
+    pause: () => postGame({ type: 'studio:play/pause', on: true }),
+    resume: () => postGame({ type: 'studio:play/pause', on: false }),
+    step: (on) => postGame({ type: 'studio:play/step', on }),
+    speed: (rate) => postGame({ type: 'studio:play/speed', rate }),
+    menu: (at, rows, head) => {
+      const r = at.getBoundingClientRect();
+      // The menu's head (fix 1 ✕13): "Speed" over 1× · ½× · ¼×; Next frame after a line while paused.
+      const entries: MenuEntry[] = [{ head }, ...rows.filter((x) => x.id !== 'step')];
+      const step = rows.find((x) => x.id === 'step');
+      if (step) entries.push({ sep: true }, step);
+      ctxMenu.show(entries, r.left, r.bottom + 4, { place: 'play', label: head });
+    },
+    // The first-time lines (moment.ts): 'pause' = under ❚❚ at the first ▶ Play, 'step' = "Next frame ." under ▶| at the
+    // first pause (fix 1 ✕8). Once per person on this device, in the person's prefs.
+    tipSeen: (which) => !prefsLoaded || !!uiPrefs.seen?.includes(which === 'step' ? STEP_TIP_SEEN : PAUSE_TIP_SEEN),
+    seeTip: (which) => {
+      const id = which === 'step' ? STEP_TIP_SEEN : PAUSE_TIP_SEEN;
+      if (prefsLoaded && !uiPrefs.seen?.includes(id)) changeUi({ ...uiPrefs, seen: [...(uiPrefs.seen ?? []), id] });
+    },
+  });
+  const playPauseBtn = momentBar.pauseBtn;
+  // The guide's third crumb while playing: "● Playing 0:41.8 · 1× ⌄" (the brand is built above).
+  brand.querySelector('.here')!.after(momentBar.guide);
   // Play is the only white button on screen, so it is never looked for.
   // Play's ▾ (fast switch, 2026-10-22): Play now goes on in the page on screen, from the layout, and Edit comes back
   // to it without loading — so a game's score, enemies and timers carry on from the last Play's. "Play from the start"
@@ -751,7 +787,10 @@ export function start(host: StudioHost) {
   const playMoreBtn = btn('play-more', () => openPlayMenu(), { class: 'play-more', dataset: { action: 'play-more', part: 'play-more' }, 'aria-haspopup': 'menu' });
   playMoreBtn.append(icon('chevronDown'));
   const playSplit = h('div', { class: 'play-split' }, mk(playBtns, 'play', () => void togglePlay(), { class: 'play' }), playMoreBtn);
-  const topActions = h('div', { class: 'top-actions', dataset: { part: 'top-actions' } }, playPauseBtn, playAskBtn, topSave, playSplit);
+  // ❚❚ / ▶ Resume right next to Edit, Save left of it (pause-edit; the mock's bar "Save · 1 · ▶ Resume · Edit"): what comes
+  // and goes (✦ on a phone, hidden while paused; Save, shown after a move) sits LEFT of it, so the bar, aligned right,
+  // never slides ❚❚ out from under the finger that pressed it.
+  const topActions = h('div', { class: 'top-actions', dataset: { part: 'top-actions' } }, playAskBtn, topSave, playPauseBtn, playSplit);
   function openPlayMenu() {
     const r = playMoreBtn.getBoundingClientRect();
     ctxMenu.show([{ id: 'play-fresh', label: t('pal.playFresh'), run: () => void togglePlay(true) }], r.right, r.bottom + 4, { place: 'play', label: t('pal.playFresh') });
@@ -908,6 +947,17 @@ export function start(host: StudioHost) {
   const sideHead = h('div', { class: 'side-head' }, tabs, headTools);
   const side = h('aside', { class: 'side', dataset: { part: 'side' } }, sheetGrip, sideHead, status, panel,
     h('div', { class: 'side-foot' }, noNameSlot, paletteFoot));
+  // The paused moment's list floats over the game (pause-edit decision 4): ‹ folds it to see the game's corner it
+  // covers, › (the stage's corner) brings it back. PC only (a phone's list is its sheet).
+  const momentFold = (on: boolean) => {
+    if (on) app.dataset.momentFold = 'on';
+    else delete app.dataset.momentFold;
+    insetSent = '';
+    sendInset();
+  };
+  const momentFoldBtn = btn('moment-fold', () => momentFold(true), { class: 'icon-btn moment-fold', dataset: { action: 'moment-fold', part: 'moment-fold' } });
+  const momentUnfoldBtn = btn('moment-unfold', () => momentFold(false), { class: 'icon-btn moment-unfold', dataset: { action: 'moment-unfold', part: 'moment-unfold' } });
+  side.append(momentFoldBtn);
   // Phone: the list opens from the ask bar's left end, as a sheet from the bottom. While the list or the card is up this
   // button is ▾ and folds the whole bottom (sheet-fold.ts barPress: the list, the card and the AI's line — before
   // 2026-10-21 it closed the list only, and the card stood on over half the game); folded, it is ▴ and opens the list
@@ -968,6 +1018,7 @@ export function start(host: StudioHost) {
    * Idempotent: it moves elements only when they are not where they should be (a ResizeObserver on the dock calls back).
    */
   function renderSheet() {
+    renderMomentLine();
     const picked = group.length > 1 || !!selected;
     // ---- the one line ----
     // "This game": the game folder's ui prefs (.studio/ui/prefs.json `seen`), not this browser's storage — the studio
@@ -1044,7 +1095,9 @@ export function start(host: StudioHost) {
   // studio-offsets: the four choices under a rule drag sit in the same card, over the toast (code-place-wire.ts), made
   // once the wire exists (below): a stand-in here keeps their place.
   const choicesSlot = h('div', { class: 'offset-slot' });
-  const caption = h('div', { class: 'ai-caption', hidden: true }, choicesSlot, toastEl, aiLine, openHelp, playNote);
+  // The paused moment's "▴ Earlier · N" (pause-edit decision 7): its talk before the reply on the line, opened on a press.
+  const momentEarlier = h('div', { class: 'moment-earlier', hidden: true, dataset: { part: 'moment-earlier' } });
+  const caption = h('div', { class: 'ai-caption', hidden: true }, choicesSlot, toastEl, momentEarlier, aiLine, openHelp, playNote);
   // The narrow bar's line for the presence words (above the field; the field keeps its whole width for the words).
   const presenceRow = h('div', { class: 'presence-row', hidden: true });
   // The web demo (host.offline) has nothing in the ask box's place: the slot stays empty and hidden (see renderAll).
@@ -1064,11 +1117,16 @@ export function start(host: StudioHost) {
   // now-ja-35-side-pick). Now the sheet shows ONE of the list, the card or the motion, the field at its foot; the
   // reply floats over the game's top and the presence is a dot in the field. renderSheet says which tab is on.
   const sheetTabs = h('div', { class: 'sheet-tabs', role: 'tablist', dataset: { part: 'sheet-tabs' }, hidden: true });
+  // The paused moment on a phone / the side window (fix 1 ✕5 of walk 1, 2026-10-28): the card is in the folded sheet
+  // there, so a boss picked and dragged said nothing — not "Just for this moment", no ✦. One line right over the field
+  // while the card is folded away (renderMomentLine): "Just for this moment · ✦ Have Claude make it appear here" (the
+  // web demo, no AI: the first half and what it is). Unfolded, the card says it and this line steps away (one place).
+  const momentLine = h('p', { class: 'motion-note moment-line', role: 'status', hidden: true, dataset: { part: 'moment-line' } });
   // studio-motion-next-2: the motion's one line right over the field (after the intro line, which is gone by the first pick).
-  const dock = h('section', { class: 'ask-strip dock' }, caption, cardSlot, h('div', { class: 'palette-slot' }), introLine, motionNote.el, uiMissing.el, presenceRow, bar);
+  const dock = h('section', { class: 'ask-strip dock' }, caption, cardSlot, h('div', { class: 'palette-slot' }), introLine, motionNote.el, uiMissing.el, presenceRow, momentLine, bar);
   noteReady = true;
   // (introLine over presenceRow: the presence words on a narrow PC bar belong to the field, so they stay on it.)
-  const stage = h('div', { class: 'stage', dataset: { part: 'stage' } }, iframe, scrim, assetsPage, inspector, dock, levelNote);
+  const stage = h('div', { class: 'stage', dataset: { part: 'stage' } }, iframe, scrim, assetsPage, inspector, dock, levelNote, momentBar.tip, momentBar.stepTip, momentBar.note, momentUnfoldBtn);
   const app = h('div', { class: 'shell', dataset: { part: 'app' } }, header, side, stage);
   document.getElementById('app')!.replaceWith(app);
   panel.append(toolEl);
@@ -1276,6 +1334,8 @@ export function start(host: StudioHost) {
       const pickUp = !!selected || group.length > 0;
       if (cardUp || sheetUp || libraryUp || menuUp || pickUp) inset.camera = false;
     }
+    // The paused moment's list floats over the game's left (pause-edit decision 4): the strip keeps clear of it.
+    if (moment && !phone() && side.offsetParent) inset.left = Math.max(0, Math.round(side.getBoundingClientRect().right - sr.left + 8));
     const card = placementPanel.cardEl;
     if (!phone() && !card.hidden && card.isConnected && card.offsetParent) {
       const cr = card.getBoundingClientRect();
@@ -1488,7 +1548,8 @@ export function start(host: StudioHost) {
     items: () => items,
     selected: () => selected,
     // With the timeline open, the numbers are how the object stands at the time line (its place + its motion).
-    pose: (k) => (editLayer === 'world' ? timeline.shownPose(k) : model.pose(k)),
+    // The paused moment: what the game moves or made reads where it stands in the moment (momentPose).
+    pose: (k) => (momentOf(k) ? momentPose.get(k) : editLayer === 'world' ? timeline.shownPose(k) : model.pose(k)),
     dim: () => dim,
     thumb: (k) => thumbs.get(k) || null,
     select: (k, add) => (add || multi ? toggleSelect(k) : selectObject(k, true)),
@@ -1502,6 +1563,13 @@ export function start(host: StudioHost) {
     shortcutOf: (what) => shortcutText(what),
     phone: () => phone(),
     setPose: (k, pose) => {
+      // A number typed on the card of something the game moves or made: just for this moment (one ⌘Z step).
+      if (momentOf(k)) {
+        const from = momentPose.get(k);
+        send({ type: 'studio:placement/pose', key: k, pose });
+        momentMoved(k, pose, true, from, false);
+        return;
+      }
       // The timeline open with auto key on: a typed number is a key at the time line (timeline-wire.ts).
       const shown = editLayer === 'world' ? timeline.shownPose(k) : undefined;
       if (shown && timeline.card(k, pose, shown)) return;
@@ -1526,6 +1594,11 @@ export function start(host: StudioHost) {
     // Dragging a number's label: live moves go straight to the game (no undo
     // step), the end of the drag is one undo step, like a handle drag.
     scrub: (k, pose, end, from) => {
+      if (momentOf(k)) {
+        send({ type: 'studio:placement/pose', key: k, pose });
+        momentMoved(k, pose, end, from, false);
+        return;
+      }
       if (editLayer === 'world' && timeline.card(k, pose, from, !end)) return;
       if (editLayer === 'world') (pose = timeline.placeFor(k, pose)), (from = timeline.placeFor(k, from));
       // A code layout's object (studio-code-knobs): live to the game, then its pin (one undo step).
@@ -1547,6 +1620,8 @@ export function start(host: StudioHost) {
     // While the AI waits for an answer, the field answers it (hands-on test 2026-10-19).
     ask: (keys, text, files) => {
       if (answering()) return answerAi(text);
+      // The paused moment: the "play" request of the pause (its picture with the first one, the talk after).
+      if (moment) return momentRequest(text, keys);
       // ✦ Turn into a rule (studio-code-torule): the words were for the hand's shape on screen — the AI swaps a rule in.
       const toRule = toRuleNow(keys);
       if (toRule) toRuleAsk = null;
@@ -1561,7 +1636,7 @@ export function start(host: StudioHost) {
     answering: () => answering(),
     // The field's one placeholder (studio-words-plan, 2026-10-23): "Ask Claude…" whether or not Claude is there — the
     // presence words beside the field say that (it was "Write a note for Claude…" when unsure, a second wording).
-    askGame: () => t('ask.game', host.offline ? {} : aiVars()),
+    askGame: () => (moment ? t('moment.askPh', aiVars()) : t('ask.game', host.offline ? {} : aiVars())),
     askName: (keys) => askAi({ kind: 'name', text: '', objects: requestObjects(keys) }),
     nameDraft: host.offline ? undefined : (keys) => nameDraft(keys),
     // Only while the Library is on screen: back in the Scene the words are about what is picked there.
@@ -1570,6 +1645,8 @@ export function start(host: StudioHost) {
     motions: () => (libraryShown() ? libraryMotions.picked() : motionAsk.now() ? [motionAsk.now()!.name] : []),
     // "✦ Describe with text" under keep-out areas (studio-code-keepout): the chips "crystal ×12" "Keep-out areas".
     askTopic: () => {
+      // ✦ Have Claude make it appear here (pause-edit decision 8): the chip "boss · here".
+      if (moment && momentHere) return { chip: t('moment.here', { name: momentHere.label }), ph: t('moment.askPh', aiVars()) };
       // ✦ Ask Claude to make this UI editable (studio-canvas-ui stage 2): "Here (bottom left)" with the place's picture.
       const ui = uiAskNow();
       if (ui) return { chip: ui.chip, ph: askPh(), ...(ui.pic ? { pic: ui.pic } : {}), tip: ui.tip };
@@ -1602,7 +1679,8 @@ export function start(host: StudioHost) {
     toRule: (keys) => toRuleFor(keys),
     // …and the hand objects a rule layout took the place of are not listed while it does (they are hidden in the game).
     replaced: (k) => editLayer === 'world' && codePlaceList.some((p) => worldModel.places.get(p.id)?.from?.includes(k) && !p.keys.includes(k)),
-    motion: (k) => timeline.cardRow(k, {
+    // The paused moment's card has no Motion row (the timeline is Edit's: decision 4; motions are made there).
+    motion: (k) => (moment ? [] : timeline.cardRow(k, {
       menu: (at, entries) => {
         const o = { place: 'card-motion', label: t('motion.label'), holdDelete: true };
         if (!(at instanceof HTMLElement)) return ctxMenu.show(entries, at.x, at.y, o);
@@ -1613,7 +1691,19 @@ export function start(host: StudioHost) {
       },
       say: (text) => showToast(text),
       undoKey: keyOf('undo', isMac()),
-    }),
+    })),
+    // The paused moment (pause-edit decision 5): what the game moves or made says "Just for this moment" on its card,
+    // with Revert once moved and ✦ appear here for what it made (not in the web demo: no AI); no Copy / Delete.
+    moment: (k) => {
+      const why = momentOf(k);
+      if (!why) return null;
+      const now = momentPose.get(k);
+      const at = momentAt.get(k);
+      const moved = !!now && !!at && !samePose(now, at, dim);
+      return { why, moved, revert: () => momentRevert(k), ...(why === 'new' && moved && !host.offline ? { appear: () => momentAppear(k) } : {}) };
+    },
+    // …and what the game made is listed apart: "Made by the game · 6" (madeRows).
+    made: () => (moment ? madeRows(items, momentOf, (it) => it.label || it.key) : []),
   });
 
   // ----- the objects in the Library (library-objects.ts, "one Library" 2026-10-18) -----
@@ -1996,7 +2086,24 @@ export function start(host: StudioHost) {
     const mac = isMac();
     const act = (id: string, label: string, ic: string, run: () => void, hint?: string, words?: string) =>
       rows.push({ id, section: 'actions', label, icon: ic, hint, words, data: { action: id }, run });
-    act('play', playing ? t('btn.edit') : t('pal.play'), playing ? 'stop' : 'play', () => void togglePlay(), !playing || host.offline ? 'P' : undefined, t('btn.play'));
+    // Paused (fix 1 ✕9): Resume is the first row (Enter on an opened ⌘K goes on from the moment, it used to leave it for
+    // Edit), and Edit says where it goes.
+    const resumeFirst = playing && playAskOn && playPaused;
+    const pauseRow = () => act('play-pause', playPaused ? t('play.resume') : t('play.pauseEdit'), playPaused ? 'play' : 'pause', () => postGame({ type: 'studio:play/pause', on: !playPaused }), 'P',
+      'pause stop freeze edit moment 止める 一時停止 編集 続ける');
+    if (resumeFirst) pauseRow();
+    act('play', resumeFirst ? t('play.editTip') : playing ? t('btn.edit') : t('pal.play'), playing ? 'stop' : 'play', () => void togglePlay(), !playing ? 'P' : undefined, t('btn.play'));
+    // While playing (pause-edit, 02-find.md): Pause to edit / Resume, Next frame while paused, the three speeds.
+    if (playing && playAskOn) {
+      if (!resumeFirst) pauseRow();
+      if (playPaused) act('play-step', t('play.step'), 'stepFrame', () => (postGame({ type: 'studio:play/step', on: true }), postGame({ type: 'studio:play/step', on: false })), '.',
+        'next frame step advance コマ送り 1コマ');
+      const now = playHeard?.rate ?? 1;
+      for (const r of [1, 0.5, 0.25]) {
+        if (r === now) continue;
+        act(`play-speed-${r}`, `${t('play.speed')} ${speedText(r)}`, 'play', () => postGame({ type: 'studio:play/speed', rate: r }), undefined, 'speed slow slow-mo 速さ ゆっくり スロー');
+      }
+    }
     // The old Play, a new page (fast switch, 2026-10-22: Play's ▾ says why).
     act('play-fresh', t('pal.playFresh'), 'play', () => void togglePlay(true), undefined, t('pal.playFresh.words'));
     if (keys.length && editing) {
@@ -2409,7 +2516,8 @@ export function start(host: StudioHost) {
     // read "Undo: change 2 objects" for one ship (studio-fix-0139, 2026-10-23). So the three motion kinds count as one
     // kind, and the name comes from the objects; a Library-only change (no object) names the motion itself.
     const libOnly = (k: string) => k === 'motion-lib' || k === 'motion-rename';
-    const kinds = new Set(e.changes.map((c) => (libOnly(c.kind) ? 'motion' : c.kind)));
+    // A move just for a paused moment is a move to the person (pause-edit).
+    const kinds = new Set(e.changes.map((c) => (libOnly(c.kind) ? 'motion' : c.kind === 'moment' ? 'pose' : c.kind)));
     const what = kinds.size > 1 ? 'edit' : kinds.has('add') ? 'copy' : kinds.has('remove') ? 'remove' : kinds.has('motion') ? 'motion'
       : kinds.has('ui-set') ? 'look' : kinds.has('ui-theme') ? 'theme' : kinds.has('name') ? 'rename' : 'move';
     const onObjects = e.changes.filter((c) => !libOnly(c.kind));
@@ -2448,6 +2556,9 @@ export function start(host: StudioHost) {
    * 'game', bridge/hold.ts) has no move tool but is still a thing to copy or delete (a hands-on try, 2026-10-19).
    */
   function copyable(i: Item | undefined): boolean {
+    // Not what the game moves or made in a paused moment (pause-edit, 01-decisions "edge cases"): out of the scene it
+    // would still be in the game's code, unseen and still hitting things. Ask the AI to take it away.
+    if (i && momentOf(i.key)) return false;
     return !!i && (i.movable !== false || i.held === 'game');
   }
   const targets = () => (group.length ? group : selected ? [selected] : [])
@@ -2538,6 +2649,12 @@ export function start(host: StudioHost) {
       if (c.kind === 'pose') {
         flush();
         applyPose(c.key, dir === 'undo' ? c.from : c.to);
+      } else if (c.kind === 'moment') {
+        // Just for this moment (pause-edit): the game page's object, never the scene.
+        const pose = dir === 'undo' ? c.from : c.to;
+        momentPose.set(c.key, structuredClone(pose));
+        send({ type: 'studio:placement/pose', key: c.key, pose });
+        if (c.key === selected) placementPanel.render();
       } else if (c.kind === 'motion' || c.kind === 'motion-lib' || c.kind === 'motion-rename') timeline.apply(c, dir);
       else if (c.kind === 'ui-set' || c.kind === 'ui-theme') uiWire.apply(c, dir);
       else if (c.kind === 'name') worldModel.rename(c.key, dir === 'undo' ? c.from : c.to);
@@ -3056,10 +3173,14 @@ export function start(host: StudioHost) {
       if (row.childNodes.length) aiLine.append(row);
     } else if (ph === 'updating') {
       two(note || t('ai.updating'), t('ai.updating'));
+    } else if ((ph === 'done' || ph === 'failed') && !playing && !!pending?.id && momentAsks.has(pending.id)) {
+      // A finished reply of a paused moment, back in Edit (fix 1 ✕6): nothing on the line (momentAsks says why).
     } else if (ph === 'done' || ph === 'failed') {
       const s = aiStatus!;
       const n = typeof s.changed === 'number' ? s.changed : 0;
-      const count = ph === 'failed' ? t('ai.failed') : n === 1 ? t('ai.done1') : n > 1 ? t('ai.doneN', { n }) : t('ai.done');
+      // ✦ "make it appear here" (`made: true`, fix 1 ✕6): the AI's n counts what it changed in the code, not objects.
+      const madeReply = !!pending?.id && momentMadeAsks.has(pending.id);
+      const count = ph === 'failed' ? t('ai.failed') : madeReply ? t('ai.done') : n === 1 ? t('ai.done1') : n > 1 ? t('ai.doneN', { n }) : t('ai.done');
       // The AI's one-line reply first (its note), then the count, then "More in Claude".
       // fix-0141 (J1 ⑤ and ⑩ of the first-run check, 2026-10-24): the second row was "“what you asked” · 3 objects ch…",
       // cut by Undo AI change and 👁 (English, 1280) — and what was asked says the same as the AI's own words above it, so
@@ -3067,7 +3188,15 @@ export function start(host: StudioHost) {
       // after them read as "Done" twice ("Made the change · Done"): the AI's words are the done, the row is only
       // "More in Claude". A change in code that Undo AI change cannot take back (no count) leaves what changed to
       // "More in Claude" — the AI's chat says it in full.
-      two(s.note || count, s.note && (ph === 'failed' || n > 0) ? count : '');
+      two(s.note || count, s.note && (ph === 'failed' || (n > 0 && !madeReply)) ? count : '');
+      // The paused moment's reply when the game's code changed (`--changed` > 0, or the files say so; fix 1 ✕6): Reload
+      // right here. It was only on the line over the game after ▶ Resume, and the docs said "press Reload on the reply".
+      // Reload leaves the moment for a new page of the game from its new code, still in Play (as the line over the game's
+      // Reload: play/reload); Save · N stays (the editor keeps the draft).
+      const codeNow = code === undefined || loadedCode === undefined ? undefined : code !== loadedCode;
+      if (ph === 'done' && playing && playPaused && !!pending?.id && momentAsks.has(pending.id) && (n > 0 || codeNow === true)) {
+        link('moment-reload', 'toolRotate', t('play.reload'), () => loadGame(), t('play.reloadMomentTip'));
+      }
       const aiReloaded = aiReloadFor !== null && aiStatus?.at === aiReloadFor;
       if (ph === 'done' && !playing && aiReloaded) {
         const keys = [...aiMarks.keys()].filter((k) => items.some((i) => i.key === k));
@@ -3236,14 +3365,39 @@ export function start(host: StudioHost) {
     if (playAskOn) postGame({ type: 'studio:play/pause' });
     else pauseSoon = !pauseSoon;
   }
+  /** The first-Play line hangs under ❚❚ Pause to edit: its right end under the button's (the stage's own corner). */
+  function placePlayTip() {
+    const tip = momentBar.tip;
+    const sr = stage.getBoundingClientRect();
+    if (!tip.hidden) {
+      const br = playPauseBtn.getBoundingClientRect();
+      tip.style.right = `${Math.max(8, Math.round(sr.right - br.right))}px`;
+    }
+    // "Next frame ." under ▶| (fix 1 ✕8): its arrow (shell.css .step-tip::before, 14 px in) under the button's middle.
+    const st = momentBar.stepTip;
+    if (!st.hidden) {
+      const br = momentBar.stepBtn.getBoundingClientRect();
+      st.style.left = `${Math.max(8, Math.round(br.left + br.width / 2 - sr.left - 19))}px`;
+    }
+  }
+  /** What the game page's overlay needs (play/on). The web demo too, with `ai: false` (pause-edit decision 12). */
+  const playOn = (): ShellToBridge => ({ type: 'studio:play/on', lang, words: playWords(t), mark: playMark ?? !phone(), config: gameConfig, handlePx: handlePx(),
+    ...(host.offline ? { ai: false } : {}) });
   function renderPlayAsk() {
-    const show = playing && playAskOn && phone();
+    // ✦ in the top bar on a phone (the game page draws no corner mark there): never in the web demo (no AI), never while
+    // paused (the moment's own field at the foot is the way to ask then).
+    const show = playing && playAskOn && phone() && !host.offline && !playPaused;
     playAskBtn.hidden = !show;
-    playPauseBtn.hidden = !show;
-    if (show) setButton(playPauseBtn, playPaused ? 'play' : 'pause', playPaused ? t('play.resume') : t('play.pause'), false, playPaused ? t('play.resumeTip') : t('play.pauseTip'));
+    // ❚❚ Pause to edit / ▶ Resume, the game's clock, Next frame, Speed (moment.ts): every width.
+    momentBar.render();
+    placePlayTip();
+    setButton(momentFoldBtn, 'chevronLeft', t('sheet.fold'), false);
+    setButton(momentUnfoldBtn, 'chevronRight', t('btn.list'), false);
+    if (!moment && app.dataset.momentFold) delete app.dataset.momentFold;
+    playPauseBtn.hidden = !playing || !playAskOn;
     if (playing && playAskOn && playMark !== !phone()) {
       playMark = !phone();
-      postGame({ type: 'studio:play/on', lang, words: playWords(t), mark: playMark, config: gameConfig, handlePx: handlePx() });
+      postGame(playOn());
     }
     if (!show) return;
     setButton(playAskBtn, 'spark', t('play.ask'), false, t('play.askTip'));
@@ -3259,6 +3413,174 @@ export function start(host: StudioHost) {
       /* the frame is changing */
     }
   }
+
+  // ----- the paused moment (pause-edit, 2026-10-28; moment.ts) -----
+  /** play/paused on: the game is held. Its editor's core/ready and list come just before this (bridge play-ask.ts). */
+  function momentStart(m: Extract<BridgeToShell, { type: 'studio:play/paused' }>) {
+    momentWhy = new Map(Object.entries(m.why ?? {}) as Array<[string, MomentKind]>);
+    momentAsk = m.ask ?? null;
+    momentChat = '';
+    momentTalk = { turns: [], awaiting: false, live: null };
+    momentHere = null;
+    momentEarlierOpen = false;
+    renderMomentEarlier();
+    // The list (the Scene) is the moment's tool: the Library would hide the game, the Look / Ideas pages too.
+    if (tool !== 'placement' || page !== 'tool') {
+      tool = 'placement';
+      page = 'tool';
+    }
+    for (const [k] of momentWhy) {
+      const it = items.find((i) => i.key === k);
+      if (it) momentPose.set(k, structuredClone(it.pose));
+    }
+    renderAll(true);
+    // Words typed in the ✦ field over the game when it paused: the field at the foot now (the person was about to ask).
+    if (m.draft && !host.offline) focusAsk(m.draft);
+  }
+  /** play/paused off (Resume, Edit, a new page): the moment's own steps leave ⌘Z (undo.ts dropMoment), its tools go. */
+  function momentEnd() {
+    const had = moment || momentWhy.size > 0;
+    moment = false;
+    momentWhy = new Map();
+    momentAsk = null;
+    momentAt.clear();
+    momentPose.clear();
+    momentList = null;
+    momentHere = null;
+    momentEarlierOpen = false;
+    renderMomentEarlier();
+    if (undo.dropMoment()) renderButtons();
+    if (!had) return;
+    selected = null;
+    group = [];
+    // While playing (Resume): Edit's tools step away again (editInPage sets `editing` back for Edit itself).
+    if (playing) editing = false;
+  }
+  /** The moment's list (placement/items while playing): what the game made too, where everything stands now. */
+  function useMomentList() {
+    if (!momentList) return;
+    items = momentList;
+    itemsSeen = true;
+    noteItems(items);
+    for (const it of items) {
+      if (!momentAt.has(it.key)) momentAt.set(it.key, structuredClone(it.pose));
+      if (momentWhy.has(it.key) && !momentPose.has(it.key)) momentPose.set(it.key, structuredClone(it.pose));
+    }
+    if (selected && !items.some((i) => i.key === selected)) selected = null;
+    group = group.filter((k) => items.some((i) => i.key === k));
+    requestThumbs();
+    renderAll();
+  }
+  /** The moment's editor said it is up / put away (core/ready with `moment`). */
+  function momentReady(m: Extract<BridgeToShell, { type: 'studio:core/ready' }>) {
+    moment = m.editing && playing;
+    editing = moment;
+    if (moment) {
+      dim = m.dim;
+      canRise = !!m.rise;
+      canFly = !!m.fly;
+      canDrop = !!m.drop;
+      useMomentList();
+    } else {
+      selected = null;
+      group = [];
+    }
+    insetSent = '';
+    renderAll();
+    sendInset();
+  }
+  /** Something the game moves or made was moved (just for this moment): the game page's object only, one ⌘Z step. */
+  function momentMoved(key: string, pose: Pose, end: boolean, from: Pose | undefined, set: boolean) {
+    momentPose.set(key, structuredClone(pose));
+    if (end && from && !set) undo.push({ changes: [{ kind: 'moment', key, from: structuredClone(from), to: structuredClone(pose) }] });
+    if (key === selected) {
+      if (end) (placementPanel.render(), renderMomentLine());
+      else placementPanel.updateNumbers();
+    }
+    renderButtons();
+  }
+  /** The card's Revert: back where it was when the game paused (one ⌘Z step). */
+  function momentRevert(key: string) {
+    const to = momentAt.get(key);
+    const from = momentPose.get(key);
+    if (!to || !from) return;
+    send({ type: 'studio:placement/pose', key, pose: to });
+    momentMoved(key, to, true, from, false);
+  }
+  /**
+   * The moment's line over the field on a phone / the side window (fix 1 ✕5; momentLine says why): one thing the game
+   * moves or made is picked and the card is folded away. Made and moved: "Just for this moment · ✦ Have Claude make it
+   * appear here"; else "Just for this moment · Made by the game" / "· Moved by the game" (the web demo always so).
+   */
+  function renderMomentLine() {
+    const k = group.length <= 1 ? selected : null;
+    const why = k ? momentOf(k) : null;
+    const on = !!k && !!why && phone() && fold;
+    momentLine.hidden = !on;
+    if (!on) return;
+    const now = momentPose.get(k);
+    const at = momentAt.get(k);
+    const moved = !!now && !!at && !samePose(now, at, dim);
+    const appear = why === 'new' && moved && !host.offline;
+    const sig = `${k}|${why}|${appear}|${lang}`;
+    if (momentLine.dataset.sig === sig) return;
+    momentLine.dataset.sig = sig;
+    // With ✦ the two parts stand one over the other (shell.css .moment-line.has-appear): at a phone's 390 px the words
+    // and the chip do not fit side by side at a size you can read, and wrapped they left the "·" at a line's end.
+    momentLine.classList.toggle('has-appear', appear);
+    momentLine.replaceChildren(h('strong', { text: t('moment.only') }),
+      ...(appear
+        ? [h('button', { type: 'button', class: 'moment-appear ai', dataset: { action: 'moment-appear' }, title: t('moment.appear', aiVars()), onclick: () => momentAppear(k) },
+          h('span', { class: 'ai-spark', 'aria-hidden': 'true' }, icon('spark')), h('span', { class: 'label', text: t('moment.appear', aiVars()) }))]
+        : [h('span', { class: 'mn-dot', text: '·' }), h('span', { text: t(why === 'new' ? 'moment.made' : 'moment.moves') })]));
+  }
+  /** ✦ Have Claude make it appear here: the draft in the field, the chip "boss · here"; nothing is sent (the person sends). */
+  function momentAppear(key: string) {
+    const it = items.find((i) => i.key === key);
+    const at = momentAt.get(key);
+    const to = momentPose.get(key);
+    if (!it || !at || !to) return;
+    const name = displayName(it, t);
+    momentHere = { key, label: name, at: structuredClone(at), to: structuredClone(to), time: Math.round(clockNow(playHeard, performance.now()) * 10) / 10 };
+    focusAsk(t('moment.appearDraft', { name }));
+  }
+  /** The field's words while paused: the same "play" request as before, `paused`; the first one carries the moment. */
+  async function momentRequest(text: string, keys: string[]): Promise<boolean> {
+    const first = !momentChat;
+    const history = historyOf(momentTalk.turns);
+    const here = momentHere && momentHere.key ? momentHere : null;
+    const ok = await askAi({ kind: 'play', text, paused: true, ...(first && momentAsk ? momentAsk : {}), ...(momentChat ? { chat: momentChat } : {}),
+      ...(history.length ? { history } : {}), ...(keys.length ? { objects: requestObjects(keys) } : {}),
+      ...(here ? { made: true, here: { key: here.key, label: here.label, at: here.at, to: here.to, time: here.time } } : {}) });
+    if (!ok) return false;
+    if (first && pending?.id) momentChat = pending.id;
+    if (pending?.id) {
+      momentAsks.add(pending.id);
+      if (here) momentMadeAsks.add(pending.id);
+    }
+    momentTalk = { turns: [...momentTalk.turns, { who: 'you', text }], awaiting: true, live: null };
+    momentHere = null;
+    renderMomentEarlier();
+    return true;
+  }
+  /** "▴ Earlier · N" over the field: the talk of this pause before the reply shown on the line. */
+  function renderMomentEarlier() {
+    const n = Math.max(0, momentTalk.turns.length - 2);
+    momentEarlier.replaceChildren();
+    momentEarlier.hidden = !moment || n === 0;
+    if (momentEarlier.hidden) return;
+    const btnEl = h('button', { type: 'button', class: 'link-btn moment-earlier-btn', dataset: { action: 'moment-earlier' }, 'aria-expanded': String(momentEarlierOpen),
+      title: t('moment.earlierTip', aiVars()), onclick: () => ((momentEarlierOpen = !momentEarlierOpen), renderMomentEarlier()) },
+      icon(momentEarlierOpen ? 'chevronDown' : 'chevronUp'), h('span', { text: t('moment.earlier', { n }) }));
+    momentEarlier.append(btnEl);
+    if (!momentEarlierOpen) return;
+    const list = h('ol', { class: 'moment-turns' });
+    for (const turn of momentTalk.turns.slice(0, -2)) {
+      list.append(h('li', { class: `moment-turn ${turn.who}` }, h('span', { class: 'who', text: turn.who === 'you' ? t('moment.you') : t('ai.name.' + aiNameKey(aiAgent)).trim() }),
+        h('span', { class: 'said', text: turn.text })));
+    }
+    momentEarlier.append(list);
+  }
   function sendPlayLine(force = false) {
     if (!playing || host.offline) return;
     const mine = !!pending && pending.sent >= playSince;
@@ -3268,6 +3590,11 @@ export function start(host: StudioHost) {
     if (!force && sig === playSig) return;
     playSig = sig;
     playNow = v;
+    // The paused moment's talk (moment-talk.ts): the AI's finished line becomes a turn ("▴ Earlier · N" lists them).
+    if (playPaused && momentChat) {
+      momentTalk = chatOnLine(momentTalk, v);
+      renderMomentEarlier();
+    }
     postGame({ type: 'studio:play/state', state: v });
     renderPlayAsk();
   }
@@ -3560,6 +3887,12 @@ export function start(host: StudioHost) {
         renderStatus();
         break;
       case 'studio:core/ready': {
+        // The paused moment's editor (pause-edit; bridge/play-move.ts): up over the paused game, or put away at Resume.
+        // The shell stays in Play; Edit's tools show on the moment (momentReady).
+        if (playing && m.moment) {
+          momentReady(m);
+          break;
+        }
         // ▶ Play in the same page (fast switch): the page's editor put its tools away for Play (editing: false). Nothing
         // about the page changed; the shell is in Play already (togglePlay). Back in Edit, editing: true comes as usual.
         if (playing && playHere && !m.editing) {
@@ -3616,6 +3949,8 @@ export function start(host: StudioHost) {
         toolDataWaiter = null;
         break;
       case 'studio:core/view-state':
+        // Not the paused moment's camera (the player's): the edit camera kept for the next edit page is Edit's.
+        if (playing) break;
         store.set(VIEW_KEY, JSON.stringify(m.state));
         break;
       // ⑨ B (studio-fix-0143): a list pick under the open plate — fold it to its line; the wire then asks to reveal.
@@ -3630,13 +3965,17 @@ export function start(host: StudioHost) {
         showToast(t('status.adapterError', { msg: m.message }), 8000);
         break;
       // Ask while playing (§3.5): the game page can take a request; say whether an AI can get one (never offline).
+      // The web demo too since pause-edit (decision 12): the pause and the moment need no AI (play/on `ai: false`).
       case 'studio:play/hello':
-        if (playing && !host.offline) {
+        if (playing) {
           playAskOn = true;
           playMark = !phone();
-          postGame({ type: 'studio:play/on', lang, words: playWords(t), mark: playMark, config: gameConfig, handlePx: handlePx() });
+          postGame(playOn());
           sendPlayLine(true);
           renderPlayAsk();
+          // The first ▶ Play of this person: one line under ❚❚ Pause to edit (moment.ts).
+          momentBar.played();
+          placePlayTip();
           // After play/on: the pause needs the overlay that play/on builds (play-ask.ts pauseNow).
           if (pauseSoon) {
             pauseSoon = false;
@@ -3658,7 +3997,23 @@ export function start(host: StudioHost) {
         // On the shell too (screen tests read it: P while playing pauses, plan step 2).
         if (playPaused) app.dataset.paused = 'on';
         else delete app.dataset.paused;
+        if (playPaused) (momentStart(m), renderButtons());
+        else {
+          momentEnd();
+          renderAll();
+          // "Resumed from 0:42.3" for a moment (04-words.md): the game goes on from the frame it stopped at.
+          // The paused clock's two places (fix 1 ✕8): the number the person last saw in the top bar.
+          if (playing && playHeard) momentBar.flash(t('play.resumedAt', { t: clockText(playHeard.t, 2) }));
+        }
         renderPlayAsk();
+        break;
+      case 'studio:play/time':
+        // Paused and the game's time moved on: a Next frame (▶|, the . key in either page, ⌘K) — the "Next frame ." line
+        // under ▶| has done its work (fix 1 ✕8). Held before and after (the time sent AT the pause is later than the
+        // one heard while it ran: that is not a step).
+        if (playPaused && playHeard && !playHeard.running && !m.running && m.t > playHeard.t + 1e-4) momentBar.stepped();
+        playHeard = { t: m.t, rate: m.rate, running: m.running, at: performance.now() };
+        momentBar.render();
         break;
       case 'studio:play/answer':
         if (playing && !host.offline) void answerAi(m.text).then((ok) => postGame({ type: 'studio:play/sent', ok }));
@@ -3768,6 +4123,15 @@ export function start(host: StudioHost) {
             group = group.filter((k) => items.some((i) => i.key === k));
             renderAll();
           }
+          break;
+        }
+        // The paused moment (pause-edit): the list is the moment's — what the game made too, where everything stands
+        // now. Not the scene's model (its saved poses are never pushed onto a moment; nothing is counted for Save).
+        // The editor sends its list BEFORE its core/ready (editor.ts setEditing), so the list is kept here and used
+        // once the moment is up (momentReady), or at once when it already is (a copy, an AI's op).
+        if (playing) {
+          momentList = m.items;
+          if (moment) useMomentList();
           break;
         }
         worldItems = m.items;
@@ -3915,6 +4279,13 @@ export function start(host: StudioHost) {
         }
         break;
       case 'studio:placement/moved': {
+        // The paused moment: what the game moves or made moves just for this moment (pause-edit decision 5); a placed
+        // thing goes on below, as in Edit (Q1 = (a): in the scene, Save · N, ⌘Z).
+        if (playing && !moment) break;
+        if (momentOf(m.key)) {
+          momentMoved(m.key, m.pose, !!m.end, m.from, !!m.set);
+          break;
+        }
         // The game's echo of a pose the shell set (undo, a typed number): that pose is a place, as it always was.
         const hand = editLayer === 'world' && !m.set;
         if (hand) timeline.untouch();
@@ -3943,6 +4314,17 @@ export function start(host: StudioHost) {
         break;
       }
       case 'studio:placement/moved-group': {
+        if (playing && !moment) break;
+        // The paused moment: the game's things in the same ⌘Z step, just for this moment (splitMoves).
+        const sp = moment ? splitMoves(m.poses, momentOf) : { placed: m.poses, moment: [] as typeof m.poses };
+        for (const e of sp.moment) momentPose.set(e.key, structuredClone(e.pose));
+        const momentChanges: Change[] = sp.moment.filter((e) => e.from).map((e) => ({ kind: 'moment' as const, key: e.key, from: e.from!, to: e.pose }));
+        if (!sp.placed.length) {
+          if (m.end && momentChanges.length) undo.push({ changes: momentChanges });
+          renderButtons();
+          break;
+        }
+        m.poses = sp.placed;
         // The timeline: those that record become keys (one undo step with the others' moves), the rest move their place.
         const tl0 = editLayer === 'world' ? timeline.movedGroup(m.poses, !!m.end) : { rest: m.poses, changes: [] };
         // A code layout's objects among them (studio-code-knobs): their pins, in the same undo step.
@@ -3950,7 +4332,7 @@ export function start(host: StudioHost) {
         const tl = { rest: cp.rest, changes: [...tl0.changes, ...cp.changes] };
         for (const e of tl.rest) model.moved(e.key, e.pose);
         if (m.end) {
-          undo.push({ changes: [...tl.rest.filter((e) => e.from).map((e) => ({ kind: 'pose' as const, key: e.key, from: e.from!, to: e.pose })), ...tl.changes] });
+          undo.push({ changes: [...tl.rest.filter((e) => e.from).map((e) => ({ kind: 'pose' as const, key: e.key, from: e.from!, to: e.pose })), ...tl.changes, ...momentChanges] });
           emit('moved', { keys: m.poses.map((e) => e.key) });
           if (editLayer === 'world') timeline.refresh();
         }
@@ -4369,6 +4751,27 @@ export function start(host: StudioHost) {
   // where each object stood when Play started (for "Put in layout" while paused). False after any new page (loadGame).
   let playHere = false;
   let playFrom: Map<string, Pose> | null = null;
+  // The paused moment (pause-edit, 2026-10-28; moment.ts, bridge/play-move.ts). `moment` = the game is paused AND the
+  // editor is up over it (core/ready `moment`): Edit's tools on the frame it stopped at, `editing` true meanwhile.
+  //   momentWhy    what the game moves or made — just for this moment (play/paused `why`; absent = placed, as in Edit)
+  //   momentAsk    the moment the first request of this pause carries (picture, camera, near, console)
+  //   momentAt     each object's pose at the pause (Revert) · momentPose: the game's ones now (their card's numbers)
+  //   momentChat   the talk's first request · momentTalk: its turns (the line's "▴ Earlier · N")
+  //   momentHere   ✦ Have Claude make it appear here, waiting in the field (the request's `made` / `here`)
+  //   playHeard    the game's clock as last heard (play/time): the top bar's 0:41.8, and `time` of `here`
+  let moment = false;
+  let momentWhy = new Map<string, MomentKind>();
+  let momentAsk: Omit<Extract<BridgeToShell, { type: 'studio:play/ask' }>, 'type' | 'text'> | null = null;
+  const momentAt = new Map<string, Pose>();
+  const momentPose = new Map<string, Pose>();
+  let momentChat = '';
+  let momentTalk: ChatModel = { turns: [], awaiting: false, live: null };
+  let momentHere: { key: string; label: string; at: Pose; to: Pose; time: number } | null = null;
+  let momentEarlierOpen = false;
+  let momentList: Item[] | null = null;
+  let playHeard: HeardClock | null = null;
+  /** Just for this moment: the game moves it or made it (null = placed, or no moment). */
+  const momentOf = (k: string): MomentKind | null => (moment ? momentWhy.get(k) ?? null : null);
   // The first error the game's page threw since it was (re)loaded (studio:core/game-error), shown in the status line.
   let gameError: { message: string; where?: string } | null = null;
   // Play: the game as the editor shows it (every change is kept as a draft and goes along); what was written waits
@@ -4426,11 +4829,13 @@ export function start(host: StudioHost) {
     playHere = true;
     // What "Put in layout" in a pause changes (play-move.ts): compared back in Edit (editInPage).
     playFrom = new Map(worldItems.map((i) => [i.key, structuredClone(worldModel.pose(i.key) || i.pose)]));
-    // A Play page says hello again and starts unpaused — the same here.
+    // A Play page says hello again and starts unpaused — the same here (at 1×, the game page's clock says: play/time).
     playAskOn = false;
     playPaused = false;
     pauseSoon = false;
     playMark = null;
+    momentEnd();
+    playHeard = null;
     editing = false;
     phase = 'playing';
     // The timeline open at a time other than 0 shows each moving object at its place + its clip there: back to the
@@ -4451,6 +4856,9 @@ export function start(host: StudioHost) {
     playPaused = false;
     pauseSoon = false;
     playMark = null;
+    // Edit from a paused moment: the moment ends (its steps leave ⌘Z; the placed things moved in it stay, below).
+    momentEnd();
+    playHeard = null;
     // 'ready' at once: the page answers with core/ready (editing) and its list within a frame or two, and a
     // "loading" in between would be the flash this change takes away.
     phase = 'ready';
@@ -4772,11 +5180,13 @@ export function start(host: StudioHost) {
     playFrom = null;
     bridgeAlive = false;
     timeline.reset();
-    // A new game page asks again (play/hello), and starts unpaused.
+    // A new game page asks again (play/hello), and starts unpaused (and at 1×: a new page's clock).
     playAskOn = false;
     playPaused = false;
     pauseSoon = false;
     playMark = null;
+    momentEnd();
+    playHeard = null;
     // Unnamed objects are named again from where they stand in the new game (names.ts).
     forgetNames();
     gameError = null;
@@ -4926,8 +5336,9 @@ export function start(host: StudioHost) {
     // on screen said which: the person pressed P to stop and was taken out of the game. Back to Edit = the top bar's
     // Edit button (it no longer shows a P). The browser-only web demo has no pause (no AI to talk to, host.offline):
     // there P is still Play ⇄ Edit, its only meaning there.
+    // The web demo pauses too since pause-edit (decision 12): there the pause and the moment need no AI.
     if (!mod && k === 'p' && !e.shift) {
-      if (playing && !host.offline) pressPause();
+      if (playing) pressPause();
       else void togglePlay();
       return true;
     }
@@ -5052,6 +5463,19 @@ export function start(host: StudioHost) {
     flyKeys.clear();
     flySend();
   };
+  // Next frame, from the editor page while paused (pause-edit; the game page reads its own . the same way): held = on at
+  // the speed, let go = it stops. Never while typing in a field (a "." in words).
+  const stepKey = (e: KeyboardEvent) => (e.key === '.' || e.code === 'Period') && !e.ctrlKey && !e.metaKey && !e.altKey && !e.isComposing;
+  const typingIn = (e: KeyboardEvent) => /^(INPUT|TEXTAREA|SELECT)$/.test((e.target as HTMLElement | null)?.tagName || '') || !!(e.target as HTMLElement | null)?.isContentEditable;
+  window.addEventListener('keydown', (e) => {
+    if (!playing || !playPaused || !stepKey(e) || typingIn(e)) return;
+    e.preventDefault();
+    if (!e.repeat) postGame({ type: 'studio:play/step', on: true });
+  }, true);
+  window.addEventListener('keyup', (e) => {
+    if (!playing || !playPaused || !stepKey(e)) return;
+    postGame({ type: 'studio:play/step', on: false });
+  }, true);
   window.addEventListener('keyup', (e) => {
     if (e.key === ' ') spaceLook(false);
     const fk = FLY_CODES[e.code];
@@ -5210,7 +5634,11 @@ export function start(host: StudioHost) {
       status.className = `status ${cls}`;
       status.append(...kids);
     };
-    playNote.hidden = phase !== 'playing';
+    // Not in a paused moment: the field there is the moment's ("Ask Claude about this moment…"), the guide says Paused.
+    // Not on a phone / the side window either (fix 1 ✕4 of walk 1, 2026-10-28): there the caption sits over the game's
+    // top, and "Playing" covered the first-Play line, the score and "⚠ BOSS" edge to edge — the guide's ● in the top
+    // bar already says it.
+    playNote.hidden = phase !== 'playing' || moment || phone();
     // One word in the caption; the whole sentence is its tooltip (Ive-view review §3).
     playNote.textContent = t('status.playingShort');
     playNote.title = t('status.playing');
@@ -5234,9 +5662,15 @@ export function start(host: StudioHost) {
     }
     status.hidden = !status.childNodes.length;
     app.dataset.items = itemsSeen ? 'seen' : 'waiting';
-    // While playing, the side panel steps away (shell.css): play = the game only.
+    // While playing, the side panel steps away (shell.css): play = the game only. In a paused moment it comes back
+    // floating over the game (data-moment; pause-edit decision 4: the game's picture keeps its size).
     app.dataset.playing = playing ? 'on' : 'off';
-    if (!playing) delete app.dataset.paused;
+    app.dataset.moment = moment ? 'on' : 'off';
+    // From what is true now, not only from play/paused (fix 1, found with ✕6's Reload): a new game page from a paused
+    // moment (Reload on its reply, Play from the start) starts unpaused without a play/paused off from the old page, and
+    // data-paused stayed "on" — the quiet Edit, the phone's bar without the name, the screen tests' "paused".
+    if (playing && playPaused) app.dataset.paused = 'on';
+    else delete app.dataset.paused;
   }
 
   // The Save says "✓ Saved" this long after a press that went through, then goes (see topSave).
@@ -5275,14 +5709,15 @@ export function start(host: StudioHost) {
     placementPanel.markRows();
     for (const b of undoBtns) {
       setButton(b, 'undo', t('btn.undo'), false, tipText(nextUndo ? `${t('btn.undo')}: ${nextUndo}` : t('keys.nothingUndo'), keyOf('undo', mac)));
-      // While playing, undo/redo would change a game the person cannot see as edited.
-      b.disabled = playing || !(undo.canUndo || levelMade);
+      // While playing, undo/redo would change a game the person cannot see as edited — but not in a paused moment,
+      // where Edit's tools are up (pause-edit decision 6).
+      b.disabled = (playing && !moment) || !(undo.canUndo || levelMade);
     }
     // The "Level 2 made" line goes with the first change on the new level (renderLevelMade).
     if (levelMade && !levelNote.hidden && undo.canUndo) renderLevelMade();
     for (const b of redoBtns) {
       setButton(b, 'redo', t('btn.redo'), false, tipText(nextRedo ? `${t('btn.redo')}: ${nextRedo}` : t('keys.nothingRedo'), keyOf('redo', mac)));
-      b.disabled = playing || !undo.canRedo;
+      b.disabled = (playing && !moment) || !undo.canRedo;
     }
     const done = n === 0 && Date.now() < saveDoneUntil;
     // "✓ Saved": only after Save, until the next change (the draft writes are not shown). Not while the Save itself
@@ -5327,9 +5762,13 @@ export function start(host: StudioHost) {
     }
     prevUnsaved = n;
     for (const b of playBtns) {
-      // Edit shows no P (plan step 2): while playing P pauses (see shortcut()), except in the web demo with no pause.
-      const pKeys = !playing || host.offline;
-      setButton(b, playing ? 'stop' : 'play', playing ? t('btn.edit') : t('btn.play'), true, tipText(playing ? t('btn.edit') : t('btn.play'), pKeys ? keyOf('play', mac) : ''));
+      // Edit shows no P (plan step 2): while playing P pauses (see shortcut()) — the web demo too since pause-edit.
+      const pKeys = !playing;
+      // Paused (fix 1 ✕9 of walk 1, 2026-10-28): the paused moment IS an editor, and Edit leaves it (the scene before
+      // Play). It was the same black button as ▶ Resume beside it, with the tip "Edit" alone: one step quieter now
+      // (shell.css [data-paused] .play-split), and the tip says where it goes.
+      const editTip = playing && playPaused ? t('play.editTip') : playing ? t('btn.edit') : t('btn.play');
+      setButton(b, playing ? 'stop' : 'play', playing ? t('btn.edit') : t('btn.play'), true, tipText(editTip, pKeys ? keyOf('play', mac) : ''));
       if (!phone() && pKeys) b.append(h('kbd', { text: 'P' }));
     }
     playMoreBtn.title = t('pal.playFresh');
@@ -5534,6 +5973,8 @@ export function start(host: StudioHost) {
     // object left, and every --do said "the editor is still opening the game" for minutes.
     ready: () => bridgeAlive && editing && !swapping && ((editLayer === 'world' ? items.length > 0 : worldItems.length > 0) || (uiListed && uiItems.length > 0)),
     playing: () => playing,
+    // A paused moment (pause-edit decision 9): the AI's hands work on it, as the person's do — not back to Edit first.
+    moment: () => moment,
     stopPlay: async () => {
       if (playing) await togglePlay();
     },
@@ -5596,15 +6037,23 @@ export function start(host: StudioHost) {
       },
     },
     dim: () => worldDim,
-    item: (k) => worldItems.find((i) => i.key === k),
+    // In a paused moment the list is the moment's (what the game made too); placed things are the scene's as always.
+    item: (k) => (moment ? items : worldItems).find((i) => i.key === k),
     label: (k) => {
-      const it = worldItems.find((i) => i.key === k);
+      const it = (moment ? items : worldItems).find((i) => i.key === k);
       return it ? displayName(it, t) : k;
     },
-    keys: () => worldItems.map((i) => i.key),
-    pose: (k) => worldModel.pose(k),
+    keys: () => (moment ? items : worldItems).map((i) => i.key),
+    pose: (k) => (momentOf(k) ? momentPose.get(k) : worldModel.pose(k)),
     // As the card's numbers do (setPose above), on the place itself: the timeline open or not, the AI moves where it stands.
+    // What the game moves or made in a paused moment: just for this moment, one ⌘Z step (as the person's hand).
     setPose: (k, pose) => {
+      if (momentOf(k)) {
+        const was = momentPose.get(k);
+        send({ type: 'studio:placement/pose', key: k, pose });
+        momentMoved(k, pose, true, was, false);
+        return;
+      }
       const from = worldModel.pose(k);
       if (from && undo.push(poseChange(k, from, pose))) applyPose(k, pose);
     },

@@ -33,19 +33,25 @@ export function createShortcutSheet(d: ShortcutSheetDeps) {
     el.setAttribute('aria-labelledby', 'studio-keys-title');
     const close = h('button', { type: 'button', class: 'icon-btn', dataset: { action: 'keys-close' }, 'aria-label': d.t('btn.close'), onclick: () => hide() }, icon('close'));
     const cols = h('div', { class: 'keys-cols' });
-    const groups: KeyGroup[] = d.dim() === '2d' ? ['edit', 'tools', 'view', 'layers'] : ['edit', 'tools', 'view'];
-    for (const g of groups) {
-      const dl = h('dl', { class: 'keys-list' });
-      for (const k of KEYMAP.filter((x) => x.group === g && (!x.dim || x.dim === d.dim()) && (!x.ui || !!d.hasUi?.()) && (!x.levels || !!d.hasLevels?.()))) {
-        const keys = keysOf(k.id, d.mac());
-        // The grey line: when the key does this ("Nothing selected"), then the row's own note (keymap.ts `when`).
-        const note = [k.when ? d.t(`keys.when.${k.when}`) : '', k.note ? d.t(k.note) : ''].filter(Boolean).join(' · ');
-        dl.append(h('div', { class: 'keys-row', dataset: { key: k.id } },
-          h('dt', {}, k.playing && d.playing?.() ? k.playing.map((x) => d.t(x)).join(' / ') : d.t(k.label || `keys.${k.id}`), note ? h('span', { class: 'keys-note', text: note }) : null),
-          h('dd', {}, ...keys.flatMap((s, i) => [i ? h('span', { class: 'keys-or', text: ' ' }) : null, h('kbd', { text: s })]))));
+    // One column each; "Play" heads the camera's column (fix 1 ✕13: P · . · ` sat under "Camera"). A fourth column of
+    // its own would wrap under Edit at the sheet's width and leave a hole.
+    const columns: KeyGroup[][] = d.dim() === '2d' ? [['edit'], ['tools'], ['play', 'view'], ['layers']] : [['edit'], ['tools'], ['play', 'view']];
+    for (const col of columns) {
+      const holder = col.length > 1 ? h('div', { class: 'keys-col' }) : cols;
+      if (holder !== cols) cols.append(holder);
+      for (const g of col) {
+        const dl = h('dl', { class: 'keys-list' });
+        for (const k of KEYMAP.filter((x) => x.group === g && (!x.dim || x.dim === d.dim()) && (!x.ui || !!d.hasUi?.()) && (!x.levels || !!d.hasLevels?.()))) {
+          const keys = keysOf(k.id, d.mac());
+          // The grey line: when the key does this ("Nothing selected"), then the row's own note (keymap.ts `when`).
+          const note = [k.when ? d.t(`keys.when.${k.when}`) : '', k.note ? d.t(k.note) : ''].filter(Boolean).join(' · ');
+          dl.append(h('div', { class: 'keys-row', dataset: { key: k.id } },
+            h('dt', {}, k.playing && d.playing?.() ? k.playing.map((x) => d.t(x)).join(' / ') : d.t(k.label || `keys.${k.id}`), note ? h('span', { class: 'keys-note', text: note }) : null),
+            h('dd', {}, ...keys.flatMap((s, i) => [i ? h('span', { class: 'keys-or', text: ' ' }) : null, h('kbd', { text: s })]))));
+        }
+        // 2D adds a fourth group (draw order); the columns wrap (shell.css .keys-cols).
+        holder.append(h('section', { class: `keys-group keys-${g}` }, h('h3', { text: d.t(`keys.group.${g}`) }), dl));
       }
-      // 2D adds a fourth group (draw order); the columns wrap (shell.css .keys-cols).
-      cols.append(h('section', { class: `keys-group keys-${g}` }, h('h3', { text: d.t(`keys.group.${g}`) }), dl));
     }
     el.replaceChildren(h('div', { class: 'keys-head' }, title, close), cols, h('p', { class: 'keys-foot', text: d.t('keys.foot') }));
   }

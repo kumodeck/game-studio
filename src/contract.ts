@@ -385,6 +385,11 @@ export interface LoadEntry {
  * (PointerEvent.clientX/Y). The bridge never converts to NDC because only the
  * adapter knows which canvas the game renders into and how it is letterboxed.
  */
+/** StudioAdapter.begin's options (pause-edit fix 1). */
+export interface BeginOptions {
+  moment?: boolean;
+}
+
 export interface StudioAdapter {
   kind: AdapterKind;
   dim: Dim;
@@ -397,8 +402,12 @@ export interface StudioAdapter {
   /**
    * Enter edit mode: time is already frozen by src/core; switch to the edit
    * camera/view and return the list. Must not change any object pose.
+   * `moment` (pause-edit fix 1, 2026-10-28): the editor wakes over a paused moment of ▶ Play (§3.5.1). The game's own
+   * HTML next to its canvas (a score, the time left, a banner) is part of the frame the person stopped on: keep it
+   * SEEN (no pointer: it cannot be pressed or picked) instead of hiding it as Edit does. An adapter that hides nothing
+   * can ignore it.
    */
-  begin(): Item[];
+  begin(o?: BeginOptions): Item[];
   /** Leave edit mode and restore the game's own camera/view. */
   end(): void;
   /**
@@ -1075,7 +1084,14 @@ export interface Inset { top: number; right: number; bottom: number; left: numbe
 
 /** shell -> bridge */
 export type ShellToBridge =
-  | { type: 'studio:core/edit'; on: boolean; viewState?: unknown }
+  | { type: 'studio:core/edit'; on: boolean; viewState?: unknown;
+      /**
+       * The paused moment (pause-edit, 2026-10-28; bridge/play-switch.ts momentHost): the editor wakes over the paused
+       * game in this page as it does in a Play page (EditorDeps.paused): the player's view kept (no saved edit camera,
+       * no "everything in frame"), the game never let run (no watch, no self-check), key releases reach the game.
+       * Everything stays where the game left it. Absent = Edit, as always.
+       */
+      moment?: boolean }
   | { type: 'studio:core/view'; view: ViewAction }
   | { type: 'studio:core/lang'; lang: Lang }
   | { type: 'studio:placement/list' }
@@ -1306,6 +1322,11 @@ export type ShellToBridge =
    */
   | { type: 'studio:play/on'; lang: Lang; words: Record<string, string>; mark?: boolean;
       /**
+       * Pause-edit (2026-10-28, decision 12): the offline web demo sends play/on too — the pause, the paused moment,
+       * Next frame and Speed need no AI — with `ai: false`: no ✦ field and no line over the game. Absent = true.
+       */
+      ai?: boolean;
+      /**
        * Pause-move (2026-10-22, bridge/play-move.ts): what the editor gives its own editor in Edit, for the one that
        * wakes in the paused game — the game rules (.studio/studio.json: what is locked) and the strip's button size.
        */
@@ -1315,10 +1336,21 @@ export type ShellToBridge =
   /** What the AI is doing about the play request, for the small line over the game (shell/play-ask.ts playLine). */
   | { type: 'studio:play/state'; state: PlayLine | null }
   /**
-   * Pause while playing (2026-10-22): the editor's ❚❚ was pressed (phone, where the game page draws no corner): pause,
-   * or resume when paused — the same as P or the corner's ❚❚.
+   * Pause while playing (2026-10-22): the editor's ❚❚ was pressed: pause, or resume when paused — the same as P or the
+   * full-screen corner's ❚❚. `on` (pause-edit, 2026-10-28): true = pause / stay paused, false = resume (the top bar's
+   * ▶ Resume); absent = the other one.
    */
-  | { type: 'studio:play/pause' }
+  | { type: 'studio:play/pause'; on?: boolean }
+  /**
+   * Speed (pause-edit, 2026-10-28; the top bar's 1× ⌄): the game's clock and frames at `rate` (1, 0.5, 0.25; anything
+   * else = 1), the sound quiet below 1×. Back to 1 with each ▶ Play.
+   */
+  | { type: 'studio:play/speed'; rate: number }
+  /**
+   * Next frame (pause-edit; the top bar's ▶| and the . key, only while paused): `on` = pressed — one frame at once, then
+   * on at the speed while it is held; `false` = let go.
+   */
+  | { type: 'studio:play/step'; on: boolean }
   /**
    * The request was kept (`ok`) or not, so the field can close or say it failed. `id`: the kept request's id (the
    * chat over a paused game names its first one in the messages after it, `chat`).
@@ -1361,6 +1393,8 @@ export type BridgeToShell =
   /** `rise`: the edit camera can go up / down (3D, adapter view.rise): the editor page lists Camera up / down in ⌘K.
    *  `fly`: it can fly with WASD (adapter view.fly): the editor page sends studio:core/fly for those keys. */
   | { type: 'studio:core/ready'; kind: AdapterKind; dim: Dim; version?: string; editing: boolean; rise?: boolean; fly?: boolean;
+      /** The editor is up over a paused moment of ▶ Play (pause-edit, 2026-10-28; core/edit `moment`, a Play page's paused editor). */
+      moment?: boolean;
       /** `drop`: the adapter can drop to floor (snap to surfaces, adapter drop): End / ⌘K / the menu offer it. */
       drop?: boolean;
       /**
@@ -1563,12 +1597,32 @@ export type BridgeToShell =
       near?: PlayNear[]; logs?: PlayLog[]; fullscreen?: boolean; size?: [number, number];
       /** Pause (2026-10-22): from the chat over a paused game (StudioRequestInput `paused` / `chat` / `history`). */
       paused?: boolean; chat?: string; history?: ChatLine[] }
-  /** The game was paused (P, ❚❚) or resumed: the editor's ❚❚ (phone) shows which. */
-  | { type: 'studio:play/paused'; on: boolean }
+  /**
+   * The game was paused (P, ❚❚) or resumed. Pause-edit (2026-10-28): the paused moment is the editor — `edit` = the
+   * editor woke over it (its core/ready and list follow, as in Edit); `why` = the objects that are the game's for this
+   * moment only (MomentWhy: it moves them itself, made them since Play, or a motion moves them; absent = placed, moved
+   * as in Edit); `ask` = the moment the AI gets with the first request of this pause (picture, camera, what was near,
+   * the console), `draft` = words typed in the ✦ field when it paused.
+   */
+  | { type: 'studio:play/paused'; on: boolean; edit?: boolean; why?: Record<string, MomentKind>;
+      ask?: Omit<Extract<BridgeToShell, { type: 'studio:play/ask' }>, 'type' | 'text'>; draft?: string }
+  /**
+   * The game's clock for the top bar (pause-edit, 2026-10-28): `t` = seconds of the game's time since ▶ Play, `rate` =
+   * the speed, `running` = not paused. Sent when any of them changes (Play, pause, resume, a speed, a step); the editor
+   * moves the 0:41.8 on by itself in between.
+   */
+  | { type: 'studio:play/time'; t: number; rate: number; running: boolean }
   /** The person's answer to the AI's question, from the line over the game. */
   | { type: 'studio:play/answer'; text: string }
   /** Reload pressed over the game: open the game again (its new code), still playing. */
   | { type: 'studio:play/reload' };
+
+/**
+ * Why an object of a paused moment is the game's, just for this moment (pause-edit, 2026-10-28; bridge/play-move.ts
+ * momentWhy): 'game' = it moved by itself since ▶ Play, 'new' = the game made it since (a boss, an enemy, a bullet),
+ * 'motion' = a motion from the draft moves it. Anything else was placed: moving it is the same as in Edit.
+ */
+export type MomentKind = 'game' | 'new' | 'motion';
 
 /** One turn of the chat over a paused game, as a request carries the talk so far (pause, 2026-10-22). */
 export interface ChatLine {
@@ -1748,6 +1802,14 @@ export interface StudioRequestInput {
   paused?: boolean;
   chat?: string;
   history?: ChatLine[];
+  /**
+   * "play" + `paused` only (pause-edit, 2026-10-28; the card's ✦ Have Claude make it appear here): the person dragged
+   * something the GAME MADE (`made: true`) to where it should appear. `here` = that object (key, its name), where it was
+   * when the game paused (`at`), where the person put it (`to`), and the game's time then (`time`, seconds since ▶ Play).
+   * The AI changes where the game makes it, in the game's code.
+   */
+  made?: boolean;
+  here?: { key: string; label?: string; at: Pose; to: Pose; time?: number };
 }
 
 /**

@@ -137,8 +137,8 @@ export function withEdits(inner: StudioAdapter): EditsAdapter {
   const edits: EditsAdapter = {
     ...inner,
     list,
-    begin: () => {
-      inner.begin();
+    begin: (o) => {
+      inner.begin(o);
       return list();
     },
     pickNear(x, y, radius) {

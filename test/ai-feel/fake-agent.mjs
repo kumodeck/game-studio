@@ -77,6 +77,13 @@ for (const [key, x, z, s] of [['lighthouse-west', -38, -27, 0.7], ['lighthouse-e
  */
 export function chatReplyFor(rec) {
   const ja = rec.lang === 'ja';
+  // ✦ Have Claude make it appear here (pause-edit, 2026-10-28; SKILL.md "Paused"): something the game made, dragged to
+  // where it should appear. A real AI changes where the game makes it; the stand-in says it would, in one line.
+  if (rec.made && rec.here && Array.isArray(rec.here.to?.p)) {
+    const name = rec.here.label || rec.here.key;
+    const x = Number(rec.here.to.p[0]).toFixed(1);
+    return ja ? `${name}は X ${x} のあたりから出るようにします。読み込み直すと、そこから出ます。` : `${name} will come in around X ${x}. Reload and it appears there.`;
+  }
   const near = Array.isArray(rec.near) && rec.near[0] ? rec.near[0].label || rec.near[0].key : '';
   const turns = Array.isArray(rec.history) ? rec.history.length : 0;
   if (turns) {
@@ -97,8 +104,11 @@ function edit(file, from, to) {
  * Start the stand-in. `slow` spaces the steps out like a person would see a real agent (for the
  * video); the default is quick (for tests). `plan` ({ working, done, changed, steps }) replaces planFor()'s change. Returns { stop(), log } where log lists what it did with
  * times (ms since start).
+ * `madeCode` (pause-edit fix 1, 2026-10-28; walk 1 ✕6): a paused `made` request ("make it appear here") is answered as
+ * a real AI does — examples/three-neon-boss's game.js makes the boss where it was put — with `--changed 1`. Without it the
+ * stand-in only says it would (`--changed 0`), as before.
  */
-export function startFakeAgent(folder, { slow = false, onEvent = () => {}, plan: given = null } = {}) {
+export function startFakeAgent(folder, { slow = false, onEvent = () => {}, plan: given = null, madeCode = false } = {}) {
   const t0 = Date.now();
   const log = [];
   const note = (what) => {
@@ -161,8 +171,16 @@ export function startFakeAgent(folder, { slow = false, onEvent = () => {}, plan:
         await sleep(gap.read);
         status('working', '--request', paused[2], '--note', rec.lang === 'ja' ? 'この瞬間を見ています' : 'Looking at this moment');
         note('working');
+        let changed = 0;
+        const gameJs = join(folder, 'game.js');
+        if (madeCode && rec.made && Array.isArray(rec.here?.to?.p) && existsSync(gameJs)) {
+          const [x, y, z] = rec.here.to.p.map((v) => Number(v).toFixed(1));
+          edit(gameJs, 'boss.position.set(0, 2.6, -26);', `boss.position.set(${x}, ${y}, ${z});`);
+          changed = 1;
+          note('wrote a file');
+        }
         await sleep(gap.look);
-        status('done', '--request', paused[2], '--changed', '0', '--note', chatReplyFor(rec));
+        status('done', '--request', paused[2], '--changed', String(changed), '--note', chatReplyFor(rec));
         note('replied');
       }).catch((e) => note(`error ${e.message}`));
     } else if (saved) {

@@ -287,7 +287,7 @@ any) in every command for this game: start, `--watch`, `--status`, `--stop`.
 | `studio: did … - in the editor …` / `- in placement.json …` | Your `--do` (§3.4) did that op, there | The link first, then one line of what changed |
 | `studio: do failed <op> - <why>` | That op was not done (the others were) | Fix what it says (a key, a motion's name: `--do list`) and run that op again |
 | `studio: list {…}` | `--do list`: the objects (key, the name the person sees, their motions), the Library's motions, the levels | Find what their words mean ("the blue pillar") there |
-| `studio: request play` | The person asked while **playing** the game in the editor (▶ Play; the game is still running): their words, then `while playing`, the picture of that moment and how many console errors came with it. `paused, chat .studio/chat/<id>.json` instead of `while playing`: they **paused** the game to talk with you about that moment | §3.1 (`play`): fix it without stopping their game; paused: **answer** first (§3.1.1, "Paused") |
+| `studio: request play` | The person asked while **playing** the game in the editor (▶ Play; the game is still running): their words, then `while playing`, the picture of that moment and how many console errors came with it. `paused, chat .studio/chat/<id>.json` instead of `while playing`: they **paused** the game and ask you about that moment from the editor over it | §3.1 (`play`): fix it without stopping their game; paused: **answer** first (§3.1.1, "Paused") |
 | `studio: answer` | The person answered your `asking` question in the editor (a button or their own words; the question and the request it is about follow) | §3.1 (`answer`): go on with that answer |
 | `studio: from the Game Studio editor …` | The plugin's hook woke you (below, "Woken by the editor"): the lines under it are requests, same words as above, each ending with the game folder in `[…]` | Handle them in order (§3.1), like watch lines |
 
@@ -361,7 +361,7 @@ node <this skill's folder>/bin/studio.mjs <game folder> --requests      # one JS
 | `name` | Give these `objects` (no name, `path:` keys) a name. Each `label` is the name the editor shows for it, guessed from its shape, colour and place ("Black pillar by the road (left, 3rd)"): the words the user knows it by | Add a mark to each in the code (§5), choosing names from what they are (the `label` is a hint, not a name to copy: `roadside-pillar`, not `black-pillar-left-3rd`); say which names you chose |
 | `next-step` | `step` = `fit` / `look` / `tool` (in this game, with their words in `text`) or a KUMODeck step | `fit`, `tool`: §8. `look`: §9. KUMODeck steps: §7 (`.studio/next-step.md`) |
 | `answer` | Their answer to your `asking` question, given in the editor: `text` = the answer (one of your `--choice` words, or their own), `to` = the request the question was about, `question` = your question; `objects` = what it was `--about` | Go on with that answer, as if they had said it in your window: `working`, then `done` for **this** request id (`done --request <answer id>` also clears the request the question was about). If they answered in your window first, the editor's answer is the same answer: mark it `done` with no change |
-| `play` | They asked **while playing** (▶ Play in the editor, often full screen) and are still playing. `text` = what they saw ("when I stop here the character vanishes": *here* is the moment below). `shot` = a picture of the game at that moment (`.studio/play/<id>.jpg`: **open it**). 3D: `view` = the player's own camera (`eye`, `target` 10 units ahead). `near` = what was near (3D: nearest in front of the camera, `d` in world units; 2D: on screen, nearest the middle; `screen` = where in the picture, 0–1 from the top left). `logs` = the game's console: errors and warnings (`level`), uncaught errors, the last lines, `ago` seconds before they asked. `fullscreen`, `size`. `paused: true` = they paused the game and talk with you in a small chat over it: the first message has the moment above; the next ones have `chat` (the first one's id) and `history` (the talk so far) instead | §3.1.1 |
+| `play` | They asked **while playing** (▶ Play in the editor, often full screen) and are still playing. `text` = what they saw ("when I stop here the character vanishes": *here* is the moment below). `shot` = a picture of the game at that moment (`.studio/play/<id>.jpg`: **open it**). 3D: `view` = the player's own camera (`eye`, `target` 10 units ahead). `near` = what was near (3D: nearest in front of the camera, `d` in world units; 2D: on screen, nearest the middle; `screen` = where in the picture, 0–1 from the top left). `logs` = the game's console: errors and warnings (`level`), uncaught errors, the last lines, `ago` seconds before they asked. `fullscreen`, `size`. `paused: true` = they paused the game and ask you from the paused moment (the editor over the stopped frame): the first message has the moment above; the next ones have `chat` (the first one's id) and `history` (the talk so far) instead. `made: true` + `here` = "make it appear here": something the game made, put where it should appear | §3.1.1 |
 | `undone` | They pressed **Undo AI change** (or **Redo**, said in `text`). The editor already put the game's files back; `files` lists what changed | Do **not** redo it or "fix" it. Forget the undone change (the code is as it was before it); say one line in your window and mark it handled: `--status done --request <id> --note "Okay, it's back to how it was"` (Redo: `"Okay, your change is back"`) |
 
 Tell the editor how it is going, so the user sees it there without switching windows. **Every request, every time,
@@ -459,19 +459,35 @@ get the fix the next time the game opens). So:
 Never rely on their run to check: the game in their window keeps their state and won't change until they press
 Reload. In your own window, one or two lines: what was wrong and what you changed.
 
-**Paused (`paused: true`, the line says `paused, chat …`).** They pressed P (or ❚❚): the game is stopped at the
-moment of the picture and they are **talking** with you in a small chat over it, waiting for your reply. It is a
-conversation, not a bug report:
+**Paused (`paused: true`, the line says `paused, chat …`).** They pressed P (or ❚❚ Pause to edit): the game is stopped
+at the moment of the picture, and that moment is **the editor** — they can move things there by hand, and they ask you
+from the editor's field at the foot ("Ask Claude about this moment…"), waiting for your reply on the line over it. It is
+a conversation, not a bug report:
 
 - **Answer in your `--note`**: `received`, then `--status done --request <id> --changed 0 --note "<your answer>"`. The
-  note is the reply they read in the chat (up to 300 characters, plain words, their language; no Markdown). Answer
+  note is the reply they read over the field (up to 300 characters, plain words, their language; no Markdown). Answer
   what they asked ("why did I fall here?" → the cause, from the code and the picture), and say what you could change.
 - **Change code only when they ask for a change** ("make the jump higher", "fix it"); then as above (steps 3–5): the
-  reply sits next to **Reload** in the chat. A question is answered, not acted on.
+  reply sits next to **Reload**. A question is answered, not acted on. Don't reload their game or tell them to: they
+  are on a moment of their run (Resume goes on from it); Reload is theirs.
 - **The talk so far**: `history` in the request (oldest first; `ai` turns are your earlier replies), and the whole talk
   in `.studio/chat/<chat>.json` (both sides, plus the moment from the first message: `shot`, `view`, `near`, `logs`).
-  "This", "here" and "it" mean the paused moment.
-- A choice to make: `--status asking --choice …` as usual; their pick comes back as the next chat message.
+  "This", "here" and "it" mean the paused moment. `objects` = what they had picked.
+- **"Make it appear here" (`made: true`, with `here`).** They dragged something **the game made** (a boss, an enemy, a
+  pickup — not there when Play started) to where it should appear, and pressed ✦. `here` = `{ key, label, at, to,
+  time }`: the object, where it was when they paused (`at`), where they put it (`to`), and the game's time then
+  (`time`, seconds since ▶ Play). Change **where the game makes it**, in the game's code (the spawn: `boss.position.set(0,
+  2.6, -26)` → the `to` position; a lane, a spawn point, a random range — whatever the code uses, so it appears there
+  from now on), keep everything else of how it moves. Then `--status done --changed <n> --note "<one line in their
+  words: what changed>"` ("The boss now comes in on the left lane."): the editor puts **Reload** next to your line
+  itself, and the next run makes it there. Your reply (the note and your own window) says only what changed — **not**
+  "press Reload", "reload to check", "play again": the editor already offers it, and a how-to handed back is the worst
+  experience (§3.6). Not `--do object.move`: what the game makes is not in the scene file; moving it in the editor was
+  "just for this moment".
+- What the game moves or made moved in a paused moment is "just for this moment" (their next start does not have it);
+  what they **placed** and moved there is in their scene as in Edit (Save · N): handle it as any saved move.
+- A choice to make: `--status asking --choice …` as usual; their pick comes back as the next message.
+- `--do` while they are paused works on the moment (CONTRACT.md §3.6): `list` has what the game made too.
 
 ### 3.2 Objects without a name: offer once, at the start
 

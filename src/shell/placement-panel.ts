@@ -180,6 +180,18 @@ export interface PlacementPanelDeps {
    * not that and the hidden "lamp ×6"). ⌘Z of the swap brings the row back. Absent = none.
    */
   replaced?: (key: string) => boolean;
+  /**
+   * The paused moment (pause-edit, 2026-10-28; decision 5): something the game moves or made, just for this moment.
+   * Its card says so ("Just for this moment" and why), has Revert once moved and — for what the game made — ✦ "Have
+   * Claude make it appear here" (`appear`); no Copy / Delete (the game's code would still hold it). null / absent = a
+   * placed object, as in Edit.
+   */
+  moment?: (key: string) => { why: 'game' | 'new' | 'motion'; moved: boolean; revert(): void; appear?(): void } | null;
+  /**
+   * The paused moment's "Made by the game · N": what the game made since ▶ Play, by name (one row "drone ×2"), listed
+   * apart under the scene's own objects. [] / absent = none.
+   */
+  made?: () => Array<{ name: string; keys: string[] }>;
 }
 
 export interface PlacementPanel {
@@ -538,6 +550,24 @@ export function createPlacementPanel(d: PlacementPanelDeps): PlacementPanel {
     row.append(copy, del);
     return row;
   };
+  /**
+   * The paused moment's block on the card (pause-edit decisions 5 and 8): "Just for this moment · The game made this.
+   * Resume and it goes on from here.", then ✦ Have Claude make it appear here (what the game made, once moved) and
+   * Revert (once moved). The AI's ✦ in its violet; Revert a plain text button (it is not Undo's word: Gemini 1023c).
+   */
+  const momentBlock = (mo: NonNullable<ReturnType<NonNullable<PlacementPanelDeps['moment']>>>) => {
+    const box = h('div', { class: 'moment-note', dataset: { part: 'moment-note', why: mo.why } },
+      h('p', { class: 'moment-why' }, h('strong', { text: d.t('moment.only') }), ' · ', d.t(mo.why === 'new' ? 'moment.madeWhy' : 'moment.gameWhy')));
+    // Its words in a span (fix 1 ✕14): one line, cut with "…" only when they cannot fit (shell.css .moment-appear).
+    if (mo.appear) {
+      const b = aiButton('', 'moment-appear link-btn', 'moment-appear', () => mo.appear!());
+      b.append(h('span', { class: 'label', text: d.t('moment.appear') }));
+      b.title = d.t('moment.appear');
+      box.append(b);
+    }
+    if (mo.moved) box.append(h('button', { type: 'button', class: 'link-btn moment-revert', dataset: { action: 'moment-revert' }, title: d.t('moment.revertTip'), text: d.t('moment.revert'), onclick: () => mo.revert() }));
+    return box;
+  };
   /** "All 4 of this kind": a quiet line under the fields, only when there are more of the same kind. */
   const kindLink = (key: string) => {
     const kind = sameKind(d.items(), key);
@@ -718,6 +748,12 @@ export function createPlacementPanel(d: PlacementPanelDeps): PlacementPanel {
     // which title.
     if (d.phone() && !parts.where && !uiText) sub.textContent = '';
     animate();
+    // The paused moment (pause-edit): what the game moves or made has no Copy / Delete; its block goes under the numbers.
+    const mo = d.moment?.(key) ?? null;
+    if (mo) {
+      const acts = h0.querySelector('.card-actions') as HTMLElement | null;
+      if (acts) acts.hidden = true;
+    }
     // Held by the editor (bridge/hold.ts; a hands-on try of 2026-10-19, items 4 and 5). A ground / road / sky:
     // why it does not move, and the one button that frees it (the "one more step" asked for). What the game moves by
     // itself: the tester's own words for it, so the person knows a new spot will not last before trying one.
@@ -883,6 +919,7 @@ export function createPlacementPanel(d: PlacementPanelDeps): PlacementPanel {
     // (design.md §5: 2D has the same file shape, its card comes next); never for a UI element.
     if (d.motion && dim === '3d' && !it.kinds.includes('ui')) fields.append(...d.motion(key));
     fine.append(fields);
+    if (mo) fine.append(momentBlock(mo));
     // One placed by hand (studio-hand-marks): its rule's block under its numbers (the knobs, "✋ 2 placed by hand").
     if (rule?.after) fine.append(...rule.after);
     // A UI element's text, size, colours, states and sample values (UI stages 2–3): under its numbers, in the same fold.
@@ -1186,10 +1223,15 @@ export function createPlacementPanel(d: PlacementPanelDeps): PlacementPanel {
       list.append(h('li', { class: 'muted list-empty', dataset: { part: 'ui-empty' }, text: empty }));
       return;
     }
-    if (d.items().some(hasLayer)) {
+    // The paused moment (pause-edit decision 5): what the game made goes under "Made by the game · N", apart.
+    const made = d.made?.() ?? [];
+    const madeKeys = new Set(made.flatMap((m) => m.keys));
+    const ours = madeKeys.size ? items.filter((i) => !madeKeys.has(i.key)) : items;
+    if (ours.some(hasLayer)) {
       list.classList.add('by-layer');
       list.dataset.order = 'front-first';
-      renderLayerList(layerBlocks(d.items()), d.items().filter((i) => !hasLayer(i)));
+      renderLayerList(layerBlocks(ours), ours.filter((i) => !hasLayer(i)));
+      renderMade(made);
       return;
     }
     list.classList.remove('by-layer');
@@ -1235,6 +1277,7 @@ export function createPlacementPanel(d: PlacementPanelDeps): PlacementPanel {
     for (const it of d.items()) {
       if (fold && it.unstable) continue;
       if (d.replaced?.(it.key)) continue;
+      if (madeKeys.has(it.key)) continue;
       const rt = d.ruleTag?.(it.key) ?? null;
       if (rt) tags.set(rt.group, { tag: rt.tag, tip: rt.tip });
       if (rt?.hand) hands.set(it.key, rt.hand);
@@ -1243,12 +1286,44 @@ export function createPlacementPanel(d: PlacementPanelDeps): PlacementPanel {
       arr.push(it);
       groups.set(g, arr);
     }
-    for (const [g, members] of groups) {
+    for (const [g, members] of groups) renderGroup(g, members, heading0(members), tags, handMark);
+    renderMade(made);
+    markRows();
+    revealSelected();
+  };
+  /** A group's heading: the kind's name ("crate ×4" → "crate"). */
+  const heading0 = (members: Item[]) => (members.length > 1 ? kindName(members) : '');
+  /**
+   * "Made by the game · 6" (pause-edit): a heading row (not pressable), then one row per name, "drone ×2" opening to
+   * each — the same rows as the scene's own groups, so picking works the same.
+   */
+  const renderMade = (made: Array<{ name: string; keys: string[] }>) => {
+    if (!made.length) return;
+    const n = made.reduce((a, m) => a + m.keys.length, 0);
+    list.append(h('li', { class: 'made-head', role: 'presentation', dataset: { part: 'made-head' } }, h('span', { class: 'list-title', text: d.t('moment.made') }), h('span', { class: 'count n mono', text: String(n) })));
+    const byKey = new Map(d.items().map((i) => [i.key, i]));
+    for (const m of made) {
+      const members = m.keys.map((k) => byKey.get(k)).filter((i): i is Item => !!i);
+      if (members.length) renderGroup(`made:${m.name}`, members, m.name, new Map(), () => null);
+    }
+  };
+  /**
+   * The paused moment's ↻ on a row (fix 1 ✕11 of walk 1, 2026-10-28; the mock had it): what the game moves (the ship
+   * weaving, the hex coming down the road) — told apart from a placed thing before it is pressed (it was only the card
+   * that said "Just for this moment"). Tip "Moved by the game". A group's row: when all of it is.
+   */
+  const movesMark = (members: Item[]): HTMLElement | null => {
+    if (!d.moment || !members.length) return null;
+    if (!members.every((m) => { const w = d.moment!(m.key)?.why; return w === 'game' || w === 'motion'; })) return null;
+    return h('span', { class: 'moves-mark', title: d.t('moment.moves'), role: 'img', 'aria-label': d.t('moment.moves'), dataset: { part: 'moves-mark' } }, icon('toolRotate'));
+  };
+  const renderGroup = (g: string, members: Item[], heading: string, tags: Map<string, { tag: string; tip: string }>, handMark: (members: Item[], own?: boolean) => HTMLElement | null) => {
+    {
+      const sel = d.selected();
       const first = members[0]!;
       const many = members.length > 1;
       const open = expanded.has(g) || (many && members.some((m) => m.key === sel || inGroup(m.key)));
       const allIn = many && members.every((m) => d.group().includes(m.key));
-      const heading = many ? kindName(members) : '';
       // A "name ×N" heading: pressing it selects the whole group (move, turn,
       // copy or delete all of them); the ▸ / ▾ button only opens or closes it.
       const toggle = many ? h('button', {
@@ -1267,6 +1342,7 @@ export function createPlacementPanel(d: PlacementPanelDeps): PlacementPanel {
         // `group` is an id (often a texture URL), not a name: show the first object's label.
         // A group is named by its kind ("crate ×4" → "crate"), not by its first member.
         many ? h('span', { class: 'name', text: heading }) : nameOf(first),
+        movesMark(members),
         tags.has(g) ? h('span', { class: 'pill rule-tag', title: tags.get(g)!.tip, text: tags.get(g)!.tag }) : null,
         handMark(members),
         many ? h('span', { class: 'count n mono', text: String(members.length) }) : null,
@@ -1288,7 +1364,7 @@ export function createPlacementPanel(d: PlacementPanelDeps): PlacementPanel {
           const mp = isGuessed(m) ? nameParts(displayName(m, d.t)) : null;
           const label = mp && mp.where && mp.base === heading ? h('span', { class: 'name unnamed', title: displayName(m, d.t), text: mp.where }) : nameOf(m);
           const sub = h('li', { role: 'option', class: 'obj sub', 'aria-selected': String(m.key === sel || inGroup(m.key)), dataset: { key: m.key } },
-            label, m.unstable ? noNamePill(m) : null, m.copyOf ? copyTag(m) : null, handMark([m], true));
+            label, movesMark([m]), m.unstable ? noNamePill(m) : null, m.copyOf ? copyTag(m) : null, handMark([m], true));
           sub.addEventListener('click', (e) => {
             e.stopPropagation();
             d.select(m.key, e.shiftKey);
@@ -1297,8 +1373,6 @@ export function createPlacementPanel(d: PlacementPanelDeps): PlacementPanel {
         }
       }
     }
-    markRows();
-    revealSelected();
   };
 
   return {

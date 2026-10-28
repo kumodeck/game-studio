@@ -2355,6 +2355,20 @@ function playMoment(r, errors) {
       }
       if (hist.length) out.history = hist;
     }
+    // Pause-edit (2026-10-28): ✦ Have Claude make it appear here — something the game made, dragged to where it should
+    // appear. A hint like the rest: a bad part is dropped (then `made` too: without the object it says nothing).
+    if (r.made === true && r.here && typeof r.here === 'object' && typeof r.here.key === 'string' && KEY_OK.test(r.here.key)) {
+      const at = cleanPose(r.here.at);
+      const to = cleanPose(r.here.to);
+      if (at && to) {
+        const here = { key: r.here.key, at, to };
+        const label = oneLine(r.here.label, HANDOFF_LIMITS.maxLabel);
+        if (label && label !== r.here.key) here.label = label;
+        if (isFin(r.here.time) && r.here.time >= 0) here.time = roundTo(Math.min(r.here.time, 86400 * 7), 10);
+        out.made = true;
+        out.here = here;
+      }
+    }
   }
   return out;
 }
@@ -3945,7 +3959,10 @@ function handoffLine(rec, relPath) {
     const errs = Array.isArray(v.logs) ? v.logs.filter((l) => l && l.level === 'error').length : 0;
     // Paused (2026-10-22): they stopped the game to talk; the line names the chat file, which has the whole talk.
     const chatId = v.paused === true ? (typeof v.chat === 'string' && v.chat ? v.chat : String(relPath).replace(/^.*\/|\.json$/g, '')) : '';
-    const bits = [chatId ? `paused, chat .studio/chat/${chatId}.json` : 'while playing', v.shot ? `picture ${v.shot}` : '', errs ? `${errs} error${errs === 1 ? '' : 's'}` : ''].filter(Boolean);
+    // ✦ Have Claude make it appear here (pause-edit, 2026-10-28): something the game made, put where it should appear —
+    // the line says so, so the AI goes to the code that makes it (SKILL.md "Paused").
+    const made = v.paused === true && v.made === true && v.here && typeof v.here.key === 'string' ? `made by the game: ${v.here.label || v.here.key}, make it appear where it was put` : '';
+    const bits = [chatId ? `paused, chat .studio/chat/${chatId}.json` : 'while playing', made, v.shot ? `picture ${v.shot}` : '', errs ? `${errs} error${errs === 1 ? '' : 's'}` : ''].filter(Boolean);
     return `studio: request play ${relPath} ${JSON.stringify((v.text || '').length > 120 ? v.text.slice(0, 119) + '…' : v.text || '')} (${bits.join(', ')})`;
   }
   // ✦ Ask … to make this UI editable (studio-canvas-ui stage 2, 2026-10-24): the line says what it is for and where the

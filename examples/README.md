@@ -13,5 +13,6 @@ Purpose: small sample games to try KUMODeck Game Studio on (and to test it). No 
 | `three-isles/` | three.js r186 | three levels, three landforms (Meadow: hills and a stream; Canyon: a walled valley and a chasm; Summit: a snow mountain with a switchback path): `studio.levels()` and `applyPlacement(…, { level })`, the editor's level switch (added 2026-10-22) |
 | `three-hud/` | three.js r186 | an HTML title card, Start button and score over the world, marked `data-studio-key`: the editor's UI layer (UI stage 1, added 2026-10-19) |
 | `three-canvas-hud/` | three.js r186 | a runner whose score, health bar, JUMP button and minimap are drawn in a 2D canvas over the world, kept as before the AI's `codeUi()` rewrite: the UI drawn in the canvas (studio-canvas-ui, added 2026-10-24) |
+| `three-neon-boss/` | three.js r186 | a runner where the game makes a boss, drones and shots a few seconds in (plain code): the paused moment — placed things, things the game moves, things it made (pause-edit, added 2026-10-28) |
 
 Each game folder has `studio-placement.js`, the placement loader as the AI adds it to a game.

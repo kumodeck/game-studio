@@ -1,5 +1,5 @@
 // ▶ Play and back in the same page (fast switch, 2026-10-22; a try of the editor: "every time I play and go back to edit it loads
-// again — tedious"). CONTRACT.md §3.5.2, contract.ts `studio:core/play`.
+// again — tedious"). CONTRACT.md §3.5.3, contract.ts `studio:core/play`.
 //
 // Before: Play and Edit each opened the game page again (`?studio=edit` or not). Going back to Edit took seconds: the
 // game loads, the adapter is found, the list is made, every row's picture drawn again. Now the edit page itself becomes
@@ -14,7 +14,10 @@
 //               5. the game goes on: frames, clock (core/time.ts `clock`: the time spent editing is not a frame step),
 //                  sound (a pause's hold, when Edit held it); play-ask wakes (play/hello: ask, pause, move work as on a
 //                  Play page)
-//   Edit (back) 1. play-ask sleeps (Move, the chat, the field put away), the motions stop
+//   Paused      (pause-edit, 2026-10-28) the paused moment is this page's own editor, woken over the game where it
+//   (moment)    stopped (momentHost: core/edit `moment` — the player's view, nothing put back, the game not let run).
+//               Resume puts it away and the game goes on from there; Edit (back) ends the moment first.
+//   Edit (back) 1. play-ask sleeps (the paused moment, the field put away), the motions stop
 //               2. the game is held as a pause holds it (frames, clock, sound, the mouse let go)
 //               3. everything goes back to where Play found it: what the game moved while playing (the hero, an enemy,
 //                  the camera) is not kept. "Put in layout" from a pause is the shell's: it sends those after this.
@@ -47,6 +50,7 @@ import type { Core } from '../core/index.ts';
 import type { Editor } from './editor.ts';
 import { moveInPlay } from './play-arrange.ts';
 import type { PlayAskHandle } from './play-ask.ts';
+import type { MomentHost } from './play-move.ts';
 
 export interface PlaySwitchDeps {
   win: Window & typeof globalThis;
@@ -147,6 +151,8 @@ export function createPlaySwitch(d: PlaySwitchDeps): PlaySwitch {
       }
     }
     playAsk.wake(Promise.resolve(moving));
+    // Every ▶ Play at 1× (pause-edit decision 10: a slow speed kept would read as "the game is slow").
+    playAsk.hold?.speed(1);
     // Held by a pause before (Edit holds the game with it, back below): its resume brings the sound back too.
     if (playAsk.hold?.paused) playAsk.hold.resume();
     else core.time.thaw();
@@ -189,6 +195,25 @@ export function createPlaySwitch(d: PlaySwitchDeps): PlaySwitch {
     editView = undefined;
     editor.handle({ type: 'studio:core/edit', on: true, viewState: view });
   }
+
+  // The paused moment (pause-edit): this page's own editor over the paused game (play-ask.ts pauseNow wakes it).
+  let momentOn = false;
+  const momentHost: MomentHost = {
+    wake() {
+      if (!playing) return false;
+      editor.handle({ type: 'studio:core/edit', on: true, moment: true });
+      momentOn = true;
+      return true;
+    },
+    sleep() {
+      if (!momentOn) return;
+      momentOn = false;
+      editor.handle({ type: 'studio:placement/select', key: null });
+      editor.handle({ type: 'studio:core/edit', on: false });
+    },
+    driven: () => editor.driven,
+  };
+  playAsk.useHost(momentHost);
 
   return {
     get playing() {

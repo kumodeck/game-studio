@@ -146,9 +146,10 @@ test('a new motion is named after its object, in the page’s language', () => {
   assert.doesNotMatch(wire, /free\('Motion'\)/, 'a new motion is called "Motion" again');
 });
 
-test('the pause words: Save new position / Revert (Gemini 1023c), not Undo’s word', () => {
-  assert.equal(translate('ja', 'play.toLayout'), '新しい位置を保存');
-  assert.equal(translate('ja', 'play.putBack'), '元の位置に戻す');
-  assert.equal(translate('en', 'play.putBack'), 'Revert');
-  assert.notEqual(translate('ja', 'play.putBack'), translate('ja', 'btn.undo'));
+test('the pause words: Revert (Gemini 1023c), not Undo’s word', () => {
+  // "Save new position" went with pause-edit (2026-10-28, Q1 = (a)): a placed thing moved in the paused moment is in the
+  // scene as in Edit. Revert stays, on the card of what the game moves or made (moment.revert).
+  assert.equal(translate('ja', 'moment.revert'), '元の位置に戻す');
+  assert.equal(translate('en', 'moment.revert'), 'Revert');
+  assert.notEqual(translate('ja', 'moment.revert'), translate('ja', 'btn.undo'));
 });

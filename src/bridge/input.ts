@@ -124,6 +124,12 @@ export interface InputDeps {
   /** Pause-move: key releases reach the game (not blocked), so no key stays down in it after Resume. */
   passKeyUp?: boolean;
   /**
+   * Over a paused moment (pause-edit fix 1, ✕2 of walk 1, 2026-10-28): no game line by the strip (gameNote). Edit's
+   * line "Moving it here sets where it starts" said the opposite of the card's "Just for this moment" about the same
+   * ship (a move in a moment never sets where it starts). The card's one line is the one place that says it.
+   */
+  moment?: boolean;
+  /**
    * "Unlock" in the line under the strip on a locked ground (studio-card-doors, 2026-10-23): free these keys (as the
    * shell's placement/unhold does). Absent = the line has no pressable word (pause-move).
    */
@@ -487,7 +493,7 @@ export function attachInput(deps: InputDeps): InputHandle {
     // ("hex ×4 (rule): Drag to adjust Gap · ⌥-drag to move one") or place just it by hand.
     const rule = picked.length === 1 ? deps.codePlace?.note(picked[0]!.key, tool) : null;
     if (rule) return rule;
-    const moved = picked.find((i) => i.held === 'game' && i.driven?.length);
+    const moved = deps.moment ? undefined : picked.find((i) => i.held === 'game' && i.driven?.length);
     if (moved) {
       const g = gameNote(lang, moved.driven!.filter((k) => k !== 'lift' || adapter.dim === '3d'), !!moved.meets);
       if (g) return g;

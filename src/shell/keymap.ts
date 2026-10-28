@@ -19,7 +19,8 @@
 // - None of these act while typing in a field (main.ts): the field keeps its own ⌘Z, ⌘A, ⌘C, ⌘V, Delete.
 //   Only ⌘S (save) and ⌘K (all actions) still work there.
 
-export type KeyGroup = 'edit' | 'tools' | 'view' | 'layers';
+// 'play' (pause-edit fix 1 ✕13, 2026-10-28): P · . · ` under their own heading "Play" — they were in "Camera".
+export type KeyGroup = 'edit' | 'tools' | 'play' | 'view' | 'layers';
 
 export interface KeyDef {
   /** Also the i18n key `keys.<id>` for its name in the sheet (unless `label` names another string). */
@@ -88,11 +89,15 @@ export const KEYMAP: KeyDef[] = [
   // one letter is enough, and K reads as "key"). Only while the timeline is open.
   { id: 'timelineKey', group: 'tools', keys: ['K'], dim: '3d', note: 'keys.timelineKey.note' },
   // P: Play in Edit; Pause / Resume while playing — never back to Edit (plan step 2, first-run walk #14; main.ts shortcut()).
-  { id: 'play', group: 'view', keys: ['P'], label: 'btn.play', playing: ['play.pause', 'play.resume'] },
-  // ` while playing (plan step 6, decided 2026-10-23): the corner shows only "❚❚ Pause and talk P", so asking
+  // Pause-edit (2026-10-28): "Pause to edit / Resume" while playing.
+  { id: 'play', group: 'play', keys: ['P'], label: 'btn.play', playing: ['play.pauseEdit', 'play.resume'] },
+  // Next frame (pause-edit, 02-find.md): . while paused (the game gets no key then, so it never fights the game's own
+  // keys); held, it goes on at the speed. Read in the game page and in the editor page (main.ts shortcut()).
+  { id: 'step', group: 'play', keys: ['.'], note: 'keys.step.note' },
+  // ` while playing (plan step 6, decided 2026-10-23): the corner showed only "❚❚ Pause and talk P", so asking
   // WITHOUT pausing (2026-10-20 "fix it without stopping the game") is this key only, and the sheet is where it is said.
   // Read in the game page (bridge/play-ask.ts), not by main.ts: it does nothing in Edit, hence the note "While playing".
-  { id: 'askPlaying', group: 'view', keys: ['`'], note: 'keys.askPlaying.note' },
+  { id: 'askPlaying', group: 'play', keys: ['`'], note: 'keys.askPlaying.note' },
   { id: 'frame', group: 'view', keys: ['F'], label: 'btn.frame' },
   { id: 'home', group: 'view', keys: ['⇧F'], label: 'pal.home' },
   { id: 'look', group: 'view', keys: ['Space'] },

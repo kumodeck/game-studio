@@ -41,7 +41,13 @@ export type Change =
    * A code layout's changes (studio-code-base, 2026-10-24; code-places.ts): `key` is the codePlace id, from / to its
    * whole entry in `places` (knobs, pins, by hand, keep-out areas, what it replaced). null = nothing changed.
    */
-  | { kind: 'code-place'; key: string; from: PlacementPlace | null; to: PlacementPlace | null };
+  | { kind: 'code-place'; key: string; from: PlacementPlace | null; to: PlacementPlace | null }
+  /**
+   * The paused moment (pause-edit, 2026-10-28; decision 6): something the game moves or made, moved just for this
+   * moment — only the game page's object changes, never the scene (no Save · N). ⌘Z takes it back while paused; ▶
+   * Resume takes these out of the history (dropMoment: that moment is gone).
+   */
+  | { kind: 'moment'; key: string; from: Pose; to: Pose };
 
 export interface UndoEntry {
   changes: Change[];
@@ -180,6 +186,28 @@ export class UndoStack {
   }
   get canRedo(): boolean {
     return this.undone.length > 0;
+  }
+
+  /**
+   * ▶ Resume from a paused moment (pause-edit decision 6): its "just for this moment" changes go out of the history —
+   * the moment they were about is gone (undoing one later would put the boss back where it was 20 seconds ago). A step
+   * that also moved placed things keeps those. Returns how many steps went.
+   */
+  dropMoment(): number {
+    let n = 0;
+    for (const list of [this.done, this.undone]) {
+      for (let i = list.length - 1; i >= 0; i--) {
+        const e = list[i]!;
+        const rest = e.changes.filter((c) => c.kind !== 'moment');
+        if (rest.length === e.changes.length) continue;
+        if (rest.length) e.changes = rest;
+        else {
+          list.splice(i, 1);
+          n++;
+        }
+      }
+    }
+    return n;
   }
   get size(): number {
     return this.done.length;

@@ -156,7 +156,7 @@ export function withRules(inner: StudioAdapter, holder: RulesHolder): StudioAdap
   const ruled: StudioAdapter = {
     ...inner,
     list: () => decorate(inner.list()),
-    begin: () => decorate(inner.begin()),
+    begin: (o) => decorate(inner.begin(o)),
     pickNear(x, y, radius) {
       return inner.pickNear(x, y, radius).filter((k) => !ruleOf(k)?.hidden);
     },

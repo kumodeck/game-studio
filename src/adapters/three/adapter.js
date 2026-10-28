@@ -546,8 +546,15 @@ export function createThreeAdapter({ scene, renderer, camera }) {
    * Not the UI the game marked with data-studio-key (or a box holding it): that is the editor's UI layer (UI stage 1,
    * 2026-10-19), shown — faded while the world is edited (bridge/editor.ts paintLayers). A game without the mark
    * hides exactly what it did before.
+   * `still` = over a paused moment of Play (begin({ moment: true }); pause-edit fix 1, ✕1 of walk 1, 2026-10-28): the
+   * same DOM stays SEEN and only stops taking the pointer. The score, the time left and "⚠ BOSS" are part of the frame
+   * the person stopped on; hidden, the moment read as "the score is gone / it started over" (Neon Run's #hud, Glow
+   * Garden's title and Start). No pointer: a press on it goes to the game's world behind, as a press on the scene
+   * (the editor picks there), and the game's own buttons cannot be pressed while paused.
    */
-  function hideOverlays() {
+  function hideOverlays(still) {
+    const prop = still ? 'pointer-events' : 'visibility';
+    const val = still ? 'none' : 'hidden';
     const uiCanvases = codeUiCanvases();
     for (let el = canvas; el && el.parentElement; el = el.parentElement) {
       for (const sib of el.parentElement.children) {
@@ -559,8 +566,8 @@ export function createThreeAdapter({ scene, renderer, camera }) {
         // A HUD canvas (a 2D canvas over the game's) the bridge marked for the UI layer before editing (studio-canvas-ui
         // stage 2, 2026-10-24): its UI is seen there with "Not selectable yet" frames; the layer style hides it on the world.
         if (sib.matches('canvas[data-studio-ui-layer]') || sib.querySelector('canvas[data-studio-ui-layer]')) continue;
-        restoreDom.push([sib, sib.style.getPropertyValue('visibility'), sib.style.getPropertyPriority('visibility')]);
-        sib.style.setProperty('visibility', 'hidden', 'important');
+        restoreDom.push([sib, prop, sib.style.getPropertyValue(prop), sib.style.getPropertyPriority(prop)]);
+        sib.style.setProperty(prop, val, 'important');
       }
       if (el.parentElement === document.body) break;
     }
@@ -580,9 +587,9 @@ export function createThreeAdapter({ scene, renderer, camera }) {
     return out;
   }
   function showOverlays() {
-    for (const [el, val, prio] of restoreDom.splice(0)) {
-      if (val) el.style.setProperty('visibility', val, prio);
-      else el.style.removeProperty('visibility');
+    for (const [el, prop, val, prio] of restoreDom.splice(0)) {
+      if (val) el.style.setProperty(prop, val, prio);
+      else el.style.removeProperty(prop);
     }
   }
 
@@ -606,7 +613,8 @@ export function createThreeAdapter({ scene, renderer, camera }) {
       return cs.map((c) => (grounds.has(c.key) ? { ...item(c), backdrop: true } : item(c)));
     },
 
-    begin() {
+    /** `o.moment`: over a paused moment of Play — the game's DOM stays seen (hideOverlays). */
+    begin(o) {
       if (editing) return adapter.list();
       if (!boot.held) boot.hold('begin');
       editing = true;
@@ -614,7 +622,7 @@ export function createThreeAdapter({ scene, renderer, camera }) {
       gc.updateMatrixWorld(true);
       view = createEditView(gc);
       view.set({ yaw: yawOfCamera(gc) });
-      hideOverlays();
+      hideOverlays(!!(o && o.moment));
       // Keep our framing even if the game's scene.onBeforeRender moves "the camera" it is given (follow cams do).
       origBefore = scene.onBeforeRender;
       guard = function (r, s, cam, ...rest) {

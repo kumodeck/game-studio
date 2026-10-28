@@ -44,6 +44,12 @@ export interface HandsDeps {
   /** The editor shows the game and has its list (the bridge answered): ops can run. */
   ready(): boolean;
   playing(): boolean;
+  /**
+   * A paused moment is up (pause-edit, 2026-10-28; decision 9): the ops work on the moment itself, as the person's hand
+   * does there (a placed object's move goes in the scene, what the game moves or made moves just for this moment).
+   * Absent / false while playing = back to Edit first, as before.
+   */
+  moment?(): boolean;
   /** Back to Edit from ▶ Play (the AI's change is on the editing page, not on the run). */
   stopPlay(): Promise<void>;
   /** The world layer (the AI's ops are about objects, never the game's HTML UI). */
@@ -803,7 +809,7 @@ export function createAiHands(d: HandsDeps) {
     if (!read.ok) return { results: [{ do: '?', ok: false, error: read.errors.join('; ') }] };
     const ops = read.ops as Op[];
     if (!(await waitReady())) return { results: ops.map((op) => ({ do: op.do, ok: false, error: 'the editor is still opening the game: run the same --do again in a moment' })) };
-    if (d.playing()) await d.stopPlay();
+    if (d.playing() && !d.moment?.()) await d.stopPlay();
     // A job of UI ops is done on the UI layer (its one ⌘Z is a step of that layer); every other job on the world.
     // A job of `list` alone only reads: the layer the person is on stays (studio-canvas-ui stage 2, 2026-10-24: the real
     // AI's last `--do list` after delivering the canvas UI took the person to the Scene, where that UI is hidden).

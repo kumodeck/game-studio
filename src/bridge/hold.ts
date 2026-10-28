@@ -130,7 +130,7 @@ export function withHold(inner: StudioAdapter, s: HoldState): StudioAdapter {
   const held: StudioAdapter = {
     ...inner,
     list: () => decorate(inner.list()),
-    begin: () => decorate(inner.begin()),
+    begin: (o) => decorate(inner.begin(o)),
     grab: (key, x, y) => (itemOf(key)?.movable === false ? false : inner.grab(key, x, y)),
     drag: (key, x, y) => (itemOf(key)?.movable === false ? now(key) : inner.drag(key, x, y)),
     rotate: (key, d) => (itemOf(key)?.rotatable === false ? now(key) : inner.rotate(key, d)),

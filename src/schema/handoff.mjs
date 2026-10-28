@@ -321,6 +321,20 @@ function playMoment(r, errors) {
       }
       if (hist.length) out.history = hist;
     }
+    // Pause-edit (2026-10-28): ✦ Have Claude make it appear here — something the game made, dragged to where it should
+    // appear. A hint like the rest: a bad part is dropped (then `made` too: without the object it says nothing).
+    if (r.made === true && r.here && typeof r.here === 'object' && typeof r.here.key === 'string' && KEY_OK.test(r.here.key)) {
+      const at = cleanPose(r.here.at);
+      const to = cleanPose(r.here.to);
+      if (at && to) {
+        const here = { key: r.here.key, at, to };
+        const label = oneLine(r.here.label, HANDOFF_LIMITS.maxLabel);
+        if (label && label !== r.here.key) here.label = label;
+        if (isFin(r.here.time) && r.here.time >= 0) here.time = roundTo(Math.min(r.here.time, 86400 * 7), 10);
+        out.made = true;
+        out.here = here;
+      }
+    }
   }
   return out;
 }

@@ -41,7 +41,7 @@ test('every shortcut has a name in English and Japanese', () => {
       assert.ok(s && s !== key, `${lang}: ${key}`);
     }
   }
-  for (const g of ['edit', 'tools', 'view', 'layers']) assert.notEqual(translate('ja', `keys.group.${g}`), `keys.group.${g}`);
+  for (const g of ['edit', 'tools', 'play', 'view', 'layers']) assert.notEqual(translate('ja', `keys.group.${g}`), `keys.group.${g}`);
 });
 
 test('no single key does two things', () => {

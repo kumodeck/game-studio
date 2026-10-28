@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+  <meta name="theme-color" content="#120a24" />
+  <title>Neon Run — a boss comes in</title>
+  <style>
+    html, body { margin: 0; height: 100%; overflow: hidden; background: #120a24; touch-action: none; }
+    canvas { position: fixed; left: 0; top: 0; width: 100%; height: 100%; display: block; }
+    /* The HUD: the score and the time left, top left; the boss banner, top middle (HTML over the canvas). */
+    #hud { position: fixed; left: 18px; top: 14px; font: bold 22px/1.25 "Courier New", monospace; color: #fff; text-shadow: 0 0 8px #ff3fb4; pointer-events: none; }
+    #hud .time { color: #7ff3ff; font-size: 16px; }
+    #boss { position: fixed; left: 50%; top: 14px; transform: translateX(-50%); padding: 6px 22px; border: 2px solid #ff3fb4; border-radius: 6px;
+      color: #ff8fd8; font: bold 16px "Courier New", monospace; letter-spacing: .3em; background: rgba(40, 8, 40, .6); pointer-events: none; }
+    #boss[hidden] { display: none; }
+  </style>
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.186.1/build/three.module.min.js"
+      }
+    }
+  </script>
+</head>
+<body>
+  <div id="hud"><div class="score">SCORE 12,480</div><div class="time">TIME 0:30</div></div>
+  <div id="boss" hidden>⚠ BOSS</div>
+  <script type="module" src="game.js"></script>
+</body>
+</html>

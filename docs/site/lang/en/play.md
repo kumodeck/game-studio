@@ -2,8 +2,8 @@
 title: Play
 nav: Play
 order: 3
-written-for: 0.1.18
-description: Play your game in the editor, pause it, talk to your AI about what you see, and move things where it stopped.
+written-for: 0.1.70
+description: Play your game in the editor, slow it down, pause it on the exact frame, and edit that moment by hand or with your AI.
 ---
 
 # Play
@@ -31,36 +31,53 @@ Going back from Play to Edit never asks.
 
 A game with an older copy of the loader (`studio-placement.js`) plays in the same page too: in the editor it runs with the editor’s own loader. The file in your game isn’t changed, so outside the editor (a published game) your game still uses its copy. Before you publish a game with motions, ask your AI to copy the new loader into it.
 
-## Pause and talk to your AI
+## Pause to edit
 
-Something odd happens? Press <kbd>P</kbd> or **❚❚ Pause and talk** in the corner, the one button there while you play. While you play, <kbd>P</kbd> only pauses and resumes, wherever you last clicked; it never takes you back to Edit (that’s the **Edit** button). The game stops right there: its clock, its timers, its sound, everything. A chat opens beside it: **Paused · Claude sees this moment**, and a box that says **Ask Claude about this moment…** (your AI’s name, if it isn’t Claude).
+Press <kbd>P</kbd> or **❚❚ Pause to edit** in the top bar, next to **Edit**. It’s in the same place on every screen. The first time you play, one line under it says what it does. The game stops on that exact frame: its clock, its timers, its sound, everything. And that moment becomes the editor.
 
-![The game paused, with the chat open and the AI’s reply](media/pause-chat.webp)
+![The paused moment: the list floating over the game, the gate moved closer, Save · 1](media/pause-edit.webp)
 
-Ask about what you see: why it happened, how it works, what to change. Your AI sees the moment you paused: a picture of the game, where your camera was, what was near you, and any errors. Send as many messages as you like.
+You get the same tools as in Edit, on the frame you stopped on: the list (it floats over the game, so the picture doesn’t move; **‹** folds it), the card, the strip under what you select, the ask box at the bottom, Undo / Redo and Save. The game’s own score, timer and banners stay on screen as they were (you can’t press them). The top bar says **❚❚ Paused 0:42.30**: the game’s time since you pressed Play, to a hundredth of a second so each frame shows. While you play it says **● Playing 0:41.8**.
 
-To go on, press <kbd>P</kbd>, <kbd>Esc</kbd> or **▶ Resume**. The game goes on from the exact frame it stopped on.
+### What you placed, and what the game made
 
-On a phone or in a narrow window, **❚❚** is in the top bar and the chat opens at the bottom.
+- **Things you placed** (a gate, a pillar, a platform) move just like in Edit. The move is in your scene: it counts on **Save · N**, the list shows its dot, <kbd>⌘</kbd><kbd>Z</kbd> undoes it, and it’s still there when you go back to Edit.
+- **Things the game moves or made** (the player, an enemy, a boss, a bullet) say **Just for this moment** on their card. Move one and the game goes on from there when you resume, but it’s not part of your scene. **Revert** puts it back where it was when you paused. In the list, what the game moves has a small **↻**, and what the game made is listed apart under **Made by the game**, with how many on the right (the same name is one row: **drone** with **2**; **▸** opens it). These have no Copy or Delete: the game’s code still has them. To change them for good, ask your AI.
 
-## Move things where you paused
+![The boss moved to the left lane: Just for this moment, and ✦ Have Claude make it appear here](media/pause-made.webp)
 
-While paused, press **Move** (or <kbd>M</kbd>). Now you can select and drag things at that moment, with the same tools as in Edit. The camera stays the player’s. Resume, and the game goes on from there.
+To change where the game makes something, drag it to where it should appear and press **✦ Have Claude make it appear here** on its card. The ask box gets **Make boss appear here** with the chip **boss · here**. Send it, and Claude changes the game’s code. Its reply shows over the ask box with **Reload**: press it to leave the paused moment and play the game again with the change (your **Save · N** stays). The boss comes in where you put it. If you resume instead, **Reload** is on the line over the game.
 
-A thing you move this way is **Only in this play**: it’s gone the next time the game opens. To keep it:
+### Ask about this moment
 
-- **Save new position** makes it the object’s place, just like a move in Edit. It counts on **Save · N**.
-- **Revert** returns it to where it was at the pause.
+The ask box says **Ask Claude about this moment…** (your AI’s name, if it isn’t Claude). Your AI sees the moment you paused: a picture of the game, where your camera was, what was near you, and any errors. Ask why it happened, how it works, or what to change. Send as many messages as you like; **▴ Earlier · 2** shows what you said before in this pause.
 
-Some things can’t stay: if the game moves something itself, the move is **Just for this moment**.
+### Slow it down, one frame at a time
 
-Press **Chat** (or <kbd>Esc</kbd> with nothing selected) to go back to the chat.
+- **Speed** (**1× ⌄** in the top bar) plays at **1×**, **½×** or **¼×**. Set it before the boss comes and the moment is easy to catch. Every game slows the same way, because Studio holds the game’s clock. Sound is off while it’s slow. The next ▶ Play starts at 1× again.
+- **▶| Next frame** (or <kbd>.</kbd>) steps one frame while paused: the time moves by 0:00.01 or 0:00.02. Hold it down to go on at the speed you chose. The first time you pause, a small label under **▶|** says **Next frame .**
 
-> **Edit vs Move.** Pressing **Edit** while paused takes you back to your layout, not to the paused moment. To change things at that moment, use **Move**.
+![The Speed menu in the top bar: 1×, ½×, ¼×](media/pause-speed.webp)
+
+### The ways out of a paused moment
+
+| | ▶ Resume (<kbd>P</kbd>) | Edit | Play from the start (<kbd>⌘</kbd><kbd>K</kbd>) |
+|---|---|---|---|
+| Things you placed and moved | where you moved them | where you moved them (in your scene, **Save · 1**) | where you moved them |
+| Things the game moves or made | the game goes on from where you put them | not there: your scene before Play | not there yet |
+| Score, time left | as they were | — | the game’s own start |
+
+**▶ Resume** goes on from the exact frame you stopped on. **Edit** goes back to your scene, not to the paused moment (that’s what **❚❚ Pause to edit** is for); while paused it’s the quieter button. Back in Edit, your AI’s reply about the moment is gone from over the ask box. <kbd>Esc</kbd> doesn’t resume: like in Edit, it clears what you selected.
+
+**▶ Play** from Edit goes on with the same game (the score and the boss go on), and so does the time in the top bar. **Play from the start** and **Reload** start again at **0:00**.
+
+On a phone or in a narrow window, the top bar shows the time, the speed, **❚❚** and **Edit**; paused, **▶ Resume**. The list opens as a sheet from the bottom. Select something the game moves or made and one line over the ask box says **Just for this moment** (after you move what the game made: **✦ Have Claude make it appear here**). In full screen, **❚❚** is in the game’s corner (the top bar isn’t visible): pressing it leaves full screen and opens the paused moment.
+
+The web demo pauses too, with **Neon Run**, where a boss comes in. There’s no AI there, so there’s no ask box and no ✦.
 
 ## Ask while you play
 
-You don’t have to stop. Press <kbd>`</kbd> (the key left of 1; <kbd>Shift</kbd><kbd>@</kbd> on a Japanese keyboard), type what’s wrong, and press <kbd>Enter</kbd>. The game keeps running, even full screen. It’s a key only, so the corner keeps one button; <kbd>?</kbd> lists it as **Ask Claude without pausing**.
+You don’t have to stop. Press <kbd>`</kbd> (the key left of 1; <kbd>Shift</kbd><kbd>@</kbd> on a Japanese keyboard), type what’s wrong, and press <kbd>Enter</kbd>. The game keeps running, even full screen. It’s a key only (on a phone, **✦** in the top bar); <kbd>?</kbd> lists it as **Ask Claude without pausing**.
 
 Your AI gets your words with that moment. A small line at the top says what it’s doing: **Your AI is looking**, **Fixing it**, then its reply. The game never reloads under you. When you want the fix, press **Reload** (or <kbd>`</kbd> then <kbd>Enter</kbd>). Or keep playing.
 

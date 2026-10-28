@@ -83,6 +83,9 @@ Key points:
   on screen when it returns; the bridge calls it only when the selection or
   the view changed (at most every 40 ms).
 - `begin()` must not change poses; `end()` restores the game's camera/view.
+  `begin({ moment: true })` (pause-edit fix 1, 2026-10-28): the editor wakes over a paused moment of ▶ Play
+  (§3.5.1) — what the adapter hides of the game's own page while editing (three.js: the HTML next to the canvas)
+  stays seen, taking no pointer. An adapter that hides nothing ignores it.
 
 **The UI seat (UI stage 1, 2026-10-19).** Next to the one world adapter the
 bridge may hold one adapter for the game's **UI** — what is drawn over the
@@ -1285,65 +1288,94 @@ Enter, Shift, E / R / Q, Tab, Esc, the numbers and "/" (chat) all are taken.
   `player()` for a 3D engine. A canvas that holds pictures from another site
   without CORS cannot be read: then no picture, the rest still goes.
 
-#### 3.5.1 Pause and talk (2026-10-22)
+#### 3.5.1 Pause to edit: the paused moment (2026-10-22; the moment is the editor since pause-edit, 2026-10-28)
 
-- **P** in the game (or **❚❚** left of the corner mark; on a phone, ❚❚ in the
-  editor's top bar, `studio:play/pause`) pauses the game:
-  `src/bridge/play-pause.ts` freezes the frames (core time, as in Edit), stops
-  the game's clock (`src/core/play-clock.ts`: the paused time is taken out of
-  `performance.now()` and the frame timestamps, so Resume steps one frame, not
-  the whole pause), suspends the game's AudioContexts and pauses its playing
-  `<audio>` / `<video>`. No key press or pointer reaches the game while paused;
-  key releases do (a key held at the pause does not stay down). The game's
-  `setTimeout` / `setInterval` wait too and fire after the time they had left,
-  and `Date.now()` leaves out the paused time like `performance.now()`
-  (`src/core/play-timers.ts`, polish-1022; the same in Edit, which holds the
-  game's clock). The studio's own timers in the game page use the browser's
-  (`src/core/native.ts`). Not held: `new Date()`, promises and microtasks,
-  `requestIdleCallback`, a Worker's own timers.
-- Over the paused game, a small chat (`src/bridge/play-chat.ts`, same shadow
-  root and top layer). Each message is a `play` request with `paused: true`; the
-  first carries the moment taken when the game stopped, the next ones `chat`
-  (the first one's id) and `history` (≤ 12 turns). The AI's replies are its
-  status notes, through the same `play/state` lines (`done` / `failed` /
-  `asking` become a reply; `received` / `working` the "looking" row); Reload
-  and "More in Claude" as on the line. P, Escape or **Resume** goes back to the
-  game where it stopped.
-- The host keeps the talk as `.studio/chat/<first id>.json` (`{ version, id,
-  at, paused, shot, view, near, logs, size, turns: [{ who: "you" | "ai", text,
-  at, request, state?, changed?, choices? }] }`): the person's turns when it
-  keeps a request, the AI's when `studio.mjs --status done|asking|failed
-  --request <id> --note …` names a request of the talk. The line reads
-  `studio: request play <path> "<words>" (paused, chat .studio/chat/<id>.json, picture …)`.
-- Messages: shell → bridge `studio:play/pause`; bridge → shell
-  `studio:play/paused` (`on`); `play/ask` carries `paused`, `chat`, `history`;
-  `play/sent` carries the kept request's `id`.
+A request of 2026-10-28: "pause in the middle of a scene and give instructions, by hand or to the AI" — the paused
+moment is the editor. Until then a pause opened a chat panel over the game ("Pause and talk",
+2026-10-22) with "✥ Move" in it (stage 2, the old §3.5.2); both are gone.
 
-#### 3.5.2 Move things while paused (2026-10-22, stage 2)
+- **The way in**: **P** in the game (by the character or the key, never with a modifier or while typing), the editor's
+  top-bar **❚❚ Pause to edit P** (left of Edit, every width — `studio:play/pause`), or in the game's own full screen
+  the corner's ❚❚ (the top bar is not seen there; the corner shows nothing out of full screen). The first ▶ Play of a
+  person shows one line under ❚❚, "Pause anytime to edit that very moment" (gone at the first pause or after 8 s, once
+  per person: `prefs.seen` `pause-tip`). The offline web demo pauses too (`play/on` `ai: false`: no ✦ field there).
+- **The hold** (`src/bridge/play-pause.ts`): the frames freeze (core time, as in Edit), the game's clock stops
+  (`src/core/play-clock.ts`: the paused time is taken out of `performance.now()` and the frame timestamps, so Resume
+  steps one frame, not the whole pause), its `setTimeout` / `setInterval` wait and fire after the time they had left
+  and `Date.now()` leaves out the paused time (`src/core/play-timers.ts`), its AudioContexts are suspended and its
+  playing `<audio>` / `<video>` paused. No key press or pointer reaches the game; key releases do (a key held at the
+  pause does not stay down). The studio's own timers use the browser's (`src/core/native.ts`). Not held: `new Date()`,
+  promises and microtasks, `requestIdleCallback`, a Worker's own timers. A pointer-locked game lets go of the mouse.
+- **The moment** (`src/bridge/play-ask.ts` pauseNow): the picture of the frame it stopped on is taken (with the camera,
+  what was near, the console: `play/paused` `ask`, the first request of the pause carries it), full screen is left (one
+  frame drawn again with time stopped), and the editor wakes over the frame **without putting anything back**
+  (`src/bridge/play-move.ts` MomentHost): an edit page that became Play wakes its own editor (`core/edit { on: true,
+  moment: true }`, play-switch.ts `momentHost`), a page opened for Play (Play from the start, the AI's Reload) makes a
+  paused editor whose messages go to the editor page (not `core/view-state`). Either way the editor is
+  `EditorDeps.paused`: the player's view kept (no saved edit camera, no "everything in frame"), the game never let run
+  (no watch), no self-check, key releases passed on, the game's screen and looks untouched; its `core/ready` says
+  `moment: true`. The editor page shows Edit's tools on it: the list floating over the game's top left (the game keeps
+  its size: the frame does not move; ‹ folds it), the card, the strip, the field at the foot, Undo / Redo, Save. No
+  timeline, no Library, no Motion row on the card. The game's HTML UI (a score, the time left, a banner, a title) stays
+  **seen as it was and takes no pointer** (pause-edit fix 1, 2026-10-28; it was hidden as in Edit, and the moment read
+  as "the score is gone"): `begin({ moment: true })`, and the editor's layer style takes the pointer only. It is not
+  edited there (no UI layer: the UI is edited in Edit). No line by the strip about what the game moves ("a move here
+  sets where it starts"): the card's "Just for this moment" is the one place.
+- **What each object is** (`momentWhy`, sent as `play/paused` `why`): **placed** (absent) — moved as in Edit:
+  `studio:placement/moved` into the scene, Save · N, ⌘Z, the list's dot; it stays after Resume and is there back in
+  Edit. **The game moves it** (`game`: moved by itself since Play started, or since the person last left it), **a
+  motion moves it** (`motion`), **the game made it** (`new`: not there when Play started — a boss, a bullet): **just
+  for this moment** — only the game page's object moves (never the scene: no Save · N); the card says so, with Revert
+  (back to where it was at the pause) and no Copy / Delete (the game's code would still hold it). The list puts what
+  the game made under "**Made by the game**" with how many on its right (one row per name, "drone" with 2), and what
+the game moves has a small ↻ on its row ("Moved by the game"). On a phone / the side window, while the card is folded
+away, one line right over the field says "Just for this moment" (and ✦, below). On what the game made, once moved,
+  the card's **✦ Have {ai} make it appear here** puts the draft "Make boss appear here" and the chip "boss · here" in
+  the field; sent, the request carries `made: true` and `here: { key, label, at, to, time }` (where it was at the
+  pause, where it was put, the game's time since ▶ Play), and the AI changes where the game makes it (SKILL.md
+  "Paused"). The reply on the line: no "N objects changed" for a `made` request (the AI's count is of the code it
+  changed); when the game's code changed (`--changed` > 0, or the files say so), **Reload** on the line — a new page
+  of the game from its new code, still in Play (Save · N stays); back in Edit a finished reply of the moment leaves the
+  line.
+- **⌘Z**: every step in the moment undoes while paused (the moment's own are `{ kind: 'moment' }` changes: the game
+  page's pose only). **▶ Resume** takes those out of the history (`UndoStack.dropMoment`: that moment is gone); the
+  placed things' steps stay, as in Edit.
+- **The field** (the editor's one field at the foot, "Ask {ai} about this moment…"): each message is a `play` request
+  with `paused: true`; the first carries the moment (`shot`, `view`, `near`, `logs`, `size`), the next ones `chat` (the
+  first one's id) and `history` (≤ 12 turns). The AI's replies are its status notes, on the line over the field as in
+  Edit; the earlier turns of the pause under "▴ Earlier · N". The host keeps the talk as `.studio/chat/<first id>.json`
+  (`{ version, id, at, paused, shot, view, near, logs, size, turns: [{ who: "you" | "ai", text, at, request, state?,
+  changed?, choices? }] }`). The line reads `studio: request play <path> "<words>" (paused, chat .studio/chat/<id>.json,
+  picture …)`. Words typed in the ✦ field over the game when it paused go on in the field.
+- **The ways out**: **▶ Resume** (P, the top bar) — the editor is put away, the game goes on from that frame with
+  what was moved where it was left (the score, the timers, everything the game made as they were); "Resumed from
+  0:42.3" at the game's foot. **Edit** — the scene before Play (§3.5.3), with the placed things moved in a moment.
+  **Play from the start** (⌘K) — a new page. Escape does not resume (it drops the tool, then the pick, as in Edit).
+- **Speed and Next frame** (pause-edit decision 10): the top bar's **1× ⌄** (1× · ½× · ¼×, `studio:play/speed`) while
+  playing and paused: the game's clock runs at r × (play-clock.ts `setRate`: each change starts a piece from where the
+  game's time is, so it never jumps), its frames run on 1 of every 1 / r browser frames (`core/time.ts` `frameGate`),
+  its timers wait 1 / r as long — a game that moves by the time between frames and one that moves a fixed step each
+  frame are both r × as fast (the picture steps at 15 frames a second at ¼×). Slower than 1×, the sound is quiet (an
+  AudioContext's speed cannot be set from outside; `<audio>` started meanwhile waits too). Every ▶ Play starts at 1×.
+  **▶| Next frame** (the top bar, the `.` key, ⌘K; paused only — `studio:play/step { on }`): the stopped clock 1/60 s
+  on (its timers too: what falls due runs), the game's frame once (`time.step()`); held, on at the speed. No step back
+  (Studio keeps no earlier moment).
+- **The clock in the top bar**: "● Playing 0:41.8" / "❚❚ Paused 0:42.30" — the game's own time since ▶ Play
+  (`studio:play/time { t, rate, running }`, sent at Play, pause, resume, a speed, a step; the editor page moves it on
+  in between). Paused it has two places (one Next frame shows); a phone while playing whole seconds. ▶ Play from Edit
+  in the same page (the same game going on) goes on from the last Play's time; a new page starts at 0:00. The first
+  pause of a person hangs "Next frame ." under ▶| once (`prefs.seen` `step-tip`).
+- **The AI's hands in a paused moment** (§3.6): done on the moment, not back in Edit first.
+- Messages: shell → bridge `studio:play/pause { on? }`, `studio:play/speed { rate }`, `studio:play/step { on }`,
+  `studio:play/on { …, ai? }`, `studio:core/edit { on, moment }`; bridge → shell `studio:play/paused { on, edit, why,
+  ask, draft }`, `studio:play/time`, `studio:core/ready { moment }`; `play/ask` carries `paused`, `chat`, `history`;
+  `play/sent` carries the kept request's `id`. Tests: `test/pause.test.ts`, `test/studio-pause.browser.mjs` (`moment`
+  on `examples/three-neon-boss`).
 
-- **Move** in the paused panel (or **M** outside its field) wakes the editor
-  inside the paused game page (`src/bridge/play-move.ts`, `createEditor` with
-  `paused: true`): the same pick, outline, strip and snap as Edit, on the
-  objects where they stopped, seen from the player's camera (no saved edit
-  view, no "everything in frame"). The game is never let run (no watch of what
-  it moves, no self-check); key releases still reach it. **Chat** (or Escape
-  with nothing picked) goes back to the talk; P resumes.
-- **Resume** goes on from where the objects now are. A place is "only in this
-  play" until the person presses **Put in layout** on the card: the bridge then
-  sends `studio:placement/moved` with `end` and `from`, exactly as a move in
-  Edit — an unsaved change (Save · N, the draft, ▶ Play's "Save and play / Try
-  without saving", Undo in Edit). **Put back** returns it to where it was at
-  the pause (and takes it out of the layout again if it was put there in this
-  pause).
-- **Just for this moment**: an object the game moves itself has no Put in
-  layout — anything that moved since Play started (or since the person last
-  left it), anything not there when Play started, anything a motion of the
-  editor's draft moves (observe.ts' smallest change counts). Its place now is
-  a point mid-run; kept, the next start would put it there.
-- `studio:play/on` carries `config` (the game rules, for what is locked) and
-  `handlePx` (the strip's button size). Nothing else of the woken editor
-  reaches the editor page. The world only: the game's HTML UI is not moved
-  from a pause.
+#### 3.5.2 (Move things while paused — since pause-edit, 2026-10-28, part of §3.5.1)
+
+The paused panel's "✥ Move", M, "Put in layout" and "Only in this play" are gone: in the paused moment a placed thing
+moves as in Edit (the call made 2026-10-28), and what the game moves or made is "Just for this moment" (§3.5.1).
 
 #### 3.5.3 Play and Edit in the same page (2026-10-22, fast switch)
 
@@ -1364,6 +1396,12 @@ Enter, Shift, E / R / Q, Tab, Esc, the numbers and "/" (chat) all are taken.
 - The edit page's game clock stops with every hold of the game
   (`core/time.ts` `clock`), so the first frame of Play steps one frame, not the
   time spent editing.
+- **The third shape, `moment`** (pause-edit, 2026-10-28; §3.5.1): a pause while this page plays wakes its editor over
+  the paused game with `core/edit { on: true, moment: true }` (play-switch.ts `momentHost`) — Edit's tools, but nothing
+  goes back to where Play found it, the camera stays the player's, the game is held by the pause. Resume puts the
+  editor away (`core/edit { on: false }`) and the game goes on; Edit (`core/play { on: false }`) ends the moment first
+  (play-ask sleeps: the editor away, `play/paused { on: false }`), then everything goes back as above — a placed thing
+  moved in the moment is the editor page's change (Save · N) and comes back with it. Every ▶ Play starts at 1× speed.
 - **Motions** (studio-no-reload, 2026-10-22): the draft's motions play in the
   same page, every `when` included (a key, a click, an area, another motion's
   end, a cue, the game's `playMotion()` / `cue()` / `touch()`). The game's own
@@ -1417,8 +1455,11 @@ game's code (not on the timeline, fighting the editor's motion, "press Reload").
   levels' New / Duplicate / rename / switch, Save) — on screen at once, ONE undo step for the job (`UndoStack.begin` /
   `end`, the entry's `ai` = its words for the Undo tooltip), counted on Save · n, its draft written as for any edit,
   and one line over the ask bar with the AI's name: "Claude took “Row” off Blue pillar · ⌘Z undoes it" (`by` = the
-  CLI's environment, `src/server/which-ai.mjs`). A page that is playing goes back to Edit first; the UI layer goes to
-  the world — except a job of `ui.*` ops (with `list` / `save`), done on the UI layer. Jobs run one at a time, in order. A page whose stream just dropped (a reload) is waited for 6 s.
+  CLI's environment, `src/server/which-ai.mjs`). A page that is playing goes back to Edit first — but not a paused
+  moment (§3.5.1, pause-edit 2026-10-28): there the ops work on the moment, as the person's hand does (`list` lists the
+  moment's objects, what the game made too; `object.move` of a placed thing goes in the scene, of what the game moves
+  or made just for this moment, one ⌘Z step either way). The UI layer goes to the world — except a job of `ui.*` ops
+  (with `list` / `save`), done on the UI layer. Jobs run one at a time, in order. A page whose stream just dropped (a reload) is waited for 6 s.
 - **No page open** (not started, or started with no page): the CLI applies the same ops to `placement.json`
   (`src/schema/hands.mjs` applyHandsToFile), checks the result with the file's validator, and writes it (nothing when
   it would not be valid). What only the game knows is refused with the reason (Drop to floor, a blank New level,

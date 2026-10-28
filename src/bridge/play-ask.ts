@@ -17,15 +17,24 @@
 // all are; "/" opens chat in many). Enter, R or a letter would fight the game. On a Japanese keyboard ` is Shift+@;
 // the corner mark is there for every keyboard and for touch.
 //
-// Nothing here runs unless the editor says an AI can get the request (play/on): the offline web demo shows nothing.
-import type { AdapterProbe, BridgeToShell, GameConfig, PlayLine, PlayLog, PlayNear, ShellToBridge, StudioAdapter } from '../contract.ts';
+// Nothing here runs until the editor says so (play/on). Pause-edit (2026-10-28): the offline web demo says so too — the
+// pause, the paused moment, Next frame and Speed need no AI (decision 12) — but with `ai: false`, so the ✦ field and
+// its line stay away there, as the demo's Edit has no AI either.
+//
+// The pause (play-pause.ts holds the game) is the way into the paused MOMENT (pause-edit, a request of 2026-10-28:
+// "pause in the middle of a scene and give instructions, by hand or to the AI"): P, the editor's top-bar ❚❚ Pause to edit, or
+// in full screen the corner's ❚❚. Here: the game held, the moment's picture taken (it goes with the first request of
+// the pause), full screen left (the editor's tools are outside it), the editor woken over the moment (play-move.ts
+// MomentHost) and the editor page told which objects are the game's for this moment only. Everything else of the
+// moment — the list, the card, the field, Save, ⌘Z — is the editor page's. Stage 1–2's chat panel over the paused
+// game, "✥ Move / Talk" and M are gone (decision 2).
+import type { AdapterProbe, BridgeToShell, GameConfig, Item, PlayLine, PlayLog, PlayNear, ShellToBridge, StudioAdapter } from '../contract.ts';
 import { isStudioMessage } from '../contract.ts';
 import { LINE_FADE_MS, LINE_GRACE_MS, lineStayMs } from '../shell/line-fade.ts';
 import { icon } from '../shell/icons.ts';
 import { shootPage } from './play-shot.ts';
-import { createPauseHold, isPauseKey, type PauseHold, type PauseParts } from './play-pause.ts';
-import { CHAT_CSS, createChat, type Chat } from './play-chat.ts';
-import { createPlayMove, defaultHandlePx, MOVE_CSS, type PlayMove } from './play-move.ts';
+import { createPauseHold, isPauseKey, STEP_MS, type PauseHold, type PauseParts } from './play-pause.ts';
+import { createMomentEditor, createMomentKinds, defaultHandlePx, type MomentHost, type MomentKinds } from './play-move.ts';
 import type { Core } from '../core/index.ts';
 import type { RulesHolder } from '../core/rules.ts';
 import { nativeSetTimeout, nativeClearTimeout } from '../core/native.ts';
@@ -37,7 +46,10 @@ export interface PlayAskOptions {
   probes: () => AdapterProbe[];
   /** Pause while playing (play-pause.ts, 2026-10-22): the frames and the clock to hold. Absent = no pause. */
   pause?: PauseParts;
-  /** Moving things while paused (stage 2, play-move.ts): what its editor needs. Absent = no Move in the panel. */
+  /**
+   * The paused moment (pause-edit, play-move.ts): what a Play page's editor needs, and `arranged` (the draft shown at
+   * Play: settles with the keys its motions move). An edit page gives its own editor instead (PlayAskHandle.useHost).
+   */
   move?: { core: Core; rules: RulesHolder; arranged: Promise<string[]> };
   /**
    * ▶ Play in the same page (fast switch, 2026-10-22; play-switch.ts): installed in an EDIT page, asleep — no hello, no
@@ -52,8 +64,10 @@ export interface PlayAskHandle {
   readonly hold: PauseHold | null;
   /** The page became Play: say hello (the editor answers play/on), and a Move in a pause starts from `arranged`. */
   wake(arranged: Promise<string[]>): void;
-  /** Back in Edit: Move, the chat, the field and the line put away, the overlay hidden; nothing taken until wake(). */
+  /** Back in Edit: the paused moment ended, the field and the line put away, the overlay hidden; nothing taken until wake(). */
   sleep(): void;
+  /** An edit page's own editor wakes over its paused moments (play-switch.ts momentHost), not a new one. */
+  useHost(host: MomentHost): void;
 }
 
 // ---------------------------------------------------------------------------
@@ -238,19 +252,34 @@ button.b:focus-visible, .mark:focus-visible { outline: 2px solid #8b7cff; outlin
   .mark.small { padding: 0 17px; }
 }
 @media (prefers-reduced-motion: reduce) { .busy .dot, .busy .spark { animation: none; } .line { transition: none; } }
-/* The corner (pause, 2026-10-22): ❚❚ left of the mark, the same glass and height. The two sit in one row at the corner
-   so the button follows the mark when it grows (hover) or shrinks (after 5 s). */
+/* The corner's ❚❚ Pause to edit P (pause-edit, 2026-10-28): in full screen only — the editor's top bar, where it sits
+   next to Edit on every screen (02-find.md), is not seen there. The mark's glass, height and key cap. */
 .corner { position: absolute; right: 14px; bottom: 14px; display: flex; align-items: center; gap: 8px; pointer-events: none; }
 .corner .mark { position: static; }
-` + CHAT_CSS + MOVE_CSS;
+.pause { pointer-events: auto; height: 32px; padding: 0 10px 0 11px; border-radius: 16px; display: flex; align-items: center; gap: 8px;
+  cursor: pointer; color: inherit; font: inherit; white-space: nowrap; transition: opacity .3s; opacity: .92; }
+.pause:hover { opacity: 1; }
+.pause .ic { display: grid; place-items: center; }
+.pause svg { width: 14px; height: 14px; }
+.pause:focus-visible { outline: 2px solid #8b7cff; outline-offset: 2px; }
+@media (pointer: coarse) { .pause { height: 44px; border-radius: 22px; padding: 0 16px 0 14px; } }
+`;
 
 type Words = Record<string, string>;
+
+/** Is this key "Next frame" (pause-edit; the . key while paused)? By the character, or the key when a layout gives another. */
+export function isStepKey(e: { key: string; code?: string; ctrlKey?: boolean; metaKey?: boolean; altKey?: boolean; isComposing?: boolean }, typing: boolean): boolean {
+  if (typing || e.isComposing || e.ctrlKey || e.metaKey || e.altKey) return false;
+  return e.key === '.' || e.code === 'Period';
+}
+
+/** Held down, Next frame steps on at the speed after this long (a press shorter than it is one frame). */
+const STEP_HOLD_MS = 300;
 
 export function startPlayAsk(o: PlayAskOptions): PlayAskHandle {
   const { win, parentOrigin } = o;
   // Play in the same page (fast switch): false while the edit page is in Edit (see PlayAskOptions.standby).
   let awake = !o.standby;
-  let arranged = o.move?.arranged ?? Promise.resolve([] as string[]);
   const doc = win.document;
   keepWebGLPictures(win);
   // Made now, before the game's code: it keeps the AudioContexts the game makes so a pause can quiet them.
@@ -295,23 +324,23 @@ export function startPlayAsk(o: PlayAskOptions): PlayAskHandle {
     }
   };
 
-  // ----- the overlay, built when the editor says an AI can get the request -----
+  // ----- the overlay, built when the editor says so (play/on) -----
   let words: Words | null = null;
+  // An AI can get a request (play/on `ai`, false in the offline web demo): the ✦ field and its line.
+  let aiOn = true;
   let host: HTMLElement | null = null;
   let root: ShadowRoot | null = null;
   let mark: HTMLButtonElement, bar: HTMLElement, input: HTMLInputElement, hint: HTMLElement, line: HTMLElement;
-  // Pause (2026-10-22): the corner's ❚❚, the chat over the paused game, and what the first message of a pause carries.
+  // The full-screen corner's ❚❚ Pause to edit P.
   let pauseBtn: HTMLButtonElement | null = null;
-  let chat: Chat | null = null;
-  // Stage 2: moving things while paused (the editor in the paused page, its card in the panel), and what play/on gave it.
-  let move: PlayMove | null = null;
+  // The paused moment (play-move.ts): who wakes the editor, whether it is up, and the kinds of the objects.
   let moveConfig: GameConfig | null = null;
   let moveHandlePx = 0;
   let lang: 'en' | 'ja' = 'en';
-  let pausedMoment: BridgeToShell | null = null;
-  let chatId = '';
-  // Which field is waiting for play/sent: the ✦ field's, or the chat's.
-  let sentTo: 'bar' | 'chat' = 'bar';
+  let momentHost: MomentHost | null = null;
+  let momentUp = false;
+  // The picture taken at the last pause (tests: the paused frame against what the editor then shows, _move.shot).
+  let momentShot = '';
   let state: PlayLine | null = null;
   let barOpen = false;
   let sending = false;
@@ -342,6 +371,57 @@ export function startPlayAsk(o: PlayAskOptions): PlayAskHandle {
     return e;
   };
 
+  let adapter: StudioAdapter | null = null;
+  function findAdapter(): StudioAdapter | null {
+    if (adapter) return adapter;
+    for (const p of o.probes()) {
+      try {
+        const a = p.found();
+        if (a) return (adapter = a);
+      } catch {
+        /* the next one */
+      }
+    }
+    return null;
+  }
+  const listOf = (a: StudioAdapter | null): Item[] => {
+    try {
+      return a ? a.list() : [];
+    } catch {
+      return [];
+    }
+  };
+  /** The world as the editor drives it while the moment is up (an edit page: always its editor's), else the game's. */
+  const world = () => momentHost?.driven() ?? findAdapter();
+
+  // The kinds of each pause (play-move.ts): Play's start, the person's own places, the motions.
+  const firstFrame = () => o.move?.core.time.firstFrame() ?? Promise.resolve();
+  const kinds: MomentKinds | null = hold ? createMomentKinds(() => listOf(world()), firstFrame, o.move?.arranged ?? Promise.resolve([] as string[])) : null;
+  // A page opened for Play makes its own editor for the moment (an edit page hands its own over, useHost).
+  if (hold && o.move && !o.standby) {
+    const mv = o.move;
+    momentHost = createMomentEditor({ win, core: mv.core, rules: mv.rules, adapter: () => findAdapter(), post,
+      lang: () => lang, config: () => moveConfig, handlePx: () => moveHandlePx || defaultHandlePx(win), ignore: (e) => isOurs(e) });
+  }
+
+  // ----- the game's time since ▶ Play, for the top bar's 0:41.8 (play/time) -----
+  // `t0` = the game's time when this Play began: a Play page's first frame, an edit page's wake().
+  // `before` = the seconds of this page's earlier Plays (fix 1 ✕10 of walk 1, 2026-10-28): ▶ Play from Edit in the same
+  // page goes on with the same game (the boss already there, SCORE 13,507, the game's TIME going on), so the top bar's
+  // clock goes on too — it started at 0:00 and read as "from the start". Only a new page (Play from the start, a
+  // Reload) starts at 0:00.
+  let t0 = 0;
+  let before = 0;
+  if (hold && !o.standby) void firstFrame().then(() => {
+    t0 = hold.now();
+    tellTime();
+  });
+  const playSeconds = () => (hold ? Math.max(0, (hold.now() - t0) / 1000) : 0);
+  function tellTime() {
+    if (!hold || !awake) return;
+    post({ type: 'studio:play/time', t: Math.round(playSeconds() * 1000) / 1000, rate: hold.rate, running: !hold.paused });
+  }
+
   /** Over everything, full screen too: the top layer. Shown again after each full-screen change so it is on top. */
   const lift = () => {
     if (!host || !awake) return;
@@ -365,8 +445,8 @@ export function startPlayAsk(o: PlayAskOptions): PlayAskHandle {
     if (host) return;
     host = doc.createElement('game-studio-play');
     host.setAttribute('popover', 'manual');
-    // Kept when an adapter hides the game's own HUD for editing (three.js hideOverlays, data-studio-keep): moving things
-    // while paused (play-move.ts) wakes the editor, and this overlay holds its panel.
+    // Kept when an adapter hides the game's own HUD for editing (three.js hideOverlays, data-studio-keep): the paused
+    // moment wakes the editor (play-move.ts), and this overlay holds the full-screen ❚❚ and the ✦ field.
     host.setAttribute('data-studio-keep', '');
     // The popover's own box: invisible and click-through; only the parts inside take the pointer.
     host.style.cssText = 'all:initial;position:fixed;inset:0;width:100%;height:100%;max-width:none;max-height:none;margin:0;padding:0;border:0;background:transparent;overflow:visible;pointer-events:none;z-index:2147483647;';
@@ -411,37 +491,17 @@ export function startPlayAsk(o: PlayAskOptions): PlayAskHandle {
       pauseBtn = el('button', 'pause glass') as HTMLButtonElement;
       pauseBtn.type = 'button';
       pauseBtn.dataset.part = 'pause-button';
-      // "❚❚ Pause and talk P" (plan step 6, decided 2026-10-23): the corner's ONE way in while playing. It was
-      // ❚❚ alone beside "✦ Ask your AI `" — two doors to the same AI, a finger apart. Stopping to show the moment says
-      // more than a line typed over a running game (the picture goes with it), so the pause is the one kept; asking
-      // without pausing stays as the ` key (the ? sheet lists it) and the ✦ field it opens.
+      // "❚❚ Pause to edit P" (pause-edit, 2026-10-28; it was "❚❚ Pause and talk P", the corner's one way in while
+      // playing). Now the editor's top bar has it, next to Edit, on every screen; this one is for full screen only.
       const ic = el('span', 'ic');
       ic.append(icon('pause'));
-      pauseBtn.append(ic, el('span', 'word', w('pauseTalk')), el('kbd', '', 'P'));
+      pauseBtn.append(ic, el('span', 'word', w('pauseEdit')), el('kbd', '', 'P'));
       pauseBtn.addEventListener('click', () => void pauseNow());
-      if (o.move) {
-        const mv = o.move;
-        move = createPlayMove({
-          win, core: mv.core, rules: mv.rules, arranged, adapter: () => findAdapter(), post, el, w,
-          lang: () => lang, config: () => moveConfig, handlePx: () => moveHandlePx || defaultHandlePx(win),
-          panel: () => (chat ? chat.parts[1]! : null), ignore: (e) => isOurs(e), changed: () => chat?.render(),
-        });
-      }
-      const m = move;
-      chat = createChat({
-        doc, el, w,
-        send: (text, history) => void sendChat(text, history),
-        resume: () => resumeNow(),
-        reload: () => post({ type: 'studio:play/reload' }),
-        ...(m ? { move: { card: m.card, on: () => m.on, picked: () => m.picked(), can: () => !!findAdapter(), toggle: () => toggleMove() } } : {}),
-      });
       corner.append(pauseBtn);
     }
-    // With a pause the ✦ mark is not in the corner (above); it is still built: the ` field and its line use its state.
+    // With a pause the ✦ mark is not in the corner (below); it is still built: the ` field and its line use its state.
     corner.append(mark);
-    // The veil and the chat last: the ✦ field stays the overlay's first input (what reads the overlay finds it as
-    // before), and they are never shown with the line or the field anyway.
-    wrap.append(corner, line, bar, ...(chat ? chat.parts : []));
+    wrap.append(corner, line, bar);
     root.append(style, wrap);
     // A press on the overlay is not a press in the game (a game that shoots on click must not shoot). Stopped where
     // it leaves the overlay, so the overlay's own buttons still get it; a game listening in the capture phase on the
@@ -452,7 +512,7 @@ export function startPlayAsk(o: PlayAskOptions): PlayAskHandle {
     (doc.body || doc.documentElement).appendChild(host);
     lift();
     // The short or the long placeholder (NARROW_PX) follows the window.
-    win.addEventListener('resize', () => (render(), move?.render()));
+    win.addEventListener('resize', () => render());
     // "Ask your AI `" for a few seconds when Play starts, then only the dot and the key: seen once, then out of the way.
     smallTimer = nativeSetTimeout(() => mark.classList.add('small'), 5000);
     render();
@@ -469,19 +529,27 @@ export function startPlayAsk(o: PlayAskOptions): PlayAskHandle {
   for (const type of ['keydown', 'keyup', 'keypress'] as const) {
     win.addEventListener(type, (e: KeyboardEvent) => {
       if (!words) return;
-      // Moving while paused: the keys are the editor's (M / H / T / S, arrows, Escape…) unless the chat's field has them.
-      if (hold?.paused && move?.on && !(isOurs(e) && root?.activeElement === chat?.input)) {
+      if (hold?.paused) {
+        // The paused moment: P resumes, . steps (held: on at the speed), everything else is the editor's (its input.ts
+        // keeps them from the game; key RELEASES still reach the game — play-pause.ts). Escape is the editor's too
+        // (it drops the tool, then the pick): it does not resume, as in Edit (02-find.md).
+        if (isOurs(e)) {
+          e.stopImmediatePropagation();
+          return;
+        }
         if (type === 'keydown' && isPauseKey(e, gameTyping())) {
           e.preventDefault();
           e.stopImmediatePropagation();
           resumeNow();
-        } else if (type === 'keydown' && e.key === 'Escape' && !move.picked()) {
-          // Escape: the editor drops its tool, then the pick; with nothing picked it takes the person back to the talk.
+        } else if (isStepKey(e, gameTyping())) {
           e.preventDefault();
           e.stopImmediatePropagation();
-          toggleMove();
-        } else if (isOurs(e)) e.stopImmediatePropagation();
-        // Anything else goes on to the editor's input (input.ts), which keeps it from the game.
+          if (type === 'keydown' && !e.repeat) stepOn();
+          else if (type === 'keyup') stepOff();
+        } else if (!momentUp && type !== 'keyup') {
+          // No editor over the moment (nothing to edit with): the game gets no key press while paused.
+          e.stopImmediatePropagation();
+        }
         return;
       }
       if (isOurs(e)) {
@@ -489,23 +557,7 @@ export function startPlayAsk(o: PlayAskOptions): PlayAskHandle {
         // the only way to keep them from a game's own listeners, and it also keeps them from the field's, so Enter
         // and Escape are read here. Letters still type (nothing prevents their default).
         e.stopImmediatePropagation();
-        if (type === 'keydown') (hold?.paused ? chatKey(e) : fieldKey(e));
-        return;
-      }
-      if (hold?.paused) {
-        // Paused: no key press reaches the game. Releases do (play-pause.ts: a key held at the pause must not stay
-        // down in the game). P or Escape resumes; any other key is the person reaching for the chat: it gets focus.
-        if (type === 'keyup') return;
-        e.stopImmediatePropagation();
-        if (type !== 'keydown') return;
-        if (isPauseKey(e, gameTyping()) || e.key === 'Escape') {
-          e.preventDefault();
-          resumeNow();
-        } else if (move && (e.key === 'm' || e.key === 'M' || e.code === 'KeyM') && !e.ctrlKey && !e.metaKey && !e.altKey && !gameTyping()) {
-          // M: Move (its tooltip says so), as the editor's own key for the Move tool.
-          e.preventDefault();
-          toggleMove();
-        }
+        if (type === 'keydown') fieldKey(e);
         return;
       }
       if (type === 'keydown' && !barOpen && hold && isPauseKey(e, gameTyping())) {
@@ -515,25 +567,14 @@ export function startPlayAsk(o: PlayAskOptions): PlayAskHandle {
       } else if (type !== 'keydown' && hold && !barOpen && (e.key === 'p' || e.key === 'P' || e.code === 'KeyP') && !gameTyping()) {
         // The release (and keypress) of the P that paused: not the game's either.
         e.stopImmediatePropagation();
-      } else if (type === 'keydown' && !barOpen && isAskKey(e, gameTyping())) {
+      } else if (type === 'keydown' && !barOpen && aiOn && isAskKey(e, gameTyping())) {
         e.preventDefault();
         e.stopImmediatePropagation();
         openBar();
-      } else if (type !== 'keydown' && e.key === '`' && !gameTyping()) {
+      } else if (type !== 'keydown' && aiOn && e.key === '`' && !gameTyping()) {
         e.stopImmediatePropagation();
       }
     }, true);
-  }
-  /** The chat's field while paused: Enter sends, Escape resumes (the words stay in the field for the next pause). */
-  function chatKey(e: KeyboardEvent) {
-    if (!chat || e.target !== host || !root || root.activeElement !== chat.input) return;
-    if (e.key === 'Escape') {
-      e.preventDefault();
-      resumeNow();
-    } else if (e.key === 'Enter' && !e.isComposing && e.keyCode !== 229) {
-      e.preventDefault();
-      chat.input.form?.requestSubmit();
-    }
   }
   function fieldKey(e: KeyboardEvent) {
     if (e.target !== host || !root || root.activeElement !== input) return;
@@ -546,12 +587,19 @@ export function startPlayAsk(o: PlayAskOptions): PlayAskHandle {
       void submit();
     }
   }
-  // Full screen changes whether the mark is drawn here (markOn), so draw again too.
-  doc.addEventListener('fullscreenchange', () => (lift(), render()));
-  doc.addEventListener('webkitfullscreenchange', () => (lift(), render()));
+  // Full screen changes whether the mark is drawn here (markOn), so draw again too. Left while paused (pauseNow): the
+  // game's picture changed size — one frame drawn again with time stopped (decision 15: a game that moves by frame
+  // steps one frame; said nowhere, it is small).
+  const onFullscreen = () => {
+    lift();
+    render();
+    if (hold?.paused) nativeSetTimeout(() => o.pause?.time.step(), 60);
+  };
+  doc.addEventListener('fullscreenchange', onFullscreen);
+  doc.addEventListener('webkitfullscreenchange', onFullscreen);
 
   function openBar() {
-    if (!host) return;
+    if (!host || !aiOn || hold?.paused) return;
     barOpen = true;
     // The field open again = the person looks for what happened: a "fixed" line that faded comes back (and goes again).
     if (state && state.state === 'fixed' && dismissed === JSON.stringify(state) && dismissed === fadeSig) {
@@ -580,57 +628,53 @@ export function startPlayAsk(o: PlayAskOptions): PlayAskHandle {
     }
   }
 
-  // ----- pause (play-pause.ts holds the game; play-chat.ts is the talk over it) -----
+  // ----- the paused moment (play-pause.ts holds the game; play-move.ts wakes the editor over it) -----
+  let pausing = false;
   async function pauseNow() {
-    if (!hold || !chat || !host || hold.paused) return;
-    // Words already typed in the ✦ field move to the chat (the person was about to ask; now they can talk).
-    const draft = barOpen ? input.value.trim() : '';
-    if (barOpen) closeBar();
-    hold.pause();
-    // The moment, taken at once: the picture is of the game as it stopped (the overlay is never in it), the console
-    // as it was. The first message of this pause carries it.
-    pausedMoment = await moment('');
-    chatId = '';
-    const logs = pausedMoment.type === 'studio:play/ask' ? pausedMoment.logs || [] : [];
-    const errs = logs.filter((l) => l.level === 'error').length;
-    const sees = errs ? `${w('sees')} · ${(errs === 1 ? w('seesError') : w('seesErrors')).replace('#', String(errs))}` : w('sees');
-    if (!hold.paused) return; // resumed while the picture was taken
-    chat.open(sees, draft);
-    post({ type: 'studio:play/paused', on: true });
-    render();
-  }
-  /** Move ↔ Chat in the paused panel (play-move.ts). */
-  function toggleMove() {
-    if (!move || !chat || !hold?.paused) return;
-    if (move.on) {
-      move.stop();
-      chat.render();
-      chat.input.focus({ preventScroll: true });
-      return;
-    }
-    chat.input.blur();
-    (root?.activeElement as HTMLElement | null)?.blur();
-    if (!move.start()) return;
-    chat.render();
-    // The keys go to the page (the editor's), not to a button of the panel that kept the focus.
+    if (!hold || hold.paused || pausing) return;
+    pausing = true;
     try {
-      win.focus();
-    } catch {
-      /* fine */
+      // Words already typed in the ✦ field go to the editor page's field (the person was about to ask; now they can).
+      const draft = barOpen ? input.value.trim() : '';
+      if (barOpen) closeBar();
+      stepOff();
+      hold.pause();
+      // The moment, taken at once: the picture is of the game as it stopped (the overlay is never in it), the console
+      // as it was. The first request of this pause carries it (the editor page sends it, from its field).
+      const ask = await moment('');
+      if (!hold.paused) return; // resumed while the picture was taken
+      momentShot = ask.type === 'studio:play/ask' ? ask.shot ?? '' : '';
+      // Out of full screen: the editor's tools are outside the game's page (decision 15).
+      try {
+        if (doc.fullscreenElement) await doc.exitFullscreen();
+      } catch {
+        /* the browser said no: the moment is still up, behind the full screen */
+      }
+      if (!hold.paused) return;
+      // Which objects are the game's for this moment, before the editor or the person moves anything.
+      const w0 = world();
+      const why = kinds && w0 ? kinds.pause(listOf(w0), w0.dim) : {};
+      momentUp = !!momentHost?.wake();
+      const { type: _t, text: _x, ...rest } = ask as Extract<BridgeToShell, { type: 'studio:play/ask' }>;
+      post({ type: 'studio:play/paused', on: true, edit: momentUp, why, ask: rest, ...(draft ? { draft } : {}) });
+      tellTime();
+      render();
+    } finally {
+      pausing = false;
     }
   }
   function resumeNow() {
     if (!hold || !hold.paused) return;
+    stepOff();
     // The editor goes first (its own frame loop and the adapter's edit view end), then the game runs on from where the
-    // objects now are.
-    if (move) {
-      move.stop();
-      move.resumed();
-    }
+    // objects now are. What the person moved is theirs from now on (kinds.resumed).
+    const w0 = world();
+    if (momentUp) momentHost?.sleep();
+    momentUp = false;
+    if (kinds && w0) kinds.resumed(listOf(w0), w0.dim);
     hold.resume();
-    chat?.close();
-    pausedMoment = null;
     post({ type: 'studio:play/paused', on: false });
+    tellTime();
     render();
     try {
       win.focus();
@@ -638,17 +682,27 @@ export function startPlayAsk(o: PlayAskOptions): PlayAskHandle {
       /* fine */
     }
   }
-  async function sendChat(text: string, history: Array<{ who: 'you' | 'ai'; text: string }>) {
-    sentTo = 'chat';
-    // The first message: the moment of the pause. The next ones: the talk so far and the first one's id; the moment
-    // is in that first record (and in .studio/chat/<id>.json), the game has not moved since.
-    const base: BridgeToShell = !chatId && pausedMoment && pausedMoment.type === 'studio:play/ask' ? { ...pausedMoment } : { type: 'studio:play/ask', text, size: [win.innerWidth, win.innerHeight] };
-    if (base.type !== 'studio:play/ask') return;
-    base.text = text;
-    base.paused = true;
-    if (chatId) base.chat = chatId;
-    if (history.length) base.history = history;
-    post(base);
+
+  // ----- Next frame and Speed (play-pause.ts; the top bar's ▶| and 1× ⌄, the . key) -----
+  let stepTimer = 0;
+  let stepping = false;
+  function stepOn() {
+    if (!hold?.paused) return;
+    stepOff();
+    stepping = true;
+    hold.step();
+    tellTime();
+    // Held: on at the chosen speed (1/60 s of game time each 1/60 / r s), until let go.
+    stepTimer = nativeSetTimeout(function again() {
+      if (!stepping || !hold.paused) return;
+      hold.step();
+      tellTime();
+      stepTimer = nativeSetTimeout(again, STEP_MS / Math.max(0.05, hold.rate));
+    }, STEP_HOLD_MS);
+  }
+  function stepOff() {
+    stepping = false;
+    nativeClearTimeout(stepTimer);
   }
 
   /** The state's line in reply to Enter on an empty field: a fix to load (Reload), or nothing to do. */
@@ -662,7 +716,6 @@ export function startPlayAsk(o: PlayAskOptions): PlayAskHandle {
       return;
     }
     if (sending) return;
-    sentTo = 'bar';
     if (state && state.state === 'asking') {
       sending = true;
       post({ type: 'studio:play/answer', text });
@@ -720,20 +773,6 @@ export function startPlayAsk(o: PlayAskOptions): PlayAskHandle {
     return out;
   }
 
-  let adapter: StudioAdapter | null = null;
-  function findAdapter(): StudioAdapter | null {
-    if (adapter) return adapter;
-    for (const p of o.probes()) {
-      try {
-        const a = p.found();
-        if (a) return (adapter = a);
-      } catch {
-        /* the next one */
-      }
-    }
-    return null;
-  }
-
   // ----- the "fixed" line's own clock -----
   function fadeFor(s: PlayLine | null, sig: string) {
     if (!s || s.state !== 'fixed' || sig === dismissed) {
@@ -770,24 +809,24 @@ export function startPlayAsk(o: PlayAskOptions): PlayAskHandle {
     fadeTimer = nativeSetTimeout(lineDue, LINE_GRACE_MS);
   }
 
-  // ----- drawing: the corner mark, the field, the line -----
+  // ----- drawing: the corner, the field, the line -----
   function render() {
     if (!host) return;
     const s = state;
     const busy = !!s && (s.state === 'looking' || s.state === 'fixing');
     mark.classList.toggle('busy', busy);
     const paused = !!hold?.paused;
-    const cornerOn = !barOpen && !paused && (markOn || !!doc.fullscreenElement);
-    // One door in the corner (plan step 6): ❚❚ when this game can pause, else the ✦ mark as before.
-    mark.hidden = !cornerOn || !!pauseBtn;
+    const full = !!doc.fullscreenElement;
+    // The corner: in full screen only ❚❚ Pause to edit (the editor's top bar has it otherwise); a page that cannot pause
+    // keeps the ✦ mark as before.
+    mark.hidden = barOpen || paused || !!pauseBtn || !aiOn || !(markOn || full);
     if (pauseBtn) {
-      pauseBtn.hidden = !cornerOn;
+      pauseBtn.hidden = barOpen || paused || !full;
       pauseBtn.title = w('pauseTip');
       pauseBtn.setAttribute('aria-label', w('pauseTip'));
       const word = pauseBtn.querySelector('.word');
-      if (word) word.textContent = w('pauseTalk');
+      if (word) word.textContent = w('pauseEdit');
     }
-    chat?.render();
     bar.hidden = !barOpen;
     bar.classList.toggle('busy', sending);
     input.disabled = sending;
@@ -799,8 +838,8 @@ export function startPlayAsk(o: PlayAskOptions): PlayAskHandle {
 
     line.replaceChildren();
     const sig = s ? JSON.stringify(s) : '';
-    // Paused: the chat says what the AI does (its replies are the same lines), so the line over the game waits.
-    line.hidden = !s || sig === dismissed || paused;
+    // Paused: the editor page's own line over its field says what the AI does (the moment is its editor), so this waits.
+    line.hidden = !s || sig === dismissed || paused || !aiOn;
     fadeFor(s, sig);
     // A fix that waits for Reload after its line went: the corner dot says so (` or the mark, then Enter reloads).
     const waiting = !!s && s.state === 'fixed' && !!s.reload && line.hidden;
@@ -873,6 +912,7 @@ export function startPlayAsk(o: PlayAskOptions): PlayAskHandle {
     if (m.type === 'studio:play/on') {
       words = m.words;
       lang = m.lang === 'ja' ? 'ja' : 'en';
+      aiOn = m.ai !== false;
       if (m.config !== undefined) moveConfig = m.config ?? null;
       if (typeof m.handlePx === 'number' && m.handlePx > 0) moveHandlePx = m.handlePx;
       markOn = m.mark !== false;
@@ -882,22 +922,24 @@ export function startPlayAsk(o: PlayAskOptions): PlayAskHandle {
       else if (host) render();
       else if (doc.body) build();
       else doc.addEventListener('DOMContentLoaded', build, { once: true });
+      tellTime();
     } else if (m.type === 'studio:play/open') {
-      // The editor's ✦ (phone): the same as ` or the corner mark. Paused: the chat is the way to ask; its field.
-      if (hold?.paused && chat) chat.input.focus({ preventScroll: true });
-      else if (host && !barOpen) openBar();
+      // The editor's ✦ (phone): the same as ` or the corner mark. Paused: the editor page's own field is the way.
+      if (host && !barOpen && !hold?.paused) openBar();
     } else if (m.type === 'studio:play/pause') {
-      // The editor's ❚❚ (phone): the same as P or the corner button.
-      if (hold?.paused) resumeNow();
+      // The editor's ❚❚ Pause to edit / ▶ Resume (and P while its page has the keys): the same as P here.
+      const want = m.on ?? !hold?.paused;
+      if (!want) resumeNow();
       else void pauseNow();
+    } else if (m.type === 'studio:play/speed') {
+      hold?.speed(m.rate);
+      tellTime();
+    } else if (m.type === 'studio:play/step') {
+      if (m.on) stepOn();
+      else stepOff();
     } else if (m.type === 'studio:play/state') {
       state = m.state;
-      if (hold?.paused && chat) chat.line(m.state);
       render();
-    } else if (m.type === 'studio:play/sent' && sentTo === 'chat' && chat) {
-      sentTo = 'bar';
-      if (m.ok && m.id && !chatId) chatId = m.id;
-      chat.sent(m.ok);
     } else if (m.type === 'studio:play/sent') {
       sending = false;
       sendFailed = !m.ok;
@@ -906,6 +948,10 @@ export function startPlayAsk(o: PlayAskOptions): PlayAskHandle {
         render();
         input.focus({ preventScroll: true });
       }
+    } else if (hold?.paused && momentUp && momentHost?.handle) {
+      // A page opened for Play: the editor page's messages while the moment is up are its editor's (an edit page's
+      // bridge routes them itself).
+      momentHost.handle(m);
     }
   });
   /** The overlay again after sleep(): as build() shows it the first time. */
@@ -919,24 +965,46 @@ export function startPlayAsk(o: PlayAskOptions): PlayAskHandle {
     render();
   }
 
+  // For tests (test/studio-pause.browser.mjs), like `_debug` in Edit and `_play`: where an object of the moment is on
+  // screen, what is right under a point, its kind, the game's time. Not enumerable, nothing else uses it.
+  const api = (win as unknown as { __gameStudio?: object }).__gameStudio;
+  if (hold && api && !Object.prototype.hasOwnProperty.call(api, '_move')) {
+    Object.defineProperty(api, '_move', {
+      value: Object.freeze({
+        up: () => momentUp,
+        anchor: (k: string) => world()?.anchor(k) ?? null,
+        // `r`: the pick's own slack (UI.pickRadiusMouse / Touch) to ask what a press there picks; 0 = right under it.
+        under: (x: number, y: number, r = 0) => { try { return world()?.pickNear(x, y, r)[0] ?? null; } catch { return null; } },
+        list: () => listOf(world()),
+        why: (k: string) => kinds?.why(k) ?? null,
+        seconds: () => playSeconds(),
+        rate: () => hold.rate,
+        shot: () => momentShot,
+      }),
+      enumerable: false,
+    });
+  }
+
   if (awake) post({ type: 'studio:play/hello' });
   return {
     hold,
     wake(next) {
       if (awake) return;
       awake = true;
-      arranged = next;
-      move?.restart(next);
+      kinds?.restart(next);
+      // The game's time from this Play (the edit page's clock went on through earlier Plays), on from the last Play's.
+      if (hold) t0 = hold.now() - before * 1000;
       post({ type: 'studio:play/hello' });
     },
     sleep() {
       if (!awake) return;
-      // Moving while paused: its editor goes first (the edit page's own editor comes up right after, play-switch.ts).
-      if (move?.on) move.stop();
-      if (hold?.paused && chat) {
-        chat.close();
-        pausedMoment = null;
-        chatId = '';
+      stepOff();
+      // Where this Play's clock got to: the next ▶ Play in this page goes on from it (wake()).
+      before = playSeconds();
+      // The paused moment ends: its editor goes first (the edit page's own editor comes up right after, play-switch.ts).
+      if (hold?.paused) {
+        if (momentUp) momentHost?.sleep();
+        momentUp = false;
         post({ type: 'studio:play/paused', on: false });
       }
       if (barOpen) closeBar();
@@ -957,6 +1025,9 @@ export function startPlayAsk(o: PlayAskOptions): PlayAskHandle {
           /* no popovers */
         }
       }
+    },
+    useHost(h) {
+      momentHost = h;
     },
   };
 }

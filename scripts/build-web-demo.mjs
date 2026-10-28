@@ -4,7 +4,10 @@
 //   node scripts/build-web-demo.mjs --out <dir> [--cache <dir>] [--also <sample dir> …]
 //
 // --also (UI stage 1, 2026-10-19): add a sample folder that has a starter.json (e.g. examples/three-hud, the
-// UI-layer sample) after the starters, for a try-out build. Without it the demo is exactly the starters, as before.
+// UI-layer sample; examples/three-neon-boss, the paused moment's sample with a boss the game makes — pause-edit fix 1)
+// to the starters, for a try-out build. Without it the demo is exactly the starters, as before.
+// The list is sorted again afterwards as the starters are (3D first, then `order`): an --also sample sits among its
+// own kind (pause-edit fix 1, 2026-10-28: Glow Garden came after the 2D Firefly Ruins only because it was added last).
 //
 // Why (decided 2026-10-16, step 1 of 2): open a URL on KUMODeck
 // hosting from any device and try the editor on sample games. The folder is
@@ -79,6 +82,8 @@ for (let i = 2; i < process.argv.length; i++) {
   if (SAMPLES.some((x) => x.id === s.id)) throw new Error(`--also ${process.argv[i + 1]}: a sample "${s.id}" is already there`);
   SAMPLES.push(s);
 }
+// readStarters' own order (src/server/starters.mjs): 3D first, then `order`, then the id.
+SAMPLES.sort((a, b) => ['3d', '2d'].indexOf(a.dim) - ['3d', '2d'].indexOf(b.dim) || a.order - b.order || a.id.localeCompare(b.id));
 const CDN = /^https:\/\/cdn\.jsdelivr\.net\/npm\/((?:@[^/]+\/)?[^/@]+@[^/]+)\/(.*)$/;
 
 // three.js r187dev in the demo (2026-10-24: a three.js WebGPU game got lighter with r187dev, and three.js's author

@@ -55,6 +55,8 @@ const PATHS: Record<string, string> = {
   trash: 'M3.5 5.5h13|M8 5.5V4.25a.75.75 0 0 1 .75-.75h2.5a.75.75 0 0 1 .75.75V5.5|M5.5 5.5l.75 10.1a1 1 0 0 0 1 .9h5.5a1 1 0 0 0 1-.9l.75-10.1|M8.5 8.5v5|M11.5 8.5v5',
   chevronUp: 'M5.5 12.5 10 8l4.5 4.5',
   chevronDown: 'M5.5 7.5 10 12l4.5-4.5',
+  // ▶| Next frame (pause-edit, 2026-10-28): Play's triangle and a bar after it, as on a video player's step button.
+  stepFrame: 'M4.5 5.6v8.8a.8.8 0 0 0 1.22.68l6.6-4.4a.8.8 0 0 0 0-1.36l-6.6-4.4A.8.8 0 0 0 4.5 5.6z|M14.25 5h1.5a.75.75 0 0 1 .75.75v8.5a.75.75 0 0 1-.75.75h-1.5a.75.75 0 0 1-.75-.75v-8.5a.75.75 0 0 1 .75-.75z',
   chevronLeft: 'M12 5l-5 5 5 5',
   chevronRight: 'M8 5l5 5-5 5',
   check: 'M4.5 10.5l3.5 3.5 7.5-8',
@@ -108,7 +110,7 @@ const PATHS: Record<string, string> = {
 };
 
 /** Icons drawn filled as well as stroked (they read too thin as outlines). */
-const FILLED = new Set(['play', 'stop', 'spark', 'pause']);
+const FILLED = new Set(['play', 'stop', 'spark', 'pause', 'stepFrame']);
 /** Icons whose LAST part is filled (the mark's front card). */
 const LAST_FILLED = new Set(['mark']);
 

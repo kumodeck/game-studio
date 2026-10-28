@@ -62,10 +62,7 @@ export function playLine(i: PlayLineInput): PlayLine | null {
 /** The overlay's own words (the bridge has none), in the person's language. */
 export function playWords(t: (key: string) => string): Record<string, string> {
   const keys = ['ask', 'askTip', 'placeholder', 'placeholderShort', 'answerPlaceholder', 'sending', 'sendFail', 'reload', 'reloadTip', 'enterReloads', 'keep', 'close',
-    // The pause and its chat (2026-10-22).
-    'pauseTip', 'pauseTalk', 'paused', 'resume', 'resumeTip', 'sees', 'seesError', 'seesErrors', 'chatPlaceholder', 'chatEmpty', 'send',
-    // Moving things while paused (2026-10-22, bridge/play-move.ts).
-    'move', 'moveTip', 'talk', 'talkTip', 'movePick', 'moveHow', 'moveOnly', 'moveMoment', 'moveMomentWhy', 'moveIn', 'toLayout', 'toLayoutTip',
-    'putBack', 'putBackTip'];
+    // The full-screen corner's ❚❚ Pause to edit P (pause-edit, 2026-10-28; the paused moment itself is the editor's).
+    'pauseEdit', 'pauseTip'];
   return Object.fromEntries(keys.map((k) => [k, t(`play.${k}`)]));
 }

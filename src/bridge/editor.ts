@@ -294,6 +294,10 @@ export function createEditor(deps: EditorDeps): Editor {
   let dirtyFrame = true;
   let input: InputHandle | null = null;
   let checked = false;
+  // Over a paused moment (pause-edit, 2026-10-28; core/edit `moment`): this editor (an edit page's, playing) behaves as
+  // a Play page's paused one until it is put away. `still()` = either: the game's moment is kept as it stopped.
+  let moment = false;
+  const still = () => !!deps.paused || moment;
   let pendingHandlePx = 0;
   // Viewport px the shell's floating panels cover (core/ui inset), and the AI's last marks.
   let inset: Inset = { top: 0, right: 0, bottom: 0, left: 0 };
@@ -325,7 +329,9 @@ export function createEditor(deps: EditorDeps): Editor {
     if (layer === 'world') post({ type: 'studio:core/view-state', state: adapter.view.state() });
   };
   const ready = () => {
-    post({ type: 'studio:core/ready', kind: adapter.kind, dim: adapter.dim, version: adapter.version, editing: state.editing, rise: adapter.dim === '3d' && !!adapter.view.rise, fly: adapter.dim === '3d' && !!adapter.view.fly,
+    post({ type: 'studio:core/ready', kind: adapter.kind, dim: adapter.dim, version: adapter.version, editing: state.editing,
+      // Over a paused moment (pause-edit): the editor page keeps its Play and shows Edit's tools on the moment.
+      ...(still() ? { moment: true } : {}), rise: adapter.dim === '3d' && !!adapter.view.rise, fly: adapter.dim === '3d' && !!adapter.view.fly,
       drop: adapter.dim === '3d' && !!adapter.drop,
       // The game's loader can run every motion in this page (play-switch.ts): ▶ Play then never needs a new page for them.
       ...(loaderPlay(win).length ? { motionHere: true } : {}),
@@ -355,9 +361,16 @@ export function createEditor(deps: EditorDeps): Editor {
       (doc.head || doc.documentElement).appendChild(el);
     }
     const top = '[data-studio-key]:not([data-studio-key] [data-studio-key])';
+    // The UI takes no pointer while the world is edited (a click goes to the tree behind the title).
+    const noPointer = '[data-studio-key],[data-studio-key] *,canvas[data-studio-ui-layer]{pointer-events:none!important}';
+    // Over a paused moment (pause-edit fix 1, ✕1 of walk 1, 2026-10-28): the game's UI stays AS IT WAS — the score, the
+    // time left, "⚠ BOSS" are part of the frame the person stopped on. Hidden (Edit's rule above), the moment read as
+    // "the score is gone / it started over", and stage 1 has nowhere else that shows the score (This moment is stage 2).
+    // Still no pointer (it cannot be pressed or picked) and no UI layer to edit (decision 16: the UI is edited in Edit).
     el.textContent = layer === 'ui'
       ? 'canvas:not([data-studio-key]):not([data-studio-ui-canvas]){filter:brightness(.85)}'
-      : `${top},canvas[data-studio-ui-layer]{filter:opacity(${uiPeek ? '.5' : '0'})}[data-studio-key],[data-studio-key] *,canvas[data-studio-ui-layer]{pointer-events:none!important}`;
+      : still() ? noPointer
+      : `${top},canvas[data-studio-ui-layer]{filter:opacity(${uiPeek ? '.5' : '0'})}${noPointer}`;
   };
 
   const frame = () => {
@@ -1109,7 +1122,8 @@ export function createEditor(deps: EditorDeps): Editor {
     if (on) {
       core.time.freeze();
       try {
-        state.items = adapter.begin();
+        // Over a paused moment the game's own HTML stays seen (a score, the time left: part of the frame; ✕1 of walk 1).
+        state.items = adapter.begin(still() ? { moment: true } : undefined);
       } catch (e) {
         post({ type: 'studio:core/error', message: `begin() failed: ${(e as Error).message}` });
       }
@@ -1119,7 +1133,7 @@ export function createEditor(deps: EditorDeps): Editor {
       const early = deps.earlyTaps?.take() ?? null;
       const earlyKey = early ? (tappableAt(adapter, state.items, win, early.x, early.y, early.type === 'mouse' ? UI.pickRadiusMouse : UI.pickRadiusTouch)[0] ?? null) : null;
       // Paused in Play: the view the person paused on (three.js begin() stands the edit camera where the player's was).
-      if (deps.paused) { /* keep it */ }
+      if (still()) { /* keep it */ }
       else if (viewState !== undefined && adapter.view.restore) adapter.view.restore(viewState);
       else {
         // The opening view: the game's own camera when the adapter has one (three.js, polish pass 2026-10-16),
@@ -1144,13 +1158,16 @@ export function createEditor(deps: EditorDeps): Editor {
       // The screen chosen before (Play → Edit in the same page) again, the person's looks, and the screens / theme
       // for the shell (UI stages 2–3). Before the lists, so they list that screen's elements.
       // The canvas UI's screen first (it starts on the HTML UI's screen shown), so the screens' menu has both.
-      deps.uiCode?.begin(uiExtras?.screenNow() ?? null);
-      uiExtras?.begin();
-      postCodeScreens();
-      postCodeTheme();
-      // The frames' places for the shell (the AI's `list`, a ui-code ask), on whichever layer editing starts.
-      uiFound?.stale();
-      uiFound?.list();
+      // Not over a paused moment (pause-edit): the game's own screen and looks are part of the moment it stopped at.
+      if (!moment) {
+        deps.uiCode?.begin(uiExtras?.screenNow() ?? null);
+        uiExtras?.begin();
+        postCodeScreens();
+        postCodeTheme();
+        // The frames' places for the shell (the AI's `list`, a ui-code ask), on whichever layer editing starts.
+        uiFound?.stale();
+        uiFound?.list();
+      }
       if (layer === 'ui') state.items = adapter.list();
       post({ type: 'studio:placement/items', items: state.items, ...itemsLayer() });
       // The other layer's list too, once (UI stage 1): the shell keeps the UI's saved places in the file and shows them
@@ -1168,9 +1185,9 @@ export function createEditor(deps: EditorDeps): Editor {
       paintLayers();
       if (!loopId) loopId = core.time.raf(frame);
       // Paused in Play: the game stays still (no watch) and no check (see EditorDeps.paused).
-      const watching = deps.paused ? Promise.resolve() : watchGame();
-      if (!checked) firstMoments = watching;
-      if (!checked && !deps.paused) {
+      const watching = still() ? Promise.resolve() : watchGame();
+      if (!checked && !still()) firstMoments = watching;
+      if (!checked && !still()) {
         // Self-check once, in edit mode (3D adapters only know screen
         // positions once their edit camera exists).
         checked = true;
@@ -1221,9 +1238,12 @@ export function createEditor(deps: EditorDeps): Editor {
       input?.detach();
       input = null;
       state.editing = false;
-      // Screens, samples and a shown button look go back to the game's (its set / theme stay: the layout).
-      uiExtras?.end();
-      deps.uiCode?.end();
+      // Screens, samples and a shown button look go back to the game's (its set / theme stay: the layout). A paused
+      // moment never set them (above).
+      if (!moment) {
+        uiExtras?.end();
+        deps.uiCode?.end();
+      }
       uiEdges?.end();
       uiFound?.end();
       for (const a of [adapter, ...others().map((o) => o.driven)]) {
@@ -1257,7 +1277,7 @@ export function createEditor(deps: EditorDeps): Editor {
       if (m.type !== 'studio:core/view-state' || layer === 'world') post(m);
     };
     input = attachInput({ adapter, edits, core, win, post: inPost, state, select, selectMany, step, tools: toolHost, markDirty: () => (dirtyFrame = true),
-      ...(deps.paused ? { passKeyUp: true } : { unhold }), ...(deps.ignore ? { ignore: deps.ignore } : {}),
+      ...(still() ? { passKeyUp: true, moment: true } : { unhold }), ...(deps.ignore ? { ignore: deps.ignore } : {}),
       ...(layer === 'world' && !deps.paused ? { codePlace } : {}),
       // studio-canvas-ui stage 2: a press on the UI layer that selected nothing → ui-found.ts says why (or nothing, as before).
       ...(layer === 'ui' && uiFound ? { missed: (x: number, y: number) => void uiFound.missed(x, y), pressed: () => uiFound.clear(true) } : {}) });
@@ -1456,6 +1476,9 @@ export function createEditor(deps: EditorDeps): Editor {
           break;
         case 'studio:core/edit':
           if (!msg.on) (timeline.clear(), codePlace.clear(), codeMotion.clear(), keepOut.clear());
+          // The paused moment of an edit page playing (pause-edit; play-switch.ts momentHost): as a Play page's paused
+          // editor until it is put away. Read only when it comes on, so the off that ends it ends it the same way.
+          if (msg.on && !state.editing) moment = !!msg.moment;
           setEditing(msg.on, msg.viewState);
           if (msg.on && wantLayer) {
             const w = wantLayer;
