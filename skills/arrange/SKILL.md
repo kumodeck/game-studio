@@ -287,7 +287,7 @@ any) in every command for this game: start, `--watch`, `--status`, `--stop`.
 | `studio: did … - in the editor …` / `- in placement.json …` | Your `--do` (§3.4) did that op, there | The link first, then one line of what changed |
 | `studio: do failed <op> - <why>` | That op was not done (the others were) | Fix what it says (a key, a motion's name: `--do list`) and run that op again |
 | `studio: list {…}` | `--do list`: the objects (key, the name the person sees, their motions), the Library's motions, the levels | Find what their words mean ("the blue pillar") there |
-| `studio: request play` | The person asked while **playing** the game in the editor (▶ Play; the game is still running): their words, then `while playing`, the picture of that moment and how many console errors came with it. `paused, chat .studio/chat/<id>.json` instead of `while playing`: they **paused** the game and ask you about that moment from the editor over it | §3.1 (`play`): fix it without stopping their game; paused: **answer** first (§3.1.1, "Paused") |
+| `studio: request play` | The person asked while **playing** the game in the editor (▶ Play; the game is still running): their words, then `while playing`, the picture of that moment and how many console errors came with it. `paused, chat .studio/chat/<id>.json` instead of `while playing`: they **paused** the game and ask you about that moment from the editor over it; `make this moment's values editable` after it: the ✦ under "This moment" | §3.1 (`play`): fix it without stopping their game; paused: **answer** first (§3.1.1, "Paused"); `make this moment's values editable`: "This moment" (§4) |
 | `studio: answer` | The person answered your `asking` question in the editor (a button or their own words; the question and the request it is about follow) | §3.1 (`answer`): go on with that answer |
 | `studio: from the Game Studio editor …` | The plugin's hook woke you (below, "Woken by the editor"): the lines under it are requests, same words as above, each ending with the game folder in `[…]` | Handle them in order (§3.1), like watch lines |
 
@@ -487,7 +487,15 @@ a conversation, not a bug report:
 - What the game moves or made moved in a paused moment is "just for this moment" (their next start does not have it);
   what they **placed** and moved there is in their scene as in Edit (Save · N): handle it as any saved move.
 - A choice to make: `--status asking --choice …` as usual; their pick comes back as the next message.
-- `--do` while they are paused works on the moment (CONTRACT.md §3.6): `list` has what the game made too.
+- **"Make this moment editable" (`intent: "moment-values"`, the line says `make this moment's values editable`).** The
+  list's "This moment" had nothing to show: the game has no `codeMoment()` yet. Deliver it — "This moment" (§4) — then
+  `--status done --changed 0 --note "<one line: which numbers>"` ("Score, time left and health are in This moment
+  now."; no object changed: the editor sees the code did and offers Reload next to it). Not "press Reload".
+- **"5 seconds left, I want to see the end"** while paused, with a `codeMoment()` there: `--do moment.set --id timeLeft
+  --v 5` (§3.4) — the value is set for this moment only and the game draws it; Resume goes on from there. Not a code
+  change. "Start with 90 seconds" is (the code's first value).
+- `--do` while they are paused works on the moment (CONTRACT.md §3.6): `list` has what the game made too, and the
+  moment's values (`moment`).
 
 ### 3.2 Objects without a name: offer once, at the start
 
@@ -549,7 +557,7 @@ and `hand` are refused (they need the game's numbers): change the number in the 
 |---|---|---|
 | `list` | — | `studio: list {…}`: every object of the level on screen with its key, the name the person sees ("Blue pillar by the road (left, 3rd)"), `p` (where it stands in the editor now, saved or not) and its motions; the Library's motions and what they are on (a code motion with its `code` and `knobs`; a motion of points with its `keys.p`); the code layouts (`places`: id, name, its objects' keys, `knobs`, keep-out areas, `skipped`, `from`, `offsets` and `objects`: each object's `line` / `rank` / `offset`); the levels; the UI (`ui`: every element of the UI layer — HTML ones `html: true`, canvas ones with `code`, `kind`, `box` on screen, `codeAt` (the code's at() and scale now) and `write` (the `at` and `scale` to write on Save), each with `p` / `s` / `set` as the editor has them; a canvas one on
 another screen has `screen`); `uiFound`: the game's UI the editor sees but cannot select yet (`box` [x, y, w, h] game
-page CSS px, `from` `hud-canvas` / `left-out` — the dotted frames; "UI drawn in the canvas", §4). Use it to find what "the blue pillar's old motion" or "the lamps' gap" means |
+page CSS px, `from` `hud-canvas` / `left-out` — the dotted frames; "UI drawn in the canvas", §4); `moment`: the game's `codeMoment()` values read from the page now (`id`, `name`, `v`, `set`, `unit` / `min` / `max` / `step`; `null` = the page runs no `codeMoment()`) and `paused` (a paused moment is up: `moment.set` works then). Use it to find what "the blue pillar's old motion" or "the lamps' gap" means |
 | `motion.make` | `name`, `points` or `keys`, `len` (s, default 2), `repeat` (once / loop / pingpong), `ease`, `key`, `when`, `until`, `replace` | A Library motion — on the timeline, played by the loader — and, with `key`, put on that object. `points` = positions it goes through, offsets from where it stands, spread evenly over `len` (linear between them); `keys` = the file's own keys (`p` / `r` / `s`) for turns and sizes. A taken name becomes "Spiral 2" unless `replace: true` (the same motion with new keys) |
 | `motion.attach` | `key`, `name`, `when`, `until` | Put a Library motion on an object |
 | `motion.detach` | `key`, `name` (or `all: true`) | Take a motion off that object (the "Remove from this object" of its card); the motion stays in the Library |
@@ -568,6 +576,7 @@ page CSS px, `from` `hud-canvas` / `left-out` — the dotted frames; "UI drawn i
 | `editor.reload` | `editor: true` = the editor page itself | Reload the game in the editor (or the page: after a change to `.studio/adapter.js`, `studio.json`, `tools.js`, `.studio/ui/`) |
 | `ui.code` | `id` (`"score"`, or several: `"score,hp-bar,jump"`) | After you rewrote the drawing with `codeUi()` ("UI drawn in the canvas", §4): the editor reads the game again, lists them in its UI layer with the HTML UI, and **checks each box**: it moves it 40 px, draws one frame and looks whether the picture moved with it. `studio: do failed ui.code hp-bar - moving it 40 px changed nothing on screen: the drawing does not read codeUi('hp-bar').box()` / `- the box is smaller than what is drawn (232×34, drawn 260×36)` = your rewrite is off: fix it and send it again (the person sees nothing of it). With no editor open: nothing to do (the editor lists them when it opens) |
 | `ui.theme` | `id` (`"--accent"`, or a codeTheme key `"accent"`), `v` or `clear` | A Theme row (a CSS variable of the page or a codeTheme of the canvas UI): `v` = what the row does (one ⌘Z, counted on Save); `clear` = after Save you wrote it into the code (the CSS, or `codeTheme()`): out of `theme` in placement.json, not a change of the person's. With no editor open: `clear` takes it out of the file |
+| `moment.set` | `id` (a `codeMoment` value's id: `--do list` → `moment`), `v` (a number) | **Only while they are paused** ("This moment", §4): the game's `set(v)` — kept inside its `min` / `max`, on its `step` — and one frame drawn, so the HUD shows it; just for this moment (one ⌘Z, not counted on Save, gone at Resume). `studio: do failed moment.set - the game is not paused` otherwise (and with no editor open): the person is playing or in Edit — change the code's first value instead if that is what they asked |
 | `ui.set` | `id` + `p` (`[dx, dy]` CSS px from where the game draws it; with `from`: the `at()` numbers from that place, `{"from":"top","p":[0,20]}`), `s`, `set` (the card's look: `text`, `fontSize`, `color`, `background`, `"@hover"` / `"@active"` / `"@disabled"`: `{ color, background }`); or `clear: true` alone | What the UI card does, on screen, one ⌘Z. `clear`: **after Save, once you wrote that entry into the code**: it leaves `placement.json` (not a change of the person's: no ⌘Z, no Save count) and the editor draws it where your code now puts it. With no editor open only `clear` works (change the code itself otherwise) |
 
 `when`: `"start"`, `"click"`, `"touch"`, `"key:E"` (any `KeyboardEvent.code`: `"key:Space"`), `"time:2"`,
@@ -985,6 +994,61 @@ place and add the bounce on top of `box()`).
    into `codeTheme({ ink: { v: '#3a2a55', … } })`; a CSS variable's — where `:root` declares it. Then take it out of the
    file in the same `--do`: `{"do":"ui.theme","id":"--ink","clear":true}` (`--do list` → `theme` says which are which:
    a `label` = a codeTheme). Never `clear` one you did not write.
+
+### This moment (`codeMoment`, `intent: "moment-values"`)
+
+When the person pauses ▶ Play (P, ❚❚ Pause to edit), the list over the game starts with **This moment**: the game's own
+numbers at that frame — the score, the time left, the health — each turned like a rule's knob (drag, or press and
+type). A change is for that moment only: the editor calls your `set(v)` and makes the game draw one frame with time
+stopped (the HUD shows it); Resume goes on from that value. The editor cannot see a `let score` in the game's JS, so you
+name them **once**, in the game's code, with the loader's `codeMoment()` — and the list shows "The game's numbers, like
+the score, aren't shown here yet. ✦ Have Claude make this moment editable" until you do.
+
+**When**: only when asked — a paused `play` request with `intent: "moment-values"` (that ✦), or their words ("show the
+score when I pause", "let me change the time left"). Not on your own: unlike the canvas UI, nothing is missing on
+screen without it.
+
+1. **Choose the numbers** — all of them in one go, never one per request: **what the HUD shows** (score, time left,
+   health, lives, coins, ammo, the wave / level number) and **what decides the end of the game** (the time left, the
+   player's health or lives, the boss's health, the goal count), even when the HUD does not show it. Not the game's
+   inner parts (a speed, a timer of an animation, a position): those are the editor's objects or the code's. Six at
+   most is a good moment; the list shows 12.
+2. **Write it**, next to where those variables live (the module's top-level `let`s, or the object that holds them),
+   after they exist. Import it from the loader (copy `bin/studio-placement.js` in first, Way 1, if the game has none):
+
+   ```js
+   import { codeMoment } from './studio-placement.js';
+   codeMoment({ values: {
+     score:    { name: 'Score', get: () => score, set: (v) => { score = v; }, round: 0 },
+     timeLeft: { name: 'Time left', unit: 's', min: 0, get: () => timeLeft, set: (v) => { timeLeft = v; } },
+     hp:       { name: 'Health', min: 0, max: 5, step: 1, get: () => hp, set: (v) => { hp = v; } },
+     wave:     { name: 'Wave', get: () => wave },               // no set: shown, not changed
+   } });
+   ```
+
+   - `name`: **the person's word**, in their language (the request's `lang`; what the HUD or they call it: "Time left",
+     "Lives" — in Japanese when they write Japanese) — not the variable's name.
+   - `get()`: the value now. A number gets a knob; anything else (a word, true / false) is shown, never changed.
+   - `set(v)`: **write the variable the game reads every frame**, so the next frame runs and draws with it: the score
+     the HUD prints, the time the countdown takes from, the health the hit test lowers. If the HUD text is only
+     written when the value changes (an event, a `setText` on a hit), update it in `set` the same way. Leave `set` out
+     for a value that must not be set by hand (a wave number the spawner derives).
+   - `unit` (`'s'`, `'%'`, `'m'` … shown after the number), `min` / `max` / `step` from the game's own rules (health
+     `0`–`maxHp`, step 1; time ≥ 0) — the editor keeps every change inside them. `round: 0` for a number shown whole
+     (a score the game keeps as 12480.37).
+   - Ids are the code's names (`timeLeft`, `hp`): `--do moment.set --id` uses them.
+3. **Change nothing else**: not how the game looks, plays or starts, not the HUD. `codeMoment()` does nothing outside
+   the editor (it only keeps the list; nothing calls your functions).
+4. **Check**: the game still runs (§3.3). `--do list` → `moment` lists your ids and their values once the editor's page
+   runs your new code: after the person's Reload, or — when the editor is in Edit, not paused — after
+   `--do editor.reload`. While they are still paused on the old run, `moment` is `null`: that page has the old code;
+   never reload it under them.
+5. `--status done --request <id> --changed 0 --note "<which numbers, their words>"` ("Score, time left and health are
+   in This moment now."; `--changed` counts objects: none moved). The editor sees the code changed and offers Reload
+   next to it; don't tell them to press it.
+
+**Afterwards**: "5 seconds left, I want to see the end" while paused → `--do moment.set --id timeLeft --v 5` (§3.4), not
+a code change. "Start with 90 seconds" → the code's first value (the moment's change is never written anywhere).
 
 ### Motion (`motions`, `motion`)
 

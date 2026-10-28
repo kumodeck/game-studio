@@ -335,6 +335,10 @@ function playMoment(r, errors) {
         out.here = here;
       }
     }
+    // Pause-edit stage 2 (2026-10-28; CONTRACT.md §1.14): ✦ Have Claude make this moment editable — the moment's list had
+    // no codeMoment to show. The AI names the game's numbers once (SKILL.md "This moment"); the moment itself (picture,
+    // camera, console) comes with the first request of the pause as for any paused message.
+    if (r.intent === 'moment-values') out.intent = 'moment-values';
   }
   return out;
 }

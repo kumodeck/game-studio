@@ -841,6 +841,66 @@ const b = scoreUi.box(), L = scoreUi.look();   // every frame, where it is drawn
 - Tests: `test/code-ui.test.ts`, `test/code-ui-3.test.ts`, `test/ui-found.test.ts`, `test/studio-canvas-ui.browser.mjs`
   (`--only one|missing|screens|phaser|pixi|theme|edges`).
 
+### 1.14 This moment's values (2026-10-28, pause-edit stage 2)
+
+The request of 2026-10-28, "pause in the middle of a scene and give instructions, by hand or to the AI", made the paused
+moment the editor (§3.5.1). Its numbers — the score, the time left, the health — live in the game's own JS (a
+`let score`): the editor cannot see them, and does not guess. So the AI names them **once in the game's code**, when
+asked, with the loader's `codeMoment()` (the split of `codeUi`, §1.13: the AI writes the code, the editor is the hands),
+and the paused moment's list shows them at its top as **This moment** (01-decisions decision 13).
+
+```js
+codeMoment({ values: {
+  score:    { name: 'Score', get: () => score, set: (v) => { score = v; }, round: 0 },
+  timeLeft: { name: 'Time left', unit: 's', min: 0, get: () => timeLeft, set: (v) => { timeLeft = v; } },
+  hp:       { name: 'Health', min: 0, max: 5, step: 1, get: () => hp, set: (v) => { hp = v; } },
+  wave:     { name: 'Wave', get: () => wave },          // no set: shown only
+} });
+```
+
+- **The definition** (`values.<id>`; the id: a letter, then letters, digits, `_`, `-`, ≤ 40 — the code's own name,
+  `timeLeft`): `name` (the person's word, ≤ 40), `get()` (the value now: a number gets a knob, anything else is shown as
+  words), `set(v)` (optional: puts `v` in so the NEXT frame runs and draws with it), `unit` (≤ 8, shown after the number;
+  the editor's own units — `s`, `m`, `%`, … — in the person's language), `min` / `max` / `step` (a change is kept inside
+  them, on the step counted from `min`), `round` (digits shown after the point, 0–6; 0 = whole). At most 12 values (the
+  rest said once). A bad id or a value without `get()` is left out, said once. Called again, a value with the same id is
+  replaced, the others stay. The list is `globalThis[Symbol.for('game-studio.moment')]` = `{ values: Map }` (stage 3 adds
+  `save` / `load` to it), shared by the game's copy of the loader and the editor's. **Outside the editor nothing calls
+  them** (the loader only keeps the list).
+- **In the game page** (`src/bridge/moment-values.ts`, message driven: an edit page and a page opened for Play alike):
+  `studio:moment/ask` (`settle` when the moment comes up: paused and with a codeMoment, the game's one frame is drawn
+  first — the first frame after a pause runs the game's update with the few ms between its last frame and the pause, and
+  drawn after a change it took them off the value: a typed 5 read 4.98) → `studio:moment/values { values }`
+  (`MomentValue[]`: `id`, `name`, `v` (null = not a number:
+  `text`, or `get()` threw: `error` — one row's, never the list's), `unit`, `min`, `max`, `step`, `round`, `set` = it can
+  be changed now; `values: null` = no `codeMoment`). `studio:moment/set { id, v, n? }` — **only in a paused moment** (the
+  game held by a pause while playing; Edit holds the game too, and is not one): `v` fitted (step, then min / max),
+  `set(v)`, then ONE frame drawn with time stopped (`studio.redraw(fn)`, else core `time.step()` — the canvas UI's
+  one-frame draw, §1.13), answered with the values and `set: { id, n, ok, v | error }`; refusals: `the game is not
+  paused`, `the game has no codeMoment()…`, `the game's codeMoment() has no "lives" (it has: …)`, `"wave" (Wave) is shown
+  only…`, `"v" must be a number`, `its get() failed (…)`, `its set(v) failed (…)`.
+- **In the editor page** (`src/shell/moment-values.ts`): the paused moment's list starts with **This moment** (its head
+  with the game's time, as the top bar's clock), one row per value: the name, the rules' knob (`knob.ts`: drag left /
+  right, press to type, ↑ / ↓; live while dragged, one step when let go), "/ 5" after a value with a `max` and no unit.
+  A value shown only (no `set`, words, a failed `get()`) is grey with its reason as the tip. A change is **just for this
+  moment**: not in the scene, not counted on Save · N, written nowhere; one ⌘Z step while paused (undo kind
+  `moment-value`), taken out of the history at ▶ Resume (`UndoStack.dropMoment`), as the moment's moves (§3.5.1).
+  Asked when the moment comes up and after every Next frame (`play/time` while paused). The first value of a game is
+  the code's: "start with 90 seconds" is asked in the field.
+- **None** (`values: null` or empty): one line, "The game's numbers, like the score, aren't shown here yet." (it names
+  no number: the editor does not know which the game has) and **✦ Have {ai} make this moment editable**: the draft
+  "Make this moment editable" with the chip "This moment" in the field; the person sends it — the paused `play` request
+  with `intent: 'moment-values'` (and the moment, with the pause's first request), the AI's line `… (paused, chat …,
+  make this moment's values editable: codeMoment, SKILL.md "This moment")`. The web demo (no AI): the line alone. The AI
+  delivers all the values at once (SKILL.md "This moment"), never on its own.
+- **The AI's hands** (§3.6): `--do list` has `moment` (the values read from the page now; null = none) and `paused`;
+  `--do moment.set --id timeLeft --v 5` sets one in a paused moment, as the knob does (one ⌘Z, the line "Claude set Time
+  left to 5 s for this moment"); not paused (playing, Edit, or no editor open): `do failed moment.set - the game is not
+  paused`, at once — the person is not taken out of ▶ Play.
+- Tests: `test/moment-values.test.ts` (the loader and the game page), `test/moment-hands.test.ts` (the AI's ops, ⌘Z, the
+  words, the request), `test/studio-pause.browser.mjs --only values` (the editor: three values, the time left set to 5,
+  the HUD drawn with it, Resume from it; a game without them: the line and ✦; English, Japanese, dark).
+
 ## 2. Messages (bridge ⇄ shell)
 
 `window.postMessage` with `{ type: 'studio:<tool>/<verb>', … }`. Receivers check
@@ -863,6 +923,7 @@ origin, never `'*'`. Full payload types: `ShellToBridge`, `BridgeToShell`.
 | | `ui/found` · `ui/missing` | studio-canvas-ui stage 2 (§1.13): the UI seen but not selectable yet (`UiFound[]`: `box`, `from`), when editing starts and when it changes; a press on the UI layer beside every UI box (`at`, `place` = one of the 9, `none` = nothing selectable, `shot` = the picture round it) or `at: null` = the cross went (the next press in the game) |
 | | `ui/screens` · `ui/props` · `ui/theme` | UI stages 2–3 (§1.11): the screens and the one shown (`forced` = the editor chose it), when editing starts and after `ui/screen` (only for a game with screens); the picked UI element's props (`text`, `fontSize`, `color`, `background`, `button`, `state`, `was` = the game's own, `sample`), after a UI pick and each `ui/*` change of it; the theme's variables (`name`, `type` color / font, `value`, `was`, `label` = a codeTheme's word, §1.13), when editing starts and after `ui/theme-set` (only when there are some) |
 | | `ui/edges` | studio-canvas-ui-3 (§1.13): the HTML UI's edges — per element `key`, `from` (the nearest of the 9 places of the window), `at` (CSS px from there), `box`, `frame` — after every gesture, ⌘Z or resize that changed them |
+| | `moment/values` | pause-edit stage 2 (§1.14): `{ values: MomentValue[] \| null, set? }` — the game's codeMoment() values now (null = none), in reply to `moment/ask` / `moment/set` (`set`: that change's `{ id, n, ok, v \| error }`) |
 | | `placement/selected` | `{ key, item? }` |
 | | `placement/moved` | `{ key, pose, end?, from?, press?, hold?, alone? }` (`alone`: ⌥ held — a rule's object put by hand, §1.12) |
 | | `placement/thumb` | `{ key, src }` (`data:image/png;base64,…` or null), one per key asked for by `placement/thumbs` |
@@ -878,6 +939,7 @@ origin, never `'*'`. Full payload types: `ShellToBridge`, `BridgeToShell`.
 | shell → bridge | `core/edit` | `{ on, viewState? }` |
 | | `core/play` | `{ on, motion?, motions?, viewState? }` (§3.5.3, 2026-10-22): ▶ Play and back to Edit in the page on screen. `on`: the editor puts its tools away and the game goes on from the edit layout (`motion` = the draft's motions, played from their start, every `when` through the game's loader; `motions` = the Library's); the page then says `play/hello` as a Play page. Off: the game held, every object back where Play found it (three.js: also what the game added held out of the scene and what it took away put back, both handed back to the game at the next `on`; adapter `watch(on, whole)`), the editor up again on `viewState` (`core/ready` with `editing: true`, the list). Only to a page whose editor is up |
 | | `ui/missing-clear` | studio-canvas-ui stage 2 (§1.13): the line "This UI can't be selected yet" went by the shell's hand (Esc, ✦, a pick): the cross goes too |
+| | `moment/ask` · `moment/set` | pause-edit stage 2 (§1.14): read this moment's values; set one (`{ id, v, n? }`, only while paused: fitted to its step / min / max, then one frame drawn with time stopped) |
 | | `ui/screen` · `ui/sample` · `ui/set` · `ui/state` · `ui/theme-set` · `ui/props-get` | UI stages 2–3 (§1.11; only after `core/ready` listed `layers`): show a screen (`id` null = as the game shows it); a sample text (`null` = its own); one look field (`name`, `value`, `state?`; `null` = the game's own; `quiet` = no `ui/props` back, for the values the file holds, given again when a page opens); a button's look; a theme variable; ask for an element's props |
 | | `core/layer` | `{ layer: 'world' \| 'ui' }` (UI stage 1, only after `core/ready` listed `layers`): drop the pick, put the input on that layer's adapter, answer `core/ready` + its `placement/items`. The world's edit camera goes to the game's own view while the UI is edited and back after; `core/view-state` is only sent for the world |
 | | `core/view` | `frameAll`, `home`, `focus`, `zoom`, `orbit`, `pan`, `rise` (camera up / down by `by` × the game's height; 3D adapters with `view.rise(dy)`, which `core/ready` reports as `rise: true`; adapters with `view.fly(right, up, fwd)` — and `view.look(dx, dy)` — report `fly: true`, and the editor page then sends the fly keys held there as `core/fly { keys, fast }`), `restore` (adapters may also have `view.home({ glide? })` — the opening view, the game camera in three.js — and `view.settle(key)` — the first pick from it glides to an editing angle; the bridge uses them itself. `home` (⌘K "Back to the opening view", ⇧F) calls `view.home({ glide: true })`, or `frameAll()` when the adapter has no `home`) |
@@ -1365,6 +1427,8 @@ away, one line right over the field says "Just for this moment" (and ✦, below)
   in between). Paused it has two places (one Next frame shows); a phone while playing whole seconds. ▶ Play from Edit
   in the same page (the same game going on) goes on from the last Play's time; a new page starts at 0:00. The first
   pause of a person hangs "Next frame ." under ▶| once (`prefs.seen` `step-tip`).
+- **This moment** (stage 2, §1.14): the list's first block — the game's codeMoment() values, changed for this moment
+  only (one frame drawn; ⌘Z while paused; gone at Resume) — or one line and ✦ when the game has none.
 - **The AI's hands in a paused moment** (§3.6): done on the moment, not back in Edit first.
 - Messages: shell → bridge `studio:play/pause { on? }`, `studio:play/speed { rate }`, `studio:play/step { on }`,
   `studio:play/on { …, ai? }`, `studio:core/edit { on, moment }`; bridge → shell `studio:play/paused { on, edit, why,
@@ -1456,7 +1520,9 @@ game's code (not on the timeline, fighting the editor's motion, "press Reload").
   `end`, the entry's `ai` = its words for the Undo tooltip), counted on Save · n, its draft written as for any edit,
   and one line over the ask bar with the AI's name: "Claude took “Row” off Blue pillar · ⌘Z undoes it" (`by` = the
   CLI's environment, `src/server/which-ai.mjs`). A page that is playing goes back to Edit first — but not a paused
-  moment (§3.5.1, pause-edit 2026-10-28): there the ops work on the moment, as the person's hand does (`list` lists the
+  moment (§3.5.1, pause-edit 2026-10-28; a page opened for Play too — Play from the start, the reply's Reload — since
+  stage 2: it never says `core/hello`, and every op there said "the editor is still opening the game"): there the ops
+  work on the moment, as the person's hand does (`list` lists the
   moment's objects, what the game made too; `object.move` of a placed thing goes in the scene, of what the game moves
   or made just for this moment, one ⌘Z step either way). The UI layer goes to the world — except a job of `ui.*` ops
   (with `list` / `save`), done on the UI layer. Jobs run one at a time, in order. A page whose stream just dropped (a reload) is waited for 6 s.
@@ -1473,7 +1539,7 @@ stdout, one line per op: `studio: did <what it did> - in the editor (on screen n
 
 | Op | Fields | Editor | No editor (placement.json) |
 |---|---|---|---|
-| `list` | — | Every object of the level on screen: `key`, `name` (what the person sees, `names.ts`), `p` (where it stands in the editor now, saved or not: cm / whole px; studio-code-torule), `motions`, `unstable`, `ground`; the Library's motions with `on` (a motion of points: its `keys.p`; a code motion: `code`, `knobs` with `v` now and the code's, `round`, `note`, `game`, or `missing`); the code layouts (`places`: `id`, `name`, `keys`, `knobs`, `drag`, `pins`, `hand`, `avoid`, `skipped`, `from`; a layout the file changes but the game lacks: `missing`); the levels; the UI (`ui`: each element of the UI layer with `p`, `s`, `set`; a codeUi with `code`, `kind`, `box`, `codeAt` and `write`: the `at` / `scale` to write on Save; `uiClash`) | The objects the file has entries for, the Library (code motions with `code` / `knobs`), the layouts the file has `places` for, the levels, the file's `ui` |
+| `list` | — | Every object of the level on screen: `key`, `name` (what the person sees, `names.ts`), `p` (where it stands in the editor now, saved or not: cm / whole px; studio-code-torule), `motions`, `unstable`, `ground`; the Library's motions with `on` (a motion of points: its `keys.p`; a code motion: `code`, `knobs` with `v` now and the code's, `round`, `note`, `game`, or `missing`); the code layouts (`places`: `id`, `name`, `keys`, `knobs`, `drag`, `pins`, `hand`, `avoid`, `skipped`, `from`; a layout the file changes but the game lacks: `missing`); the levels; the UI (`ui`: each element of the UI layer with `p`, `s`, `set`; a codeUi with `code`, `kind`, `box`, `codeAt` and `write`: the `at` / `scale` to write on Save; `uiClash`); `moment` (§1.14: the game's codeMoment() values read from the page now — `id`, `name`, `v`, `set`, `unit` / `min` / `max` / `step`, `text` / `error`; null = none) and `paused` | The objects the file has entries for, the Library (code motions with `code` / `knobs`), the layouts the file has `places` for, the levels, the file's `ui` |
 | `motion.make` | `name`, `points` \| `keys`, `len` (default 2), `repeat`, `ease` (default linear for points), `key`, `when`, `until`, `replace` | A Library motion (`hands.mjs` handsMotion: points spread evenly over `len`, checked with the validator) and, with `key`, the object's clip (`timeline-wire` handsMake); one undo step | `motions` + `motion.<key>.clips` |
 | `motion.attach` | `key`, `name`, `when`, `until` | `timeline.attach` (+ when / until) | a clip `{ use, when }` |
 | `motion.detach` | `key`, `name` \| `all` | `timeline.detach` ("Remove from this object") | the clip out |
@@ -1495,6 +1561,7 @@ stdout, one line per op: `studio: did <what it did> - in the editor (on screen n
 | `editor.reload` | `editor` | the game page (`softReload`), or the editor page itself | refused |
 | `ui.code` | `id` (`"a"` or `"a,b,c"`: codeUi ids) | The game read again (always: the code changed), the UI layer shown, each id in the page's `studio:ui/codes` (`the game has no codeUi('x') (it has: …)`; an id an HTML key takes: said so), then each box measured (§1.13): `do failed ui.code hp-bar - moving it 40 px changed nothing on screen: …`. No undo step | nothing (said in the line) |
 | `ui.set` | `id` (a UI key), `p` (CSS px offset; with `from`: the at() numbers from that place — a codeUi's units, an HTML element's CSS px of the window, stage 3), `s`, `set` (the card's look); or `clear` alone | the UI layer: the pose (one undo step on the UI layer) and each look path as the card's row; `clear` = the entry out of the file and of what is saved (`PlacementModel.settle`, `UiStyleModel.forget`: no Save count, no ⌘Z), the page drawing it as its code does (`studio:ui/code-clear`) | `clear`: the entry out of `ui` (`uiView` too when empty); anything else refused |
+| `moment.set` | `id` (a codeMoment value's id), `v` (a number; the CLI's `--v 5` is read as one) | §1.14, pause-edit stage 2: **a paused moment only** — the game page's `studio:moment/set` (fitted to its step / min / max, `set(v)`, one frame drawn), one undo step (`moment-value`, dropped at Resume), not counted on Save; the line `set "Time left" (timeLeft) to 5 for this moment (it was 18.4) — …`. Not paused (playing, Edit): `the game is not paused`, said at once, ▶ Play left as it is | `the game is not paused (no editor is open: …)` |
 | `ui.theme` | `id` (`--accent`, or a codeTheme key `accent`), `v`; or `clear` alone | a Theme row (a CSS variable of the page or a codeTheme, §1.13): `v` as the row (one undo step, counted); `clear` = out of the file's `theme` and of what is saved (`UiStyleModel.forgetTheme`: no Save count, no ⌘Z) — the AI wrote it into the code | `clear`: out of `theme`; `v` refused |
 
 A motion `motion.make` puts on an object starts with the game unless `when` says otherwise (`HANDS_MAKE_WHEN`: the

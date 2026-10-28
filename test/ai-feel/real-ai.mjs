@@ -59,6 +59,12 @@
 // Claude make it appear here" and sends the draft (a `play` request with `made` and `here`), then says in the AI's
 // window that they asked from the editor → the AI changes where the game makes the boss in the code (to the left), marks
 // the request done with one line, hands no steps back; Play from the start (a new page): the boss comes in on the left.
+// `--steps moment` (pause-edit stage 2, 2026-10-28 — the score, the time left, the health in the paused moment): the game
+// is examples/three-neon-boss as it ships (its numbers plain variables, no codeMoment); the person (this test, in the
+// editor) plays, pauses, reads "This moment"'s one line, presses ✦ "Have Claude make this moment editable" and sends the
+// draft (a paused `play` request with `intent: "moment-values"`), then says in the AI's window that they asked from the
+// editor → the AI writes codeMoment() with the run's numbers, marks the request done with one line, hands no steps back;
+// Play from the start and pause: "This moment" lists them, `--do list` has `moment`, `--do moment.set --v 5` sets one.
 // The game is Pillar Plaza (`pillars/`: a blue pillar that already sways), copied to a temporary folder. The editor
 // runs with its own HOME (so no KUMODeck sign-in on this computer is read) and is open in a headless Chrome the whole
 // time, as the person's editor would be; the AI's `--do` reaches it there. The skill is the package's own
@@ -98,11 +104,14 @@ const WRITEBACK = take('--steps') === 'writeback';
 const CANVAS2 = take('--steps') === 'canvas-ui-2';
 const CANVAS = take('--steps') === 'canvas-ui';
 const MADE = take('--steps') === 'made';
+const MOMENT = take('--steps') === 'moment';
 // Stage 3: a Phaser or a Pixi game's UI kept as objects.
 const ENGINE = take('--steps') === 'canvas-ui-phaser' ? 'phaser' : take('--steps') === 'canvas-ui-pixi' ? 'pixi' : null;
 // The game's main script (the canvas-ui sets' game is examples/three-canvas-hud: game.js; stage 3's Phaser / Pixi game.js).
-const MAIN = CANVAS || CANVAS2 || ENGINE || MADE ? 'game.js' : 'main.js';
-const STEPS = MADE ? [
+const MAIN = CANVAS || CANVAS2 || ENGINE || MADE || MOMENT ? 'game.js' : 'main.js';
+const STEPS = MOMENT ? [
+  { say: 'エディタから頼んだよ', first: true, kind: 'moment' },
+] : MADE ? [
   { say: 'エディタから頼んだよ', first: true, kind: 'made' },
 ] : ENGINE ? [
   { say: 'このUIを編集できるようにして', first: true, kind: 'canvas-engine' },
@@ -148,7 +157,7 @@ const home = join(base, 'home');
 const out = take('--out') ? resolve(take('--out')) : join(base, 'report');
 mkdirSync(home, { recursive: true });
 mkdirSync(out, { recursive: true });
-cpSync(join(PKG, MADE ? 'examples/three-neon-boss' : ENGINE ? `examples/${ENGINE === 'phaser' ? 'phaser-runner' : 'pixi-bubbles'}` : CANVAS || CANVAS2 ? 'examples/three-canvas-hud' : 'test/ai-feel/pillars'), game, { recursive: true });
+cpSync(join(PKG, MADE || MOMENT ? 'examples/three-neon-boss' : ENGINE ? `examples/${ENGINE === 'phaser' ? 'phaser-runner' : 'pixi-bubbles'}` : CANVAS || CANVAS2 ? 'examples/three-canvas-hud' : 'test/ai-feel/pillars'), game, { recursive: true });
 rmSync(join(game, 'README.md'), { force: true });
 mkdirSync(join(game, '.claude/skills'), { recursive: true });
 symlinkSync(join(PKG, 'skills/arrange'), join(game, '.claude/skills/arrange'));
@@ -390,6 +399,28 @@ try {
       check(!!asked && asked.paused === true && asked.made === true && asked.here?.key === 'boss' && Math.abs((asked.here?.to?.p?.[0] ?? 0) + 3.4) < 0.01 && /^\.studio\/play\//.test(asked.shot ?? ''),
         `the editor sent the ask: paused, made, here = the boss at x -3.4, the picture (${asked ? JSON.stringify({ made: asked.made, here: asked.here, shot: asked.shot }) : 'none'})`);
     }
+    // This moment's person (pause-edit stage 2): Play, pause, This moment's line, ✦, Send.
+    if (step.kind === 'moment') {
+      await page.eval(`document.querySelector('button.play').click()`);
+      await page.waitFor(`document.querySelector('.shell').dataset.playing === 'on' && !!document.querySelector('[data-part=play-pause]:not([hidden])')`, 30000);
+      await sleep(2500);
+      await page.eval(`document.querySelector('[data-part=play-pause]').click()`);
+      await waitFor(() => page.eval(`document.querySelector('.shell').dataset.moment === 'on'`), 10000);
+      await sleep(800);
+      const line = await page.eval(`document.querySelector('[data-part=moment-none]')?.textContent ?? null`);
+      await page.eval(`document.querySelector('[data-action=moment-values-ask]')?.click()`);
+      await sleep(600);
+      const box = await page.eval(`(() => { const a = document.querySelector('[data-part=ask]'); return a.querySelector('.ask-chip:not([hidden])')?.textContent + ' | ' + a.querySelector('.ask-input').value; })()`);
+      console.log(`  (the person: paused — This moment says "${line}"; ✦ — the box: ${box}; sends it)`);
+      writeFileSync(join(out, `step${i + 1}-before.png`), await page.screenshot());
+      await page.eval(`document.querySelector('[data-part=ask] .ask-send')?.click()`);
+      await sleep(1500);
+      const dir = join(game, '.studio/requests');
+      const name = existsSync(dir) ? readdirSync(dir).filter((n) => n.includes('-play-')).sort().pop() : null;
+      asked = name ? JSON.parse(readFileSync(join(dir, name), 'utf8')) : null;
+      check(!!asked && asked.paused === true && asked.intent === 'moment-values' && /^\.studio\/play\//.test(asked.shot ?? ''),
+        `the editor sent the ask: paused, intent moment-values, the picture (${asked ? JSON.stringify({ intent: asked.intent, text: asked.text, shot: asked.shot }) : 'none'})`);
+    }
     let boxes0 = null;
     if (PERSON[step.kind]) {
       console.log(`  (the person: ${PERSON[step.kind]().split('\n')[0].replace(/ - in the editor.*/, '')})`);
@@ -441,7 +472,8 @@ try {
     check(r.code === 0 && !!reply, 'the AI answered');
     // A rule that does not come close is no change at all: it may just say so (it may still read the editor's --do list).
     // A rule that does not come close is no change at all, and "make it appear here" is a change of the game's code only.
-    if (step.kind !== 'to-rule-none' && step.kind !== 'made') check(dos.length > 0, 'it used --do (the editor\'s own work)');
+    // …and "make this moment editable" too (its --do list is a look, not a change).
+    if (step.kind !== 'to-rule-none' && step.kind !== 'made' && step.kind !== 'moment') check(dos.length > 0, 'it used --do (the editor\'s own work)');
     check(!HANDBACK.test(reply), 'no steps, reload or Save handed back to the person');
     check(/^https?:\/\/127\.0\.0\.1:\d+\/__studio\/\?t=/.test(reply.trim()), 'the editor\'s link is the first line');
     const codeText = Object.values(codeNow).join('\n') + readGameJs();
@@ -609,6 +641,34 @@ try {
       const bx = ok ? JSON.parse(await page.eval(`JSON.stringify(${GW}.__gameStudio._move.list().find((i) => i.key === 'boss').pose)`)) : null;
       check(!!bx && bx.p[0] < -2.5, `Play from the start: the boss comes in on the left (x ${bx?.p?.[0]?.toFixed?.(2)})`);
       writeFileSync(join(out, 'made-after.png'), await page.screenshot());
+    } else if (step.kind === 'moment') {
+      const cm = /codeMoment\s*\(\s*\{[\s\S]*?\n\s*\}\s*\}?\s*\)\s*;?/.exec(codeNow.main + readGameJs());
+      console.log(`  its codeMoment:\n${cm ? cm[0].split('\n').map((l) => '    ' + l).join('\n') : '    (not found)'}`);
+      check(/codeMoment\s*\(/.test(codeText), 'it wrote a codeMoment() in the game\'s code');
+      check(codeNow.index === code0.index, 'the HUD (index.html) is untouched: nothing else changed on screen');
+      const st = existsSync(join(game, '.studio/status.json')) ? JSON.parse(readFileSync(join(game, '.studio/status.json'), 'utf8')) : null;
+      check(!!st && st.request === asked?.id && st.state === 'done', `the request is done (${st ? `${st.state} · ${st.note ?? ''}` : 'no status'})`);
+      // Play from the start (a new page, the new code), pause: This moment lists them, and the AI's hands see them.
+      await page.eval(`document.querySelector('[data-part=play-more]').click()`);
+      await sleep(400);
+      await page.eval(`document.querySelector('[data-action=ctx-play-fresh]').click()`);
+      await sleep(3000);
+      await waitFor(() => page.eval(`!!${GW}?.__gameStudio?._move && document.querySelector('.shell').dataset.playing === 'on' && !!document.querySelector('[data-part=play-pause]:not([hidden])')`), 60000);
+      await sleep(2000);
+      await page.eval(`document.querySelector('[data-part=play-pause]').click()`);
+      await waitFor(() => page.eval(`document.querySelector('.shell').dataset.moment === 'on'`), 10000);
+      await waitFor(() => page.eval(`document.querySelectorAll('[data-part=moment-value]').length > 0`), 5000);
+      const rows = JSON.parse(await page.eval(`JSON.stringify([...document.querySelectorAll('[data-part=moment-value]')].map((e) => e.textContent))`) || '[]');
+      console.log(`  This moment after Play from the start: ${JSON.stringify(rows)}`);
+      check(rows.length >= 3, `This moment lists the run's numbers (${rows.length})`);
+      const l = listNow();
+      console.log(`  --do list: moment ${JSON.stringify(l?.moment)}, paused ${l?.paused}`);
+      check(Array.isArray(l?.moment) && l.moment.length >= 3 && l.paused === true, '--do list has moment (3 or more values) and paused');
+      const time = (l?.moment ?? []).find((x) => /time|left|timer/i.test(x.id) && x.set);
+      const said = time ? doEditor('moment.set', '--id', time.id, '--v', '5') : '';
+      console.log(`  ${hide(said).split('\n')[0]}`);
+      check(/^studio: did set .* to 5 for this moment/.test(said), `--do moment.set --id ${time?.id ?? '?'} --v 5`);
+      writeFileSync(join(out, 'moment-after.png'), await page.screenshot());
     } else if (step.kind === 'code-place') {
       const l = listNow();
       console.log(`  editor's list: places ${JSON.stringify((l?.places ?? []).map((p) => ({ id: p.id, name: p.name, n: p.keys?.length, knobs: p.knobs })))}`);

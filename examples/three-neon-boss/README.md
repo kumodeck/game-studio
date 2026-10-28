@@ -6,10 +6,15 @@ CONTRACT.md §3.5.1). A few seconds in, the game **makes** a boss in the middle 
 two drones beside it and shots it fires — in plain code (`spawnBoss()` writes the position), as an AI usually writes it
 first.
 
-- `index.html` — the canvas, the HTML HUD (score, time left) and the "⚠ BOSS" banner.
+- `index.html` — the canvas, the HTML HUD (score, time left, health as hearts), the "⚠ BOSS" banner and the end of the
+  run (FINISH / GAME OVER).
 - `game.js` — the world and the run. Things **placed** (the road, `gate`, `ring`, `orb`, the pillars), things the
   game **moves** (`ship` weaves by itself, the `hex`agons come down the road) and things the game **makes** (`boss` at 4 s,
-  `drone` ×2 at 5 s, `shot`s). Everything moves by the time between frames and is seeded.
+  `drone` ×2 at 5 s, `shot`s). Everything moves by the time between frames and is seeded. The run's numbers are plain
+  variables — `score`, `timeLeft` (30 s; 0 = FINISH), `hp` (5 hearts; a shot that reaches the ship takes one; 0 = GAME
+  OVER) — as an AI writes them first, **without** `codeMoment()` (2026-10-28, pause-edit stage 2): the paused moment's
+  "This moment" says "The game's numbers, like the score, aren't shown here yet" with ✦, and the AI delivers it
+  (SKILL.md "This moment"). The delivered form is in `test/studio-pause.browser.mjs` (`MOMENT_VALUES`).
 - `studio-placement.js` — the placement loader (kept up to date by the build).
 - `starter.json`, `thumb.png` — its place in the web demo (pause-edit fix 1, 2026-10-28): `scripts/build-web-demo.mjs
   --also examples/three-neon-boss` lists it among the 3D samples ("Neon Run"), so the demo, which has no AI, shows
@@ -20,5 +25,6 @@ Try: `node skills/arrange/bin/studio.mjs examples/three-neon-boss` (from `oss/ga
 bar, press P when the boss comes in: the gate moves as in Edit (Save · 1), the boss "just for this moment"; drag it to
 the left lane and press ✦ "Have Claude make it appear here".
 
-Tests: `test/studio-pause.browser.mjs --only moment` (the paused moment), `test/ai-feel/real-ai.mjs` (the real AI
-changes where the boss appears).
+Tests: `test/studio-pause.browser.mjs --only moment` (the paused moment), `--only values` (This moment: the values
+delivered, the time left set to 5; and the line with ✦ here as it is), `test/ai-feel/real-ai.mjs` (the real AI changes
+where the boss appears).

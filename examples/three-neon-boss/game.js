@@ -13,6 +13,11 @@
  * so "make it appear here" is a change of that code.
  *
  * Everything moves by the time between frames (dt) and is seeded, so a run is the same run every load.
+ *
+ * The run's numbers — the score, the time left, the health — are plain variables (score, timeLeft, hp below), as an AI
+ * usually writes them first: the paused moment's "This moment" (pause-edit stage 2, CONTRACT.md §1.14) shows
+ * "The game's numbers, like the score, aren't shown here yet" with ✦ until the AI names them with codeMoment(). The
+ * run ends when the time runs out (FINISH) or the boss's shots take the last heart (GAME OVER).
  */
 
 import * as THREE from 'three';
@@ -140,15 +145,26 @@ function fire() {
 
 // ---------------------------------------------------------------- the run
 let score = 12480;
-let left = 30; // seconds
+let timeLeft = 30; // seconds; 0 = the run is over (FINISH)
+const maxHp = 5;
+let hp = maxHp; // hearts; a boss's shot that reaches the ship takes one (0 = GAME OVER)
+let over = false;
 let t = 0; // the run's own time
 let fireIn = 0;
 const speed = 12;
 
 function update(dt) {
   t += dt;
-  left = Math.max(0, left - dt);
-  score += speed * dt * 10;
+  if (!over) {
+    timeLeft = Math.max(0, timeLeft - dt);
+    score += speed * dt * 10;
+  }
+  // The end: read every frame, so a time left or a health set from outside (the editor) ends the run too.
+  if (!over && (timeLeft <= 0 || hp <= 0)) {
+    over = true;
+    endEl.textContent = hp <= 0 ? 'GAME OVER' : 'FINISH';
+    endEl.hidden = false;
+  }
   ship.position.x = Math.sin(t * 0.9) * 2.4;
   for (const hx of hexes) {
     hx.position.z += speed * dt;
@@ -170,7 +186,10 @@ function update(dt) {
   }
   for (let i = shots.length - 1; i >= 0; i--) {
     const s = shots[i];
+    const z0 = s.position.z;
     s.position.z += 9 * dt;
+    // A shot that passes the ship close enough hits it: one heart.
+    if (!over && z0 < ship.position.z && s.position.z >= ship.position.z && Math.abs(s.position.x - ship.position.x) < 0.8) hp = Math.max(0, hp - 1);
     if (s.position.z > 6) {
       scene.remove(s);
       shots.splice(i, 1);
@@ -181,10 +200,13 @@ function update(dt) {
 // ---------------------------------------------------------------- the HUD (HTML over the canvas)
 const scoreEl = document.querySelector('#hud .score');
 const timeEl = document.querySelector('#hud .time');
+const hpEl = document.querySelector('#hud .hp');
+const endEl = document.getElementById('end');
 function drawHud() {
   scoreEl.textContent = `SCORE ${Math.floor(score).toLocaleString('en-US')}`;
-  const s = Math.ceil(left);
+  const s = Math.ceil(timeLeft);
   timeEl.textContent = `TIME ${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+  hpEl.textContent = '♥'.repeat(hp) + '♡'.repeat(Math.max(0, maxHp - hp));
 }
 
 function resize() {

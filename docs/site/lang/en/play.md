@@ -2,7 +2,7 @@
 title: Play
 nav: Play
 order: 3
-written-for: 0.1.70
+written-for: 0.1.71
 description: Play your game in the editor, slow it down, pause it on the exact frame, and edit that moment by hand or with your AI.
 ---
 
@@ -48,6 +48,18 @@ You get the same tools as in Edit, on the frame you stopped on: the list (it flo
 
 To change where the game makes something, drag it to where it should appear and press **✦ Have Claude make it appear here** on its card. The ask box gets **Make boss appear here** with the chip **boss · here**. Send it, and Claude changes the game’s code. Its reply shows over the ask box with **Reload**: press it to leave the paused moment and play the game again with the change (your **Save · N** stays). The boss comes in where you put it. If you resume instead, **Reload** is on the line over the game.
 
+### This moment
+
+At the top of the list, **This moment** shows your game’s own numbers on the frame you stopped on: the score, the time left, your health, whatever your game counts. Change one the way you change a number on a card: drag left or right, or click it and type. The game draws that same frame again with the new number, and its time doesn’t move. Set **Time left** to 5 and resume, and you see the end of the run five seconds later.
+
+![This moment at the top of the paused list: Score, Time left 5 s, Health 5 / 5](media/pause-moment.webp)
+
+- **Just for this moment.** It isn’t part of your scene: it doesn’t count on **Save · N** and isn’t written anywhere. <kbd>⌘</kbd><kbd>Z</kbd> undoes it while you’re paused. Resume, and the game goes on from the new number. To change how the game starts (90 seconds instead of 30), ask your AI.
+- **Ask for it too.** “Give me 5 seconds left” in the ask box: your AI sets it in This moment for you, and <kbd>⌘</kbd><kbd>Z</kbd> undoes it.
+- A number in gray is one you can see but not change here.
+
+Your AI adds these numbers to the game once. Until it does, the list says **The game’s numbers, like the score, aren’t shown here yet.** Press **✦ Have Claude make this moment editable**: the ask box gets **Make this moment editable** with the chip **This moment**. Send it. When Claude is done, press **Reload** on its reply and pause again. The web demo has no AI, so it shows the line only.
+
 ### Ask about this moment
 
 The ask box says **Ask Claude about this moment…** (your AI’s name, if it isn’t Claude). Your AI sees the moment you paused: a picture of the game, where your camera was, what was near you, and any errors. Ask why it happened, how it works, or what to change. Send as many messages as you like; **▴ Earlier · 2** shows what you said before in this pause.
@@ -65,7 +77,7 @@ The ask box says **Ask Claude about this moment…** (your AI’s name, if it is
 |---|---|---|---|
 | Things you placed and moved | where you moved them | where you moved them (in your scene, **Save · 1**) | where you moved them |
 | Things the game moves or made | the game goes on from where you put them | not there: your scene before Play | not there yet |
-| Score, time left | as they were | — | the game’s own start |
+| Score, time left | as they were (or as you set them in **This moment**) | — | the game’s own start |
 
 **▶ Resume** goes on from the exact frame you stopped on. **Edit** goes back to your scene, not to the paused moment (that’s what **❚❚ Pause to edit** is for); while paused it’s the quieter button. Back in Edit, your AI’s reply about the moment is gone from over the ask box. <kbd>Esc</kbd> doesn’t resume: like in Edit, it clears what you selected.
 

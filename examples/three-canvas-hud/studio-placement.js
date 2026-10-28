@@ -1177,6 +1177,29 @@ return () => themeSubs().delete(sub);
 };
 return out;
 }
+const MOMENT = Symbol.for('game-studio.moment');
+const MOMENT_ID = /^[A-Za-z][A-Za-z0-9_-]{0,39}$/;
+const MOMENT_MAX = 12;
+export function codeMoment(def) {
+const g = globalThis[MOMENT] && globalThis[MOMENT].values instanceof Map ? globalThis[MOMENT] : (globalThis[MOMENT] = { values: new Map() });
+const vals = def && typeof def === 'object' && def.values && typeof def.values === 'object' ? def.values : {};
+for (const [id, v] of Object.entries(vals)) {
+if (!MOMENT_ID.test(id) || !v || typeof v.get !== 'function') {
+warnOnce(`codeMoment: value "${id}" needs an id (letters, digits, _ and -) and get()`);
+continue;
+}
+if (!g.values.has(id) && g.values.size >= MOMENT_MAX) {
+warnOnce(`codeMoment: at most ${MOMENT_MAX} values (the first ${MOMENT_MAX} are shown)`);
+break;
+}
+const e = { id, name: text(v.name, 40) || id, get: v.get, set: typeof v.set === 'function' ? v.set : null, unit: text(v.unit, 8) };
+if (isNum(v.min)) e.min = v.min;
+if (isNum(v.max) && !(e.min > v.max)) e.max = v.max;
+if (isNum(v.step) && v.step > 0) e.step = v.step;
+if (isNum(v.round) && v.round >= 0 && v.round <= 6) e.round = Math.round(v.round);
+g.values.set(id, e);
+}
+}
 function uiCanvas(e) {
 let c = e.canvasOf;
 if (typeof c === 'function') {

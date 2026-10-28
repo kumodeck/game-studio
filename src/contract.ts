@@ -1352,6 +1352,19 @@ export type ShellToBridge =
    */
   | { type: 'studio:play/step'; on: boolean }
   /**
+   * This moment's values (pause-edit stage 2, 2026-10-28; §1.14): read the game's codeMoment() values now — answered by
+   * `studio:moment/values`. Sent when the moment comes up, after each Next frame, and for the AI's `--do list`.
+   * `settle` (when the moment comes up, paused, a game with codeMoment): draw the game's one frame first, so the few ms
+   * between its last frame and the pause are spent now and every change after it lands exactly (a typed 5 read 4.98).
+   */
+  | { type: 'studio:moment/ask'; settle?: boolean }
+  /**
+   * Change one of them (the moment's knob, ⌘Z, the AI's `--do moment.set`): the game's set(v) — inside its min / max, on
+   * its step — then ONE frame drawn with time stopped, so the HUD shows it. Only while paused (`not paused` otherwise).
+   * `n`: the sender's number for this change, given back in the answer's `set`.
+   */
+  | { type: 'studio:moment/set'; id: string; v: number; n?: number }
+  /**
    * The request was kept (`ok`) or not, so the field can close or say it failed. `id`: the kept request's id (the
    * chat over a paused game names its first one in the messages after it, `chat`).
    */
@@ -1615,7 +1628,39 @@ export type BridgeToShell =
   /** The person's answer to the AI's question, from the line over the game. */
   | { type: 'studio:play/answer'; text: string }
   /** Reload pressed over the game: open the game again (its new code), still playing. */
-  | { type: 'studio:play/reload' };
+  | { type: 'studio:play/reload' }
+  /**
+   * This moment's values (pause-edit stage 2; §1.14), in reply to `moment/ask` and `moment/set`: `values` null = the game
+   * has no codeMoment() (the moment's one line and ✦ then). `set`: the change asked for (`n` given back), done or why not.
+   */
+  | { type: 'studio:moment/values'; values: MomentValue[] | null; set?: { id: string; n?: number; ok: boolean; v?: number; error?: string } };
+
+/**
+ * One of this moment's values (pause-edit stage 2, 2026-10-28; §1.14; the loader's codeMoment, read by
+ * bridge/moment-values.ts): the score, the time left, the health — as the moment's list shows it and `--do list` gives it.
+ */
+export interface MomentValue {
+  /** Its id in codeMoment's `values` (the AI's `--do moment.set --id`). */
+  id: string;
+  /** The person's word for it ("Time left"). */
+  name: string;
+  /** The value now; null = not a number (`text` says what it is) or get() failed (`error`). */
+  v: number | null;
+  /** get() answered something else than a number: shown as words, never changed. */
+  text?: string;
+  /** get() threw: its message (the list shows "—", the AI reads why). */
+  error?: string;
+  /** Shown after the number ('s' in the person's words). '' = none. */
+  unit: string;
+  min?: number;
+  max?: number;
+  /** A change lands on it (1 = whole numbers). */
+  step?: number;
+  /** Digits shown after the point (0 = whole numbers); absent = two at most. */
+  round?: number;
+  /** It can be changed (the code gave set(v) and the value is a number). false = shown only (grey). */
+  set: boolean;
+}
 
 /**
  * Why an object of a paused moment is the game's, just for this moment (pause-edit, 2026-10-28; bridge/play-move.ts
@@ -1818,7 +1863,9 @@ export interface StudioRequestInput {
  * into the rule's own numbers (a knob in the game's words: "From the road"), names it in `drag`, and sends `place.code
  * --fold <way>`; the offset row becomes that knob on the card.
  */
-export type RequestIntent = 'avoid' | 'to-code' | 'to-knob' | 'ui-code';
+export type RequestIntent = 'avoid' | 'to-code' | 'to-knob' | 'ui-code' | 'moment-values';
+// 'moment-values' (pause-edit stage 2, 2026-10-28; §1.14): a "play" + `paused` request from the moment's ✦ Have {ai} make
+// this moment editable — the game has no codeMoment() yet; the AI names its numbers (score, time left, health) once.
 /** A rule layout named in an ask (StudioRequestInput.places): its id and name, its knobs now, its keep-out areas. */
 export interface RequestPlace {
   id: string;

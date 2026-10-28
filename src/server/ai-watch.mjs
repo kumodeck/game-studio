@@ -131,7 +131,9 @@ export function handoffLine(rec, relPath) {
     // ✦ Have Claude make it appear here (pause-edit, 2026-10-28): something the game made, put where it should appear —
     // the line says so, so the AI goes to the code that makes it (SKILL.md "Paused").
     const made = v.paused === true && v.made === true && v.here && typeof v.here.key === 'string' ? `made by the game: ${v.here.label || v.here.key}, make it appear where it was put` : '';
-    const bits = [chatId ? `paused, chat .studio/chat/${chatId}.json` : 'while playing', made, v.shot ? `picture ${v.shot}` : '', errs ? `${errs} error${errs === 1 ? '' : 's'}` : ''].filter(Boolean);
+    // ✦ Have Claude make this moment editable (pause-edit stage 2): the moment's list had no codeMoment() to show.
+    const values = v.paused === true && v.intent === 'moment-values' ? 'make this moment\'s values editable: codeMoment, SKILL.md "This moment"' : '';
+    const bits = [chatId ? `paused, chat .studio/chat/${chatId}.json` : 'while playing', made, values, v.shot ? `picture ${v.shot}` : '', errs ? `${errs} error${errs === 1 ? '' : 's'}` : ''].filter(Boolean);
     return `studio: request play ${relPath} ${JSON.stringify((v.text || '').length > 120 ? v.text.slice(0, 119) + '…' : v.text || '')} (${bits.join(', ')})`;
   }
   // ✦ Ask … to make this UI editable (studio-canvas-ui stage 2, 2026-10-24): the line says what it is for and where the

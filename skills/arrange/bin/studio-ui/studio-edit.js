@@ -1,4 +1,4 @@
-/* KUMODeck Game Studio 0.1.70 — MIT License — built file, edit src/ instead */
+/* KUMODeck Game Studio 0.1.71 — MIT License — built file, edit src/ instead */
 (() => {
 const __defs = [];
 const __cache = [];
@@ -5004,6 +5004,19 @@ const MSG_PREFIX = 'studio:';
      
                                              
      
+                                                                                                                        
+                                                                                                                
+                                                                                                                        
+                                                                                                                      
+     
+                                                   
+     
+                                                                                                                         
+                                                                                                                        
+                                                                                
+     
+                                                                    
+     
                                                                                                                   
                                                                                    
      
@@ -5267,7 +5280,39 @@ const MSG_PREFIX = 'studio:';
                                                                                
                                                 
                                                                                          
-                                   
+                                  
+     
+                                                                                                                          
+                                                                                                                           
+     
+                                                                                                                                              
+
+/**
+ * One of this moment's values (pause-edit stage 2, 2026-10-28; §1.14; the loader's codeMoment, read by
+ * bridge/moment-values.ts): the score, the time left, the health — as the moment's list shows it and `--do list` gives it.
+ */
+                              
+                                                                           
+             
+                                                
+               
+                                                                                               
+                   
+                                                                                    
+                
+                                                                         
+                 
+                                                                       
+               
+               
+               
+                                                  
+                
+                                                                                
+                 
+                                                                                                       
+               
+ 
 
 /**
  * Why an object of a paused moment is the game's, just for this moment (pause-edit, 2026-10-28; bridge/play-move.ts
@@ -5470,7 +5515,9 @@ function isStudioMessage(x         )                     {
  * into the rule's own numbers (a knob in the game's words: "From the road"), names it in `drag`, and sends `place.code
  * --fold <way>`; the offset row becomes that knob on the card.
  */
-                                                                        
+                                                                                          
+// 'moment-values' (pause-edit stage 2, 2026-10-28; §1.14): a "play" + `paused` request from the moment's ✦ Have {ai} make
+// this moment editable — the game has no codeMoment() yet; the AI names its numbers (score, time left, health) once.
 /** A rule layout named in an ask (StudioRequestInput.places): its id and name, its knobs now, its keep-out areas. */
                                
              
@@ -8014,6 +8061,9 @@ __defs[20] = function (__exports) {
 // says, with look(); the editor moves / resizes / recolours it and the game draws one frame. See "UI drawn in the canvas".
 // Stage 3 (studio-canvas-ui-3, 2026-10-24): onChange(fn) for engines that keep their UI as objects (Phaser, Pixi), `size`
 // as that object, and codeTheme({ accent: { v, label } }) — the canvas UI's theme, listed with the CSS variables.
+//
+// This moment's values (pause-edit stage 2, 2026-10-28): codeMoment({ values: { score: { name, get, set, unit, min, max,
+// step, round } } }) — the score, the time left, the health shown and changed in a paused moment. See "This moment's values".
 
 const KEY_CHARS = /[^A-Za-z0-9_:#.\-\/]/g;
 const cleanName = (s) => (typeof s === 'string' && s ? s.replace(KEY_CHARS, '_').slice(0, 80) : '');
@@ -9698,6 +9748,57 @@ function codeTheme(def) {
   return out;
 }
 
+// ---------------------------------------------------------------------------------------------
+// This moment's values (pause-edit stage 2, 2026-10-28; CONTRACT.md §1.14). The request that day: "pause in the middle of
+// a scene and give instructions, by hand or to the AI". In the paused moment the score, the time left and the health are
+// what a person wants to see and change ("5 seconds left, so I can see the end") — but they live in the game's own JS
+// (a `let score`), and the editor cannot know them. So the AI names them ONCE in the game's code, when the person asks
+// (✦ under the moment's "This moment"), the same split as codeUi: the AI writes the code, the editor is the hands.
+//
+//   codeMoment({ values: {
+//     score:    { name: 'Score', get: () => score, set: (v) => { score = v }, round: 0 },
+//     timeLeft: { name: 'Time left', unit: 's', min: 0, get: () => timeLeft, set: (v) => { timeLeft = v } },
+//     hp:       { name: 'Health', min: 0, max: 5, step: 1, get: () => hp, set: (v) => { hp = v } },
+//     wave:     { name: 'Wave', get: () => wave },            // no set: shown, not changed (grey)
+//   } });
+//
+//   name   the person's word for it (what the HUD calls it, in their language)
+//   get()  the value now: a number (anything else is shown as words, never changed)
+//   set(v) optional: put v in so the NEXT frame runs and draws with it — the editor draws one frame with time stopped
+//   unit   shown after the number ('s' is said in the person's language)
+//   min / max / step   a change is kept inside them, on the step (step 1 = whole numbers)
+//   round  digits shown after the point (0 = whole numbers; none = two at most)
+//
+// Nothing here calls get() or set(): only the editor does, while it shows a paused moment (src/bridge/moment-values.ts,
+// which also keeps a get() that throws from stopping anything). Outside the editor this only keeps the list
+// (globalThis[Symbol.for('game-studio.moment')], one per page, shared with the editor's copy of this file); called again,
+// a value with the same id is replaced (a new round), the others stay. Stage 3 adds save / load to the same object.
+const MOMENT = Symbol.for('game-studio.moment');
+// Ids as the AI names them in code (score, timeLeft, hp-max): letters first, then letters, digits, _ and -.
+const MOMENT_ID = /^[A-Za-z][A-Za-z0-9_-]{0,39}$/;
+// The moment's list shows at most these (a moment of 30 numbers is a debugger, not a moment).
+const MOMENT_MAX = 12;
+function codeMoment(def) {
+  const g = globalThis[MOMENT] && globalThis[MOMENT].values instanceof Map ? globalThis[MOMENT] : (globalThis[MOMENT] = { values: new Map() });
+  const vals = def && typeof def === 'object' && def.values && typeof def.values === 'object' ? def.values : {};
+  for (const [id, v] of Object.entries(vals)) {
+    if (!MOMENT_ID.test(id) || !v || typeof v.get !== 'function') {
+      warnOnce(`codeMoment: value "${id}" needs an id (letters, digits, _ and -) and get()`);
+      continue;
+    }
+    if (!g.values.has(id) && g.values.size >= MOMENT_MAX) {
+      warnOnce(`codeMoment: at most ${MOMENT_MAX} values (the first ${MOMENT_MAX} are shown)`);
+      break;
+    }
+    const e = { id, name: text(v.name, 40) || id, get: v.get, set: typeof v.set === 'function' ? v.set : null, unit: text(v.unit, 8) };
+    if (isNum(v.min)) e.min = v.min;
+    if (isNum(v.max) && !(e.min > v.max)) e.max = v.max;
+    if (isNum(v.step) && v.step > 0) e.step = v.step;
+    if (isNum(v.round) && v.round >= 0 && v.round <= 6) e.round = Math.round(v.round);
+    g.values.set(id, e);
+  }
+}
+
 /** The canvas a codeUi is drawn in: its own `canvas`, else the last canvas of the page (an overlay is added after the game's). */
 function uiCanvas(e) {
   let c = e.canvasOf;
@@ -10150,6 +10251,7 @@ __def(__exports, "uiAtOf", () => uiAtOf);
 __def(__exports, "uiNearest", () => uiNearest);
 __def(__exports, "codeUi", () => codeUi);
 __def(__exports, "codeTheme", () => codeTheme);
+__def(__exports, "codeMoment", () => codeMoment);
 __def(__exports, "uiTextPart", () => uiTextPart);
 __def(__exports, "uiTextNode", () => uiTextNode);
 __def(__exports, "placeUi", () => placeUi);
@@ -24783,6 +24885,11 @@ const { nativeSetTimeout, nativeClearTimeout } = __require(0);
                                 
                                                                                                                                       
                                   
+     
+                                                                                                                          
+                                                       
+     
+                           
                                                                                                                     
                                           
                                                                                                                                 
@@ -25709,6 +25816,9 @@ function startPlayAsk(o                )                {
   if (awake) post({ type: 'studio:play/hello' });
   return {
     hold,
+    get paused() {
+      return awake && !!hold?.paused;
+    },
     wake(next) {
       if (awake) return;
       awake = true;
@@ -25765,6 +25875,182 @@ __def(__exports, "startPlayAsk", () => startPlayAsk);
 };
 __defs[62] = function (__exports) {
 'use strict';
+// moment-values.ts
+
+// This moment's values in the game page (pause-edit stage 2, 2026-10-28; CONTRACT.md §1.14).
+//
+// The request (2026-10-28): "pause in the middle of a scene and give instructions, by hand or to the AI". The paused
+// moment is the editor since stage 1; stage 2 shows the game's own numbers in it — the score, the time left, the health
+// — and lets the person (or the AI: `--do moment.set`) change them for this moment only ("5 seconds left: I want to
+// see the end"). The editor cannot know them; the AI names them once in the game's code with the loader's
+// codeMoment({ values }), and this file is the hands in the game's page:
+//   - read: each value's get() now, as plain data for the editor page (`studio:moment/values`). A get() that throws,
+//     or answers something that is not a number, never stops the list: that one row says "—" (or its words) and the
+//     AI reads why (decided with the plan's "Studio is the hands": a broken value must not break the moment);
+//   - change: set(v) — kept inside min / max and on the step here, so the person's drag, a typed number and the AI's
+//     op all land on the same value — then ONE frame drawn with time stopped (core time.step(), or the game's
+//     studio.redraw(fn)): the HUD shows the new number at once and the game's time does not move (the same one-frame
+//     draw as the canvas UI's card, code-ui.ts). Only while the game is paused (the moment): while it runs, the next
+//     frame would already have changed it again, and the AI is told `the game is not paused`.
+// Message driven and on its own listener, so it answers in an edit page (Edit, ▶ Play in the same page) and in a page
+// opened for Play alike — the moment's editor may be either (play-move.ts) and `--do list` asks in Edit too.
+                                                                                
+const { isStudioMessage } = __require(13);
+
+/** One value as the loader keeps it (codeMoment, src/loader/studio-placement.js). */
+                 
+             
+               
+                     
+                                    
+               
+               
+               
+                
+                 
+ 
+
+                                      
+const num = (v         )              => typeof v === 'number' && Number.isFinite(v);
+
+/** The loader's list in this page (null = the game never called codeMoment). */
+function momentEntries(win     )                            {
+  const g = (win                                      )[Symbol.for('game-studio.moment')]                                    ;
+  return g && g.values instanceof Map ? (g.values                      ) : null;
+}
+
+/** "Error: x is undefined" → "x is undefined", cut to one line for the list's tooltip and the AI's line. */
+const why = (err         ) => String((err         )?.message ?? err).split('\n')[0] .slice(0, 120);
+
+/** One value now, as plain data. A broken get() is that row's `error`, never the list's. */
+function readValue(e       )              {
+  const base              = { id: e.id, name: e.name, v: null, unit: e.unit || '', set: false,
+    ...(num(e.min) ? { min: e.min } : {}), ...(num(e.max) ? { max: e.max } : {}), ...(num(e.step) ? { step: e.step } : {}), ...(num(e.round) ? { round: e.round } : {}) };
+  let v         ;
+  try {
+    v = e.get();
+  } catch (err) {
+    return { ...base, error: why(err) };
+  }
+  if (num(v)) return { ...base, v, set: typeof e.set === 'function' };
+  // Words, a true / false, an object: shown as words, never changed (a knob for "boss" or "true" would be a lie).
+  let text = '';
+  try {
+    text = typeof v === 'string' ? v : v === undefined ? '' : JSON.stringify(v) ?? String(v);
+  } catch {
+    text = String(v);
+  }
+  return { ...base, text: text.slice(0, 40) };
+}
+
+/** Every value now; null = no codeMoment in this page. */
+function readMoment(win     )                       {
+  const m = momentEntries(win);
+  return m ? [...m.values()].map(readValue) : null;
+}
+
+/**
+ * The value a change puts in (pure; test/moment-values.test.ts): on the step (counted from min when there is one, so
+ * min 1 step 2 gives 1, 3, 5), then inside min / max, without float dust (0.1 + 0.2).
+ */
+function fitValue(v        , e                                           )         {
+  let x = v;
+  if (num(e.step) && e.step > 0) {
+    const from = num(e.min) ? e.min : 0;
+    x = from + Math.round((x - from) / e.step) * e.step;
+  }
+  if (num(e.min) && x < e.min) x = e.min;
+  if (num(e.max) && x > e.max) x = e.max;
+  return Number(x.toPrecision(12)) + 0;
+}
+
+/**
+ * Change one value: set(fit(v)). The AI's line words the refusals (CONTRACT.md §3.6), so they say what to do next.
+ * Does not draw: the caller draws one frame once the change is in.
+ */
+function setValue(win     , id        , v         )                                                         {
+  const m = momentEntries(win);
+  if (!m) return { ok: false, error: 'the game has no codeMoment() (SKILL.md "This moment": write one, then editor.reload)' };
+  const e = m.get(id);
+  if (!e) return { ok: false, error: `the game's codeMoment() has no "${id}" (it has: ${[...m.keys()].map((k) => `"${k}"`).join(', ') || 'none'})` };
+  if (typeof e.set !== 'function') return { ok: false, error: `"${id}" (${e.name}) is shown only: its codeMoment() value has no set(v)` };
+  if (!num(v)) return { ok: false, error: '"v" must be a number' };
+  const now = readValue(e);
+  if (now.error) return { ok: false, error: `"${id}" (${e.name}): its get() failed (${now.error})` };
+  if (now.v === null) return { ok: false, error: `"${id}" (${e.name}) is not a number now (${now.text ?? '?'})` };
+  const to = fitValue(v, e);
+  try {
+    e.set(to);
+  } catch (err) {
+    return { ok: false, error: `"${id}" (${e.name}): its set(v) failed (${why(err)})` };
+  }
+  const after = readValue(e);
+  return { ok: true, v: after.v ?? to };
+}
+
+                                      
+           
+                       
+                                                                                      
+                    
+                                                                                                
+               
+ 
+
+/** Answer the editor page's `moment/ask` and `moment/set` in this game page. */
+function startMomentValues(o                     )       {
+  const { win } = o;
+  const post = (msg               ) => {
+    try {
+      win.parent.postMessage(msg, o.parentOrigin);
+    } catch {
+      /* parent gone */
+    }
+  };
+  win.addEventListener('message', (ev              ) => {
+    if (ev.source !== win.parent || ev.origin !== o.parentOrigin || !isStudioMessage(ev.data)) return;
+    const m = ev.data                 ;
+    if (m.type === 'studio:moment/ask') {
+      // `settle` (the moment just came up): the first frame drawn after a pause runs the game's update with the time
+      // between its last frame and the pause (its dt, a few ms) — drawn now, before the person changes anything, every
+      // later one-frame draw has none and a value set stays as set (a typed 5 showed 4.98 when this frame came after
+      // the set). Only a game with codeMoment, only paused: nothing else is drawn for it.
+      if (m.settle && o.paused() && momentEntries(win)) {
+        try {
+          o.draw();
+        } catch (err) {
+          console.warn('[studio] the game failed drawing one frame:', err);
+        }
+      }
+      post({ type: 'studio:moment/values', values: readMoment(win) });
+    } else if (m.type === 'studio:moment/set') {
+      const n = num(m.n) ? { n: m.n } : {};
+      if (!o.paused()) {
+        post({ type: 'studio:moment/values', values: readMoment(win), set: { id: String(m.id), ...n, ok: false, error: 'the game is not paused' } });
+        return;
+      }
+      const r = setValue(win, String(m.id), m.v);
+      if (r.ok) {
+        try {
+          o.draw();
+        } catch (err) {
+          console.warn('[studio] the game failed drawing one frame:', err);
+        }
+      }
+      post({ type: 'studio:moment/values', values: readMoment(win), set: { id: String(m.id), ...n, ...r } });
+    }
+  });
+}
+
+__def(__exports, "momentEntries", () => momentEntries);
+__def(__exports, "readValue", () => readValue);
+__def(__exports, "readMoment", () => readMoment);
+__def(__exports, "fitValue", () => fitValue);
+__def(__exports, "setValue", () => setValue);
+__def(__exports, "startMomentValues", () => startMomentValues);
+};
+__defs[63] = function (__exports) {
+'use strict';
 // levels.ts
 
 // studio.levels(list) on the game page (levels, 2026-10-22; CONTRACT.md §1.10). Pure, so it is unit-tested.
@@ -25818,7 +26104,7 @@ function pickLevel(list         , href        , inFrame         )               
 __def(__exports, "cleanLevels", () => cleanLevels);
 __def(__exports, "pickLevel", () => pickLevel);
 };
-__defs[63] = function (__exports) {
+__defs[64] = function (__exports) {
 'use strict';
 // early-press.ts
 
@@ -25900,7 +26186,7 @@ function watchEarlyTaps(win        )            {
 
 __def(__exports, "watchEarlyTaps", () => watchEarlyTaps);
 };
-__defs[64] = function (__exports) {
+__defs[65] = function (__exports) {
 'use strict';
 // bridge.ts
 
@@ -25920,11 +26206,12 @@ const { findUi: findUiNow, markHudCanvases } = __require(26);
 const { runSelfCheck } = __require(27);
 const { createEditor } = __require(56);
 const { startPlayAsk } = __require(61);
+const { startMomentValues } = __require(62);
 const { createPlaySwitch } = __require(50);
 const { arrangeInPlay, moveInPlay } = __require(49);
 const { applyPlacement, placementForLevel } = __require(20);
-const { pickLevel } = __require(62);
-const { watchEarlyTaps } = __require(63);
+const { pickLevel } = __require(63);
+const { watchEarlyTaps } = __require(64);
                                                     
 const { nativeSetTimeout } = __require(0);
 
@@ -26221,6 +26508,12 @@ function startBridge(opts               )       {
     // motions (what the game page moves for the editor) to say "just for this moment" on them.
     playAsk = startPlayAsk({ win, parentOrigin, probes: () => [...gameProbes, ...opts.builtins], standby: edit,
       ...(playClock ? { pause: { time: core.time, clock: playClock }, move: { core, rules, arranged } } : {}) });
+    // This moment's values (pause-edit stage 2, 2026-10-28; moment-values.ts): the game's codeMoment() read and changed
+    // for the editor page — in an edit page and a page opened for Play alike (the moment's editor may be either).
+    startMomentValues({ win, parentOrigin, paused: () => !!playAsk?.paused, draw: () => {
+      if (redrawFn) redrawFn();
+      else if (core.time.frozen) core.time.step();
+    } });
   }
   if (!edit || !inFrame) return;
   // A tap in the game before the editor is ready is kept for it (early-press.ts): from the very start, before the game's code.
@@ -26418,7 +26711,7 @@ function startBridge(opts               )       {
 __def(__exports, "readEditParams", () => readEditParams);
 __def(__exports, "startBridge", () => startBridge);
 };
-__defs[65] = function (__exports) {
+__defs[66] = function (__exports) {
 'use strict';
 // main.ts
 
@@ -26437,11 +26730,11 @@ __require(0);
 // the three.js adapter: it installs __THREE_DEVTOOLS__ and wraps rAF/render.
 __require(1);
 const { threeProbe } = __require(12);
-const { startBridge } = __require(64);
+const { startBridge } = __require(65);
 
 startBridge({ builtins: [threeProbe] });
 
 
 };
-__require(65);
+__require(66);
 })();

@@ -91,6 +91,9 @@
 // says, with look(); the editor moves / resizes / recolours it and the game draws one frame. See "UI drawn in the canvas".
 // Stage 3 (studio-canvas-ui-3, 2026-10-24): onChange(fn) for engines that keep their UI as objects (Phaser, Pixi), `size`
 // as that object, and codeTheme({ accent: { v, label } }) — the canvas UI's theme, listed with the CSS variables.
+//
+// This moment's values (pause-edit stage 2, 2026-10-28): codeMoment({ values: { score: { name, get, set, unit, min, max,
+// step, round } } }) — the score, the time left, the health shown and changed in a paused moment. See "This moment's values".
 
 const KEY_CHARS = /[^A-Za-z0-9_:#.\-\/]/g;
 const cleanName = (s) => (typeof s === 'string' && s ? s.replace(KEY_CHARS, '_').slice(0, 80) : '');
@@ -1773,6 +1776,57 @@ export function codeTheme(def) {
     return () => themeSubs().delete(sub);
   };
   return out;
+}
+
+// ---------------------------------------------------------------------------------------------
+// This moment's values (pause-edit stage 2, 2026-10-28; CONTRACT.md §1.14). The request that day: "pause in the middle of
+// a scene and give instructions, by hand or to the AI". In the paused moment the score, the time left and the health are
+// what a person wants to see and change ("5 seconds left, so I can see the end") — but they live in the game's own JS
+// (a `let score`), and the editor cannot know them. So the AI names them ONCE in the game's code, when the person asks
+// (✦ under the moment's "This moment"), the same split as codeUi: the AI writes the code, the editor is the hands.
+//
+//   codeMoment({ values: {
+//     score:    { name: 'Score', get: () => score, set: (v) => { score = v }, round: 0 },
+//     timeLeft: { name: 'Time left', unit: 's', min: 0, get: () => timeLeft, set: (v) => { timeLeft = v } },
+//     hp:       { name: 'Health', min: 0, max: 5, step: 1, get: () => hp, set: (v) => { hp = v } },
+//     wave:     { name: 'Wave', get: () => wave },            // no set: shown, not changed (grey)
+//   } });
+//
+//   name   the person's word for it (what the HUD calls it, in their language)
+//   get()  the value now: a number (anything else is shown as words, never changed)
+//   set(v) optional: put v in so the NEXT frame runs and draws with it — the editor draws one frame with time stopped
+//   unit   shown after the number ('s' is said in the person's language)
+//   min / max / step   a change is kept inside them, on the step (step 1 = whole numbers)
+//   round  digits shown after the point (0 = whole numbers; none = two at most)
+//
+// Nothing here calls get() or set(): only the editor does, while it shows a paused moment (src/bridge/moment-values.ts,
+// which also keeps a get() that throws from stopping anything). Outside the editor this only keeps the list
+// (globalThis[Symbol.for('game-studio.moment')], one per page, shared with the editor's copy of this file); called again,
+// a value with the same id is replaced (a new round), the others stay. Stage 3 adds save / load to the same object.
+const MOMENT = Symbol.for('game-studio.moment');
+// Ids as the AI names them in code (score, timeLeft, hp-max): letters first, then letters, digits, _ and -.
+const MOMENT_ID = /^[A-Za-z][A-Za-z0-9_-]{0,39}$/;
+// The moment's list shows at most these (a moment of 30 numbers is a debugger, not a moment).
+const MOMENT_MAX = 12;
+export function codeMoment(def) {
+  const g = globalThis[MOMENT] && globalThis[MOMENT].values instanceof Map ? globalThis[MOMENT] : (globalThis[MOMENT] = { values: new Map() });
+  const vals = def && typeof def === 'object' && def.values && typeof def.values === 'object' ? def.values : {};
+  for (const [id, v] of Object.entries(vals)) {
+    if (!MOMENT_ID.test(id) || !v || typeof v.get !== 'function') {
+      warnOnce(`codeMoment: value "${id}" needs an id (letters, digits, _ and -) and get()`);
+      continue;
+    }
+    if (!g.values.has(id) && g.values.size >= MOMENT_MAX) {
+      warnOnce(`codeMoment: at most ${MOMENT_MAX} values (the first ${MOMENT_MAX} are shown)`);
+      break;
+    }
+    const e = { id, name: text(v.name, 40) || id, get: v.get, set: typeof v.set === 'function' ? v.set : null, unit: text(v.unit, 8) };
+    if (isNum(v.min)) e.min = v.min;
+    if (isNum(v.max) && !(e.min > v.max)) e.max = v.max;
+    if (isNum(v.step) && v.step > 0) e.step = v.step;
+    if (isNum(v.round) && v.round >= 0 && v.round <= 6) e.round = Math.round(v.round);
+    g.values.set(id, e);
+  }
 }
 
 /** The canvas a codeUi is drawn in: its own `canvas`, else the last canvas of the page (an overlay is added after the game's). */

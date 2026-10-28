@@ -26,6 +26,7 @@ import { findUi as findUiNow, markHudCanvases, type Rect } from './ui-found.ts';
 import { runSelfCheck } from './selfcheck.ts';
 import { createEditor, type Editor } from './editor.ts';
 import { startPlayAsk, type PlayAskHandle } from './play-ask.ts';
+import { startMomentValues } from './moment-values.ts';
 import { createPlaySwitch, type PlaySwitch } from './play-switch.ts';
 import { arrangeInPlay, moveInPlay, type PlayFile } from './play-arrange.ts';
 import { applyPlacement, placementForLevel } from '../loader/studio-placement.js';
@@ -327,6 +328,12 @@ export function startBridge(opts: BridgeOptions): void {
     // motions (what the game page moves for the editor) to say "just for this moment" on them.
     playAsk = startPlayAsk({ win, parentOrigin, probes: () => [...gameProbes, ...opts.builtins], standby: edit,
       ...(playClock ? { pause: { time: core.time, clock: playClock }, move: { core, rules, arranged } } : {}) });
+    // This moment's values (pause-edit stage 2, 2026-10-28; moment-values.ts): the game's codeMoment() read and changed
+    // for the editor page — in an edit page and a page opened for Play alike (the moment's editor may be either).
+    startMomentValues({ win, parentOrigin, paused: () => !!playAsk?.paused, draw: () => {
+      if (redrawFn) redrawFn();
+      else if (core.time.frozen) core.time.step();
+    } });
   }
   if (!edit || !inFrame) return;
   // A tap in the game before the editor is ready is kept for it (early-press.ts): from the very start, before the game's code.

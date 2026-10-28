@@ -12,13 +12,14 @@
 //
 // Pure of the DOM: every effect goes through HandsDeps (main.ts wires them), so test/ai-hands.test.ts runs it with
 // stand-ins.
-import type { CodeAvoidInfo, CodeKnob, CodeMotionInfo, CodePlaceInfo, CodeUiInfo, Dim, Item, KnobValue, LibraryMotion, Motion, MotionClip, MotionKey, MotionRepeat, MotionUntil, MotionWhen, PlacementPlace, PlacementUiEntry, PlaceOffset, Pose, UiEdgeInfo, UiFound, UiThemeVar } from '../contract.ts';
+import type { CodeAvoidInfo, CodeKnob, CodeMotionInfo, CodePlaceInfo, CodeUiInfo, Dim, Item, KnobValue, LibraryMotion, MomentValue, Motion, MotionClip, MotionKey, MotionRepeat, MotionUntil, MotionWhen, PlacementPlace, PlacementUiEntry, PlaceOffset, Pose, UiEdgeInfo, UiFound, UiThemeVar } from '../contract.ts';
 import { uiBoxAt } from '../loader/studio-placement.js';
 import { HANDS_MAKE_WHEN, handsAvoid, handsClip, handsMotion, handsPose, handsSaid, handsUiIds, readHandsInput } from '../schema/hands.mjs';
 import { roundKnob, turnKnobs } from './code-places.ts';
 import { CODE_LEN } from './motion-library.ts';
 import { MOTION_SAMPLES, gapText, motionGap, placeGaps, timeText, type HandMotion, type HandSpot, type MotionGap, type PlaceGap } from './to-rule.ts';
 import { foldGaps, foldSaid, type FoldSpot } from './write-back.ts';
+import { momentNumber } from './moment-values.ts';
 
 export interface HandsJob {
   id: string;
@@ -50,6 +51,16 @@ export interface HandsDeps {
    * Absent / false while playing = back to Edit first, as before.
    */
   moment?(): boolean;
+  /**
+   * This moment's values (pause-edit stage 2, 2026-10-28; CONTRACT.md §1.14): the game page's codeMoment() read now —
+   * null = it has none (or the page did not answer). Absent = an editor without them.
+   */
+  momentValues?(): Promise<MomentValue[] | null>;
+  /**
+   * Change one for the paused moment, as the person's knob does: the game's set(v), one frame drawn, one undo change
+   * (kept out of Save · n; gone from the history at Resume). The value it now has, or why not.
+   */
+  momentSet?(id: string, v: number): Promise<{ ok: boolean; v?: number; error?: string }>;
   /** Back to Edit from ▶ Play (the AI's change is on the editing page, not on the run). */
   stopPlay(): Promise<void>;
   /** The world layer (the AI's ops are about objects, never the game's HTML UI). */
@@ -261,6 +272,36 @@ export function createAiHands(d: HandsDeps) {
       + `move the whole rule with place.set --offsets (every object: [{"way":"side","how":"same","v":1}]), `
       + `put just this one by hand with place.set --pin, or turn the whole layout into coordinates with place.set --hand`;
   };
+
+  // ----- this moment's values (pause-edit stage 2, 2026-10-28; CONTRACT.md §1.14) -----
+  /** A game's number for the AI's lines: 4 decimals at most (a timer read 25.12179799999695). */
+  const r4 = (v: number) => Math.round(v * 1e4) / 1e4 + 0;
+  /** One value as `--do list` gives it: what the AI needs to name it and set it (no knob words, no tooltips). */
+  const momentRow = (x: MomentValue) => ({ id: x.id, name: x.name, v: x.v === null ? null : r4(x.v), set: x.set, ...(x.unit ? { unit: x.unit } : {}),
+    ...(x.min !== undefined ? { min: x.min } : {}), ...(x.max !== undefined ? { max: x.max } : {}), ...(x.step !== undefined ? { step: x.step } : {}),
+    ...(x.text !== undefined ? { text: x.text } : {}), ...(x.error ? { error: x.error } : {}) });
+  /**
+   * `list` gets `moment` (the game's codeMoment() values now, read from the page; null = none) and `paused` (a paused
+   * moment is up: moment.set works only then) — so the AI that just wrote codeMoment sees it is there, and what its ids are.
+   */
+  async function momentList(list: unknown): Promise<unknown> {
+    if (!d.momentValues || !list || typeof list !== 'object') return list;
+    const vals = await d.momentValues();
+    return { ...(list as Record<string, unknown>), moment: vals ? vals.map(momentRow) : null, paused: !!d.moment?.() };
+  }
+  async function momentSet(op: Op): Promise<Did> {
+    if (!d.moment?.() || !d.momentSet || !d.momentValues) return { error: 'the game is not paused' };
+    const vals = await d.momentValues();
+    if (!vals) return { error: 'the game has no codeMoment() (SKILL.md "This moment": write one, then editor.reload)' };
+    const was = vals.find((x) => x.id === op.id);
+    if (!was) return { error: `the game's codeMoment() has no "${op.id}" (it has: ${vals.map((x) => `"${x.id}"`).join(', ') || 'none'})` };
+    const r = await d.momentSet(op.id, op.v);
+    if (!r.ok) return { error: r.error ?? 'the game did not answer' };
+    const v = r.v ?? op.v;
+    const unit = was.unit ? d.t(`hands.unit.${was.unit}`) : '';
+    const shown = `${momentNumber(v, was)}${!was.unit ? '' : unit === `hands.unit.${was.unit}` ? ` ${was.unit}` : unit}`;
+    return { name: was.name, v: r4(v), ...(was.v !== null ? { was: r4(was.v) } : {}), words: { name: was.name, v: shown } };
+  }
 
   async function one(op: Op): Promise<Did> {
     if (op.level && d.levels.active() && op.level !== d.levels.current()) {
@@ -587,7 +628,9 @@ export function createAiHands(d: HandsDeps) {
         d.reload(!!op.editor);
         return { words: {} };
       case 'list':
-        return { list: uiList(codeList(d.list() as Record<string, unknown>)) };
+        return { list: await momentList(uiList(codeList(d.list() as Record<string, unknown>))) };
+      case 'moment.set':
+        return momentSet(op);
       case 'ui.code':
         return uiCode(op);
       case 'ui.set':
@@ -808,6 +851,9 @@ export function createAiHands(d: HandsDeps) {
     const read = readHandsInput(job.ops);
     if (!read.ok) return { results: [{ do: '?', ok: false, error: read.errors.join('; ') }] };
     const ops = read.ops as Op[];
+    // moment.set while the game runs (or in Edit): said at once — neither waiting for the editor nor taking the person out
+    // of ▶ Play (pause-edit stage 2: a value is changed only in a paused moment).
+    if (ops.every((op) => op.do === 'moment.set') && !d.moment?.()) return { results: ops.map((op) => ({ do: op.do, ok: false, error: 'the game is not paused' })) };
     if (!(await waitReady())) return { results: ops.map((op) => ({ do: op.do, ok: false, error: 'the editor is still opening the game: run the same --do again in a moment' })) };
     if (d.playing() && !d.moment?.()) await d.stopPlay();
     // A job of UI ops is done on the UI layer (its one ⌘Z is a step of that layer); every other job on the world.

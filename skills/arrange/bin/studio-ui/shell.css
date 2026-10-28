@@ -2091,6 +2091,33 @@ button.shelf-file.to:hover { background: var(--raise-2); }
 .knob-bar { position: absolute; left: 8px; right: 8px; bottom: 3px; height: 2px; border-radius: 1px; background: var(--line-2); overflow: hidden; }
 .knob-bar > i { display: block; height: 100%; background: var(--ai); }
 .knob-in { height: var(--h); width: 96px; padding: 0 8px; border-radius: 6px; border: 0; background: var(--raise-2); color: var(--text); font: inherit; font-size: 12px; box-shadow: inset 0 0 0 1.5px var(--you); }
+/* "This moment" (pause-edit stage 2, 2026-10-28; moment-values.ts): the paused moment's numbers, the list's first block —
+   the head as the list's own title with the game's time on the right, then one row per value: its name, the rules' knob
+   (the same box, a bit wider: a score has five digits), "/ 5" after a value with a top. A value shown only is grey and
+   not pressable. With none: the one line and ✦ (the card's ✦ look). Hidden outside a paused moment (the owner's `hidden`). */
+/* min-width 0 and a minmax(0, 1fr) track: the block keeps to the list's width — the ✦ line's one-line width made the
+   grid track wider than the floating list, and the line and ✦ were cut at its edge (the first photo). */
+.moment-values { flex: none; min-width: 0; padding: 4px 8px 8px; border-bottom: 1px solid var(--line); }
+.moment-values[hidden] { display: none; }
+.mv-head { display: flex; align-items: center; justify-content: space-between; padding: 6px 0 4px; }
+.mv-time { color: var(--text-3); font-size: var(--fs-s); }
+.mv-body { display: grid; grid-template-columns: minmax(0, 1fr); gap: 2px; }
+.mv-row { display: flex; align-items: center; gap: 6px; min-height: var(--h); }
+.mv-row .knob { flex: 1; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
+.mv-row .knob-box { min-width: 72px; max-width: 112px; }
+.mv-row.off { color: var(--text-3); cursor: default; }
+.mv-row.off .knob-l { flex: 1; color: var(--text-3); }
+.mv-row.off .mv-v { min-width: 72px; padding: 0 8px; text-align: center; font-size: 12px; }
+/* Japanese words kept whole (keep-all), broken at the words' own \u200b (i18n.ts); anywhere only when one cannot fit. */
+.mv-none { margin: 2px 0 4px; font-size: var(--fs-s); line-height: 1.45; word-break: keep-all; overflow-wrap: anywhere; }
+/* ✦ the card's ✦ "appear here" look (the AI's violet, outlined: it only puts a draft in the field). */
+/* Its words wrap (the floating list is ~250 px: "Have Claude make this moment editable" is two lines there). */
+.mv-ask { display: inline-flex; align-items: center; justify-self: start; gap: 6px; min-height: 26px; max-width: 100%; padding: 3px 10px; border-radius: 13px; color: var(--ai);
+  text-align: left; line-height: 1.35; white-space: normal; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ai) 55%, transparent); font-weight: 500; text-decoration: none; }
+.mv-ask:hover:not(:disabled) { background: color-mix(in srgb, var(--ai) 12%, transparent); text-decoration: none; }
+.mv-ask .ai-spark { display: inline-grid; }
+.mv-ask .icon { width: 13px; height: 13px; }
+.mv-ask .label { min-width: 0; word-break: keep-all; overflow-wrap: anywhere; }
 .rule-tag { height: 18px; padding: 0 6px; background: var(--ai-soft); color: var(--ai-text); font-size: 10px; }
 .rule-block { display: grid; gap: 6px; padding: 8px; border-radius: 8px; box-shadow: inset 0 0 0 1px var(--ai-soft); }
 .rule-head { display: flex; align-items: center; gap: 8px; min-width: 0; }

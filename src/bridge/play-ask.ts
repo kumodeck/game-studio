@@ -62,6 +62,11 @@ export interface PlayAskOptions {
 export interface PlayAskHandle {
   /** The pause's hold (frames, clock, sound): Edit holds the game with it too. null = no pause (outside the editor's frame clock). */
   readonly hold: PauseHold | null;
+  /**
+   * A paused moment now: playing (awake) and held by a pause (pause-edit stage 2: this moment's values change only then).
+   * Not Edit, which holds the game with the same hold.
+   */
+  readonly paused: boolean;
   /** The page became Play: say hello (the editor answers play/on), and a Move in a pause starts from `arranged`. */
   wake(arranged: Promise<string[]>): void;
   /** Back in Edit: the paused moment ended, the field and the line put away, the overlay hidden; nothing taken until wake(). */
@@ -988,6 +993,9 @@ export function startPlayAsk(o: PlayAskOptions): PlayAskHandle {
   if (awake) post({ type: 'studio:play/hello' });
   return {
     hold,
+    get paused() {
+      return awake && !!hold?.paused;
+    },
     wake(next) {
       if (awake) return;
       awake = true;

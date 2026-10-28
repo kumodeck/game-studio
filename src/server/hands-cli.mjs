@@ -72,6 +72,8 @@ export function handsInput(args) {
   if (v.startsWith('{') || v.startsWith('[')) return v;
   const op = { do: v, ...(args.doFields || {}) };
   if ((op.do === 'object.rename' || op.do === 'motion.rename' || op.do === 'level.rename') && op.to !== undefined) op.to = String(op.to);
+  // moment.set --v 5 (pause-edit stage 2): a number — `v` is words for ui.theme ("#7fd1ff"), so it came as text here.
+  if (op.do === 'moment.set' && typeof op.v === 'string' && op.v.trim() && Number.isFinite(Number(op.v))) op.v = Number(op.v);
   return op;
 }
 

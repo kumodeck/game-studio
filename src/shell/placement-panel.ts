@@ -192,6 +192,11 @@ export interface PlacementPanelDeps {
    * apart under the scene's own objects. [] / absent = none.
    */
   made?: () => Array<{ name: string; keys: string[] }>;
+  /**
+   * "This moment" (pause-edit stage 2, 2026-10-28; moment-values.ts): the paused moment's numbers, the list's first block
+   * (over its head and rows, so they stay in sight while the rows scroll). Shown / hidden by its owner. Absent = none.
+   */
+  momentEl?: HTMLElement;
 }
 
 export interface PlacementPanel {
@@ -273,7 +278,7 @@ export function createPlacementPanel(d: PlacementPanelDeps): PlacementPanel {
     hoverRow = null;
     d.hover?.([]);
   });
-  el.append(listTools, listScroll);
+  el.append(...(d.momentEl ? [d.momentEl] : []), listTools, listScroll);
   let noNameSent = false;
   // Narrow screens (the side window next to a chat, phones; a try on 2026-10-19 with an AI-written runner): the unnamed
   // objects fold into this ONE row — "Unnamed objects 36 · Ask AI to name them" — instead of 36 rows that all read

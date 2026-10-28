@@ -1049,6 +1049,18 @@ const en = {
   'hands.unit.x': '×',
   'hands.unit.m/s': ' m/s',
   'hands.unit.px/s': ' px/s',
+  // This moment's values (pause-edit stage 2, 2026-10-28; moment-values.ts; the word list's "This moment" and "No
+  // numbers yet" rows): the paused moment's list head, the one line when the game has no codeMoment (it names no number:
+  // the editor does not know which the game has) and its ✦, the draft ✦ puts in the field, a row shown only, ⌘Z's
+  // words, the AI's line.
+  'moment.values': 'This moment',
+  'moment.noValues': 'The game’s numbers, like the score, aren’t shown here yet.',
+  'moment.valuesAsk': 'Have {ai} make this moment editable',
+  'moment.valuesDraft': 'Make this moment editable',
+  'moment.valueOnly': 'Shown only — it can’t be changed here',
+  'moment.valueBroken': 'The game couldn’t read this one',
+  'undo.value': 'change {name}',
+  'hands.moment.set': '{Ai} set {name} to {v} for this moment',
   // The rule's own parts on screen (studio-code-knobs, 2026-10-24): the card's Layout, its knobs, the timeline's rule
   // motion strip. The words: "rule" (chosen on 10/24) and Gemini's wording of that day.
   'rule.tag': 'Rule',
@@ -2078,6 +2090,15 @@ const ja: Partial<Record<Key, string>> = {
   'hands.unit.x': '×',
   'hands.unit.m/s': ' m/秒',
   'hands.unit.px/s': ' px/秒',
+  'moment.values': 'この瞬間',
+  // \u200b = where the line may break (the list is ~250 px; its CSS keeps Japanese words whole: word-break keep-all).
+  'moment.noValues': 'スコアなどの\u200bゲームの数は、\u200bまだ\u200bここに\u200b出ません。',
+  'moment.valuesAsk': '{ai}に\u200bこの瞬間を\u200b編集できるように\u200bしてもらう',
+  'moment.valuesDraft': 'この瞬間を編集できるようにして',
+  'moment.valueOnly': '見るだけ（ここでは変えられません）',
+  'moment.valueBroken': 'ゲームがこの数を読めませんでした',
+  'undo.value': '{name} を変更',
+  'hands.moment.set': '{ai}がこの瞬間の{name}を{v}にしました',
   'rule.tag': 'ルール',
   'rule.tagTip': 'ゲームのルールで並んでいます。数字はここで、ルールそのものは {ai} に',
   'rule.layout': 'ルール',

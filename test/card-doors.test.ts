@@ -38,6 +38,9 @@ test('the ask box gets words only from ✦ buttons (focusAsk callers)', () => {
     // (the person was about to ask; nothing sent), and the card's ✦ Have Claude make it appear here (a draft).
     [/^if \(m\.draft && !host\.offline\) focusAsk\(m\.draft\);$/, 'a pause: the ✦ field\'s words over the game go on in the field (a draft)'],
     [/^focusAsk\(t\('moment\.appearDraft', \{ name \}\)\);$/, 'the paused moment\'s ✦ Have Claude make it appear here (a draft)'],
+    // pause-edit stage 2 (2026-10-28): the moment's "This moment" with no codeMoment — ✦ Have Claude make this moment
+    // editable puts the draft "Make this moment editable" and the chip "This moment" in the field (the person sends it).
+    [/^focusAsk\(t\('moment\.valuesDraft'\)\);$/, 'the paused moment\'s ✦ Have Claude make this moment editable (a draft)'],
   ];
   for (const l of lines) assert.ok(allowed.some(([re]) => re.test(l)), `a new caller writes in the ask box: ${l}`);
 });

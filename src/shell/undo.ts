@@ -47,7 +47,12 @@ export type Change =
    * moment — only the game page's object changes, never the scene (no Save · N). ⌘Z takes it back while paused; ▶
    * Resume takes these out of the history (dropMoment: that moment is gone).
    */
-  | { kind: 'moment'; key: string; from: Pose; to: Pose };
+  | { kind: 'moment'; key: string; from: Pose; to: Pose }
+  /**
+   * This moment's value (pause-edit stage 2, 2026-10-28; moment-values.ts): one of the game's codeMoment() numbers set for
+   * the paused moment (`key` = its id) — the game page's only, never the scene or a file. Dropped at Resume like 'moment'.
+   */
+  | { kind: 'moment-value'; key: string; from: number; to: number };
 
 export interface UndoEntry {
   changes: Change[];
@@ -198,7 +203,7 @@ export class UndoStack {
     for (const list of [this.done, this.undone]) {
       for (let i = list.length - 1; i >= 0; i--) {
         const e = list[i]!;
-        const rest = e.changes.filter((c) => c.kind !== 'moment');
+        const rest = e.changes.filter((c) => c.kind !== 'moment' && c.kind !== 'moment-value');
         if (rest.length === e.changes.length) continue;
         if (rest.length) e.changes = rest;
         else {

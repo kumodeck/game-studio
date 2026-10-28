@@ -58,6 +58,10 @@ export const HANDS_OPS = Object.freeze({
   // ("--accent" or "accent") — `v` = what the Theme row does, or `clear` after Save: the AI wrote it into the code (the
   // CSS, or codeTheme()), so it leaves placement.json's `theme` without a change of the person's.
   'ui.theme': { need: ['id'], may: ['v', 'clear'] },
+  // This moment's values (pause-edit stage 2, 2026-10-28; CONTRACT.md §1.14): one of the game's codeMoment() values set
+  // for the paused moment only — "the end: 5 seconds left" — as the person's knob in the moment's list does (one ⌘Z while
+  // paused, not counted on Save, gone from the history at Resume). Only a paused moment: `--do list` gives the ids.
+  'moment.set': { need: ['id', 'v'], may: [] },
   'level.new': { need: [], may: ['name'] },
   'level.duplicate': { need: [], may: ['id', 'name'] },
   'level.rename': { need: ['to'], may: ['id'] },
@@ -73,6 +77,8 @@ export const HANDS_OP_NAMES = Object.freeze(Object.keys(HANDS_OPS));
 export const HANDS_MAX_OPS = 50;
 /** A level id, as studio.levels() gives them (letters, digits, - and _). */
 const HANDS_LEVEL_RE = /^[A-Za-z0-9_-]{1,40}$/;
+/** A codeMoment value's id, as the loader takes them (MOMENT_ID: score, timeLeft, hp-max). */
+const HANDS_MOMENT_ID_RE = /^[A-Za-z][A-Za-z0-9_-]{0,39}$/;
 /** The 9 places a codeUi is measured from (the loader's UI_FROMS). */
 export const HANDS_UI_FROMS = Object.freeze(['top-left', 'top', 'top-right', 'left', 'center', 'right', 'bottom-left', 'bottom', 'bottom-right']);
 const HANDS_UI_COLOR_RE = /^(#[0-9a-fA-F]{3,8}|(rgb|rgba|hsl|hsla)\([0-9.,%\s/+-]{1,60}\)|[a-zA-Z]{3,30})$/;
@@ -131,8 +137,14 @@ function readHandsOp(op, at, errors) {
     } else if (typeof op.id !== 'string' || !KEY_RE.test(op.id)) fail('"id" must be one UI key (a codeUi id, or an HTML element\'s data-studio-key)');
     out.id = typeof op.id === 'string' ? op.id : '';
   }
+  if (op.do === 'moment.set') {
+    if (typeof op.id !== 'string' || !HANDS_MOMENT_ID_RE.test(op.id)) fail('"id" must be a value\'s id in the game\'s codeMoment({ values }) ("timeLeft": --do list gives them under "moment")');
+    else out.id = op.id;
+    if (!handsNum(op.v) || Math.abs(op.v) > 1e12) fail('"v" must be a number (the value for this moment: 5)');
+    else out.v = op.v;
+  }
   for (const f of ['id', 'level']) {
-    if (!has(f) || (f === 'id' && op.do.startsWith('ui.'))) continue;
+    if (!has(f) || (f === 'id' && (op.do.startsWith('ui.') || op.do.startsWith('moment.')))) continue;
     // A layout's id is a codePlace id (place.*); every other id is a level's.
     if (f === 'id' && place) {
       if (typeof op.id !== 'string' || !CODE_ID_RE.test(op.id)) fail('"id" must be the codePlace id in the game\'s code (lower case letters, digits and -, like "lamp-row")');
@@ -541,6 +553,7 @@ export function handsSaid(op, x = {}) {
       : `set the UI ${op.id}: ${[op.p ? (op.from ? `at [${op.p.join(', ')}] from ${op.from}` : `offset [${op.p.join(', ')}]`) : '', op.s !== undefined ? `size ${op.s}` : '', op.set ? `look ${JSON.stringify(op.set)}` : ''].filter(Boolean).join(', ')}`;
     case 'ui.theme': return op.clear ? `took the theme's ${op.id} out of placement.json${x.cleared === false ? ' (it had nothing for it)' : ''} — your code has it now`
       : `set the theme's ${op.id} to ${op.v}`;
+    case 'moment.set': return `set ${x.name ? `${handsQ(x.name)} (${op.id})` : op.id} to ${x.v ?? op.v} for this moment${x.was !== undefined ? ` (it was ${x.was})` : ''} — the game drew one frame with it; ▶ Resume goes on from there, and it is not in the scene (not counted on Save)`;
     case 'list': return 'listed the objects, motions, code layouts, levels and the UI';
     default: return op.do;
   }
@@ -624,6 +637,7 @@ function handsFileOp(f, op, dim) {
   if (op.do === 'editor.reload') return { error: 'the editor is not open (nothing to reload)' };
   if (op.do === 'list') return { list: handsFileList(f) };
   if (kind === 'ui') return handsFileUi(f, op);
+  if (kind === 'moment') return { error: 'the game is not paused (no editor is open: this moment\'s values live in the running game, not in placement.json)' };
   if (op.do === 'object.ground') return { error: 'putting it on the ground needs the editor open (it measures what is under the object)' };
   if (op.do === 'level.new') return { error: 'a new (blank) level needs the editor open (it lists what the level keeps)' };
   if (op.do === 'level.switch') return { error: 'the editor is not open: it opens on a level when it starts' };

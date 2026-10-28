@@ -2,7 +2,7 @@
 // browser: the real local server, the built editor, the starters and examples, and the stand-in AI
 // (test/ai-feel/fake-agent.mjs), which answers a paused message in its `done` note.
 //
-//   node test/studio-pause.browser.mjs [--only cove,ruins,glow,phone,side,dark,timers,moment,moment2d,momentnarrow,momentdark,momentdemo]
+//   node test/studio-pause.browser.mjs [--only cove,ruins,glow,phone,side,dark,timers,moment,moment2d,momentnarrow,momentdark,momentdemo,values,valuesdark]
 //                                       [--shots <dir>] [--lang ja] [--before <studio-ui dir of an older build>]
 //
 // Until pause-edit (2026-10-28) a pause opened a chat panel over the game ("Pause and talk", stage 1) with "✥ Move" in
@@ -28,6 +28,8 @@
 //       button (now ▶) resumes.
 // dark  the editor in its dark look (PC and phone), paused with a reply (photos only, plus the basic checks).
 // timers Lantern Cove PC, a game stepped by timers and the wall clock (polish-1022; core/play-timers.ts).
+// values / valuesdark  This moment (pause-edit stage 2, CONTRACT.md §1.14) on examples/three-neon-boss, PC: see values()
+//            below. --shots: values-*-set.png is the docs' pause-moment picture.
 //
 // The paused moment (pause-edit's checks (1)–(5)), examples/three-neon-boss (a boss, drones and shots the
 // game makes a few seconds in):
@@ -65,6 +67,7 @@ import { startStudioServer } from '../src/server/server.mjs';
 import { launch, newPage } from './adapters-2d/cdp.mjs';
 import { startFakeAgent } from './ai-feel/fake-agent.mjs';
 import { startHost } from './web-demo-host.mjs';
+import { askEditor } from '../src/server/hands-cli.mjs';
 
 const PKG = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const args = process.argv.slice(2);
@@ -991,8 +994,12 @@ async function momentDemo() {
     const spotD = await freeSpot(page, [0.5, 0.18]);
     await stripDrag(page, 'boss', -90, 0, { from: [spotD.x, spotD.y] });
     assert.equal(await page.eval(`!!document.querySelector('[data-action=moment-appear]')?.offsetParent`), false, 'no ✦ in the demo (no AI)');
+    // This moment (pause-edit stage 2): Neon Run ships without codeMoment — the one line alone, no ✦ (no AI here).
+    const noneDemo = (await until(() => page.eval(`document.querySelector('[data-part=moment-none]')?.textContent || ''`), 4000, 'This moment\'s line in the demo')).replace(/\u200b/g, '');
+    assert.equal(noneDemo, ja ? 'スコアなどのゲームの数は、まだここに出ません。' : 'The game’s numbers, like the score, aren’t shown here yet.');
+    assert.equal(await page.eval(`!!document.querySelector('[data-part=moment-values-ask]')`), false, 'no ✦ under This moment in the demo');
     await shot('neon-paused');
-    console.log('  ok: Neon Run in the demo — Made by the game, the boss just for this moment, no ✦');
+    console.log('  ok: Neon Run in the demo — Made by the game, the boss just for this moment, no ✦; This moment: the line alone');
   } finally {
     await page.close();
     host.close();
@@ -1010,6 +1017,208 @@ async function before() {
     } finally {
       await g.close();
     }
+  }
+}
+
+/**
+ * The delivered form of examples/three-neon-boss's numbers (pause-edit stage 2; SKILL.md "This moment"): what the AI
+ * writes when asked "make this moment editable" — the example ships without it (the form before delivery). Names in
+ * the person's language, as SKILL.md asks.
+ */
+const MOMENT_VALUES = (lang) => {
+  const n = lang === 'ja' ? { score: 'スコア', timeLeft: '残り時間', hp: '体力' } : { score: 'Score', timeLeft: 'Time left', hp: 'Health' };
+  return `
+// This moment's values (the delivered form: SKILL.md "This moment").
+codeMoment({ values: {
+  score: { name: '${n.score}', get: () => score, set: (v) => { score = v; }, round: 0 },
+  timeLeft: { name: '${n.timeLeft}', unit: 's', min: 0, get: () => timeLeft, set: (v) => { timeLeft = v; } },
+  hp: { name: '${n.hp}', min: 0, max: maxHp, step: 1, get: () => hp, set: (v) => { hp = v; } },
+} });
+`;
+};
+/** The example's game.js with MOMENT_VALUES in it (after its numbers), and the import. */
+function deliverMoment(root) {
+  const f = join(root, 'game.js');
+  let src = readFileSync(f, 'utf8');
+  assert.ok(src.includes("import { applyPlacement } from './studio-placement.js';") && src.includes('const speed = 12;\n'), 'the example as this test knows it');
+  src = src.replace("import { applyPlacement } from './studio-placement.js';", "import { applyPlacement, codeMoment } from './studio-placement.js';");
+  src = src.replace('const speed = 12;\n', `const speed = 12;\n${MOMENT_VALUES(LANG)}`);
+  writeFileSync(f, src);
+}
+/** The top bar's ❚❚, then the paused moment up. */
+async function pressPause(page) {
+  await page.eval(`document.querySelector('[data-part=play-pause]').click()`);
+  await page.waitFor(IN.moment, 10000);
+  await sleep(500);
+}
+/** A value of the game's codeMoment, read in the game page (what its HUD draws from). */
+const gameValue = (page, id) => page.eval(`${GW}[Symbol.for('game-studio.moment')]?.values.get(${JSON.stringify(id)})?.get() ?? null`);
+const hudText = (page, sel) => page.eval(`${GW}.document.querySelector(${JSON.stringify(sel)})?.textContent ?? ''`);
+
+/**
+ * This moment (pause-edit stage 2, 2026-10-28; CONTRACT.md §1.14), examples/three-neon-boss, PC 1280×800:
+ *   1. the AI's codeMoment delivered (MOMENT_VALUES), ▶ Play, P: "This moment" heads the floating list — Score, Time
+ *      left, Health (3 values, their knobs, "/ 5" after Health), above the list's rows;
+ *   2. Time left → 5 (the knob pressed, 5 typed, Enter): the game's own value is 5, the HUD says TIME 0:05 (ONE frame
+ *      drawn) while the game's time does not move; Save stays empty (not in the scene); ⌘Z puts it back, ⌘⇧Z again;
+ *   3. the AI's hands: `--do list` has `moment` (3 values) and `paused`; `--do moment.set --id hp --v 1` → one heart;
+ *   4. P: on from 5 — the time left goes down from 5 and the run ends (FINISH / GAME OVER); the moment's ⌘Z steps
+ *      left the history; `--do moment.set` now: "the game is not paused";
+ *   5. the example as it ships (no codeMoment): the one line, ✦ Have Claude make this moment editable → the draft and
+ *      the chip "This moment" in the field; sent: the paused request has `intent: 'moment-values'`.
+ */
+async function values(theme = 'light') {
+  const tag = theme === 'dark' ? 'values-dark' : 'values';
+  console.log(`${tag}: This moment, Neon Run, PC 1280×800 (${theme})`);
+  const g = await open('examples/three-neon-boss', LAYOUTS.pc, { theme, play: false });
+  const { root, page, srv, shot } = g;
+  const ai = (ops) => askEditor({ origin: srv.origin, stopToken: srv.stopToken }, ops, 'claude');
+  try {
+    // 1. The AI delivered codeMoment (the code changed under the open editor: the editor page opened again on it).
+    deliverMoment(root);
+    await page.goto(srv.url);
+    await page.waitFor(IN.ready, 90000);
+    await page.eval(`document.querySelector('button.play').click()`);
+    await page.waitFor(IN.playing, 30000);
+    await until(async () => (await j(page, `JSON.stringify(${M}.list().map((i) => i.key))`)).includes('boss'), 60000, 'the boss');
+    await sleep(300);
+    await pauseP(page, [640, 120]);
+    const block = await until(() => j(page, box('[data-part=moment-values]')), 4000, 'This moment');
+    assert.match(block.text, ja ? /^この瞬間\s*0:0\d\.\d/ : /^This moment\s*0:0\d\.\d/, `the head: ${block.text}`);
+    const rows = await until(async () => {
+      const r = await j(page, `JSON.stringify([...document.querySelectorAll('[data-part=moment-value]')].map((e) => ({ id: e.dataset.id, text: e.textContent, off: e.classList.contains('off') })))`);
+      return r?.length ? r : null;
+    }, 4000, 'the values');
+    assert.deepEqual(rows.map((r) => r.id), ['score', 'timeLeft', 'hp'], 'three values, in the code\'s order');
+    assert.ok(rows.every((r) => !r.off), 'each can be changed');
+    assert.match(rows[0].text, ja ? /^スコア\s*\d{5}$/ : /^Score\s*\d{5}$/, `Score whole (round 0): ${rows[0].text}`);
+    assert.match(rows[1].text, ja ? /^残り時間\s*[\d.]+ 秒$/ : /^Time left\s*[\d.]+ s$/, `Time left with its unit: ${rows[1].text}`);
+    assert.match(rows[2].text, ja ? /^体力\s*\d \/ 5$/ : /^Health\s*\d \/ 5$/, `Health of 5: ${rows[2].text}`);
+    // The three boxes in one line (the "/ 5" in Health's box, not beside it).
+    const rights = await j(page, `JSON.stringify([...document.querySelectorAll('[data-part=moment-value] .knob-box')].map((e) => Math.round(e.getBoundingClientRect().right)))`);
+    assert.ok(Math.max(...rights) - Math.min(...rights) <= 1, `the knobs' right edges in line ${rights}`);
+    const first = await j(page, box('.objects > li'));
+    assert.ok(first && block.bottom <= first.top + 1, 'This moment is above the list\'s rows');
+    // 2. Time left → 5: pressed (no drag) the knob is a field; 5 and Enter.
+    const t0 = await page.eval(`${M}.seconds()`);
+    const was = await gameValue(page, 'timeLeft');
+    await page.eval(`(window.__mv = [], addEventListener('message', (e) => { if (String(e.data?.type).startsWith('studio:moment')) window.__mv.push(JSON.stringify(e.data).slice(0, 300)); }), true)`);
+    await press(page, await j(page, box('[data-part=moment-knob-timeLeft]')));
+    await page.waitFor(`document.activeElement?.dataset?.part === 'moment-knob-timeLeft-in'`, 3000);
+    await type(page, '5');
+    await keyIn(page, 'Enter', 'Enter', '\r');
+    // Exactly 5: the frame after the pause (its few ms of dt) was drawn when the moment came up (`settle`), so the one
+    // frame drawn with the change has none (it read 4.98 – 4.9966 before, now and then).
+    await until(async () => (await gameValue(page, 'timeLeft')) === 5, 3000, 'the game\'s time left is 5').catch(async (e) => {
+      console.log('  debug:', await gameValue(page, 'timeLeft'), await page.eval(`JSON.stringify(window.__mv)`));
+      throw e;
+    });
+    await until(async () => (await hudText(page, '#hud .time')) === 'TIME 0:05', 3000, 'one frame drawn: the HUD says 0:05');
+    assert.ok(Math.abs((await page.eval(`${M}.seconds()`)) - t0) < 0.001, 'the game\'s time did not move (one frame with time stopped)');
+    assert.equal(await page.eval(IN.save), '', 'not in the scene: nothing to save');
+    assert.match(await page.eval(`document.querySelector('[data-part=moment-knob-timeLeft]')?.textContent || ''`), ja ? /^5 秒/ : /^5 s/);
+    assert.match(await page.eval(`document.querySelector('[data-action=undo]').title`), ja ? /残り時間 を変更/ : /change Time left/);
+    await page.eval(`document.querySelector('[data-action=undo]').click()`);
+    await until(async () => Math.abs((await gameValue(page, 'timeLeft')) - was) < 1e-9, 3000, '⌘Z: the time left back');
+    assert.notEqual(await hudText(page, '#hud .time'), 'TIME 0:05', '⌘Z: the HUD drawn again');
+    await page.eval(`document.querySelector('[data-action=redo]').click()`);
+    await until(async () => (await gameValue(page, 'timeLeft')) === 5, 3000, '⌘⇧Z: 5 again (no time between: exactly)');
+    await sleep(300);
+    await shot(tag, 'set');
+    // The HUD under the floating list (decision 4: the list floats over the game's top left): folded (‹), the game's own
+    // HUD is there, drawn with 0:05 — seen in the paused moment since fix 1 (walk-1 ✕1).
+    await press(page, await j(page, box('[data-action=moment-fold]')));
+    await sleep(300);
+    const hud = await j(page, `JSON.stringify((() => { const e = ${GW}.document.querySelector('#hud'); const c = ${GW}.getComputedStyle(e); return { text: e.textContent, shown: c.display !== 'none' && c.visibility !== 'hidden' && Number(c.opacity) > 0.5 }; })())`);
+    assert.ok(hud.shown && /TIME 0:05/.test(hud.text), `the game's HUD seen with 0:05 ${JSON.stringify(hud)}`);
+    await shot(tag, 'hud');
+    await press(page, await j(page, box('[data-action=moment-unfold]')));
+    await sleep(300);
+    // 3. The AI's hands: list's moment, then one heart left.
+    const list = await ai([{ do: 'list' }]);
+    const lm = list.results?.[0]?.list;
+    assert.ok(lm && lm.paused === true && Array.isArray(lm.moment), `--do list: moment and paused ${JSON.stringify(lm && { moment: lm.moment, paused: lm.paused })}`);
+    assert.deepEqual(lm.moment.map((x) => [x.id, x.set]), [['score', true], ['timeLeft', true], ['hp', true]]);
+    assert.equal(lm.moment.find((x) => x.id === 'timeLeft').v, 5, 'the value the editor shows is the game\'s');
+    const one = await ai([{ do: 'moment.set', id: 'hp', v: 1 }]);
+    assert.equal(one.results?.[0]?.ok, true, JSON.stringify(one));
+    assert.match(one.results[0].said, /^set "(Health|体力)" \(hp\) to 1 for this moment/);
+    await until(async () => (await hudText(page, '#hud .hp')) === '♥♡♡♡♡', 3000, 'the HUD: one heart');
+    await until(async () => /1 \/ 5$/.test(await page.eval(`document.querySelector('[data-part=moment-value][data-id=hp]')?.textContent || ''`)), 3000, 'the list: Health 1');
+    // The AI's hands' one line (as for any --do): who changed it, and ⌘Z — in the field when it fits there (a short
+    // line: the Japanese one), else over it (main.ts showToast / newsInBar).
+    const said = await until(() => page.eval(`[...document.querySelectorAll('.toast, .ask-news')].filter((e) => e.offsetParent && !e.hidden).map((e) => e.textContent).join(' ')`), 3000, 'the AI\'s line');
+    assert.match(said, ja ? /Claude\s*がこの瞬間の体力を1にしました/ : /Claude set Health to 1 for this moment/, `the AI's line: ${said}`);
+    await shot(tag, 'ai');
+    // 4. P: on from 5.
+    await page.eval(`(document.activeElement?.blur?.(), true)`);
+    await page.click(640, 120);
+    await keyIn(page, 'p', 'KeyP', 'p');
+    await page.waitFor(IN.running, 5000);
+    await sleep(1500);
+    const after = await gameValue(page, 'timeLeft');
+    assert.ok(after < 4.5 && after > 2, `the time left goes down from 5 (${after.toFixed(2)})`);
+    assert.equal(await page.eval(`document.querySelector('[data-part=moment-values]')?.hidden`), true, 'This moment is away while playing');
+    const over = await until(async () => {
+      const e = await page.eval(`(() => { const e = ${GW}.document.getElementById('end'); return e && !e.hidden ? e.textContent : ''; })()`);
+      return e || null;
+    }, 12000, 'the end of the run');
+    assert.match(over, /FINISH|GAME OVER/);
+    const tip = await page.eval(`document.querySelector('[data-action=undo]').title`);
+    assert.doesNotMatch(tip, /Time left|残り時間|Health|体力/, `Resume took the moment's values out of ⌘Z (${tip})`);
+    const late = await ai([{ do: 'moment.set', id: 'timeLeft', v: 9 }]);
+    assert.deepEqual(late.results?.map((r) => [r.ok, r.error]), [[false, 'the game is not paused']]);
+    assert.equal(await page.eval(`${SHELL}.dataset.playing`), 'on', '--do moment.set did not take the person out of Play');
+    await shot(tag, 'end');
+    // A page opened for Play (Play from the start, the reply's Reload), paused: the AI's hands work there too — `--do
+    // list` has the values, `moment.set` sets one (every --do there said "the editor is still opening the game" before).
+    await page.eval(`document.querySelector('[data-part=play-more]').click()`);
+    await sleep(400);
+    await page.eval(`document.querySelector('[data-action=ctx-play-fresh]').click()`);
+    await until(async () => (await page.eval(`${SHELL}.dataset.playing === 'on' && !!document.querySelector('[data-part=play-pause]:not([hidden])') && !!${GW}?.__gameStudio?._move`)) && (await page.eval(`${M}.seconds()`)) > 1, 60000, 'a new page playing');
+    await pressPause(page);
+    const fresh = (await ai([{ do: 'list' }])).results?.[0]?.list;
+    assert.deepEqual(fresh?.moment?.map((x) => x.id), ['score', 'timeLeft', 'hp'], `--do list on a new page's moment ${JSON.stringify(fresh && { moment: fresh.moment, paused: fresh.paused })}`);
+    assert.equal(fresh.paused, true);
+    const again = await ai([{ do: 'moment.set', id: 'timeLeft', v: 5 }]);
+    assert.equal(again.results?.[0]?.ok, true, JSON.stringify(again));
+    await until(async () => (await hudText(page, '#hud .time')) === 'TIME 0:05', 3000, 'the new page\'s HUD: 0:05');
+    console.log(`  ok: 3 values, time left 5 (HUD 0:05, time stopped), ⌘Z / ⌘⇧Z, --do list / moment.set, resumed from 5 → ${over}; a new page's moment: --do list / moment.set`);
+  } finally {
+    await g.close();
+  }
+  // 5. As it ships: no codeMoment — the one line, ✦, the request.
+  const h = await open('examples/three-neon-boss', LAYOUTS.pc, { theme });
+  const agent = startFakeAgent(h.root);
+  try {
+    const { page, root, shot } = h;
+    await sleep(1200);
+    await pauseP(page, [640, 120]);
+    const none = (await until(() => page.eval(`document.querySelector('[data-part=moment-none]')?.textContent || ''`), 4000, 'the one line')).replace(/\u200b/g, '');
+    // Inside the floating list: the line and ✦ wrap to its width (they were cut at its edge once).
+    const sideBox = await j(page, box('.side'));
+    for (const sel of ['[data-part=moment-none]', '[data-part=moment-values-ask]']) {
+      const b = await j(page, box(sel));
+      assert.ok(b && b.right <= sideBox.right - 4, `${sel} inside the list (${b?.right} ≤ ${sideBox.right})`);
+    }
+    assert.equal(none, ja ? 'スコアなどのゲームの数は、まだここに出ません。' : 'The game’s numbers, like the score, aren’t shown here yet.');
+    const ask = await j(page, box('[data-part=moment-values-ask]'));
+    assert.ok(ask, '✦');
+    assert.match(ask.text.replace(/\u200b/g, ''), ja ? /Claude\s*にこの瞬間を編集できるようにしてもらう/ : /Have Claude make this moment editable/);
+    await press(page, ask);
+    await sleep(400);
+    assert.equal(await page.eval(`document.querySelector('.ask-input').value`), ja ? 'この瞬間を編集できるようにして' : 'Make this moment editable');
+    assert.match(await page.eval(`document.querySelector('.ask-chip')?.textContent || ''`), ja ? /この瞬間/ : /This moment/);
+    await shot(tag, 'none');
+    await page.eval(`(document.querySelector('.ask-input').focus(), true)`);
+    await keyIn(page, 'Enter', 'Enter', '\r');
+    const rec = await until(() => requests(root).find((r) => r.kind === 'play' && r.paused), 10000, 'the paused request');
+    assert.equal(rec.intent, 'moment-values', 'the request says what it is for');
+    assert.ok(rec.shot, 'the moment\'s picture with it');
+    console.log('  ok: no codeMoment — the line, ✦, the draft and chip, the request\'s intent moment-values');
+  } finally {
+    await agent.stop();
+    await h.close();
   }
 }
 
@@ -1038,6 +1247,8 @@ try {
     }
     if (on('momentdark')) await moment('dark');
     if (on('momentdemo')) await momentDemo();
+    if (on('values')) await values();
+    if (on('valuesdark')) await values('dark');
   }
 } finally {
   if (browser) await browser.close();

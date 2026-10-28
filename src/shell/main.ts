@@ -20,6 +20,7 @@ import {
   type FlyKey,
   type MotionKey,
   type MomentKind,
+  type MomentValue,
   type GameConfig,
   type Inset,
   type GameToolInfo,
@@ -74,6 +75,7 @@ import { askView as questionView } from './ai-ask.ts';
 import { playLine, playWords } from './play-ask.ts';
 import { clockNow, clockText, createMomentBar, madeRows, speedText, splitMoves, type HeardClock } from './moment.ts';
 import { chatOnLine, historyOf, type ChatModel } from './moment-talk.ts';
+import { createMomentValues } from './moment-values.ts';
 import { LINE_FADE_MS, LINE_GRACE_MS, lineFades, lineKey, lineStayMs } from './line-fade.ts';
 import { renderSettings } from './settings-page.ts';
 import { DEFAULT_UI, effectiveTheme, normalizeUi } from './ui-prefs.ts';
@@ -1531,8 +1533,19 @@ export function start(host: StudioHost) {
   const swapsHand = (a: PlacementPlace | null, b: PlacementPlace | null) => JSON.stringify(a?.from ?? null) !== JSON.stringify(b?.from ?? null);
 
   // ----- tools -----
+  // "This moment" (pause-edit stage 2, 2026-10-28; moment-values.ts): the game's codeMoment() numbers at the top of the
+  // paused moment's list — or its one line and ✦ when the game has none.
+  const momentValues = createMomentValues({
+    t,
+    aiVars: () => aiVars(),
+    offline: () => !!host.offline,
+    clock: () => clockText(clockNow(playHeard, performance.now())),
+    change: (id, v, end, from) => momentValueChange(id, v, end, from),
+    ask: () => momentValuesDraft(),
+  });
   const placementPanel = createPlacementPanel({
     t,
+    momentEl: momentValues.el,
     uiHead: () => uiWire.head(),
     // studio-canvas-ui stage 2: the UI layer with nothing selectable yet (the game's UI is in its picture).
     emptyNote: () => (editLayer === 'ui' && editLayers?.includes('ui') ? t('uiMissing.empty') : null),
@@ -1647,6 +1660,8 @@ export function start(host: StudioHost) {
     askTopic: () => {
       // ✦ Have Claude make it appear here (pause-edit decision 8): the chip "boss · here".
       if (moment && momentHere) return { chip: t('moment.here', { name: momentHere.label }), ph: t('moment.askPh', aiVars()) };
+      // ✦ Have Claude make this moment editable (pause-edit stage 2): the chip "This moment".
+      if (moment && momentValuesAsk) return { chip: t('moment.values'), ph: t('moment.askPh', aiVars()) };
       // ✦ Ask Claude to make this UI editable (studio-canvas-ui stage 2): "Here (bottom left)" with the place's picture.
       const ui = uiAskNow();
       if (ui) return { chip: ui.chip, ph: askPh(), ...(ui.pic ? { pic: ui.pic } : {}), tip: ui.tip };
@@ -2516,6 +2531,12 @@ export function start(host: StudioHost) {
     // read "Undo: change 2 objects" for one ship (studio-fix-0139, 2026-10-23). So the three motion kinds count as one
     // kind, and the name comes from the objects; a Library-only change (no object) names the motion itself.
     const libOnly = (k: string) => k === 'motion-lib' || k === 'motion-rename';
+    // This moment's value (pause-edit stage 2): "Undo: change Time left".
+    if (e.changes.every((c) => c.kind === 'moment-value')) {
+      const ids = [...new Set(e.changes.map((c) => c.key))];
+      const nm = (id: string) => momentVals?.find((x) => x.id === id)?.name ?? id;
+      return t('undo.value', { name: ids.length === 1 ? nm(ids[0]!) : t('undo.n', { n: ids.length }) });
+    }
     // A move just for a paused moment is a move to the person (pause-edit).
     const kinds = new Set(e.changes.map((c) => (libOnly(c.kind) ? 'motion' : c.kind === 'moment' ? 'pose' : c.kind)));
     const what = kinds.size > 1 ? 'edit' : kinds.has('add') ? 'copy' : kinds.has('remove') ? 'remove' : kinds.has('motion') ? 'motion'
@@ -2655,6 +2676,9 @@ export function start(host: StudioHost) {
         momentPose.set(c.key, structuredClone(pose));
         send({ type: 'studio:placement/pose', key: c.key, pose });
         if (c.key === selected) placementPanel.render();
+      } else if (c.kind === 'moment-value') {
+        // This moment's value (pause-edit stage 2): the game's set(v) again, one frame drawn; the list follows its answer.
+        postGame({ type: 'studio:moment/set', id: c.key, v: dir === 'undo' ? c.from : c.to });
       } else if (c.kind === 'motion' || c.kind === 'motion-lib' || c.kind === 'motion-rename') timeline.apply(c, dir);
       else if (c.kind === 'ui-set' || c.kind === 'ui-theme') uiWire.apply(c, dir);
       else if (c.kind === 'name') worldModel.rename(c.key, dir === 'undo' ? c.from : c.to);
@@ -3424,6 +3448,12 @@ export function start(host: StudioHost) {
     momentHere = null;
     momentEarlierOpen = false;
     renderMomentEarlier();
+    // This moment's values: asked at once (the head shows until they come; the game page answers in a frame).
+    momentVals = undefined;
+    momentValuesAsk = false;
+    momentValues.show(undefined);
+    // `settle`: the game draws its one frame now (moment-values.ts), so a value the person sets stays exactly as set.
+    postGame({ type: 'studio:moment/ask', settle: true });
     // The list (the Scene) is the moment's tool: the Library would hide the game, the Look / Ideas pages too.
     if (tool !== 'placement' || page !== 'tool') {
       tool = 'placement';
@@ -3449,6 +3479,12 @@ export function start(host: StudioHost) {
     momentHere = null;
     momentEarlierOpen = false;
     renderMomentEarlier();
+    momentVals = undefined;
+    momentValuesAsk = false;
+    momentValues.hide();
+    for (const w of momentAskWaits.splice(0)) w(null);
+    for (const [, w] of momentSetWaits) w({ ok: false, error: 'the game is not paused' });
+    momentSetWaits.clear();
     if (undo.dropMoment()) renderButtons();
     if (!had) return;
     selected = null;
@@ -3544,6 +3580,72 @@ export function start(host: StudioHost) {
     momentHere = { key, label: name, at: structuredClone(at), to: structuredClone(to), time: Math.round(clockNow(playHeard, performance.now()) * 10) / 10 };
     focusAsk(t('moment.appearDraft', { name }));
   }
+  /** The game page's answer about this moment's values (moment/ask, moment/set): the list, and what waited for it. */
+  function momentValuesHeard(m: Extract<BridgeToShell, { type: 'studio:moment/values' }>) {
+    for (const w of momentAskWaits.splice(0)) w(m.values);
+    const n = m.set?.n;
+    if (n !== undefined && momentSetWaits.has(n)) {
+      momentSetWaits.get(n)!(m.set!);
+      momentSetWaits.delete(n);
+    }
+    if (!playPaused) return;
+    momentVals = m.values;
+    momentValues.show(m.values);
+  }
+  /**
+   * A value turned on its knob (or by ⌘Z): the game's set(v) and one frame drawn (the game page); just for this moment —
+   * one ⌘Z step when the turn ends (decision 13; undo.ts `moment-value`, dropped at Resume), never on Save · N.
+   */
+  function momentValueChange(id: string, v: number, end: boolean, from: number) {
+    if (!playPaused) return;
+    postGame({ type: 'studio:moment/set', id, v });
+    if (end && v !== from) {
+      undo.push({ changes: [{ kind: 'moment-value', key: id, from, to: v }] });
+      renderButtons();
+    }
+  }
+  /** The AI's `--do list`: the values now, from the game page (null = none, or no answer in 2 s). */
+  function momentValuesNow(): Promise<MomentValue[] | null> {
+    return new Promise((done) => {
+      const timer = window.setTimeout(() => {
+        momentAskWaits = momentAskWaits.filter((w) => w !== got);
+        done(null);
+      }, 2000);
+      const got = (v: MomentValue[] | null) => {
+        window.clearTimeout(timer);
+        done(v);
+      };
+      momentAskWaits.push(got);
+      postGame({ type: 'studio:moment/ask' });
+    });
+  }
+  /** The AI's `--do moment.set`: as the knob's end — set, one frame, one undo change (the job's step). */
+  function momentValueSet(id: string, v: number): Promise<{ ok: boolean; v?: number; error?: string }> {
+    if (!playPaused) return Promise.resolve({ ok: false, error: 'the game is not paused' });
+    const from = momentVals?.find((x) => x.id === id)?.v ?? null;
+    const n = ++momentSetN;
+    return new Promise((done) => {
+      const timer = window.setTimeout(() => {
+        momentSetWaits.delete(n);
+        done({ ok: false, error: 'the game page did not answer in 3 s' });
+      }, 3000);
+      momentSetWaits.set(n, (r) => {
+        window.clearTimeout(timer);
+        if (r.ok && from !== null && r.v !== undefined && r.v !== from) {
+          undo.push({ changes: [{ kind: 'moment-value', key: id, from, to: r.v }] });
+          renderButtons();
+        }
+        done(r);
+      });
+      postGame({ type: 'studio:moment/set', id, v, n });
+    });
+  }
+  /** ✦ Have {ai} make this moment editable: the draft and the chip "This moment" in the field; the person sends it. */
+  function momentValuesDraft() {
+    momentValuesAsk = true;
+    momentHere = null;
+    focusAsk(t('moment.valuesDraft'));
+  }
   /** The field's words while paused: the same "play" request as before, `paused`; the first one carries the moment. */
   async function momentRequest(text: string, keys: string[]): Promise<boolean> {
     const first = !momentChat;
@@ -3551,8 +3653,10 @@ export function start(host: StudioHost) {
     const here = momentHere && momentHere.key ? momentHere : null;
     const ok = await askAi({ kind: 'play', text, paused: true, ...(first && momentAsk ? momentAsk : {}), ...(momentChat ? { chat: momentChat } : {}),
       ...(history.length ? { history } : {}), ...(keys.length ? { objects: requestObjects(keys) } : {}),
-      ...(here ? { made: true, here: { key: here.key, label: here.label, at: here.at, to: here.to, time: here.time } } : {}) });
+      ...(here ? { made: true, here: { key: here.key, label: here.label, at: here.at, to: here.to, time: here.time } } : {}),
+      ...(momentValuesAsk ? { intent: 'moment-values' as const } : {}) });
     if (!ok) return false;
+    momentValuesAsk = false;
     if (first && pending?.id) momentChat = pending.id;
     if (pending?.id) {
       momentAsks.add(pending.id);
@@ -4014,6 +4118,14 @@ export function start(host: StudioHost) {
         if (playPaused && playHeard && !playHeard.running && !m.running && m.t > playHeard.t + 1e-4) momentBar.stepped();
         playHeard = { t: m.t, rate: m.rate, running: m.running, at: performance.now() };
         momentBar.render();
+        // A Next frame moved the game on: this moment's values may have changed (pause-edit stage 2).
+        if (playPaused) {
+          momentValues.tick();
+          postGame({ type: 'studio:moment/ask' });
+        }
+        break;
+      case 'studio:moment/values':
+        momentValuesHeard(m);
         break;
       case 'studio:play/answer':
         if (playing && !host.offline) void answerAi(m.text).then((ok) => postGame({ type: 'studio:play/sent', ok }));
@@ -4769,6 +4881,14 @@ export function start(host: StudioHost) {
   let momentHere: { key: string; label: string; at: Pose; to: Pose; time: number } | null = null;
   let momentEarlierOpen = false;
   let momentList: Item[] | null = null;
+  // This moment's values (pause-edit stage 2; moment-values.ts): as last heard (undefined = not yet, null = the game has
+  // no codeMoment), ✦ Have {ai} make this moment editable waiting in the field (the request's `intent`), and what waits
+  // for the game page's answer (the AI's `--do list` / `moment.set`).
+  let momentVals: MomentValue[] | null | undefined;
+  let momentValuesAsk = false;
+  let momentSetN = 0;
+  const momentSetWaits = new Map<number, (r: { ok: boolean; v?: number; error?: string }) => void>();
+  let momentAskWaits: Array<(v: MomentValue[] | null) => void> = [];
   let playHeard: HeardClock | null = null;
   /** Just for this moment: the game moves it or made it (null = placed, or no moment). */
   const momentOf = (k: string): MomentKind | null => (moment ? momentWhy.get(k) ?? null : null);
@@ -5841,7 +5961,8 @@ export function start(host: StudioHost) {
     if (phone()) {
       if (listTools.parentElement !== headTools) headTools.prepend(listTools);
     } else if (listTools.parentElement === headTools) {
-      placementPanel.el.prepend(listTools);
+      // Under "This moment" (pause-edit stage 2), which stays the list's first block; over the rows.
+      placementPanel.el.insertBefore(listTools, placementPanel.el.querySelector('.list-scroll'));
     }
     // The phone's list button (renderSheetBtn; again at the end, once the card is placed). A language change redraws it.
     delete sheetBtn.dataset.state;
@@ -5971,10 +6092,17 @@ export function start(host: StudioHost) {
     // The new page's own list (a level opened, a reload clears `items`): ops never land on the list of the page before.
     // The UI's list counts too (studio-canvas-ui-3, 2026-10-25): a Pixi game whose menu panel the AI made UI had no world
     // object left, and every --do said "the editor is still opening the game" for minutes.
-    ready: () => bridgeAlive && editing && !swapping && ((editLayer === 'world' ? items.length > 0 : worldItems.length > 0) || (uiListed && uiItems.length > 0)),
+    // A paused moment counts as alive (pause-edit stage 2, 2026-10-28): a page opened for Play (Play from the start, the
+    // reply's Reload) never says core/hello — the bridge's edit half is not in it — yet its paused moment's editor is up
+    // (core/ready `moment`, its list in): every --do there said "the editor is still opening the game", so after a
+    // Reload the AI could neither read This moment (`list`) nor set it (`moment.set`), nor move anything (decision 9).
+    ready: () => (bridgeAlive || moment) && editing && !swapping && ((editLayer === 'world' ? items.length > 0 : worldItems.length > 0) || (uiListed && uiItems.length > 0)),
     playing: () => playing,
     // A paused moment (pause-edit decision 9): the AI's hands work on it, as the person's do — not back to Edit first.
     moment: () => moment,
+    // This moment's values (pause-edit stage 2): read from the game page now; a change as the knob's.
+    momentValues: () => momentValuesNow(),
+    momentSet: (id, v) => momentValueSet(id, v),
     stopPlay: async () => {
       if (playing) await togglePlay();
     },

@@ -1,4 +1,4 @@
-/* KUMODeck Game Studio 0.1.70 — MIT License — built file, edit src/ instead */
+/* KUMODeck Game Studio 0.1.71 — MIT License — built file, edit src/ instead */
 (() => {
 const __defs = [];
 const __cache = [];
@@ -1368,6 +1368,19 @@ const MSG_PREFIX = 'studio:';
      
                                              
      
+                                                                                                                        
+                                                                                                                
+                                                                                                                        
+                                                                                                                      
+     
+                                                   
+     
+                                                                                                                         
+                                                                                                                        
+                                                                                
+     
+                                                                    
+     
                                                                                                                   
                                                                                    
      
@@ -1631,7 +1644,39 @@ const MSG_PREFIX = 'studio:';
                                                                                
                                                 
                                                                                          
-                                   
+                                  
+     
+                                                                                                                          
+                                                                                                                           
+     
+                                                                                                                                              
+
+/**
+ * One of this moment's values (pause-edit stage 2, 2026-10-28; §1.14; the loader's codeMoment, read by
+ * bridge/moment-values.ts): the score, the time left, the health — as the moment's list shows it and `--do list` gives it.
+ */
+                              
+                                                                           
+             
+                                                
+               
+                                                                                               
+                   
+                                                                                    
+                
+                                                                         
+                 
+                                                                       
+               
+               
+               
+                                                  
+                
+                                                                                
+                 
+                                                                                                       
+               
+ 
 
 /**
  * Why an object of a paused moment is the game's, just for this moment (pause-edit, 2026-10-28; bridge/play-move.ts
@@ -1834,7 +1879,9 @@ function isStudioMessage(x         )                     {
  * into the rule's own numbers (a knob in the game's words: "From the road"), names it in `drag`, and sends `place.code
  * --fold <way>`; the offset row becomes that knob on the card.
  */
-                                                                        
+                                                                                          
+// 'moment-values' (pause-edit stage 2, 2026-10-28; §1.14): a "play" + `paused` request from the moment's ✦ Have {ai} make
+// this moment editable — the game has no codeMoment() yet; the AI names its numbers (score, time left, health) once.
 /** A rule layout named in an ask (StudioRequestInput.places): its id and name, its knobs now, its keep-out areas. */
                                
              
@@ -9647,6 +9694,9 @@ __defs[19] = function (__exports) {
 // says, with look(); the editor moves / resizes / recolours it and the game draws one frame. See "UI drawn in the canvas".
 // Stage 3 (studio-canvas-ui-3, 2026-10-24): onChange(fn) for engines that keep their UI as objects (Phaser, Pixi), `size`
 // as that object, and codeTheme({ accent: { v, label } }) — the canvas UI's theme, listed with the CSS variables.
+//
+// This moment's values (pause-edit stage 2, 2026-10-28): codeMoment({ values: { score: { name, get, set, unit, min, max,
+// step, round } } }) — the score, the time left, the health shown and changed in a paused moment. See "This moment's values".
 
 const KEY_CHARS = /[^A-Za-z0-9_:#.\-\/]/g;
 const cleanName = (s) => (typeof s === 'string' && s ? s.replace(KEY_CHARS, '_').slice(0, 80) : '');
@@ -11331,6 +11381,57 @@ function codeTheme(def) {
   return out;
 }
 
+// ---------------------------------------------------------------------------------------------
+// This moment's values (pause-edit stage 2, 2026-10-28; CONTRACT.md §1.14). The request that day: "pause in the middle of
+// a scene and give instructions, by hand or to the AI". In the paused moment the score, the time left and the health are
+// what a person wants to see and change ("5 seconds left, so I can see the end") — but they live in the game's own JS
+// (a `let score`), and the editor cannot know them. So the AI names them ONCE in the game's code, when the person asks
+// (✦ under the moment's "This moment"), the same split as codeUi: the AI writes the code, the editor is the hands.
+//
+//   codeMoment({ values: {
+//     score:    { name: 'Score', get: () => score, set: (v) => { score = v }, round: 0 },
+//     timeLeft: { name: 'Time left', unit: 's', min: 0, get: () => timeLeft, set: (v) => { timeLeft = v } },
+//     hp:       { name: 'Health', min: 0, max: 5, step: 1, get: () => hp, set: (v) => { hp = v } },
+//     wave:     { name: 'Wave', get: () => wave },            // no set: shown, not changed (grey)
+//   } });
+//
+//   name   the person's word for it (what the HUD calls it, in their language)
+//   get()  the value now: a number (anything else is shown as words, never changed)
+//   set(v) optional: put v in so the NEXT frame runs and draws with it — the editor draws one frame with time stopped
+//   unit   shown after the number ('s' is said in the person's language)
+//   min / max / step   a change is kept inside them, on the step (step 1 = whole numbers)
+//   round  digits shown after the point (0 = whole numbers; none = two at most)
+//
+// Nothing here calls get() or set(): only the editor does, while it shows a paused moment (src/bridge/moment-values.ts,
+// which also keeps a get() that throws from stopping anything). Outside the editor this only keeps the list
+// (globalThis[Symbol.for('game-studio.moment')], one per page, shared with the editor's copy of this file); called again,
+// a value with the same id is replaced (a new round), the others stay. Stage 3 adds save / load to the same object.
+const MOMENT = Symbol.for('game-studio.moment');
+// Ids as the AI names them in code (score, timeLeft, hp-max): letters first, then letters, digits, _ and -.
+const MOMENT_ID = /^[A-Za-z][A-Za-z0-9_-]{0,39}$/;
+// The moment's list shows at most these (a moment of 30 numbers is a debugger, not a moment).
+const MOMENT_MAX = 12;
+function codeMoment(def) {
+  const g = globalThis[MOMENT] && globalThis[MOMENT].values instanceof Map ? globalThis[MOMENT] : (globalThis[MOMENT] = { values: new Map() });
+  const vals = def && typeof def === 'object' && def.values && typeof def.values === 'object' ? def.values : {};
+  for (const [id, v] of Object.entries(vals)) {
+    if (!MOMENT_ID.test(id) || !v || typeof v.get !== 'function') {
+      warnOnce(`codeMoment: value "${id}" needs an id (letters, digits, _ and -) and get()`);
+      continue;
+    }
+    if (!g.values.has(id) && g.values.size >= MOMENT_MAX) {
+      warnOnce(`codeMoment: at most ${MOMENT_MAX} values (the first ${MOMENT_MAX} are shown)`);
+      break;
+    }
+    const e = { id, name: text(v.name, 40) || id, get: v.get, set: typeof v.set === 'function' ? v.set : null, unit: text(v.unit, 8) };
+    if (isNum(v.min)) e.min = v.min;
+    if (isNum(v.max) && !(e.min > v.max)) e.max = v.max;
+    if (isNum(v.step) && v.step > 0) e.step = v.step;
+    if (isNum(v.round) && v.round >= 0 && v.round <= 6) e.round = Math.round(v.round);
+    g.values.set(id, e);
+  }
+}
+
 /** The canvas a codeUi is drawn in: its own `canvas`, else the last canvas of the page (an overlay is added after the game's). */
 function uiCanvas(e) {
   let c = e.canvasOf;
@@ -11783,6 +11884,7 @@ __def(__exports, "uiAtOf", () => uiAtOf);
 __def(__exports, "uiNearest", () => uiNearest);
 __def(__exports, "codeUi", () => codeUi);
 __def(__exports, "codeTheme", () => codeTheme);
+__def(__exports, "codeMoment", () => codeMoment);
 __def(__exports, "uiTextPart", () => uiTextPart);
 __def(__exports, "uiTextNode", () => uiTextNode);
 __def(__exports, "placeUi", () => placeUi);
@@ -15180,6 +15282,10 @@ const HANDS_OPS = Object.freeze({
   // ("--accent" or "accent") — `v` = what the Theme row does, or `clear` after Save: the AI wrote it into the code (the
   // CSS, or codeTheme()), so it leaves placement.json's `theme` without a change of the person's.
   'ui.theme': { need: ['id'], may: ['v', 'clear'] },
+  // This moment's values (pause-edit stage 2, 2026-10-28; CONTRACT.md §1.14): one of the game's codeMoment() values set
+  // for the paused moment only — "the end: 5 seconds left" — as the person's knob in the moment's list does (one ⌘Z while
+  // paused, not counted on Save, gone from the history at Resume). Only a paused moment: `--do list` gives the ids.
+  'moment.set': { need: ['id', 'v'], may: [] },
   'level.new': { need: [], may: ['name'] },
   'level.duplicate': { need: [], may: ['id', 'name'] },
   'level.rename': { need: ['to'], may: ['id'] },
@@ -15195,6 +15301,8 @@ const HANDS_OP_NAMES = Object.freeze(Object.keys(HANDS_OPS));
 const HANDS_MAX_OPS = 50;
 /** A level id, as studio.levels() gives them (letters, digits, - and _). */
 const HANDS_LEVEL_RE = /^[A-Za-z0-9_-]{1,40}$/;
+/** A codeMoment value's id, as the loader takes them (MOMENT_ID: score, timeLeft, hp-max). */
+const HANDS_MOMENT_ID_RE = /^[A-Za-z][A-Za-z0-9_-]{0,39}$/;
 /** The 9 places a codeUi is measured from (the loader's UI_FROMS). */
 const HANDS_UI_FROMS = Object.freeze(['top-left', 'top', 'top-right', 'left', 'center', 'right', 'bottom-left', 'bottom', 'bottom-right']);
 const HANDS_UI_COLOR_RE = /^(#[0-9a-fA-F]{3,8}|(rgb|rgba|hsl|hsla)\([0-9.,%\s/+-]{1,60}\)|[a-zA-Z]{3,30})$/;
@@ -15253,8 +15361,14 @@ function readHandsOp(op, at, errors) {
     } else if (typeof op.id !== 'string' || !KEY_RE.test(op.id)) fail('"id" must be one UI key (a codeUi id, or an HTML element\'s data-studio-key)');
     out.id = typeof op.id === 'string' ? op.id : '';
   }
+  if (op.do === 'moment.set') {
+    if (typeof op.id !== 'string' || !HANDS_MOMENT_ID_RE.test(op.id)) fail('"id" must be a value\'s id in the game\'s codeMoment({ values }) ("timeLeft": --do list gives them under "moment")');
+    else out.id = op.id;
+    if (!handsNum(op.v) || Math.abs(op.v) > 1e12) fail('"v" must be a number (the value for this moment: 5)');
+    else out.v = op.v;
+  }
   for (const f of ['id', 'level']) {
-    if (!has(f) || (f === 'id' && op.do.startsWith('ui.'))) continue;
+    if (!has(f) || (f === 'id' && (op.do.startsWith('ui.') || op.do.startsWith('moment.')))) continue;
     // A layout's id is a codePlace id (place.*); every other id is a level's.
     if (f === 'id' && place) {
       if (typeof op.id !== 'string' || !CODE_ID_RE.test(op.id)) fail('"id" must be the codePlace id in the game\'s code (lower case letters, digits and -, like "lamp-row")');
@@ -15663,6 +15777,7 @@ function handsSaid(op, x = {}) {
       : `set the UI ${op.id}: ${[op.p ? (op.from ? `at [${op.p.join(', ')}] from ${op.from}` : `offset [${op.p.join(', ')}]`) : '', op.s !== undefined ? `size ${op.s}` : '', op.set ? `look ${JSON.stringify(op.set)}` : ''].filter(Boolean).join(', ')}`;
     case 'ui.theme': return op.clear ? `took the theme's ${op.id} out of placement.json${x.cleared === false ? ' (it had nothing for it)' : ''} — your code has it now`
       : `set the theme's ${op.id} to ${op.v}`;
+    case 'moment.set': return `set ${x.name ? `${handsQ(x.name)} (${op.id})` : op.id} to ${x.v ?? op.v} for this moment${x.was !== undefined ? ` (it was ${x.was})` : ''} — the game drew one frame with it; ▶ Resume goes on from there, and it is not in the scene (not counted on Save)`;
     case 'list': return 'listed the objects, motions, code layouts, levels and the UI';
     default: return op.do;
   }
@@ -15746,6 +15861,7 @@ function handsFileOp(f, op, dim) {
   if (op.do === 'editor.reload') return { error: 'the editor is not open (nothing to reload)' };
   if (op.do === 'list') return { list: handsFileList(f) };
   if (kind === 'ui') return handsFileUi(f, op);
+  if (kind === 'moment') return { error: 'the game is not paused (no editor is open: this moment\'s values live in the running game, not in placement.json)' };
   if (op.do === 'object.ground') return { error: 'putting it on the ground needs the editor open (it measures what is under the object)' };
   if (op.do === 'level.new') return { error: 'a new (blank) level needs the editor open (it lists what the level keeps)' };
   if (op.do === 'level.switch') return { error: 'the editor is not open: it opens on a level when it starts' };
@@ -18607,6 +18723,18 @@ const en = {
   'hands.unit.x': '×',
   'hands.unit.m/s': ' m/s',
   'hands.unit.px/s': ' px/s',
+  // This moment's values (pause-edit stage 2, 2026-10-28; moment-values.ts; the word list's "This moment" and "No
+  // numbers yet" rows): the paused moment's list head, the one line when the game has no codeMoment (it names no number:
+  // the editor does not know which the game has) and its ✦, the draft ✦ puts in the field, a row shown only, ⌘Z's
+  // words, the AI's line.
+  'moment.values': 'This moment',
+  'moment.noValues': 'The game’s numbers, like the score, aren’t shown here yet.',
+  'moment.valuesAsk': 'Have {ai} make this moment editable',
+  'moment.valuesDraft': 'Make this moment editable',
+  'moment.valueOnly': 'Shown only — it can’t be changed here',
+  'moment.valueBroken': 'The game couldn’t read this one',
+  'undo.value': 'change {name}',
+  'hands.moment.set': '{Ai} set {name} to {v} for this moment',
   // The rule's own parts on screen (studio-code-knobs, 2026-10-24): the card's Layout, its knobs, the timeline's rule
   // motion strip. The words: "rule" (chosen on 10/24) and Gemini's wording of that day.
   'rule.tag': 'Rule',
@@ -19636,6 +19764,15 @@ const ja                               = {
   'hands.unit.x': '×',
   'hands.unit.m/s': ' m/秒',
   'hands.unit.px/s': ' px/秒',
+  'moment.values': 'この瞬間',
+  // \u200b = where the line may break (the list is ~250 px; its CSS keeps Japanese words whole: word-break keep-all).
+  'moment.noValues': 'スコアなどの\u200bゲームの数は、\u200bまだ\u200bここに\u200b出ません。',
+  'moment.valuesAsk': '{ai}に\u200bこの瞬間を\u200b編集できるように\u200bしてもらう',
+  'moment.valuesDraft': 'この瞬間を編集できるようにして',
+  'moment.valueOnly': '見るだけ（ここでは変えられません）',
+  'moment.valueBroken': 'ゲームがこの数を読めませんでした',
+  'undo.value': '{name} を変更',
+  'hands.moment.set': '{ai}がこの瞬間の{name}を{v}にしました',
   'rule.tag': 'ルール',
   'rule.tagTip': 'ゲームのルールで並んでいます。数字はここで、ルールそのものは {ai} に',
   'rule.layout': 'ルール',
@@ -20259,6 +20396,10 @@ function playMoment(r, errors) {
         out.here = here;
       }
     }
+    // Pause-edit stage 2 (2026-10-28; CONTRACT.md §1.14): ✦ Have Claude make this moment editable — the moment's list had
+    // no codeMoment to show. The AI names the game's numbers once (SKILL.md "This moment"); the moment itself (picture,
+    // camera, console) comes with the first request of the pause as for any paused message.
+    if (r.intent === 'moment-values') out.intent = 'moment-values';
   }
   return out;
 }
@@ -21379,6 +21520,163 @@ __def(__exports, "chatOnLine", () => chatOnLine);
 };
 __defs[49] = function (__exports) {
 'use strict';
+// moment-values.ts
+
+// "This moment" — the paused moment's numbers at the top of its list (pause-edit stage 2, 2026-10-28; CONTRACT.md §1.14).
+//
+// The request (2026-10-28): "pause in the middle of a scene and give instructions, by hand or to the AI". Stage 1 made
+// the paused moment the editor; the score, the time left and the health stayed out of reach — they live in the game's
+// JS, which the editor cannot see. Once the AI names them in the game's code (the loader's codeMoment({ values })),
+// this block lists them over the moment's objects (01-decisions.md decision 13; the mock's 2nd frame):
+//
+//   This moment                0:42.3
+//   Score        [ 12480 ]
+//   Time left    [ 18 s  ]
+//   Health       [ 3 / 5 ]
+//   Wave           boss            ← no set(): shown only (grey)
+//
+// Each number is the rules' knob (knob.ts: drag left / right, press to type, ↑ / ↓) — one way to turn a number
+// everywhere. A change is for this moment only: the game's set(v), then ONE frame drawn with time stopped (the HUD shows
+// it), never in the scene (no Save · N, nothing written to a file), one ⌘Z step while paused, gone from the history at
+// ▶ Resume (undo.ts dropMoment). The first value of a game is changed by asking in the field ("start with 90 seconds").
+//
+// A game without codeMoment: one line, "The game’s numbers, like the score, aren’t shown here yet." and ✦ Have {ai} make
+// this moment editable (the draft in the field; the request's `intent: 'moment-values'`). The editor does not know what
+// numbers a game has, so the line names none ("like the score"). The web demo (no AI): the line alone.
+//
+// Pure of the editor's state: main.ts gives it the values (`studio:moment/values`) and does what a change means.
+                                                  
+const { h } = __require(16);
+const { icon } = __require(21);
+const { afterKnob, knobEl, knobHeld, knobNumber } = __require(25);
+
+/** The knob's step for a value: its own, else whole numbers when it is shown whole (round 0: a score). */
+function momentStep(x                                     )                     {
+  return x.step ?? (x.round === 0 ? 1 : undefined);
+}
+
+/** A value as the list writes it: whole for a count or round 0, else two decimals at most ("18.4"). */
+function momentNumber(v        , x                                     )         {
+  const s = momentStep(x);
+  if (!s && x.round !== undefined && x.round > 0) return String(Math.round(v * 10 ** x.round) / 10 ** x.round + 0);
+  return knobNumber(v, s);
+}
+
+/**
+ * " / 5" after a value with a top and no unit (a health of 3 of 5: "3 / 5"), in the knob's box as its unit — beside the
+ * box it pushed that row's box out of line with the others (the first photo); '' otherwise.
+ */
+function momentOf(x                                   )         {
+  return x.max !== undefined && !x.unit ? ` / ${knobNumber(x.max)}` : '';
+}
+
+                                   
+                                                                 
+                                    
+                                   
+                                                       
+                     
+                                                              
+                  
+                                                                                                                
+                                                                  
+                                                                                             
+              
+ 
+
+                                    
+                  
+                                                                                                
+                                                       
+                                      
+               
+                                                          
+               
+ 
+
+function createMomentValues(d                  )                    {
+  const time = h('span', { class: 'mv-time mono', dataset: { part: 'moment-time' } });
+  // Its words are set at every render: the block is made before the person's language is read (a Japanese editor
+  // showed "This moment" once).
+  const title = h('span', { class: 'list-title' });
+  const head = h('div', { class: 'mv-head' }, title, time);
+  const body = h('div', { class: 'mv-body', dataset: { part: 'moment-values-body' } });
+  const el = h('section', { class: 'moment-values', hidden: true, dataset: { part: 'moment-values' } }, head, body);
+  let shown                                  ;
+
+  const row = (x             )              => {
+    const unit = x.unit ? unitText(d.t, x.unit) : momentOf(x);
+    if (x.set && x.v !== null) {
+      const knob = knobEl({ label: x.name, unit, v: x.v, min: x.min, max: x.max, step: momentStep(x), tip: d.t('rule.knobTip'), part: `moment-knob-${x.id}`,
+        set: (v, end, from) => d.change(x.id, v, end, from) });
+      return h('div', { class: 'mv-row', dataset: { id: x.id, part: 'moment-value' } }, knob);
+    }
+    // Shown only (no set, words, or a get() that failed): grey, the reason in its tip.
+    const words = x.v !== null ? `${momentNumber(x.v, x)}${unit}` : x.error ? '—' : x.text || '—';
+    const tip = x.error ? d.t('moment.valueBroken') : d.t('moment.valueOnly');
+    return h('div', { class: 'mv-row off', title: tip, dataset: { id: x.id, part: 'moment-value', off: x.error ? 'broken' : 'shown' } },
+      h('span', { class: 'knob-l', text: x.name }), h('span', { class: 'mv-v mono', text: words }));
+  };
+
+  function render() {
+    // A knob held by a drag keeps its box (the drag's pointer capture): the rows are drawn again when it is let go.
+    if (knobHeld(body)) {
+      afterKnob(render);
+      return;
+    }
+    title.textContent = d.t('moment.values');
+    el.setAttribute('aria-label', d.t('moment.values'));
+    time.textContent = d.clock();
+    const v = shown;
+    if (v === undefined) {
+      body.replaceChildren();
+      return;
+    }
+    if (!v || !v.length) {
+      // The game has no codeMoment (decision 13; the plan's "③ when there is no hook": one line, ✦ only drafts).
+      const line = h('p', { class: 'mv-none muted', dataset: { part: 'moment-none' }, text: d.t('moment.noValues') });
+      // The card's ✦ buttons' look (placement-panel.ts aiButton: violet = the AI), its words in a span (one line, "…").
+      const ask = d.offline() ? null : h('button', { type: 'button', class: 'link-btn mv-ask ai', dataset: { action: 'moment-values-ask', part: 'moment-values-ask' },
+        title: d.t('moment.valuesAsk', d.aiVars()), onclick: () => d.ask() },
+        h('span', { class: 'ai-spark', 'aria-hidden': 'true' }, icon('spark')), h('span', { class: 'label', text: d.t('moment.valuesAsk', d.aiVars()) }));
+      body.replaceChildren(line, ...(ask ? [ask] : []));
+      return;
+    }
+    body.replaceChildren(...v.map(row));
+  }
+
+  return {
+    el,
+    show(values) {
+      shown = values;
+      el.hidden = false;
+      render();
+    },
+    hide() {
+      shown = undefined;
+      el.hidden = true;
+      body.replaceChildren();
+    },
+    tick() {
+      if (!el.hidden) time.textContent = d.clock();
+    },
+  };
+}
+
+/** A unit as the knobs say it (" s" in the person's language, "°"); the code's own word after a space when the editor has none. */
+function unitText(t                         , u        )         {
+  const s = t(`hands.unit.${u}`);
+  return s === `hands.unit.${u}` ? ` ${u}` : s;
+}
+
+__def(__exports, "momentStep", () => momentStep);
+__def(__exports, "momentNumber", () => momentNumber);
+__def(__exports, "momentOf", () => momentOf);
+__def(__exports, "createMomentValues", () => createMomentValues);
+__def(__exports, "unitText", () => unitText);
+};
+__defs[50] = function (__exports) {
+'use strict';
 // line-fade.ts
 
 // The AI's finished line goes by itself (2026-10-20: "this line is always there, it's in the way" — the line "● Moved the pillar to the
@@ -21440,7 +21738,7 @@ __def(__exports, "lineFades", () => lineFades);
 __def(__exports, "lineStayMs", () => lineStayMs);
 __def(__exports, "lineKey", () => lineKey);
 };
-__defs[50] = function (__exports) {
+__defs[51] = function (__exports) {
 'use strict';
 // ui-prefs.ts
 
@@ -21528,7 +21826,7 @@ __def(__exports, "UI_LIMITS", () => UI_LIMITS);
 __def(__exports, "normalizeUi", () => normalizeUi);
 __def(__exports, "effectiveTheme", () => effectiveTheme);
 };
-__defs[51] = function (__exports) {
+__defs[52] = function (__exports) {
 'use strict';
 // settings-page.ts
 
@@ -21538,7 +21836,7 @@ __defs[51] = function (__exports) {
                                                     
 const { h } = __require(16);
 const { icon } = __require(21);
-const { DEFAULT_UI, UI_LIMITS } = __require(50);
+const { DEFAULT_UI, UI_LIMITS } = __require(51);
 
                                
                          
@@ -21621,7 +21919,7 @@ function renderSettings(el             , d              )       {
 
 __def(__exports, "renderSettings", () => renderSettings);
 };
-__defs[52] = function (__exports) {
+__defs[53] = function (__exports) {
 'use strict';
 // edit-ops.ts
 
@@ -21725,7 +22023,7 @@ __def(__exports, "groupLayerMoves", () => groupLayerMoves);
 __def(__exports, "groupLayerPossible", () => groupLayerPossible);
 __def(__exports, "sameKind", () => sameKind);
 };
-__defs[53] = function (__exports) {
+__defs[54] = function (__exports) {
 'use strict';
 // placement-panel.ts
 
@@ -21758,7 +22056,7 @@ __defs[53] = function (__exports) {
                                                       
 const { h, safeImageSrc } = __require(16);
 const { hasLayer, layerBlocks, layerTarget, siblingsOf } = __require(32);
-const { groupLayerPossible, sameKind } = __require(52);
+const { groupLayerPossible, sameKind } = __require(53);
 const { icon, setButton } = __require(21);
 const { afterKnob, knobHeld } = __require(25);
 const { tipText } = __require(46);
@@ -21923,6 +22221,11 @@ const { toneThumb } = __require(17);
                                                              
      
                                                        
+     
+                                                                                                                          
+                                                                                                                       
+     
+                         
  
 
                                  
@@ -22004,7 +22307,7 @@ function createPlacementPanel(d                    )                 {
     hoverRow = null;
     d.hover?.([]);
   });
-  el.append(listTools, listScroll);
+  el.append(...(d.momentEl ? [d.momentEl] : []), listTools, listScroll);
   let noNameSent = false;
   // Narrow screens (the side window next to a chat, phones; a try on 2026-10-19 with an AI-written runner): the unnamed
   // objects fold into this ONE row — "Unnamed objects 36 · Ask AI to name them" — instead of 36 rows that all read
@@ -23165,7 +23468,7 @@ __def(__exports, "shortName", () => shortName);
 __def(__exports, "createPlacementPanel", () => createPlacementPanel);
 __def(__exports, "heldGameText", () => heldGameText);
 };
-__defs[54] = function (__exports) {
+__defs[55] = function (__exports) {
 'use strict';
 // rule-motion.ts
 
@@ -23235,7 +23538,7 @@ __def(__exports, "knobSaid", () => knobSaid);
 __def(__exports, "ruleWords", () => ruleWords);
 __def(__exports, "ruleKnobsAfter", () => ruleKnobsAfter);
 };
-__defs[55] = function (__exports) {
+__defs[56] = function (__exports) {
 'use strict';
 // to-rule.ts
 
@@ -23441,7 +23744,7 @@ __def(__exports, "gapText", () => gapText);
 __def(__exports, "timeText", () => timeText);
 __def(__exports, "RuleCompare", () => RuleCompare);
 };
-__defs[56] = function (__exports) {
+__defs[57] = function (__exports) {
 'use strict';
 // path-edit.ts
 
@@ -23569,7 +23872,7 @@ __def(__exports, "setKind", () => setKind);
 __def(__exports, "toggleCorner", () => toggleCorner);
 __def(__exports, "insertAt", () => insertAt);
 };
-__defs[57] = function (__exports) {
+__defs[58] = function (__exports) {
 'use strict';
 // scene-motion.ts
 
@@ -23689,7 +23992,7 @@ __def(__exports, "withTrack", () => withTrack);
 __def(__exports, "withoutTrack", () => withoutTrack);
 __def(__exports, "withOrder", () => withOrder);
 };
-__defs[58] = function (__exports) {
+__defs[59] = function (__exports) {
 'use strict';
 // motion-card.ts
 
@@ -23851,7 +24154,7 @@ function motionMenu(d                , c            , at                        
 __def(__exports, "motionCardRow", () => motionCardRow);
 __def(__exports, "motionMenu", () => motionMenu);
 };
-__defs[59] = function (__exports) {
+__defs[60] = function (__exports) {
 'use strict';
 // timeline-wire.ts
 
@@ -23872,13 +24175,13 @@ __defs[59] = function (__exports) {
 // WHY its own file: main.ts is 3,900 lines and other members change it the same week; main.ts only routes moves,
 // the card's numbers, undo and the bridge's messages through here.
                                                                                                                                                                                                                       
-const { ruleKnobsAfter, ruleOf, ruleWords } = __require(54);
-const { handPath } = __require(55);
+const { ruleKnobsAfter, ruleOf, ruleWords } = __require(55);
+const { handPath } = __require(56);
 const { motionRunner, whenOf, whensOf } = __require(19);
-const { bend, insertAt, pointKind, setKind, toggleCorner } = __require(56);
-const { asOrdinary, asScene, joinClip, likeScene, sceneMembers, trackOrder: sceneOrder, withOrder, withTrack, withoutTrack } = __require(57);
+const { bend, insertAt, pointKind, setKind, toggleCorner } = __require(57);
+const { asOrdinary, asScene, joinClip, likeScene, sceneMembers, trackOrder: sceneOrder, withOrder, withTrack, withoutTrack } = __require(58);
 const { libOf } = __require(35);
-const { motionCardRow } = __require(58);
+const { motionCardRow } = __require(59);
                                                    
                                                      
 const { sameMotion: sameFile } = __require(36);
@@ -25872,7 +26175,7 @@ function createTimeline(d              , makePanel                             =
 
 __def(__exports, "createTimeline", () => createTimeline);
 };
-__defs[60] = function (__exports) {
+__defs[61] = function (__exports) {
 'use strict';
 // motion-note.ts
 
@@ -26000,7 +26303,7 @@ function createMotionNote(d                ) {
 __def(__exports, "noteOf", () => noteOf);
 __def(__exports, "createMotionNote", () => createMotionNote);
 };
-__defs[61] = function (__exports) {
+__defs[62] = function (__exports) {
 'use strict';
 // motion-ask.ts
 
@@ -26052,7 +26355,7 @@ function createMotionAsk(d               ) {
 
 __def(__exports, "createMotionAsk", () => createMotionAsk);
 };
-__defs[62] = function (__exports) {
+__defs[63] = function (__exports) {
 'use strict';
 // save-receipt.ts
 
@@ -26164,7 +26467,7 @@ __def(__exports, "RECEIPT_NAMES", () => RECEIPT_NAMES);
 __def(__exports, "savedList", () => savedList);
 __def(__exports, "receipt", () => receipt);
 };
-__defs[63] = function (__exports) {
+__defs[64] = function (__exports) {
 'use strict';
 // offset-model.ts
 
@@ -26327,7 +26630,7 @@ __def(__exports, "snapAmount", () => snapAmount);
 __def(__exports, "noAmount", () => noAmount);
 __def(__exports, "rowAt", () => rowAt);
 };
-__defs[64] = function (__exports) {
+__defs[65] = function (__exports) {
 'use strict';
 // offset-choices.ts
 
@@ -26350,7 +26653,7 @@ __defs[64] = function (__exports) {
                                                                                                                   
 const { h } = __require(16);
 const { knobEl } = __require(25);
-const { addOffset } = __require(63);
+const { addOffset } = __require(64);
 
                                                                          
                                                        
@@ -26661,7 +26964,7 @@ __def(__exports, "createOffsetChoices", () => createOffsetChoices);
 __def(__exports, "offsetRowWords", () => offsetRowWords);
 __def(__exports, "offsetRowsEl", () => offsetRowsEl);
 };
-__defs[65] = function (__exports) {
+__defs[66] = function (__exports) {
 'use strict';
 // code-place-wire.ts
 
@@ -26711,10 +27014,10 @@ __defs[65] = function (__exports) {
 const { h } = __require(16);
 const { knobEl, knobNumber } = __require(25);
 const { turnKnobs } = __require(34);
-const { amountWords, createOffsetChoices, offsetRowWords, offsetRowsEl } = __require(64);
-const { addOffset, dragAmount, jitterRow, lastOf, movesRank, noAmount, MAX_OFFSETS } = __require(63);
+const { amountWords, createOffsetChoices, offsetRowWords, offsetRowsEl } = __require(65);
+const { addOffset, dragAmount, jitterRow, lastOf, movesRank, noAmount, MAX_OFFSETS } = __require(64);
 const { roundPose } = __require(31);
-const { gapText, placeGaps } = __require(55);
+const { gapText, placeGaps } = __require(56);
 
                                                                          
 
@@ -27478,7 +27781,7 @@ function createCodePlaceWire(d                   )                {
 
 __def(__exports, "createCodePlaceWire", () => createCodePlaceWire);
 };
-__defs[66] = function (__exports) {
+__defs[67] = function (__exports) {
 'use strict';
 // keep-out-model.ts
 
@@ -27687,7 +27990,7 @@ __def(__exports, "changedRows", () => changedRows);
 __def(__exports, "rowKey", () => rowKey);
 __def(__exports, "inBox", () => inBox);
 };
-__defs[67] = function (__exports) {
+__defs[68] = function (__exports) {
 'use strict';
 // keep-out-wire.ts
 
@@ -27718,7 +28021,7 @@ const { h } = __require(16);
 const { icon } = __require(21);
 const { knobEl } = __require(25);
                                                    
-const { MAX_AVOID, addBox, canRemove, changedRows, copyRowTo, knobRow, knobsNow, nextBoxName, removeRow, rowKey, rowsOf, setBox, switchRow } = __require(66);
+const { MAX_AVOID, addBox, canRemove, changedRows, copyRowTo, knobRow, knobsNow, nextBoxName, removeRow, rowKey, rowsOf, setBox, switchRow } = __require(67);
 
                                                                          
                                    
@@ -28012,7 +28315,7 @@ function createKeepOutWire(d                 )              {
 
 __def(__exports, "createKeepOutWire", () => createKeepOutWire);
 };
-__defs[68] = function (__exports) {
+__defs[69] = function (__exports) {
 'use strict';
 // palette.ts
 
@@ -28318,7 +28621,7 @@ __def(__exports, "SUGGEST_MIN", () => SUGGEST_MIN);
 __def(__exports, "suggests", () => suggests);
 __def(__exports, "createPalette", () => createPalette);
 };
-__defs[69] = function (__exports) {
+__defs[70] = function (__exports) {
 'use strict';
 // thumb-fit.ts
 
@@ -28419,7 +28722,7 @@ function fitPicture(src        , out = OUT)                  {
 __def(__exports, "FIT_MARGIN", () => FIT_MARGIN);
 __def(__exports, "fitPicture", () => fitPicture);
 };
-__defs[70] = function (__exports) {
+__defs[71] = function (__exports) {
 'use strict';
 // undo.ts
 
@@ -28472,7 +28775,12 @@ const { LIMITS } = __require(0);
                                                                                                                   
                                                                              
      
-                                                          
+                                                         
+     
+                                                                                                                           
+                                                                                                                           
+     
+                                                                    
 
                             
                     
@@ -28623,7 +28931,7 @@ class UndoStack {
     for (const list of [this.done, this.undone]) {
       for (let i = list.length - 1; i >= 0; i--) {
         const e = list[i] ;
-        const rest = e.changes.filter((c) => c.kind !== 'moment');
+        const rest = e.changes.filter((c) => c.kind !== 'moment' && c.kind !== 'moment-value');
         if (rest.length === e.changes.length) continue;
         if (rest.length) e.changes = rest;
         else {
@@ -28661,7 +28969,7 @@ __def(__exports, "poseChange", () => poseChange);
 __def(__exports, "UndoStack", () => UndoStack);
 __def(__exports, "sharedMotion", () => sharedMotion);
 };
-__defs[71] = function (__exports) {
+__defs[72] = function (__exports) {
 'use strict';
 // write-back.ts
 
@@ -28754,7 +29062,7 @@ __def(__exports, "FOLD_TOL", () => FOLD_TOL);
 __def(__exports, "foldGaps", () => foldGaps);
 __def(__exports, "foldSaid", () => foldSaid);
 };
-__defs[72] = function (__exports) {
+__defs[73] = function (__exports) {
 'use strict';
 // ai-hands.ts
 
@@ -28772,13 +29080,14 @@ __defs[72] = function (__exports) {
 //
 // Pure of the DOM: every effect goes through HandsDeps (main.ts wires them), so test/ai-hands.test.ts runs it with
 // stand-ins.
-                                                                                                                                                                                                                                                                                                          
+                                                                                                                                                                                                                                                                                                                       
 const { uiBoxAt } = __require(19);
 const { HANDS_MAKE_WHEN, handsAvoid, handsClip, handsMotion, handsPose, handsSaid, handsUiIds, readHandsInput } = __require(33);
 const { roundKnob, turnKnobs } = __require(34);
 const { CODE_LEN } = __require(35);
-const { MOTION_SAMPLES, gapText, motionGap, placeGaps, timeText } = __require(55);
-const { foldGaps, foldSaid } = __require(71);
+const { MOTION_SAMPLES, gapText, motionGap, placeGaps, timeText } = __require(56);
+const { foldGaps, foldSaid } = __require(72);
+const { momentNumber } = __require(49);
 
                            
              
@@ -28810,6 +29119,16 @@ const { foldGaps, foldSaid } = __require(71);
                                                                   
      
                      
+     
+                                                                                                                      
+                                                                                      
+     
+                                                 
+     
+                                                                                                                     
+                                                                                               
+     
+                                                                                          
                                                                                            
                             
                                                                                     
@@ -29021,6 +29340,36 @@ function createAiHands(d           ) {
       + `move the whole rule with place.set --offsets (every object: [{"way":"side","how":"same","v":1}]), `
       + `put just this one by hand with place.set --pin, or turn the whole layout into coordinates with place.set --hand`;
   };
+
+  // ----- this moment's values (pause-edit stage 2, 2026-10-28; CONTRACT.md §1.14) -----
+  /** A game's number for the AI's lines: 4 decimals at most (a timer read 25.12179799999695). */
+  const r4 = (v        ) => Math.round(v * 1e4) / 1e4 + 0;
+  /** One value as `--do list` gives it: what the AI needs to name it and set it (no knob words, no tooltips). */
+  const momentRow = (x             ) => ({ id: x.id, name: x.name, v: x.v === null ? null : r4(x.v), set: x.set, ...(x.unit ? { unit: x.unit } : {}),
+    ...(x.min !== undefined ? { min: x.min } : {}), ...(x.max !== undefined ? { max: x.max } : {}), ...(x.step !== undefined ? { step: x.step } : {}),
+    ...(x.text !== undefined ? { text: x.text } : {}), ...(x.error ? { error: x.error } : {}) });
+  /**
+   * `list` gets `moment` (the game's codeMoment() values now, read from the page; null = none) and `paused` (a paused
+   * moment is up: moment.set works only then) — so the AI that just wrote codeMoment sees it is there, and what its ids are.
+   */
+  async function momentList(list         )                   {
+    if (!d.momentValues || !list || typeof list !== 'object') return list;
+    const vals = await d.momentValues();
+    return { ...(list                           ), moment: vals ? vals.map(momentRow) : null, paused: !!d.moment?.() };
+  }
+  async function momentSet(op    )               {
+    if (!d.moment?.() || !d.momentSet || !d.momentValues) return { error: 'the game is not paused' };
+    const vals = await d.momentValues();
+    if (!vals) return { error: 'the game has no codeMoment() (SKILL.md "This moment": write one, then editor.reload)' };
+    const was = vals.find((x) => x.id === op.id);
+    if (!was) return { error: `the game's codeMoment() has no "${op.id}" (it has: ${vals.map((x) => `"${x.id}"`).join(', ') || 'none'})` };
+    const r = await d.momentSet(op.id, op.v);
+    if (!r.ok) return { error: r.error ?? 'the game did not answer' };
+    const v = r.v ?? op.v;
+    const unit = was.unit ? d.t(`hands.unit.${was.unit}`) : '';
+    const shown = `${momentNumber(v, was)}${!was.unit ? '' : unit === `hands.unit.${was.unit}` ? ` ${was.unit}` : unit}`;
+    return { name: was.name, v: r4(v), ...(was.v !== null ? { was: r4(was.v) } : {}), words: { name: was.name, v: shown } };
+  }
 
   async function one(op    )               {
     if (op.level && d.levels.active() && op.level !== d.levels.current()) {
@@ -29347,7 +29696,9 @@ function createAiHands(d           ) {
         d.reload(!!op.editor);
         return { words: {} };
       case 'list':
-        return { list: uiList(codeList(d.list()                           )) };
+        return { list: await momentList(uiList(codeList(d.list()                           ))) };
+      case 'moment.set':
+        return momentSet(op);
       case 'ui.code':
         return uiCode(op);
       case 'ui.set':
@@ -29568,6 +29919,9 @@ function createAiHands(d           ) {
     const read = readHandsInput(job.ops);
     if (!read.ok) return { results: [{ do: '?', ok: false, error: read.errors.join('; ') }] };
     const ops = read.ops        ;
+    // moment.set while the game runs (or in Edit): said at once — neither waiting for the editor nor taking the person out
+    // of ▶ Play (pause-edit stage 2: a value is changed only in a paused moment).
+    if (ops.every((op) => op.do === 'moment.set') && !d.moment?.()) return { results: ops.map((op) => ({ do: op.do, ok: false, error: 'the game is not paused' })) };
     if (!(await waitReady())) return { results: ops.map((op) => ({ do: op.do, ok: false, error: 'the editor is still opening the game: run the same --do again in a moment' })) };
     if (d.playing() && !d.moment?.()) await d.stopPlay();
     // A job of UI ops is done on the UI layer (its one ⌘Z is a step of that layer); every other job on the world.
@@ -29633,7 +29987,7 @@ function createAiHands(d           ) {
 
 __def(__exports, "createAiHands", () => createAiHands);
 };
-__defs[73] = function (__exports) {
+__defs[74] = function (__exports) {
 'use strict';
 // tooltip.ts
 
@@ -29753,7 +30107,7 @@ function installTooltips(root             )                                    {
 
 __def(__exports, "installTooltips", () => installTooltips);
 };
-__defs[74] = function (__exports) {
+__defs[75] = function (__exports) {
 'use strict';
 // shortcuts.ts
 
@@ -29842,7 +30196,7 @@ function createShortcutSheet(d                   ) {
 
 __def(__exports, "createShortcutSheet", () => createShortcutSheet);
 };
-__defs[75] = function (__exports) {
+__defs[76] = function (__exports) {
 'use strict';
 // context-menu.ts
 
@@ -30111,7 +30465,7 @@ function createContextMenu(d                 ) {
 __def(__exports, "placeMenu", () => placeMenu);
 __def(__exports, "createContextMenu", () => createContextMenu);
 };
-__defs[76] = function (__exports) {
+__defs[77] = function (__exports) {
 'use strict';
 // levels.ts
 
@@ -30531,7 +30885,7 @@ __def(__exports, "slugOf", () => slugOf);
 __def(__exports, "levelIdOf", () => levelIdOf);
 __def(__exports, "Levels", () => Levels);
 };
-__defs[77] = function (__exports) {
+__defs[78] = function (__exports) {
 'use strict';
 // check-note.ts
 
@@ -30570,7 +30924,7 @@ function checkNoteId(check                        , items                       
 
 __def(__exports, "checkNoteId", () => checkNoteId);
 };
-__defs[78] = function (__exports) {
+__defs[79] = function (__exports) {
 'use strict';
 // level-switch.ts
 
@@ -30744,7 +31098,7 @@ function createLevelSwitch(d                 ) {
 __def(__exports, "makeRows", () => makeRows);
 __def(__exports, "createLevelSwitch", () => createLevelSwitch);
 };
-__defs[79] = function (__exports) {
+__defs[80] = function (__exports) {
 'use strict';
 // context-rows.ts
 
@@ -30942,7 +31296,7 @@ function contextRows(place          , f          )           {
 
 __def(__exports, "contextRows", () => contextRows);
 };
-__defs[80] = function (__exports) {
+__defs[81] = function (__exports) {
 'use strict';
 // safe-save.ts
 
@@ -31053,7 +31407,7 @@ function createSafeSave(deps                              ) {
 __def(__exports, "bigChanges", () => bigChanges);
 __def(__exports, "createSafeSave", () => createSafeSave);
 };
-__defs[81] = function (__exports) {
+__defs[82] = function (__exports) {
 'use strict';
 // unsaved-guard.ts
 
@@ -31210,7 +31564,7 @@ __def(__exports, "lostBy", () => lostBy);
 __def(__exports, "playAsks", () => playAsks);
 __def(__exports, "createUnsavedGuard", () => createUnsavedGuard);
 };
-__defs[82] = function (__exports) {
+__defs[83] = function (__exports) {
 'use strict';
 // layer-switch.ts
 
@@ -31280,7 +31634,7 @@ function createLayerSwitch(choose                        , togglePeek           
 
 __def(__exports, "createLayerSwitch", () => createLayerSwitch);
 };
-__defs[83] = function (__exports) {
+__defs[84] = function (__exports) {
 'use strict';
 // ui-layer.ts
 
@@ -31383,7 +31737,7 @@ __def(__exports, "uiEntries", () => uiEntries);
 __def(__exports, "withLooks", () => withLooks);
 __def(__exports, "withUi", () => withUi);
 };
-__defs[84] = function (__exports) {
+__defs[85] = function (__exports) {
 'use strict';
 // ui-card.ts
 
@@ -31553,7 +31907,7 @@ function createUiCard(d            ) {
 
 __def(__exports, "createUiCard", () => createUiCard);
 };
-__defs[85] = function (__exports) {
+__defs[86] = function (__exports) {
 'use strict';
 // ui-screens.ts
 
@@ -31616,7 +31970,7 @@ function createUiScreens(d               ) {
 
 __def(__exports, "createUiScreens", () => createUiScreens);
 };
-__defs[86] = function (__exports) {
+__defs[87] = function (__exports) {
 'use strict';
 // ui-style-model.ts
 
@@ -31851,7 +32205,7 @@ __def(__exports, "validLook", () => validLook);
 __def(__exports, "validTheme", () => validTheme);
 __def(__exports, "UiStyleModel", () => UiStyleModel);
 };
-__defs[87] = function (__exports) {
+__defs[88] = function (__exports) {
 'use strict';
 // ui-theme.ts
 
@@ -31966,7 +32320,7 @@ function createUiTheme(d             ) {
 
 __def(__exports, "createUiTheme", () => createUiTheme);
 };
-__defs[88] = function (__exports) {
+__defs[89] = function (__exports) {
 'use strict';
 // ui-wire.ts
 
@@ -31982,11 +32336,11 @@ __defs[88] = function (__exports) {
 //     end of editing) and here only to draw the card — never saved. A new game page starts without them.
                                                                                                                                                                             
                                                    
-const { createUiCard } = __require(84);
-const { withLooks } = __require(83);
-const { createUiScreens } = __require(85);
-const { UiStyleModel, validLook, validTheme } = __require(86);
-const { createUiTheme } = __require(87);
+const { createUiCard } = __require(85);
+const { withLooks } = __require(84);
+const { createUiScreens } = __require(86);
+const { UiStyleModel, validLook, validTheme } = __require(87);
+const { createUiTheme } = __require(88);
                                                    
 
                              
@@ -32253,7 +32607,7 @@ function createUiWire(d            ) {
 
 __def(__exports, "createUiWire", () => createUiWire);
 };
-__defs[89] = function (__exports) {
+__defs[90] = function (__exports) {
 'use strict';
 // ui-missing.ts
 
@@ -32371,7 +32725,7 @@ function createUiMissing(d               ) {
 
 __def(__exports, "createUiMissing", () => createUiMissing);
 };
-__defs[90] = function (__exports) {
+__defs[91] = function (__exports) {
 'use strict';
 // sheet-fold.ts
 
@@ -32448,7 +32802,7 @@ __def(__exports, "barPress", () => barPress);
 __def(__exports, "FOLD_DRAG", () => FOLD_DRAG);
 __def(__exports, "gripEnd", () => gripEnd);
 };
-__defs[91] = function (__exports) {
+__defs[92] = function (__exports) {
 'use strict';
 // main.ts
 
@@ -32489,44 +32843,45 @@ const { askView: questionView } = __require(44);
 const { playLine, playWords } = __require(45);
 const { clockNow, clockText, createMomentBar, madeRows, speedText, splitMoves } = __require(47);
 const { chatOnLine, historyOf } = __require(48);
-const { LINE_FADE_MS, LINE_GRACE_MS, lineFades, lineKey, lineStayMs } = __require(49);
-const { renderSettings } = __require(51);
-const { DEFAULT_UI, effectiveTheme, normalizeUi } = __require(50);
+const { createMomentValues } = __require(49);
+const { LINE_FADE_MS, LINE_GRACE_MS, lineFades, lineKey, lineStayMs } = __require(50);
+const { renderSettings } = __require(52);
+const { DEFAULT_UI, effectiveTheme, normalizeUi } = __require(51);
 const { dropTarget, hasLayer, layerTarget } = __require(32);
-const { createPlacementPanel } = __require(53);
-const { createTimeline } = __require(59);
-const { createMotionNote, noteOf } = __require(60);
+const { createPlacementPanel } = __require(54);
+const { createTimeline } = __require(60);
+const { createMotionNote, noteOf } = __require(61);
 const { libCounted } = __require(24);
-const { createMotionAsk } = __require(61);
+const { createMotionAsk } = __require(62);
 const { CODE_LEN, motionLibrary } = __require(35);
 const { attachWorld, roundLib } = __require(36);
 const { icon, setButton } = __require(21);
-const { receipt } = __require(62);
-const { createCodePlaceWire } = __require(65);
-const { createKeepOutWire } = __require(67);
-const { createPalette } = __require(68);
-const { fitPicture } = __require(69);
+const { receipt } = __require(63);
+const { createCodePlaceWire } = __require(66);
+const { createKeepOutWire } = __require(68);
+const { createPalette } = __require(69);
+const { fitPicture } = __require(70);
 const { PlacementModel } = __require(37);
-const { UndoStack, poseChange, sharedMotion } = __require(70);
-const { createAiHands } = __require(72);
-const { MOTION_SAMPLES, RuleCompare, gapText, motionGap, timeText } = __require(55);
-const { copyKey, groupLayerMoves, groupLayerPossible, sameKind } = __require(52);
+const { UndoStack, poseChange, sharedMotion } = __require(71);
+const { createAiHands } = __require(73);
+const { MOTION_SAMPLES, RuleCompare, gapText, motionGap, timeText } = __require(56);
+const { copyKey, groupLayerMoves, groupLayerPossible, sameKind } = __require(53);
 const { displayName, forgetNames, noteItems, useGivenNames, useNameLang } = __require(14);
 const { keyOf, tipText } = __require(46);
-const { installTooltips } = __require(73);
-const { createShortcutSheet } = __require(74);
-const { createContextMenu } = __require(75);
-const { Levels, worldOf } = __require(76);
-const { checkNoteId } = __require(77);
-const { createLevelSwitch, makeRows } = __require(78);
-const { contextRows } = __require(79);
-const { bigChanges, createSafeSave } = __require(80);
-const { createUnsavedGuard, lostBy, playAsks } = __require(81);
-const { createLayerSwitch } = __require(82);
-const { uiAsPlacement, uiEntries, withUi } = __require(83);
-const { createUiWire } = __require(88);
-const { createUiMissing } = __require(89);
-const { barPress, FOLD_DRAG, gripEnd, readFold, writeFold } = __require(90);
+const { installTooltips } = __require(74);
+const { createShortcutSheet } = __require(75);
+const { createContextMenu } = __require(76);
+const { Levels, worldOf } = __require(77);
+const { checkNoteId } = __require(78);
+const { createLevelSwitch, makeRows } = __require(79);
+const { contextRows } = __require(80);
+const { bigChanges, createSafeSave } = __require(81);
+const { createUnsavedGuard, lostBy, playAsks } = __require(82);
+const { createLayerSwitch } = __require(83);
+const { uiAsPlacement, uiEntries, withUi } = __require(84);
+const { createUiWire } = __require(89);
+const { createUiMissing } = __require(90);
+const { barPress, FOLD_DRAG, gripEnd, readFold, writeFold } = __require(91);
 
                                                                         
 
@@ -33946,8 +34301,19 @@ function start(host            ) {
   const swapsHand = (a                       , b                       ) => JSON.stringify(a?.from ?? null) !== JSON.stringify(b?.from ?? null);
 
   // ----- tools -----
+  // "This moment" (pause-edit stage 2, 2026-10-28; moment-values.ts): the game's codeMoment() numbers at the top of the
+  // paused moment's list — or its one line and ✦ when the game has none.
+  const momentValues = createMomentValues({
+    t,
+    aiVars: () => aiVars(),
+    offline: () => !!host.offline,
+    clock: () => clockText(clockNow(playHeard, performance.now())),
+    change: (id, v, end, from) => momentValueChange(id, v, end, from),
+    ask: () => momentValuesDraft(),
+  });
   const placementPanel = createPlacementPanel({
     t,
+    momentEl: momentValues.el,
     uiHead: () => uiWire.head(),
     // studio-canvas-ui stage 2: the UI layer with nothing selectable yet (the game's UI is in its picture).
     emptyNote: () => (editLayer === 'ui' && editLayers?.includes('ui') ? t('uiMissing.empty') : null),
@@ -34062,6 +34428,8 @@ function start(host            ) {
     askTopic: () => {
       // ✦ Have Claude make it appear here (pause-edit decision 8): the chip "boss · here".
       if (moment && momentHere) return { chip: t('moment.here', { name: momentHere.label }), ph: t('moment.askPh', aiVars()) };
+      // ✦ Have Claude make this moment editable (pause-edit stage 2): the chip "This moment".
+      if (moment && momentValuesAsk) return { chip: t('moment.values'), ph: t('moment.askPh', aiVars()) };
       // ✦ Ask Claude to make this UI editable (studio-canvas-ui stage 2): "Here (bottom left)" with the place's picture.
       const ui = uiAskNow();
       if (ui) return { chip: ui.chip, ph: askPh(), ...(ui.pic ? { pic: ui.pic } : {}), tip: ui.tip };
@@ -34931,6 +35299,12 @@ function start(host            ) {
     // read "Undo: change 2 objects" for one ship (studio-fix-0139, 2026-10-23). So the three motion kinds count as one
     // kind, and the name comes from the objects; a Library-only change (no object) names the motion itself.
     const libOnly = (k        ) => k === 'motion-lib' || k === 'motion-rename';
+    // This moment's value (pause-edit stage 2): "Undo: change Time left".
+    if (e.changes.every((c) => c.kind === 'moment-value')) {
+      const ids = [...new Set(e.changes.map((c) => c.key))];
+      const nm = (id        ) => momentVals?.find((x) => x.id === id)?.name ?? id;
+      return t('undo.value', { name: ids.length === 1 ? nm(ids[0] ) : t('undo.n', { n: ids.length }) });
+    }
     // A move just for a paused moment is a move to the person (pause-edit).
     const kinds = new Set(e.changes.map((c) => (libOnly(c.kind) ? 'motion' : c.kind === 'moment' ? 'pose' : c.kind)));
     const what = kinds.size > 1 ? 'edit' : kinds.has('add') ? 'copy' : kinds.has('remove') ? 'remove' : kinds.has('motion') ? 'motion'
@@ -35070,6 +35444,9 @@ function start(host            ) {
         momentPose.set(c.key, structuredClone(pose));
         send({ type: 'studio:placement/pose', key: c.key, pose });
         if (c.key === selected) placementPanel.render();
+      } else if (c.kind === 'moment-value') {
+        // This moment's value (pause-edit stage 2): the game's set(v) again, one frame drawn; the list follows its answer.
+        postGame({ type: 'studio:moment/set', id: c.key, v: dir === 'undo' ? c.from : c.to });
       } else if (c.kind === 'motion' || c.kind === 'motion-lib' || c.kind === 'motion-rename') timeline.apply(c, dir);
       else if (c.kind === 'ui-set' || c.kind === 'ui-theme') uiWire.apply(c, dir);
       else if (c.kind === 'name') worldModel.rename(c.key, dir === 'undo' ? c.from : c.to);
@@ -35839,6 +36216,12 @@ function start(host            ) {
     momentHere = null;
     momentEarlierOpen = false;
     renderMomentEarlier();
+    // This moment's values: asked at once (the head shows until they come; the game page answers in a frame).
+    momentVals = undefined;
+    momentValuesAsk = false;
+    momentValues.show(undefined);
+    // `settle`: the game draws its one frame now (moment-values.ts), so a value the person sets stays exactly as set.
+    postGame({ type: 'studio:moment/ask', settle: true });
     // The list (the Scene) is the moment's tool: the Library would hide the game, the Look / Ideas pages too.
     if (tool !== 'placement' || page !== 'tool') {
       tool = 'placement';
@@ -35864,6 +36247,12 @@ function start(host            ) {
     momentHere = null;
     momentEarlierOpen = false;
     renderMomentEarlier();
+    momentVals = undefined;
+    momentValuesAsk = false;
+    momentValues.hide();
+    for (const w of momentAskWaits.splice(0)) w(null);
+    for (const [, w] of momentSetWaits) w({ ok: false, error: 'the game is not paused' });
+    momentSetWaits.clear();
     if (undo.dropMoment()) renderButtons();
     if (!had) return;
     selected = null;
@@ -35959,6 +36348,72 @@ function start(host            ) {
     momentHere = { key, label: name, at: structuredClone(at), to: structuredClone(to), time: Math.round(clockNow(playHeard, performance.now()) * 10) / 10 };
     focusAsk(t('moment.appearDraft', { name }));
   }
+  /** The game page's answer about this moment's values (moment/ask, moment/set): the list, and what waited for it. */
+  function momentValuesHeard(m                                                          ) {
+    for (const w of momentAskWaits.splice(0)) w(m.values);
+    const n = m.set?.n;
+    if (n !== undefined && momentSetWaits.has(n)) {
+      momentSetWaits.get(n) (m.set );
+      momentSetWaits.delete(n);
+    }
+    if (!playPaused) return;
+    momentVals = m.values;
+    momentValues.show(m.values);
+  }
+  /**
+   * A value turned on its knob (or by ⌘Z): the game's set(v) and one frame drawn (the game page); just for this moment —
+   * one ⌘Z step when the turn ends (decision 13; undo.ts `moment-value`, dropped at Resume), never on Save · N.
+   */
+  function momentValueChange(id        , v        , end         , from        ) {
+    if (!playPaused) return;
+    postGame({ type: 'studio:moment/set', id, v });
+    if (end && v !== from) {
+      undo.push({ changes: [{ kind: 'moment-value', key: id, from, to: v }] });
+      renderButtons();
+    }
+  }
+  /** The AI's `--do list`: the values now, from the game page (null = none, or no answer in 2 s). */
+  function momentValuesNow()                                {
+    return new Promise((done) => {
+      const timer = window.setTimeout(() => {
+        momentAskWaits = momentAskWaits.filter((w) => w !== got);
+        done(null);
+      }, 2000);
+      const got = (v                      ) => {
+        window.clearTimeout(timer);
+        done(v);
+      };
+      momentAskWaits.push(got);
+      postGame({ type: 'studio:moment/ask' });
+    });
+  }
+  /** The AI's `--do moment.set`: as the knob's end — set, one frame, one undo change (the job's step). */
+  function momentValueSet(id        , v        )                                                       {
+    if (!playPaused) return Promise.resolve({ ok: false, error: 'the game is not paused' });
+    const from = momentVals?.find((x) => x.id === id)?.v ?? null;
+    const n = ++momentSetN;
+    return new Promise((done) => {
+      const timer = window.setTimeout(() => {
+        momentSetWaits.delete(n);
+        done({ ok: false, error: 'the game page did not answer in 3 s' });
+      }, 3000);
+      momentSetWaits.set(n, (r) => {
+        window.clearTimeout(timer);
+        if (r.ok && from !== null && r.v !== undefined && r.v !== from) {
+          undo.push({ changes: [{ kind: 'moment-value', key: id, from, to: r.v }] });
+          renderButtons();
+        }
+        done(r);
+      });
+      postGame({ type: 'studio:moment/set', id, v, n });
+    });
+  }
+  /** ✦ Have {ai} make this moment editable: the draft and the chip "This moment" in the field; the person sends it. */
+  function momentValuesDraft() {
+    momentValuesAsk = true;
+    momentHere = null;
+    focusAsk(t('moment.valuesDraft'));
+  }
   /** The field's words while paused: the same "play" request as before, `paused`; the first one carries the moment. */
   async function momentRequest(text        , keys          )                   {
     const first = !momentChat;
@@ -35966,8 +36421,10 @@ function start(host            ) {
     const here = momentHere && momentHere.key ? momentHere : null;
     const ok = await askAi({ kind: 'play', text, paused: true, ...(first && momentAsk ? momentAsk : {}), ...(momentChat ? { chat: momentChat } : {}),
       ...(history.length ? { history } : {}), ...(keys.length ? { objects: requestObjects(keys) } : {}),
-      ...(here ? { made: true, here: { key: here.key, label: here.label, at: here.at, to: here.to, time: here.time } } : {}) });
+      ...(here ? { made: true, here: { key: here.key, label: here.label, at: here.at, to: here.to, time: here.time } } : {}),
+      ...(momentValuesAsk ? { intent: 'moment-values'          } : {}) });
     if (!ok) return false;
+    momentValuesAsk = false;
     if (first && pending?.id) momentChat = pending.id;
     if (pending?.id) {
       momentAsks.add(pending.id);
@@ -36429,6 +36886,14 @@ function start(host            ) {
         if (playPaused && playHeard && !playHeard.running && !m.running && m.t > playHeard.t + 1e-4) momentBar.stepped();
         playHeard = { t: m.t, rate: m.rate, running: m.running, at: performance.now() };
         momentBar.render();
+        // A Next frame moved the game on: this moment's values may have changed (pause-edit stage 2).
+        if (playPaused) {
+          momentValues.tick();
+          postGame({ type: 'studio:moment/ask' });
+        }
+        break;
+      case 'studio:moment/values':
+        momentValuesHeard(m);
         break;
       case 'studio:play/answer':
         if (playing && !host.offline) void answerAi(m.text).then((ok) => postGame({ type: 'studio:play/sent', ok }));
@@ -37184,6 +37649,14 @@ function start(host            ) {
   let momentHere                                                                          = null;
   let momentEarlierOpen = false;
   let momentList                = null;
+  // This moment's values (pause-edit stage 2; moment-values.ts): as last heard (undefined = not yet, null = the game has
+  // no codeMoment), ✦ Have {ai} make this moment editable waiting in the field (the request's `intent`), and what waits
+  // for the game page's answer (the AI's `--do list` / `moment.set`).
+  let momentVals                                  ;
+  let momentValuesAsk = false;
+  let momentSetN = 0;
+  const momentSetWaits = new Map                                                                  ();
+  let momentAskWaits                                           = [];
   let playHeard                    = null;
   /** Just for this moment: the game moves it or made it (null = placed, or no moment). */
   const momentOf = (k        )                    => (moment ? momentWhy.get(k) ?? null : null);
@@ -38256,7 +38729,8 @@ function start(host            ) {
     if (phone()) {
       if (listTools.parentElement !== headTools) headTools.prepend(listTools);
     } else if (listTools.parentElement === headTools) {
-      placementPanel.el.prepend(listTools);
+      // Under "This moment" (pause-edit stage 2), which stays the list's first block; over the rows.
+      placementPanel.el.insertBefore(listTools, placementPanel.el.querySelector('.list-scroll'));
     }
     // The phone's list button (renderSheetBtn; again at the end, once the card is placed). A language change redraws it.
     delete sheetBtn.dataset.state;
@@ -38386,10 +38860,17 @@ function start(host            ) {
     // The new page's own list (a level opened, a reload clears `items`): ops never land on the list of the page before.
     // The UI's list counts too (studio-canvas-ui-3, 2026-10-25): a Pixi game whose menu panel the AI made UI had no world
     // object left, and every --do said "the editor is still opening the game" for minutes.
-    ready: () => bridgeAlive && editing && !swapping && ((editLayer === 'world' ? items.length > 0 : worldItems.length > 0) || (uiListed && uiItems.length > 0)),
+    // A paused moment counts as alive (pause-edit stage 2, 2026-10-28): a page opened for Play (Play from the start, the
+    // reply's Reload) never says core/hello — the bridge's edit half is not in it — yet its paused moment's editor is up
+    // (core/ready `moment`, its list in): every --do there said "the editor is still opening the game", so after a
+    // Reload the AI could neither read This moment (`list`) nor set it (`moment.set`), nor move anything (decision 9).
+    ready: () => (bridgeAlive || moment) && editing && !swapping && ((editLayer === 'world' ? items.length > 0 : worldItems.length > 0) || (uiListed && uiItems.length > 0)),
     playing: () => playing,
     // A paused moment (pause-edit decision 9): the AI's hands work on it, as the person's do — not back to Edit first.
     moment: () => moment,
+    // This moment's values (pause-edit stage 2): read from the game page now; a change as the knob's.
+    momentValues: () => momentValuesNow(),
+    momentSet: (id, v) => momentValueSet(id, v),
     stopPlay: async () => {
       if (playing) await togglePlay();
     },
@@ -38793,7 +39274,7 @@ function start(host            ) {
 
 __def(__exports, "start", () => start);
 };
-__defs[92] = function (__exports) {
+__defs[93] = function (__exports) {
 'use strict';
 // host-local.ts
 
@@ -38993,19 +39474,19 @@ function createLocalHost(base         = LOCAL_PATHS.api)             {
 
 __def(__exports, "createLocalHost", () => createLocalHost);
 };
-__defs[93] = function (__exports) {
+__defs[94] = function (__exports) {
 'use strict';
 // local.ts
 
 // Entry of studio-shell.js: the shell page served by the local server
 // (skills/arrange/bin/studio.mjs), talking to it through createLocalHost().
 // The browser-only web demo has its own entry (src/hosts/browser/main.ts).
-const { start } = __require(91);
-const { createLocalHost } = __require(92);
+const { start } = __require(92);
+const { createLocalHost } = __require(93);
 
 start(createLocalHost());
 
 
 };
-__require(93);
+__require(94);
 })();
