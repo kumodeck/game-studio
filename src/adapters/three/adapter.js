@@ -96,6 +96,8 @@ export function createThreeAdapter({ scene, renderer, camera }) {
   const nativeRender = renderer.__studioRender || renderer.render;
   const gameCamera = () => boot.lastCamera.get(scene) || camera || boot.readyCamera;
   let editing = false;
+  // Over a paused moment of Play (begin({ moment: true }), pause-edit 2026-10-28): drawn the game's way (paintMoment).
+  let moment = false;
   let view = null;
   let dirty = true;
   let watchSnap = null; // transforms kept while the editor watches the game play (watch)
@@ -486,14 +488,21 @@ export function createThreeAdapter({ scene, renderer, camera }) {
   }
 
   // ---------------------------------------------------------------- drawing while editing
+  /** The editor's picture: over a paused moment the game's own way (paintMoment), in Edit the plain draw. */
   function draw() {
-    syncView();
-    const saved = { autoClear: renderer.autoClear, target: renderer.getRenderTarget ? renderer.getRenderTarget() : null };
-    // Fog is tuned for the game camera (close to the player). The edit camera is usually much farther away, and the
-    // whole map would sink into fog colour. Push the fog out by the edit distance for our own frames only.
-    // Only the distance BEYOND the opening view's (the game camera's) counts (polish pass 2026-10-16): the opening
-    // view is the player's own picture, haze included; before, a 45 m opening distance thinned a harbour's dusk haze
-    // to a fifth and the opening looked flat. `fogRef` = 10 m when the view did not start from the game camera.
+    if (moment) paintMoment();
+    else drawPlain();
+    const el = renderer.domElement;
+    boot.screen = { by: 'studio', w: el ? el.width : 0, h: el ? el.height : 0 };
+  }
+  /**
+   * Fog is tuned for the game camera (close to the player). The edit camera is usually much farther away, and the
+   * whole map would sink into fog colour. Push the fog out by the edit distance for our own frames only (`run`), then
+   * back. Only the distance BEYOND the opening view's (the game camera's) counts (polish pass 2026-10-16): the opening
+   * view is the player's own picture, haze included; before, a 45 m opening distance thinned a harbour's dusk haze
+   * to a fifth and the opening looked flat. `fogRef` = 10 m when the view did not start from the game camera.
+   */
+  function withEditFog(run) {
     const fog = scene.fog;
     const fogSaved = fog ? { near: fog.near, far: fog.far, density: fog.density } : null;
     if (fog) {
@@ -501,24 +510,197 @@ export function createThreeAdapter({ scene, renderer, camera }) {
       if (fog.isFog) (fog.near += Math.max(0, d - fogRef)), (fog.far += Math.max(0, d - fogRef));
       else if (fog.isFogExp2) fog.density = fog.density * Math.min(1, fogRef / Math.max(1, d));
     }
-    boot.selfRender++;
     try {
-      if (renderer.setRenderTarget) renderer.setRenderTarget(null);
-      renderer.autoClear = true;
-      const [w, h] = cssSize();
-      renderer.setScissorTest(false);
-      renderer.setViewport(0, 0, w, h);
-      if (renderer.shadowMap) renderer.shadowMap.needsUpdate = true;
-      nativeRender.call(renderer, scene, view.camera);
+      return run();
     } finally {
-      boot.selfRender--;
       if (fog && fogSaved) {
         if (fog.isFog) (fog.near = fogSaved.near), (fog.far = fogSaved.far);
         else if (fog.isFogExp2) fog.density = fogSaved.density;
       }
+    }
+  }
+  /** The scene with the edit camera, as Edit draws it (no post-processing: fast, and the colours stay the same). */
+  function drawPlain() {
+    syncView();
+    const saved = { autoClear: renderer.autoClear, target: renderer.getRenderTarget ? renderer.getRenderTarget() : null };
+    boot.selfRender++;
+    try {
+      withEditFog(() => {
+        if (renderer.setRenderTarget) renderer.setRenderTarget(null);
+        renderer.autoClear = true;
+        const [w, h] = cssSize();
+        renderer.setScissorTest(false);
+        renderer.setViewport(0, 0, w, h);
+        if (renderer.shadowMap) renderer.shadowMap.needsUpdate = true;
+        nativeRender.call(renderer, scene, view.camera);
+      });
+    } finally {
+      boot.selfRender--;
       renderer.autoClear = saved.autoClear;
       if (renderer.setRenderTarget && saved.target) renderer.setRenderTarget(saved.target);
     }
+  }
+
+  // ---------------------------------------------------------------- the paused moment's picture (pause-light)
+  /*
+   * pause-light (2026-10-28; △16 of pause-edit walk 1): "the paused frame is the frame you paused on" is the promise of
+   * Pause to edit, and Lantern Cove's paused frame lost its light — the sun's glare, the lighthouse's and the lamp's
+   * glow: the game draws them with its own post-processing (an EffectComposer: bloom, tone, grade), and the editor drew
+   * the paused scene itself with a plain render. The calls made for it (2026-10-28):
+   *   - the game's time never moves for the picture (decision 3; stage 2's "a typed 5 read 4.98"): nothing here runs the
+   *     game's update, only its drawing;
+   *   - right after the pause the canvas keeps the game's own last frame, untouched while nothing changes
+   *     (begin: keepsFrame — not one pixel redrawn);
+   *   - drawn again (a move, a value, Next frame, a pick's outline, the list's pictures), it goes through the game's
+   *     own post-processing whenever it can: paintMoment's order below; the plain draw only when there is none.
+   */
+  /** The camera's lens values a moment's draw takes from the edit view (asView) and gives back. */
+  const LENS = ['fov', 'zoom', 'near', 'far', 'aspect', 'left', 'right', 'top', 'bottom'];
+  // A game draw or a composer that threw once: not tried again in this page (a warning, not one per frame).
+  const failedDraws = new WeakSet();
+  /** codeMoment({ draw }) (the loader, SKILL.md "This moment"): the game's own draw of a moment, or null. */
+  function momentDrawFn() {
+    const m = globalThis[Symbol.for('game-studio.moment')];
+    const fn = m && typeof m.draw === 'function' ? m.draw : null;
+    return fn && !failedDraws.has(fn) ? fn : null;
+  }
+  /**
+   * The game's composer that draws the player's picture (boot.js §5 caught it as it was built): for this renderer,
+   * drawing to the screen, with a pass that draws this scene, and the last of those a game frame drew with. null: none.
+   */
+  function composerNow() {
+    let best = null;
+    let bestAt = 0;
+    for (const c of boot.composers ? boot.composers() : []) {
+      if (!c || failedDraws.has(c) || c.renderer !== renderer || typeof c.render !== 'function' || !Array.isArray(c.passes)) continue;
+      if (c.renderToScreen === false || c.autoRenderToScreen === false) continue;
+      if (!c.passes.some((p) => p && p.enabled !== false && p.scene === scene)) continue;
+      const at = (boot.composerAt && boot.composerAt.get(c)) || 0;
+      if (at > bestAt) (best = c), (bestAt = at);
+    }
+    return best;
+  }
+  /**
+   * Does camera `a` show the same picture as `b` (the same place, direction and lens on screen)? The moment's edit view
+   * starts as a copy of the player's camera (view.home → fromCamera): the same up to float noise, so the game's own
+   * camera can draw (exactly the game's frame, and the handles still fit it). The depth range (near / far) is left out:
+   * the edit view sets its own, and it moves nothing on screen.
+   */
+  function sameView(a, b) {
+    if (!a || !b || !!a.isPerspectiveCamera !== !!b.isPerspectiveCamera || !!a.isOrthographicCamera !== !!b.isOrthographicCamera) return false;
+    if (typeof b.updateWorldMatrix === 'function') b.updateWorldMatrix(true, false);
+    const close = (x, y) => Math.abs(x - y) <= 1e-5 * Math.max(1, Math.abs(x), Math.abs(y));
+    const A = a.matrixWorld.elements, B = b.matrixWorld.elements;
+    for (let i = 0; i < 16; i++) if (!close(A[i], B[i])) return false;
+    const P = a.projectionMatrix.elements, Q = b.projectionMatrix.elements;
+    for (const i of [0, 5, 8, 9, 12, 13]) if (!close(P[i], Q[i])) return false;
+    return true;
+  }
+  /**
+   * Run `run` (a draw of the game's) with the game's camera `gc` standing where the edit view is, then give the camera
+   * back exactly as it was. Only its matrices and lens values change, never its position / rotation / scale (no Euler
+   * read back from a quaternion: a yaw the game added up to 7.5 rad stays 7.5, see watch()). Its own updates are off
+   * meanwhile (matrixAutoUpdate / matrixWorldAutoUpdate), and its local matrix is set so a parent's update gives the
+   * same world (a camera on a player rig). WHY the game's camera and not the edit camera: a composer's passes hold the
+   * game's camera (RenderPass.camera, and more), and a game's draw knows only its own.
+   */
+  function asView(gc, run) {
+    const vc = view.camera;
+    const keep = {
+      ma: gc.matrixAutoUpdate, mwa: gc.matrixWorldAutoUpdate, mwn: gc.matrixWorldNeedsUpdate,
+      m: gc.matrix.clone(), mw: gc.matrixWorld.clone(), mwi: gc.matrixWorldInverse.clone(),
+      p: gc.projectionMatrix.clone(), pi: gc.projectionMatrixInverse.clone(),
+      lens: LENS.filter((k) => typeof gc[k] === 'number' && typeof vc[k] === 'number').map((k) => [k, gc[k]])
+    };
+    try {
+      for (const [k] of keep.lens) gc[k] = vc[k];
+      gc.matrixAutoUpdate = false;
+      if ('matrixWorldAutoUpdate' in gc) gc.matrixWorldAutoUpdate = false;
+      if (gc.parent) {
+        gc.parent.updateWorldMatrix(true, false);
+        gc.matrix.copy(gc.parent.matrixWorld).invert().multiply(vc.matrixWorld);
+      } else gc.matrix.copy(vc.matrixWorld);
+      gc.matrixWorld.copy(vc.matrixWorld);
+      gc.matrixWorldInverse.copy(vc.matrixWorldInverse);
+      gc.projectionMatrix.copy(vc.projectionMatrix);
+      gc.projectionMatrixInverse.copy(vc.projectionMatrixInverse);
+      gc.matrixWorldNeedsUpdate = false;
+      return run();
+    } finally {
+      for (const [k, v] of keep.lens) gc[k] = v;
+      gc.matrixAutoUpdate = keep.ma;
+      if ('matrixWorldAutoUpdate' in gc) gc.matrixWorldAutoUpdate = keep.mwa;
+      gc.matrixWorldNeedsUpdate = keep.mwn;
+      gc.matrix.copy(keep.m);
+      gc.matrixWorld.copy(keep.mw);
+      gc.matrixWorldInverse.copy(keep.mwi);
+      gc.projectionMatrix.copy(keep.p);
+      gc.projectionMatrixInverse.copy(keep.pi);
+    }
+  }
+  /**
+   * One draw of the game's (`run`: its codeMoment draw, or its composer's render(0)) onto the screen, as the game would
+   * draw it, from the edit view. The game's camera as it is while the edit view is the player's (the moment opens so),
+   * else standing where the edit view is (asView). The edit fog (withEditFog) as for every editor frame. Its renders go
+   * through while the game is held (selfRender: boot.js skips the game's own). true = drawn; a throw is said once and
+   * that draw is not tried again (`what`).
+   */
+  function throughGame(gc, what, run) {
+    const own = sameView(view.camera, gc);
+    // Another kind of camera than the edit view's (the game switched cameras since the pause): its lens cannot take the view's.
+    if (!own && (!!gc.isPerspectiveCamera !== !!view.camera.isPerspectiveCamera || !gc.matrix || !gc.projectionMatrixInverse)) return false;
+    const target = renderer.getRenderTarget ? renderer.getRenderTarget() : null;
+    boot.selfRender++;
+    try {
+      withEditFog(() => {
+        if (renderer.setRenderTarget) renderer.setRenderTarget(null);
+        const [w, h] = cssSize();
+        renderer.setScissorTest(false);
+        renderer.setViewport(0, 0, w, h);
+        if (renderer.shadowMap) renderer.shadowMap.needsUpdate = true;
+        if (own) run();
+        else asView(gc, run);
+      });
+      return true;
+    } catch (e) {
+      failedDraws.add(what);
+      console.warn('[studio] the paused moment could not be drawn the game\'s way; drawing it plainly:', e);
+      return false;
+    } finally {
+      boot.selfRender--;
+      if (renderer.setRenderTarget) renderer.setRenderTarget(target);
+    }
+  }
+  /**
+   * The paused moment drawn again, the game's way first:
+   *   1. the game's own draw for a moment — codeMoment({ draw }) (the loader; the AI writes it once, SKILL.md "This
+   *      moment"): what its frame draws, without its update. First because the game knows its whole picture (a hand-made
+   *      post-processing, two composers, a HUD scene drawn after the world);
+   *   2. its EffectComposer found as it was built (boot.js §5): render(0) — every pass with no time passing (a film
+   *      grain's time, a pass's own clock stay where the game's last frame left them);
+   *   3. the plain draw (drawPlain), as in Edit: a game with neither, or when 1 / 2 threw.
+   */
+  function paintMoment() {
+    syncView();
+    const gc = gameCamera();
+    if (gc) {
+      const fn = momentDrawFn();
+      if (fn && throughGame(gc, fn, () => fn())) return;
+      const c = composerNow();
+      if (c && throughGame(gc, c, () => c.render(0))) return;
+    }
+    drawPlain();
+  }
+  /**
+   * Begin over a paused moment: does the canvas still hold the game's own last frame, as the edit view would show it?
+   * The game drew the screen last (boot.js noteDraw: not the editor, not a frame cleared by a new size since) and the
+   * edit view is the player's camera. Then nothing is drawn: the frame stays the game's own, pixel for pixel.
+   */
+  function keepsFrame() {
+    const s = boot.screen;
+    if (!s || s.by !== 'game' || s.w !== canvas.width || s.h !== canvas.height) return false;
+    syncView();
+    return sameView(view.camera, gameCamera());
   }
   let beat = 0;
   function loop(gen) {
@@ -618,11 +800,12 @@ export function createThreeAdapter({ scene, renderer, camera }) {
       if (editing) return adapter.list();
       if (!boot.held) boot.hold('begin');
       editing = true;
+      moment = !!(o && o.moment);
       const gc = gameCamera();
       gc.updateMatrixWorld(true);
       view = createEditView(gc);
       view.set({ yaw: yawOfCamera(gc) });
-      hideOverlays(!!(o && o.moment));
+      hideOverlays(moment);
       // Keep our framing even if the game's scene.onBeforeRender moves "the camera" it is given (follow cams do).
       origBefore = scene.onBeforeRender;
       guard = function (r, s, cam, ...rest) {
@@ -635,7 +818,16 @@ export function createThreeAdapter({ scene, renderer, camera }) {
       dirty = true;
       const gen = ++loopGen;
       boot.nativeRAF(() => loop(gen));
-      draw();
+      // Over a paused moment (pause-light): the canvas holds the game's own last frame — its light, its post-processing.
+      // It stays, pixel for pixel, until something changes: nothing is drawn now, and the loop's first heartbeat does
+      // not count the objects as new (lastCount). Otherwise (a frame the game did not draw last, a new size) the moment
+      // is drawn the game's way at once.
+      if (moment && keepsFrame()) {
+        dirty = false;
+        let n = 0;
+        scene.traverse(() => n++);
+        lastCount = n;
+      } else draw();
       return adapter.list();
     },
 
@@ -685,6 +877,7 @@ export function createThreeAdapter({ scene, renderer, camera }) {
     end() {
       if (!editing) return;
       editing = false;
+      moment = false;
       loopGen++;
       removeEventListener('resize', touch);
       if (scene.onBeforeRender === guard) scene.onBeforeRender = origBefore;

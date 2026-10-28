@@ -93,7 +93,8 @@
 // as that object, and codeTheme({ accent: { v, label } }) — the canvas UI's theme, listed with the CSS variables.
 //
 // This moment's values (pause-edit stage 2, 2026-10-28): codeMoment({ values: { score: { name, get, set, unit, min, max,
-// step, round } } }) — the score, the time left, the health shown and changed in a paused moment. See "This moment's values".
+// step, round } } }) — the score, the time left, the health shown and changed in a paused moment; and (pause-light,
+// 2026-10-28) codeMoment({ draw }) — the game's picture drawn once without its update. See "This moment's values".
 
 const KEY_CHARS = /[^A-Za-z0-9_:#.\-\/]/g;
 const cleanName = (s) => (typeof s === 'string' && s ? s.replace(KEY_CHARS, '_').slice(0, 80) : '');
@@ -1799,10 +1800,18 @@ export function codeTheme(def) {
 //   min / max / step   a change is kept inside them, on the step (step 1 = whole numbers)
 //   round  digits shown after the point (0 = whole numbers; none = two at most)
 //
-// Nothing here calls get() or set(): only the editor does, while it shows a paused moment (src/bridge/moment-values.ts,
-// which also keeps a get() that throws from stopping anything). Outside the editor this only keeps the list
-// (globalThis[Symbol.for('game-studio.moment')], one per page, shared with the editor's copy of this file); called again,
-// a value with the same id is replaced (a new round), the others stay. Stage 3 adds save / load to the same object.
+// The paused picture (pause-light, 2026-10-28): codeMoment({ draw: () => composer.render(0) }) — how the game draws its
+// picture once WITHOUT its update (no time, no physics step, nothing moved): the editor calls it whenever the paused
+// moment must be drawn again (a thing moved, a value set, Next frame), so the moment keeps the game's own look — its
+// bloom, tone, grade. WHY: a three.js game with a plain EffectComposer is drawn that way by itself (the editor finds the
+// composer), but a hand-made post-processing, two composers or a HUD scene drawn after the world are the game's own
+// knowledge. Its camera is the game's (the editor stands it where the edit view is for that one draw).
+//
+// Nothing here calls get(), set() or draw(): only the editor does, while it shows a paused moment
+// (src/bridge/moment-values.ts, src/adapters/three/adapter.js paintMoment; a get() or a draw() that throws stops
+// nothing). Outside the editor this only keeps the list (globalThis[Symbol.for('game-studio.moment')], one per page,
+// shared with the editor's copy of this file); called again, a value with the same id is replaced (a new round), the
+// others stay, and a new `draw` replaces the old (`draw: null` takes it away). Stage 3 adds save / load to the same object.
 const MOMENT = Symbol.for('game-studio.moment');
 // Ids as the AI names them in code (score, timeLeft, hp-max): letters first, then letters, digits, _ and -.
 const MOMENT_ID = /^[A-Za-z][A-Za-z0-9_-]{0,39}$/;
@@ -1810,6 +1819,11 @@ const MOMENT_ID = /^[A-Za-z][A-Za-z0-9_-]{0,39}$/;
 const MOMENT_MAX = 12;
 export function codeMoment(def) {
   const g = globalThis[MOMENT] && globalThis[MOMENT].values instanceof Map ? globalThis[MOMENT] : (globalThis[MOMENT] = { values: new Map() });
+  if (def && typeof def === 'object' && 'draw' in def) {
+    if (typeof def.draw === 'function') g.draw = def.draw;
+    else if (def.draw == null) delete g.draw;
+    else warnOnce('codeMoment: draw must be a function (how the game draws its picture once, without its update)');
+  }
   const vals = def && typeof def === 'object' && def.values && typeof def.values === 'object' ? def.values : {};
   for (const [id, v] of Object.entries(vals)) {
     if (!MOMENT_ID.test(id) || !v || typeof v.get !== 'function') {

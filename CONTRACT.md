@@ -887,6 +887,11 @@ codeMoment({ values: {
   `moment-value`), taken out of the history at ▶ Resume (`UndoStack.dropMoment`), as the moment's moves (§3.5.1).
   Asked when the moment comes up and after every Next frame (`play/time` while paused). The first value of a game is
   the code's: "start with 90 seconds" is asked in the field.
+- **The paused picture** (pause-light, 2026-10-28): `codeMoment({ draw })` — the game's frame drawing **without its
+  update** (no time, no physics step, nothing moved), for a look the editor cannot find by itself (a post-processing made
+  by hand, two composers, a HUD scene drawn after the world; §3.5.1 "The picture"). Kept as `draw` on the same object as
+  `values` (a new one replaces it, `draw: null` takes it away, anything else is said once and left out); a call with
+  `values` only leaves it, and the other way round. Outside the editor nothing calls it. SKILL.md "The paused picture".
 - **None** (`values: null` or empty): one line, "The game's numbers, like the score, aren't shown here yet." (it names
   no number: the editor does not know which the game has) and **✦ Have {ai} make this moment editable**: the draft
   "Make this moment editable" with the chip "This moment" in the field; the person sends it — the paused `play` request
@@ -1383,6 +1388,22 @@ moment is the editor. Until then a pause opened a chat panel over the game ("Pau
   as "the score is gone"): `begin({ moment: true })`, and the editor's layer style takes the pointer only. It is not
   edited there (no UI layer: the UI is edited in Edit). No line by the strip about what the game moves ("a move here
   sets where it starts"): the card's "Just for this moment" is the one place.
+- **The picture** (pause-light, 2026-10-28; △16 of pause-edit walk 1: Lantern Cove's paused frame lost the sun's glare and
+  the lighthouse's and the lamp's light — the game draws them with its own post-processing, and the editor drew the
+  paused scene itself with a plain render). Right after the pause the canvas keeps **the game's own last frame**, pixel
+  for pixel, while nothing changes (three.js `begin({ moment: true })` draws nothing when the game drew the screen last at
+  its size now and the edit view is the player's camera; a pick's outline and the list's pictures, drawn in the canvas,
+  are followed by the same frame drawn again). Drawn again (a move, a value, Next frame, a look around), it goes through
+  the game's own look first, never its update (the game's time does not move, decision 3): **1.** the game's
+  `codeMoment({ draw })` (§1.14); **2.** its `EffectComposer` — caught as it is built (`src/adapters/three/boot.js` §5:
+  a setter for `copyPass` on Object.prototype, the one name EffectComposer's constructor assigns, three r150–r186 and
+  pmndrs/postprocessing; the composer whose buffers the game's last frame drew into, drawing to the screen, with a pass
+  of this scene) — `render(0)`, every pass with no time; **3.** the plain draw, as in Edit (a game with neither, or when
+  1 / 2 threw: said once, not tried again). 1 and 2 draw with the game's camera: as it is while the edit view is the
+  player's, else standing where the edit view is for that one draw (its matrices and lens only; its position, rotation
+  and scale never touched) and given back exactly. Edit is drawn as before (plain: fast, the colours the same). The
+  2D adapters draw the moment as before. No word of it on screen. Tests: `test/pause-light.test.mjs`,
+  `test/studio-pause.browser.mjs` (`light`: Lantern Cove in the web demo; `lightcode`: `test/hand-post`).
 - **What each object is** (`momentWhy`, sent as `play/paused` `why`): **placed** (absent) — moved as in Edit:
   `studio:placement/moved` into the scene, Save · N, ⌘Z, the list's dot; it stays after Resume and is there back in
   Edit. **The game moves it** (`game`: moved by itself since Play started, or since the person last left it), **a

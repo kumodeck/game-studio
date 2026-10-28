@@ -2,7 +2,7 @@
 // browser: the real local server, the built editor, the starters and examples, and the stand-in AI
 // (test/ai-feel/fake-agent.mjs), which answers a paused message in its `done` note.
 //
-//   node test/studio-pause.browser.mjs [--only cove,ruins,glow,phone,side,dark,timers,moment,moment2d,momentnarrow,momentdark,momentdemo,values,valuesdark]
+//   node test/studio-pause.browser.mjs [--only cove,ruins,glow,phone,side,dark,timers,moment,moment2d,momentnarrow,momentdark,momentdemo,values,valuesdark,light,lightcode]
 //                                       [--shots <dir>] [--lang ja] [--before <studio-ui dir of an older build>]
 //
 // Until pause-edit (2026-10-28) a pause opened a chat panel over the game ("Pause and talk", stage 1) with "✥ Move" in
@@ -54,12 +54,17 @@
 //            Speed menu's head (✕13), the made reply without "N objects changed" and gone back in Edit (✕6), the clock
 //            going on at the next ▶ Play from Edit (✕10); narrow: no "Playing" note, 1× pressable, "▶ Resume" in words
 //            (✕4 / ✕15), the boss moved → "Just for this moment" over the field (✕5).
+// light      Lantern Cove in the offline web demo (pause-light, 2026-10-28): the paused picture keeps the game's own light
+//            (its post-processing: bloom, tone, grade) — the frame it stopped on, pixel for pixel while nothing moves,
+//            and drawn again through the game's post-processing after a move and Next frame. See light() below.
+// lightcode  test/hand-post: a post-processing made by hand (nothing to find) + codeMoment({ draw }): the moment keeps the
+//            game's look after a move and a zoom, its update never runs for it, its camera is given back exactly.
 // --shots also takes the docs' pictures (docs/site/shots.json): moment-*-gate.png (pause-edit), moment-*-appear.png
 //            (pause-made), moment-*-speed.png (pause-speed).
 // --before <dir>: only photos of ▶ Play with an older build's editor (`skills/arrange/bin/studio-ui` of that build).
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -126,6 +131,8 @@ const gameHtml = (page, sel) => j(page, `JSON.stringify((() => { const e = ${GW}
 function gameFolder(src, theme = 'light') {
   const root = mkdtempSync(join(tmpdir(), 'studio-pause-'));
   cpSync(join(PKG, src), root, { recursive: true });
+  // A test's own game (test/hand-post) has no copy of the loader kept with it: the built one, as the AI's copy would be.
+  if (!existsSync(join(root, 'studio-placement.js'))) copyFileSync(join(PKG, 'skills/arrange/bin/studio-placement.js'), join(root, 'studio-placement.js'));
   for (const f of ['placement.json', '.studio/requests', '.studio/status.json', '.studio/watch.json', '.studio/play', '.studio/chat', '.studio/undo']) rmSync(join(root, f), { recursive: true, force: true });
   mkdirSync(join(root, '.studio/ui'), { recursive: true });
   writeFileSync(join(root, '.studio/ui/prefs.json'), JSON.stringify({ version: 1, lang: LANG, theme }));
@@ -1007,6 +1014,197 @@ async function momentDemo() {
   }
 }
 
+/**
+ * pause-light (2026-10-28, △16 of walk 1 fix 1): the paused picture's light against the frame it stopped on
+ * (`_move.shot()`, taken as it stopped, before the editor came up — the game's own last frame). Both drawn 320 px wide,
+ * over the game clear of the title (top left), the floating list (left) and the hint (bottom): `diff` = the mean
+ * |difference| per channel (0–255), `luma` = the mean luma of [the frame it stopped on, the canvas now], `bright` = the
+ * share of pixels at luma ≥ 215 (the sun's glare and its glitter on the water, the lanterns: what the game's bloom adds).
+ * The shot is a JPEG (0.82) of the page, so a diff of 1–2 is its own noise.
+ */
+const lightOf = (page) => j(page, `(async () => { const w = ${GW}; const src = w.__gameStudio._move.shot(); if (!src) return 'null';
+  const a = new w.Image(); a.src = src; await a.decode(); const gl = w.document.querySelector('canvas');
+  const W = 320, H = Math.round(320 * gl.height / gl.width);
+  const draw = (img) => { const c = w.document.createElement('canvas'); c.width = W; c.height = H; const x = c.getContext('2d'); x.drawImage(img, 0, 0, W, H); return x.getImageData(0, 0, W, H).data; };
+  const p = draw(a), q = draw(gl); const L = (v, i) => 0.2126 * v[i] + 0.7152 * v[i + 1] + 0.0722 * v[i + 2];
+  let d = 0, la = 0, lb = 0, ba = 0, bb = 0, n = 0;
+  for (let y = Math.round(H * 0.06); y < H * 0.86; y++) for (let x = Math.round(W * 0.24); x < W * 0.98; x++) {
+    const i = (y * W + x) * 4; d += Math.abs(p[i] - q[i]) + Math.abs(p[i + 1] - q[i + 1]) + Math.abs(p[i + 2] - q[i + 2]);
+    const A = L(p, i), B = L(q, i); la += A; lb += B; ba += A >= 215 ? 1 : 0; bb += B >= 215 ? 1 : 0; n++; }
+  const r = (v) => Math.round(v * 1000) / 1000;
+  return JSON.stringify({ diff: r(d / n / 3), luma: [r(la / n), r(lb / n)], bright: [r(ba / n), r(bb / n)] }); })()`);
+/** The game page's canvas at its full size, kept in the game page under `slot` (to compare pixel for pixel). */
+const keepCanvas = (page, slot) => page.eval(`(() => { const w = ${GW}; const gl = w.document.querySelector('canvas'); const c = w.document.createElement('canvas');
+  c.width = gl.width; c.height = gl.height; const x = c.getContext('2d', { willReadFrequently: true }); x.drawImage(gl, 0, 0);
+  (w.__light ||= {})[${JSON.stringify(slot)}] = x.getImageData(0, 0, c.width, c.height).data; return true; })()`);
+/** Two kept canvases: the most any channel moved (0–255) and how many channels moved at all. */
+const keptGap = (page, a, b) => j(page, `JSON.stringify((() => { const k = ${GW}.__light || {}; const p = k[${JSON.stringify(a)}], q = k[${JSON.stringify(b)}];
+  if (!p || !q || p.length !== q.length) return null; let max = 0, n = 0;
+  for (let i = 0; i < p.length; i++) { if (i % 4 === 3) continue; const d = Math.abs(p[i] - q[i]); if (d) { n++; if (d > max) max = d; } }
+  return { max, n }; })())`);
+
+/**
+ * light: Lantern Cove in the offline web demo (the test version's build), PC 1280×800. The game draws its light with its
+ * own post-processing (EffectComposer: bloom, tone and grade); the paused moment drew the scene itself without it, and
+ * the sun's glare, the lighthouse's and the lamp's light went out (pause-light, 2026-10-28). Now:
+ *   1. the paused picture is the game's own last frame (its light) — and stays it, pixel for pixel, while nothing moves:
+ *      over 1.2 s, and after a pick (the outline's matte and the list's pictures draw in the canvas, then the frame again);
+ *   2. a placed thing moved: the frame drawn again through the game's own post-processing (its light is still there);
+ *   3. Next frame (the game's time 1/60 s on) keeps it too; P goes on.
+ * The numbers are printed in every run (the record of the fix: before it, paused diff 31, luma 149 → 127, bright 0.226 → 0.141).
+ */
+async function light() {
+  console.log('light: the offline web demo, Lantern Cove, PC — the light kept in the paused moment');
+  const dir = join(mkdtempSync(join(tmpdir(), 'studio-pause-light-')), 'site');
+  execFileSync(process.execPath, [join(PKG, 'scripts/build-web-demo.mjs'), '--out', dir], { stdio: 'ignore' });
+  const host = await startHost({ dir });
+  if (!browser) browser = await launch();
+  const page = await newPage(browser, { width: 1280, height: 800 });
+  let n = 0;
+  const shot = async (what) => {
+    if (!SHOTS) return;
+    const f = `light-${String(++n).padStart(2, '0')}-${what}.png`;
+    writeFileSync(join(SHOTS, f), await page.screenshot());
+    console.log(`  shot ${f}`);
+  };
+  const fails = [];
+  const check = (ok, what) => {
+    if (!ok) fails.push(what);
+  };
+  try {
+    await page.goto(`${host.url}studio/?game=lantern-cove&lang=${LANG}`);
+    await page.waitFor(IN.ready, 90000);
+    await page.eval(`document.querySelector('button.play').click()`);
+    await page.waitFor(IN.playing, 30000);
+    // The cove's first frames fade in and its quality is chosen in the first 2 s (main.js setQuality): after them.
+    await sleep(3500);
+    await shot('playing');
+    // P from the keyboard, the press first on the sky (a press on the water sails the boat and the camera follows it).
+    await pauseP(page, [900, 140]);
+    // The list's pictures (each drawn in the canvas's corner) and the first beats of the editor's loop.
+    await sleep(2500);
+    const l1 = await lightOf(page);
+    console.log(`  paused:  ${JSON.stringify(l1)}`);
+    check(l1 && l1.diff < 4, `the paused picture is the frame it stopped on (diff ${l1?.diff})`);
+    check(l1 && Math.abs(l1.luma[0] - l1.luma[1]) < 2, `the same light (luma ${l1?.luma})`);
+    check(l1 && l1.bright[1] >= 0.85 * l1.bright[0], `the glare and the lanterns kept (bright ${l1?.bright})`);
+    await shot('paused');
+    await keepCanvas(page, 'paused');
+    await sleep(1200);
+    await keepCanvas(page, 'later');
+    const still = await keptGap(page, 'paused', 'later');
+    console.log(`  1.2 s later: ${JSON.stringify(still)}`);
+    check(still && still.n === 0, `nothing moves until you say (${JSON.stringify(still)})`);
+    // A pick: the outline's matte is drawn in the canvas, then the frame again (adapter silhouette()).
+    const rows = await j(page, IN.rows);
+    const placed = ['barrel', 'crate', 'buoy'].find((k) => rows.some((r) => r.key === k));
+    assert.ok(placed, `a small placed thing in the cove ${JSON.stringify(rows.map((r) => r.key))}`);
+    await page.eval(`studioShell.actions.select(${JSON.stringify(placed)})`);
+    await page.waitFor(`studioShell.selected() === ${JSON.stringify(placed)}`, 4000);
+    await sleep(900);
+    await keepCanvas(page, 'picked');
+    const picked = await keptGap(page, 'paused', 'picked');
+    console.log(`  ${placed} picked: ${JSON.stringify(picked)}`);
+    check(picked && picked.max <= 2, `a pick does not change the picture (${JSON.stringify(picked)})`);
+    await shot('picked');
+    // A placed thing moved: drawn again with the game's own light.
+    const spot = await freeSpot(page, [0.5, 0.2]);
+    await stripDrag(page, placed, 70, 0, { from: [spot.x, spot.y] });
+    await until(async () => /1/.test(await page.eval(IN.save)), 4000, 'Save · 1');
+    await sleep(600);
+    const l2 = await lightOf(page);
+    console.log(`  moved:   ${JSON.stringify(l2)}`);
+    check(l2 && Math.abs(l2.luma[0] - l2.luma[1]) < 2.5, `the light after a move (luma ${l2?.luma})`);
+    check(l2 && l2.bright[1] >= 0.85 * l2.bright[0], `the glare and the lanterns after a move (bright ${l2?.bright})`);
+    await shot('moved');
+    // Next frame: the game's own frame runs (its draw is held), the picture is drawn again — with its light.
+    await press(page, await j(page, box('[data-part=play-step]')));
+    await sleep(700);
+    const l3 = await lightOf(page);
+    console.log(`  next frame: ${JSON.stringify(l3)}`);
+    check(l3 && l3.bright[1] >= 0.85 * l3.bright[0], `the light after Next frame (bright ${l3?.bright})`);
+    await shot('step');
+    await page.click(900, 140);
+    await keyIn(page, 'p', 'KeyP', 'p');
+    await page.waitFor(IN.running, 5000);
+    assert.deepEqual(fails, [], `the light in the paused moment:\n  ${fails.join('\n  ')}`);
+    console.log(`  ok: the paused moment keeps the cove's light (paused diff ${l1.diff}, bright ${l1.bright.join(' → ')}; moved bright ${l2.bright.join(' → ')})`);
+  } finally {
+    await page.close();
+    host.close();
+    rmSync(dirname(dir), { recursive: true, force: true });
+  }
+}
+
+/**
+ * The game page's canvas, small: its mean red / green / blue (0–255) and how much warmer than plain it is
+ * (`warm` = red ÷ the mean of green and blue: test/hand-post's tint makes it ≈ 4, a plain draw of its scene ≈ 1).
+ */
+const tintOf = (page) => j(page, `JSON.stringify((() => { const gl = ${GW}.document.querySelector('canvas'); const c = ${GW}.document.createElement('canvas'); c.width = 64; c.height = 40;
+  const x = c.getContext('2d'); x.drawImage(gl, 0, 0, 64, 40); const d = x.getImageData(0, 0, 64, 40).data; let r = 0, g = 0, b = 0, n = 0;
+  for (let i = 0; i < d.length; i += 4) { r += d[i]; g += d[i + 1]; b += d[i + 2]; n++; }
+  r /= n; g /= n; b /= n; return { r: Math.round(r), g: Math.round(g), b: Math.round(b), warm: Math.round((r / Math.max(1, (g + b) / 2)) * 100) / 100 }; })())`);
+/** test/hand-post's camera (its world matrix and lens) and its counters: to check a moment's draw gives the camera back. */
+const fxNow = (page) => j(page, `JSON.stringify((() => { const f = ${GW}.__fx; const c = f.camera;
+  return { updates: f.updates, draws: f.draws, spin: f.spinner.rotation.y, pos: c.position.toArray(), rot: c.rotation.toArray().slice(0, 3), world: c.matrixWorld.toArray(), fov: c.fov, near: c.near, far: c.far, auto: c.matrixAutoUpdate }; })())`);
+
+/**
+ * lightcode: test/hand-post, PC 1280×800 — a game whose look is its own hand-made post-processing (no EffectComposer for
+ * the editor to find), with the one line the AI writes for the paused picture: codeMoment({ draw }) (pause-light,
+ * SKILL.md "This moment"). (1) the paused picture stays the game's tinted frame; (2) a placed thing moved: drawn again
+ * with the game's draw (still tinted), the game's update not run (its counter and the spinner's angle as they were);
+ * (3) the view zoomed in: still tinted, and the game's camera given back exactly (place, turn, world matrix, lens);
+ * (4) P: the game goes on from there.
+ */
+async function lightCode() {
+  console.log('lightcode: test/hand-post (a post-processing made by hand + codeMoment draw), PC');
+  const g = await open('test/hand-post', LAYOUTS.pc);
+  const { page, shot } = g;
+  try {
+    const play = await tintOf(page);
+    assert.ok(play.warm > 2.5, `the game's own look is tinted while it plays ${JSON.stringify(play)}`);
+    await pauseP(page, [640, 120]);
+    await sleep(1200);
+    const f0 = await fxNow(page);
+    const t0 = await tintOf(page);
+    assert.ok(t0.warm > 2.5, `the paused picture is the game's tinted frame ${JSON.stringify(t0)}`);
+    await shot('lightcode', 'paused');
+    const spot = await freeSpot(page, [0.5, 0.25]);
+    await stripDrag(page, 'crate', 80, 0, { from: [spot.x, spot.y] });
+    await until(async () => /1/.test(await page.eval(IN.save)), 4000, 'Save · 1');
+    await sleep(500);
+    const f1 = await fxNow(page);
+    const t1 = await tintOf(page);
+    assert.ok(t1.warm > 2.5, `moved: drawn again the game's way (tinted) ${JSON.stringify(t1)}`);
+    assert.ok(f1.draws > f0.draws, `moved: the game's draw was used (${f0.draws} → ${f1.draws})`);
+    assert.equal(f1.updates, f0.updates, 'no update of the game for a picture (its time does not move)');
+    assert.equal(f1.spin, f0.spin, 'the spinner the game turns stays where it was');
+    await shot('lightcode', 'moved');
+    // The view moves (the wheel zooms the edit view in): the game's camera stands there for the draw, then goes back.
+    const a0 = await page.eval(`JSON.stringify(${M}.anchor('post')?.center || null)`);
+    await page.send('Input.dispatchMouseEvent', { type: 'mouseWheel', x: 760, y: 420, deltaX: 0, deltaY: -480 });
+    await sleep(800);
+    assert.notEqual(await page.eval(`JSON.stringify(${M}.anchor('post')?.center || null)`), a0, 'the edit view zoomed in');
+    const f2 = await fxNow(page);
+    const t2 = await tintOf(page);
+    assert.ok(t2.warm > 2.5, `the view moved: still the game's way ${JSON.stringify(t2)}`);
+    assert.ok(f2.draws > f1.draws, 'the view moved: the game\'s draw again');
+    assert.deepEqual({ pos: f2.pos, rot: f2.rot, world: f2.world, fov: f2.fov, near: f2.near, far: f2.far, auto: f2.auto },
+      { pos: f0.pos, rot: f0.rot, world: f0.world, fov: f0.fov, near: f0.near, far: f0.far, auto: f0.auto }, 'the game\'s camera given back exactly');
+    assert.equal(f2.updates, f0.updates, 'still no update');
+    await shot('lightcode', 'zoomed');
+    await page.click(640, 120);
+    await keyIn(page, 'p', 'KeyP', 'p');
+    await page.waitFor(IN.running, 5000);
+    await sleep(600);
+    const f3 = await fxNow(page);
+    assert.ok(f3.updates > f2.updates, 'P: the game goes on');
+    console.log(`  ok: the hand-made look kept (warm ${t0.warm} paused, ${t1.warm} moved, ${t2.warm} zoomed), ${f2.draws - f0.draws} draws of the game's, no update, the camera given back`);
+  } finally {
+    await g.close();
+  }
+}
+
 /** --before: photos of ▶ Play with an older build's editor (the corner's "Pause and talk"). */
 async function before() {
   console.log(`before: ${BEFORE}`);
@@ -1247,6 +1445,8 @@ try {
     }
     if (on('momentdark')) await moment('dark');
     if (on('momentdemo')) await momentDemo();
+    if (on('light')) await light();
+    if (on('lightcode')) await lightCode();
     if (on('values')) await values();
     if (on('valuesdark')) await values('dark');
   }

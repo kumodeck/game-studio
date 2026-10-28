@@ -387,6 +387,12 @@ export interface LoadEntry {
  */
 /** StudioAdapter.begin's options (pause-edit fix 1). */
 export interface BeginOptions {
+  /**
+   * Over a paused moment of ▶ Play: the game's HTML stays seen (pause-edit fix 1), and (pause-light, 2026-10-28; the
+   * built-in three.js adapter) the picture is the game's own — its last frame kept as it is until something changes,
+   * then drawn the game's way (the game's codeMoment draw, else its EffectComposer, else plain), its time not moved
+   * (CONTRACT.md §3.5.1 "The picture"). An adapter of your own may do the same; drawing as in Edit is allowed.
+   */
   moment?: boolean;
 }
 

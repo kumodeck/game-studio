@@ -16,6 +16,8 @@
  *      call for each scene. That is the camera the player actually sees.
  *   4. Load records (for the asset library). fetch/XHR responses, image blobs → ImageBitmaps, and (r186+) the
  *      result of every three Loader.load() call, so a glTF scene can be traced back to the .glb URL it came from.
+ *   5. The game's post-processing (pause-light, 2026-10-28): its EffectComposer, caught while it is built, so a paused
+ *      moment can be drawn again the way the game draws it (its bloom, tone and grade) — see §5.
  *
  * Why a classic script and not a module: module scripts run after the document is parsed and after import maps
  * are read, in document order with the game's own modules. A classic script in <head> is the only thing that is
@@ -68,6 +70,7 @@
     holdAfterRender: false,
     holdAfterCamera: null, // ready({ camera }) before that camera drew: hold after its first render (see ready())
     placed: false,         // true from that render until the hold: the rest of that frame is not drawn (see wrapRender)
+    screen: null,          // who drew the picture the canvas holds: { by: 'game' | 'studio', w, h } (§5 noteDraw, pause-light)
     setTimeout: nativeTimeout // the browser's own (see above)
   };
   g.__studioThree = state;
@@ -192,7 +195,10 @@
     var orig = renderer.render;
     renderer.__studioRender = orig;
     renderer.render = function (scene, camera) {
-      if (state.selfRender > 0) return orig.apply(this, arguments);
+      if (state.selfRender > 0) {
+        noteDraw(this, 'studio');
+        return orig.apply(this, arguments);
+      }
       if (scene && camera) {
         state.lastCamera.set(scene, camera);
         state.lastRenderAt.set(scene, performance.now());
@@ -225,6 +231,7 @@
         return;
       }
       var r = orig.apply(this, arguments);
+      noteDraw(this, 'game');
       if (camera) seenCameras.add(camera);
       if (!state.gameRendered) {
         state.gameRendered = true;
@@ -340,6 +347,78 @@
     };
   }
 
+  // ------------------------------------------------------------------ 5. the game's post-processing (pause-light)
+  /*
+   * The paused moment's picture (pause-light, 2026-10-28; △16 of pause-edit walk 1): Lantern Cove draws its light — the
+   * sun's glare, the lighthouse's and the lamp's glow, its tone and grade — with an EffectComposer (bloom and a grade
+   * after the scene). The editor drew the paused scene itself with a plain render, and the light went out. To draw a
+   * moment again the way the game does (adapter.js paintMoment) the editor needs that composer, and three never
+   * announces one (only Scene / WebGLRenderer / Loader / AnimationMixer reach __THREE_DEVTOOLS__); the game keeps it in
+   * its own module (`const composer`), where nothing outside can reach it later.
+   *
+   * So it is caught while it is built. EffectComposer's constructor assigns `this.copyPass` (three's examples/jsm
+   * EffectComposer, r150–r186 read; pmndrs/postprocessing's EffectComposer too), and no other three class does. A setter
+   * for that one name on Object.prototype runs for that assignment with `this` = the new composer: it makes `copyPass`
+   * the composer's own property, exactly what the assignment would have made, and keeps the composer (weakly).
+   * Everything else stays as it was: the name is not enumerable on the prototype (for…in, JSON and Object.keys see
+   * nothing new), reading `copyPass` of any other object is undefined as before, and only an object being given
+   * `copyPass` ever reaches the setter. WHY not something narrower: the composer object is not reachable from anything
+   * the game hands three (the renderer, the scene, the camera, a render target); this name is the one moment it is.
+   * Without it (a class field, a frozen prototype, WebGPU's PostProcessing) the game's own draw — codeMoment({ draw }),
+   * SKILL.md "This moment" — or the plain draw is used instead.
+   *
+   * Which composer draws the player's picture: the one whose buffers a game render used last (noteDraw below), so a
+   * composer made for a menu, or never used, is not taken.
+   */
+  var composers = []; // WeakRefs (or the objects, in a browser without WeakRef), newest last, at most 16
+  var composerAt = new WeakMap(); // composer → the number of the last game render into one of its buffers
+  var drawSeq = 0;
+  try {
+    if (!Object.prototype.hasOwnProperty('copyPass')) {
+      Object.defineProperty(Object.prototype, 'copyPass', {
+        configurable: true,
+        enumerable: false,
+        get: function () { return undefined; },
+        set: function (v) {
+          try {
+            Object.defineProperty(this, 'copyPass', { value: v, writable: true, enumerable: true, configurable: true });
+          } catch (e) {
+            return; // a frozen object: the assignment would not have stuck either
+          }
+          composers.push(typeof WeakRef === 'function' ? new WeakRef(this) : this);
+          if (composers.length > 16) composers.shift();
+        }
+      });
+    }
+  } catch (e) { /* Object.prototype frozen: no composer is found; the moment is drawn without it */ }
+  function liveComposers() {
+    var out = [];
+    for (var i = 0; i < composers.length; i++) {
+      var c = composers[i] && typeof composers[i].deref === 'function' ? composers[i].deref() : composers[i];
+      if (c) out.push(c);
+    }
+    return out;
+  }
+  /**
+   * After a render: into a render target (a composer's buffer: mark that composer as drawing now), or onto the screen
+   * (`state.screen`: who drew the picture the canvas holds, and at what size — adapter.js keepsFrame: a paused moment
+   * keeps the canvas as it is only when the game itself drew it last, at the size it has now).
+   */
+  function noteDraw(renderer, by) {
+    var t = renderer.getRenderTarget ? renderer.getRenderTarget() : null;
+    if (t) {
+      if (by !== 'game' || !composers.length) return;
+      var cs = liveComposers();
+      for (var i = 0; i < cs.length; i++) {
+        var c = cs[i];
+        if (c.renderer === renderer && (t === c.readBuffer || t === c.writeBuffer || t === c.renderTarget1 || t === c.renderTarget2 || t === c.inputBuffer || t === c.outputBuffer)) composerAt.set(c, ++drawSeq);
+      }
+      return;
+    }
+    var el = renderer.domElement;
+    state.screen = { by: by, w: el ? el.width : 0, h: el ? el.height : 0 };
+  }
+
   // ------------------------------------------------------------------ the `studio` global the game may call
   var api = g.studio && typeof g.studio === 'object' ? g.studio : {};
   /** For three builds without the devtools hook: `studio.attach({ scene, renderer, camera })`. */
@@ -423,6 +502,9 @@
   // the edit view's glides and the turn pivot time themselves with it, also in a paused game (pause-move, 2026-10-22).
   state.now = performance.now.bind(performance);
   state.on = function (fn) { state.listeners.push(fn); };
+  // The game's post-processing (§5, pause-light): its composers alive now, and the last game render into each one's buffers.
+  state.composers = liveComposers;
+  state.composerAt = composerAt;
   state.kindOf = kindOf;
   state.absUrl = absUrl;
 })();

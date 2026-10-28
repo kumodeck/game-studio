@@ -67,6 +67,38 @@ test('codeMoment: a bad id or a value without get() is left out (said once); a s
   codeMoment({} as never);
 });
 
+// pause-light (2026-10-28): the paused picture's draw (the game's frame drawing without its update), read by the three.js
+// adapter (paintMoment) from the same object as the values. The loader only keeps it.
+test('codeMoment({ draw }): kept beside the values, replaced by a new one, taken away by null; the loader never calls it', () => {
+  fresh();
+  let calls = 0;
+  const draw = () => { calls++; };
+  codeMoment({ draw });
+  const m = () => g[MOMENT] as { values: Map<string, unknown>; draw?: () => void };
+  assert.equal(m().draw, draw);
+  // A draw alone is no value: the moment's list says the one line, as a game without codeMoment values.
+  assert.deepEqual(readMoment(g), []);
+  game();
+  assert.equal(m().draw, draw, 'values given later leave the draw');
+  const draw2 = () => {};
+  codeMoment({ draw: draw2 });
+  assert.equal(m().draw, draw2);
+  assert.equal(m().values.size, 4, 'a new draw leaves the values');
+  const warns: string[] = [];
+  const was = console.warn;
+  console.warn = (w: string) => warns.push(String(w));
+  try {
+    codeMoment({ draw: 'composer' } as never);
+  } finally {
+    console.warn = was;
+  }
+  assert.equal(m().draw, draw2, 'not a function: kept as it was');
+  assert.match(warns.join(' '), /draw must be a function/);
+  codeMoment({ draw: null } as never);
+  assert.equal('draw' in m(), false);
+  assert.equal(calls, 0);
+});
+
 test('fitValue: on the step (from min), inside min / max, without float dust', () => {
   assert.equal(fitValue(7.4, { min: 0, max: 5, step: 1 }), 5);
   assert.equal(fitValue(-2, { min: 0 }), 0);

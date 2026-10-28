@@ -1182,6 +1182,11 @@ const MOMENT_ID = /^[A-Za-z][A-Za-z0-9_-]{0,39}$/;
 const MOMENT_MAX = 12;
 export function codeMoment(def) {
 const g = globalThis[MOMENT] && globalThis[MOMENT].values instanceof Map ? globalThis[MOMENT] : (globalThis[MOMENT] = { values: new Map() });
+if (def && typeof def === 'object' && 'draw' in def) {
+if (typeof def.draw === 'function') g.draw = def.draw;
+else if (def.draw == null) delete g.draw;
+else warnOnce('codeMoment: draw must be a function (how the game draws its picture once, without its update)');
+}
 const vals = def && typeof def === 'object' && def.values && typeof def.values === 'object' ? def.values : {};
 for (const [id, v] of Object.entries(vals)) {
 if (!MOMENT_ID.test(id) || !v || typeof v.get !== 'function') {

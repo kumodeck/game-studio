@@ -1050,6 +1050,40 @@ screen without it.
 **Afterwards**: "5 seconds left, I want to see the end" while paused → `--do moment.set --id timeLeft --v 5` (§3.4), not
 a code change. "Start with 90 seconds" → the code's first value (the moment's change is never written anywhere).
 
+#### The paused picture (`codeMoment({ draw })`, three.js)
+
+The paused moment shows the game's own last frame, its light and look included. When the person changes the moment
+(moves a thing, sets a value, Next frame, looks around), the editor draws it again **the game's way** when it can: a
+three.js game that draws through an `EffectComposer` is drawn with that composer (`render(0)`: no time passes) — found
+by itself, nothing to write. When the look comes from something the editor cannot find — a post-processing made by hand
+(the scene into a render target, then a full-screen quad), two composers, a HUD scene drawn after the world — the
+redrawn moment loses it (the glow, a tint, a grade are gone). Then give the editor the frame's **drawing, without its
+update**, once:
+
+```js
+import { codeMoment } from './studio-placement.js';
+// what the frame draws — and nothing it moves
+codeMoment({ draw: () => {
+  renderer.setRenderTarget(sceneTarget);
+  renderer.render(scene, camera);
+  renderer.setRenderTarget(null);
+  renderer.render(postScene, postCamera);
+} });
+```
+
+- **When**: only when asked — the person says the paused picture looks different from the game ("the glow goes when I
+  pause", "it turns flat when I move something"). A game with one `EffectComposer` needs nothing.
+- `draw()` is exactly what the frame draws and **nothing it updates**: no `dt`, no physics step, no timers, no counters,
+  no spawning, no camera move. Its time stays where the game stopped (the person's whole point: the boss at 0:42.3 stays
+  at 0:42.3). If the frame already calls a function for its drawing (`drawFrame()`), give that function; a composer's
+  `render()` gets `0`. Split the frame into update + draw when they are mixed.
+- **The camera is the game's own**: draw with it as the frame does. While the person looks around the paused moment, the
+  editor stands that camera where its view is for that one draw and puts it back exactly.
+- One call with the values (`codeMoment({ values: {…}, draw })`) or a call of its own: each keeps the other. Change
+  nothing else; outside the editor nothing calls it.
+- **Check**: the game still runs (§3.3); `--status done --request <id> --changed 0 --note "The paused picture keeps the
+  game's look now."`. The person's Reload brings the new code; pausing and moving something keeps the look.
+
 ### Motion (`motions`, `motion`)
 
 **When the person asks for a motion** ("make the blue pillar spiral", "make the door swing open when E is pressed",
