@@ -185,6 +185,18 @@ test('the requests of ⚑\'s ✦ and the line\'s ✦: intent moment-save / momen
   assert.deepEqual(bad.value.checkpoint, { name: 'n' });
 });
 
+test('the one ✦ of a game without codeMoment (pause walk 2 ✕2): intent moment-connect, paused only, the AI\'s line names both', async () => {
+  const { normalizeRequestInput } = await import('../src/schema/handoff.mjs');
+  const { handoffLine } = await import('../src/server/ai-watch.mjs');
+  const r = normalizeRequestInput({ kind: 'play', text: 'Show this moment’s numbers and let the game start from here', lang: 'en', paused: true, intent: 'moment-connect' });
+  assert.equal(r.ok, true);
+  assert.equal(r.value.intent, 'moment-connect');
+  const line = handoffLine({ ...r.value, id: 'r' }, '.studio/requests/r.json');
+  assert.match(line, /connect this moment to the game: codeMoment values \+ save \/ load in one go, SKILL.md "This moment" and "Checkpoints", --check-moment/);
+  assert.doesNotMatch(line, /make this moment's values editable|let the game start from this moment/, 'one ask, said once');
+  assert.equal(normalizeRequestInput({ kind: 'play', text: 'x', lang: 'en', intent: 'moment-connect' }).value.intent, undefined, 'a paused moment\'s ✦ only');
+});
+
 test('--check-moment\'s script before the game: load(moment) at the first frame, before it runs; a throw stops it', async () => {
   const { momentLoadScript } = await import('../src/server/moment-check.mjs');
   const vm = await import('node:vm');

@@ -333,17 +333,23 @@ img.thumb:not([src]) { content: url("data:image/gif;base64,R0lGODlhAQABAIAAAAAAA
   background: var(--glass); -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur); box-shadow: var(--shadow); font-size: var(--fs-s);
   white-space: nowrap; animation: studio-rise var(--dur-in) var(--ease); pointer-events: none; }
 .play-tip { top: 8px; right: 8px; }
-.play-tip::before { content: ""; position: absolute; top: -5px; right: 34px; width: 10px; height: 10px; background: inherit; transform: rotate(45deg); }
-/* "Next frame ." under ▶| at the first pause (fix 1 ✕8): placed by main.ts placePlayTip, its arrow at the left. */
+.play-tip::before { content: ""; position: absolute; top: -5px; right: var(--ar, 34px); width: 10px; height: 10px; background: inherit; transform: rotate(45deg); }
+/* "Next frame . · ⚑ Make this a checkpoint" under ▶| and ⚑ at the first pause (fix 1 ✕8, pause walk 2 ✕11): placed by
+   main.ts placePlayTip, an arrow under each button (--a1, --a2). */
 .play-tip.step-tip { right: auto; }
-.play-tip.step-tip::before { right: auto; left: 14px; }
+.play-tip.step-tip::before { right: auto; left: var(--a1, 14px); }
+.play-tip.step-tip[data-two="on"]::after { content: ""; position: absolute; top: -5px; left: var(--a2); width: 10px; height: 10px; background: inherit; transform: rotate(45deg); }
+.play-tip.step-tip .icon { width: 12px; height: 12px; margin-right: -4px; }
+.play-tip .tip-sep { color: var(--text-3); }
+/* A phone and the side window (pause walk 2 ✕5): the first-Play line wraps under ❚❚ at the right, off the game's
+   top-left HUD (it crossed "SCORE"); "Next frame" is not shown there at all (moment.ts). */
+.shell[data-layout="phone"] .play-tip { white-space: normal; max-width: min(200px, 50%); border-radius: 14px; line-height: 1.35; }
 .play-flash { left: 50%; bottom: 24px; transform: translateX(-50%); }
 .play-flash .icon { width: 12px; height: 12px; }
 /* ⚑ Make this a checkpoint (pause-edit stage 3): after Speed while paused, the guide's small round button. A phone's bar has
    no room for one more (fix 1 ✕4): there it is in ⌘K. */
 .play-guide .play-flag { width: 28px; padding: 0; color: var(--text); }
 .play-guide .play-flag .icon { width: 14px; height: 14px; }
-.shell[data-checkpoint="open"] .play-guide .play-flag { background: var(--you-soft); color: var(--you-text); }
 .shell[data-layout="phone"] .play-guide .play-flag { display: none; }
 /* Its plate under it: the name field ("0:42" first, Enter keeps), or one line with ✦ (a game that cannot start from the
    middle). Opaque, as the floating list (walk of 10/28: the glass let the game's "⚠ BOSS" through the words). The
@@ -360,6 +366,18 @@ img.thumb:not([src]) { content: url("data:image/gif;base64,R0lGODlhAQABAIAAAAAAA
 .cp-keep { height: 28px; padding: 0 12px; border-radius: 999px; background: var(--solid); color: var(--solid-fg); font-weight: 600; }
 .cp-err { margin: 0; color: var(--danger); max-width: 280px; }
 .cp-line { margin: 0; max-width: 280px; line-height: 1.45; word-break: keep-all; overflow-wrap: anywhere; }
+/* △12 (an open question; (a) "keep what was seen" until it is decided): "Things you moved and numbers you changed in this moment are kept too." */
+/* "⚑ Checkpoints · 1 ⌄" over a phone's list in Edit (pause walk 2 ✕1; main.ts cpListBtn): ▶ Play ⌄'s checkpoint rows there. */
+.cp-list-btn { flex: none; display: flex; align-items: center; gap: 8px; min-height: var(--h); margin: 0 8px 4px; padding: 0 12px; border-radius: 10px;
+  background: var(--raise); color: var(--text); font-size: var(--fs-s); font-weight: 500; text-align: left; }
+.cp-list-btn .label { flex: 1; min-width: 0; }
+.cp-list-btn .icon { width: 13px; height: 13px; color: var(--text-2); }
+.cp-list-btn[hidden] { display: none; }
+/* At the sheet's top while the list scrolls (the fix's walk in the side window: back in Edit the sheet kept the paused
+   list's scroll, and the row was out of sight above it). The sheet's colour round it, so rows pass under it unseen. */
+.shell[data-layout="phone"] .cp-list-btn { position: sticky; top: 0; z-index: 2; background: linear-gradient(var(--raise), var(--raise)) var(--col);
+  box-shadow: 0 0 0 4px var(--col); }
+.cp-keeps { margin: 0; max-width: 270px; color: var(--text-2); font-size: 11px; line-height: 1.4; word-break: keep-all; overflow-wrap: anywhere; }
 /* The line at the top of the game when a checkpoint did not open (decision 14): stays until × or Edit. Opaque too: it sits
    over the game's own HUD. */
 .cp-note { position: absolute; z-index: 7; top: 8px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 8px;
@@ -774,6 +792,9 @@ span.foot-row { display: flex; align-items: center; min-height: var(--h); }
   pointer-events: none; animation: studio-fade var(--dur-in) var(--ease); }
 .ask-news[hidden] { display: none; }
 .ask-box.has-news .ask-input::placeholder { color: transparent; }
+/* …and the chips step aside while it shows (pause walk 2 ✕10): a notice beside the picked object's chip read as being
+   about that object. Back when the notice goes (or at the first key / click into the field). */
+.ask-box.has-news .ask-chip { display: none; }
 .ask-kbd { flex: none; margin-right: 4px; }
 /* Is the AI there (ai-presence.ts, a hands-on review 2026-10-23): words next to the field, before typing. Small and quiet, at
    the field's right end on a wide bar (kept while typing: it matters most then), on its own line above on a narrow one
@@ -1558,6 +1579,12 @@ button.shelf-file.to:hover { background: var(--raise-2); }
 .ctx-row.danger { color: var(--danger); }
 .ctx-spark { display: inline-grid; vertical-align: -2px; margin-right: 6px; color: var(--ai); }
 .ctx-spark .icon { width: 13px; height: 13px; }
+/* A row's own mark (pause walk 2 ✕9: ▶ Play ⌄'s ⚑ checkpoint rows), quiet as the words around it. */
+.ctx-mark { display: inline-grid; vertical-align: -2px; margin-right: 6px; color: var(--text-2); }
+.ctx-mark .icon { width: 13px; height: 13px; }
+/* The keys sheet's row with no key (pause walk 2 ✕11: ⚑ Make this a checkpoint): the button's picture in the key's place. */
+.keys-mark { display: inline-grid; place-items: center; width: 22px; height: 20px; border-radius: 5px; background: var(--raise); color: var(--text-2); }
+.keys-mark .icon { width: 12px; height: 12px; }
 .ctx-key { margin-left: auto; flex: none; color: var(--text-3); }
 /* A row with ⋯ at its end (pause-edit stage 3: ▶ Play ⌄'s checkpoints — Rename, Delete): the row and its ⋯ on one line. */
 .ctx-line { display: flex; align-items: center; gap: 2px; }
@@ -2137,8 +2164,26 @@ button.shelf-file.to:hover { background: var(--raise-2); }
    grid track wider than the floating list, and the line and ✦ were cut at its edge (the first photo). */
 .moment-values { flex: none; min-width: 0; padding: 4px 8px 8px; border-bottom: 1px solid var(--line); }
 .moment-values[hidden] { display: none; }
-.mv-head { display: flex; align-items: center; justify-content: space-between; padding: 6px 0 4px; }
-.mv-time { color: var(--text-3); font-size: var(--fs-s); }
+.mv-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; padding: 4px 0 2px; }
+/* ⚑ Checkpoint at the head's right (pause walk 2 ✕1, 2026-10-28; moment-values.ts): where the moment's clock was. Quiet,
+   with its word (✕11: the flag alone said nothing to a first-time person); lit while its plate is open. */
+.mv-flag { flex: none; display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 8px; border-radius: 999px; background: var(--raise);
+  color: var(--text-2); font-size: var(--fs-s); font-weight: 500; }
+.mv-flag:hover { background: var(--raise-2); color: var(--text); }
+.mv-flag .icon { width: 12px; height: 12px; }
+:is(.mv-flag, .play-guide .play-flag)[aria-expanded="true"] { background: var(--you-soft); color: var(--you-text); }
+/* Narrow (a phone, the side window; ✕6): the head folds the block to one line — "▸ This moment Score 13,072 · Time left
+   25 s · …" — and opens the knobs on a press. Three 44 px boxes filled the low sheet and left the list one row. */
+.mv-fold { flex: 1; display: flex; align-items: center; gap: 6px; min-width: 0; height: var(--h); padding: 0; background: none; color: var(--text-2); text-align: left; }
+.mv-fold > .icon { flex: none; width: 12px; height: 12px; color: var(--text-3); }
+.mv-fold .list-title { flex: none; }
+.mv-sum { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); font-size: var(--fs-s); }
+.moment-values[data-fold="closed"] { padding-bottom: 2px; }
+.moment-values[data-fold="closed"] .mv-body { display: none; }
+.shell[data-layout="phone"] .mv-flag { height: 32px; padding: 0 10px; }
+/* …and the line stays at the sheet's top while the list scrolls under it (the walk of the fix in the side window: picking
+   the boss scrolled the sheet to its row, and This moment with its ⚑ went out of sight above it). */
+.shell[data-layout="phone"] .moment-values { position: sticky; top: 0; z-index: 2; background: var(--col); }
 .mv-body { display: grid; grid-template-columns: minmax(0, 1fr); gap: 2px; }
 .mv-row { display: flex; align-items: center; gap: 6px; min-height: var(--h); }
 .mv-row .knob { flex: 1; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }

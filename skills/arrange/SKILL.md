@@ -487,6 +487,12 @@ a conversation, not a bug report:
 - What the game moves or made moved in a paused moment is "just for this moment" (their next start does not have it);
   what they **placed** and moved there is in their scene as in Edit (Save · N): handle it as any saved move.
 - A choice to make: `--status asking --choice …` as usual; their pick comes back as the next message.
+- **"Show this moment's numbers and let the game start from here" (`intent: "moment-connect"`, the line says `connect
+  this moment to the game`).** The one ✦ of a paused moment whose game has no `codeMoment()` yet (under This moment and
+  under ⚑ alike). Deliver **both** in one go — the values ("This moment", §4) **and** `save` / `load` ("Checkpoints",
+  §4), `--check-moment` ok — then `--status done --changed 0 --note "<one line>"` ("Score, time left and health are in
+  This moment now, and checkpoints keep the boss and its shots."). If the game already has one of them, write the
+  other. Not "press Reload".
 - **"Make this moment editable" (`intent: "moment-values"`, the line says `make this moment's values editable`).** The
   list's "This moment" had nothing to show: the game has no `codeMoment()` yet. Deliver it — "This moment" (§4) — then
   `--status done --changed 0 --note "<one line: which numbers>"` ("Score, time left and health are in This moment
@@ -1004,18 +1010,21 @@ place and add the bounce on top of `box()`).
    file in the same `--do`: `{"do":"ui.theme","id":"--ink","clear":true}` (`--do list` → `theme` says which are which:
    a `label` = a codeTheme). Never `clear` one you did not write.
 
-### This moment (`codeMoment`, `intent: "moment-values"`)
+### This moment (`codeMoment`, `intent: "moment-connect"` / `"moment-values"`)
 
 When the person pauses ▶ Play (P, ❚❚ Pause to edit), the list over the game starts with **This moment**: the game's own
 numbers at that frame — the score, the time left, the health — each turned like a rule's knob (drag, or press and
 type). A change is for that moment only: the editor calls your `set(v)` and makes the game draw one frame with time
 stopped (the HUD shows it); Resume goes on from that value. The editor cannot see a `let score` in the game's JS, so you
-name them **once**, in the game's code, with the loader's `codeMoment()` — and the list shows "The game's numbers, like
-the score, aren't shown here yet. ✦ Have Claude make this moment editable" until you do.
+name them **once**, in the game's code, with the loader's `codeMoment()` — and the list shows "Numbers like the score,
+and starting from here, aren't ready for this game yet. ✦ Have Claude connect this moment to the game" until you do.
 
-**When**: only when asked — a paused `play` request with `intent: "moment-values"` (that ✦), or their words ("show the
-score when I pause", "let me change the time left"). Not on your own: unlike the canvas UI, nothing is missing on
-screen without it.
+**When**: only when asked — a paused `play` request with `intent: "moment-connect"` (that ✦; an older editor's
+`"moment-values"`), or their words ("show the score when I pause", "let me change the time left"). Not on your own:
+unlike the canvas UI, nothing is missing on screen without it. **Whichever of the two was asked — the numbers or the
+checkpoints — deliver both** (the values here and `save` / `load`, "Checkpoints" below) in the same change, and check
+them with `--check-moment`: the person sees one ✦ for "this moment", and a second ask, wait and Reload for the other half
+was the first-time walk's ✕2 (2026-10-28).
 
 1. **Choose the numbers** — all of them in one go, never one per request: **what the HUD shows** (score, time left,
    health, lives, coins, ammo, the wave / level number) and **what decides the end of the game** (the time left, the
@@ -1028,7 +1037,7 @@ screen without it.
    ```js
    import { codeMoment } from './studio-placement.js';
    codeMoment({ values: {
-     score:    { name: 'Score', get: () => score, set: (v) => { score = v; }, round: 0 },
+     score:    { name: 'Score', get: () => Math.floor(score), set: (v) => { score = v; }, round: 0 }, // as the HUD rounds it
      timeLeft: { name: 'Time left', unit: 's', min: 0, get: () => timeLeft, set: (v) => { timeLeft = v; } },
      hp:       { name: 'Health', min: 0, max: 5, step: 1, get: () => hp, set: (v) => { hp = v; } },
      wave:     { name: 'Wave', get: () => wave },               // no set: shown, not changed
@@ -1037,7 +1046,9 @@ screen without it.
 
    - `name`: **the person's word**, in their language (the request's `lang`; what the HUD or they call it: "Time left",
      "Lives" — in Japanese when they write Japanese) — not the variable's name.
-   - `get()`: the value now. A number gets a knob; anything else (a word, true / false) is shown, never changed.
+   - `get()`: the value now, **rounded the way the HUD rounds it** (a HUD that prints `Math.floor(score)` →
+     `get: () => Math.floor(score)`): This moment and the HUD must say the same number ("13100" beside "SCORE 13,099"
+     read as two scores). A number gets a knob; anything else (a word, true / false) is shown, never changed.
    - `set(v)`: **write the variable the game reads every frame**, so the next frame runs and draws with it: the score
      the HUD prints, the time the countdown takes from, the health the hit test lowers. If the HUD text is only
      written when the value changes (an event, a `setText` on a hit), update it in `set` the same way. Leave `set` out
@@ -1093,7 +1104,7 @@ codeMoment({ draw: () => {
 - **Check**: the game still runs (§3.3); `--status done --request <id> --changed 0 --note "The paused picture keeps the
   game's look now."`. The person's Reload brings the new code; pausing and moving something keeps the look.
 
-### Checkpoints (`codeMoment` `save` / `load`, `intent: "moment-save"` / `"moment-load"`)
+### Checkpoints (`codeMoment` `save` / `load`, `intent: "moment-connect"` / `"moment-save"` / `"moment-load"`)
 
 A paused moment can be **kept**: ⚑ (Make this a checkpoint) in the paused top bar → a name ("Before the boss") → the
 editor asks the game for this moment and keeps it in `.studio/checkpoints/<name>.json` — the editor's folder, never the
@@ -1101,10 +1112,12 @@ game (nothing of it is published). Next time ▶ Play ⌄ "⚑ Play from Before 
 and before its **first frame** the editor hands your `load()` that moment, so the first picture is the kept one. The
 editor cannot see a game's state (the score, each enemy, the random seed are your JS), and a checkpoint of where things
 stand alone would be a lie (another moment's score and enemies) — so without your two functions ⚑ only says "This game
-can't start from the middle yet. ✦ Have Claude let the game start from here".
+can't start from the middle yet. ✦ Have Claude connect this moment to the game" (the same ✦ as This moment's).
 
-**When**: only when asked — a paused `play` request with `intent: "moment-save"` (that ✦), or their words ("let me start
-from the boss", "save this moment"). `save` / `load` reach deep into the game: never on your own.
+**When**: only when asked — a paused `play` request with `intent: "moment-connect"` (that ✦), `"moment-save"` (a
+`save()` that threw: `checkpoint.error`; or an older editor's ✦), or their words ("let me start from the boss", "save
+this moment"). `save` / `load` reach deep into the game: never on your own. **Whichever was asked, deliver the values
+too** ("This moment" above) when the game has none: one ask connects the whole moment.
 
 1. **`save()` — everything the next frame needs, as plain data** (JSON: numbers, words, lists, objects; no class
    instances, no functions, no DOM, no three.js objects — their numbers instead: `boss.position.toArray()`):
@@ -1156,7 +1169,8 @@ from the boss", "save this moment"). `save` / `load` reach deep into the game: n
    the editor's way. `studio: moment check ok …` and the two pictures `.studio/shot/moment-kept.png` /
    `moment-opened.png` (look at them: the same moment); `studio: moment check failed: load(m) threw "…" (game.js:212 …)`
    → fix it and run it again until it is ok. Exit 3 = no Chrome here: then say in your note that you could not check.
-   Keeping and opening a checkpoint is the person's (⚑, ▶ Play ⌄): don't explain it to them.
+   Keeping and opening a checkpoint is the person's (⚑, ▶ Play ⌄): don't explain it to them. What they moved or set in
+   that paused moment before ⚑ is in the moment your `save()` returns — that is theirs to keep (the field says so).
 5. `--status done --request <id> --changed 0 --note "<one line>"` ("Checkpoints keep the score, the time, the boss and its
    shots now."). The editor offers Reload; don't tell them to press it, nor how to keep a checkpoint (⚑ says it).
 

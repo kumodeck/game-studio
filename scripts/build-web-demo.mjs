@@ -5,7 +5,8 @@
 //
 // --also (UI stage 1, 2026-10-19): add a sample folder that has a starter.json (e.g. examples/three-hud, the
 // UI-layer sample; examples/three-neon-boss, the paused moment's sample with a boss the game makes — pause-edit fix 1)
-// to the starters, for a try-out build. Without it the demo is exactly the starters, as before.
+// to the starters, for a try-out build. Without it the demo is exactly the starters, as before. A sample named in
+// web-demo-delivered.mjs goes in its "AI delivered it" form (pause walk 2 fix ✕3: Neon Run with codeMoment).
 // The list is sorted again afterwards as the starters are (3D first, then `order`): an --also sample sits among its
 // own kind (pause-edit fix 1, 2026-10-28: Glow Garden came after the 2D Firefly Ruins only because it was added last).
 //
@@ -51,6 +52,7 @@ import { buildDocs } from './build-docs.mjs';
 import { injectEditScript } from '../src/server/files.mjs';
 import { listAssets } from '../src/server/assets.mjs';
 import { readStarters, starterFiles } from '../src/server/starters.mjs';
+import { DELIVERED } from './web-demo-delivered.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const SRC = join(ROOT, 'src');
@@ -189,6 +191,12 @@ for (const s of SAMPLES) {
     if (rel.startsWith('.studio/')) continue;
     mkdirSync(dirname(join(to, rel)), { recursive: true });
     cpSync(join(from, rel), join(to, rel));
+  }
+  // A sample in its "AI delivered it" form in the demo (pause walk 2 fix ✕3: Neon Run with codeMoment's values and save /
+  // load, so This moment has numbers to turn here too; scripts/web-demo-delivered.mjs). The example itself is untouched.
+  if (DELIVERED[s.id]) {
+    const f = join(to, DELIVERED[s.id].file);
+    writeFileSync(f, DELIVERED[s.id].deliver(readFileSync(f, 'utf8')));
   }
   // The picture for the sample list. Kept outside games/<id>/ so the Library does not list it as a game asset.
   if (s.thumb) cpSync(s.thumb, join(OUT, 'thumbs', `${s.id}.png`));

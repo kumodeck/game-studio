@@ -29,6 +29,15 @@
 //
 // pause-edit stage 3 (2026-10-28, checkpoints; the plan's find.png "⚑"): ⚑ right of Speed while paused — "Make this a
 // checkpoint". main.ts opens the name field under it (or, for a game that cannot start from the middle, its one line).
+//
+// pause walk 2 fix (2026-10-28, a first-time person's walk of stages 1-3):
+//   - ✕11: ⚑ was a picture only, and "Next frame ." under ▶| had no twin for it: the first pause's line now says both —
+//     "Next frame . · ⚑ Make this a checkpoint", one pill with an arrow under each button (main.ts placePlayTip: it
+//     reaches left from ⚑, over the game's top-left that the floating list covers, not right over its middle). Gone at
+//     the first ▶| or ⚑, at Resume, or after 8 s.
+//   - ✕5: a phone and the side window show no such line at all (the bar has no ⚑ there and a phone no . key; the line
+//     sat on the game's SCORE), and the first-Play line wraps at the right under ❚❚ instead of crossing the HUD
+//     (shell.css).
 import type { MomentKind } from '../contract.ts';
 import { h } from './dom.ts';
 import { icon, setButton } from './icons.ts';
@@ -166,6 +175,7 @@ export function createMomentBar(d: MomentBarDeps): MomentBar {
   // paused moment kept, and while the game runs there is no one moment to keep.
   const flagBtn = h('button', { type: 'button', class: 'play-flag', hidden: true, dataset: { action: 'checkpoint', part: 'checkpoint' }, 'aria-haspopup': 'dialog' }) as HTMLButtonElement;
   flagBtn.addEventListener('click', () => {
+    stepTipOff();
     if (d.paused()) d.checkpoint(flagBtn);
   });
   const guide = h('span', { class: 'play-guide', hidden: true, dataset: { part: 'play-guide' } }, where, stepBtn, speedBtn, flagBtn);
@@ -284,14 +294,17 @@ export function createMomentBar(d: MomentBarDeps): MomentBar {
     pauseBtn.dataset.state = paused ? 'paused' : 'playing';
     if (paused) tipOff();
     else stepTipOff();
-    if (paused && !stepTipOn && !d.tipSeen('step')) {
+    // Not on a phone or in the side window (✕5): the line sat on the game's SCORE there, and a phone has no . key.
+    if (paused && !stepTipOn && !d.tipSeen('step') && !d.phone()) {
       stepTipOn = true;
       stepTip.hidden = false;
       window.clearTimeout(stepTipTimer);
       stepTipTimer = window.setTimeout(stepTipOff, FIRST_TIP_MS);
     }
     tip.replaceChildren(h('span', { text: d.t('play.firstTip') }), d.phone() ? '' : h('kbd', { text: 'P' }));
-    stepTip.replaceChildren(h('span', { text: d.t('play.step') }), d.phone() ? '' : h('kbd', { text: '.' }));
+    // "Next frame . · ⚑ Make this a checkpoint" (✕11): the same first-pause line for both new buttons.
+    stepTip.replaceChildren(h('span', { text: d.t('play.step') }), h('kbd', { text: '.' }), h('span', { class: 'tip-sep', text: '·' }), icon('flag'),
+      h('span', { text: d.t('checkpoint.make') }));
   }
 
   return {

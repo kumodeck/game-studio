@@ -13,7 +13,7 @@ import { applyHandsToFile, readHandsInput } from '../src/schema/hands.mjs';
 import { handsInput } from '../src/server/hands-cli.mjs';
 import { normalizeRequestInput } from '../src/schema/handoff.mjs';
 import { handoffLine } from '../src/server/ai-watch.mjs';
-import { momentNumber, momentOf, momentStep, unitText } from '../src/shell/moment-values.ts';
+import { groupDigits, momentNumber, momentOf, momentStep, unitText } from '../src/shell/moment-values.ts';
 import type { MomentValue } from '../src/contract.ts';
 
 /** A paused moment of Neon Run with its codeMoment delivered: the stand-ins act as main.ts does (one undo change). */
@@ -140,7 +140,12 @@ test('⌘Z: a value back and on again; Resume takes the moment\'s values out of 
 });
 
 test('the moment\'s list writes a value as the game shows it', () => {
-  assert.equal(momentNumber(12480.6, { round: 0 }), '12481');
+  assert.equal(momentNumber(12480.6, { round: 0 }), '12,481', 'the thousands as a HUD prints them (pause walk 2 ✕8)');
+  assert.equal(momentNumber(999, { round: 0 }), '999');
+  assert.equal(momentNumber(-1234.5, {}), '-1,234.5');
+  assert.equal(groupDigits('13100'), '13,100');
+  assert.equal(groupDigits('1234567.25'), '1,234,567.25');
+  assert.equal(groupDigits('—'), '—');
   assert.equal(momentNumber(18.437, {}), '18.44');
   assert.equal(momentNumber(18.437, { round: 1 }), '18.4');
   assert.equal(momentNumber(3, { step: 1 }), '3');
@@ -160,13 +165,18 @@ test('the words: "This moment", the one line with no codeMoment (no number named
   const ja = (k: string) => translate('ja', k, { ai: 'Claude ' }).replace(/\u200b/g, '');
   assert.equal(en('moment.values'), 'This moment');
   assert.equal(en('moment.noValues'), 'The game’s numbers, like the score, aren’t shown here yet.');
-  assert.equal(en('moment.valuesAsk'), 'Have Claude make this moment editable');
+  // pause walk 2 fix ✕2 (2026-10-28): ONE ✦ for the values and the checkpoints — "connect this moment to the game".
+  assert.equal(en('moment.noneBoth'), 'Numbers like the score, and starting from here, aren’t ready for this game yet.');
+  assert.equal(en('moment.connectAsk'), 'Have Claude connect this moment to the game');
+  assert.equal(en('moment.connectDraft'), 'Show this moment’s numbers and let the game start from here');
   assert.equal(ja('moment.values'), 'この瞬間');
   assert.equal(ja('moment.noValues'), 'スコアなどのゲームの数は、まだここに出ません。');
-  assert.equal(ja('moment.valuesAsk'), 'Claude にこの瞬間を編集できるようにしてもらう');
-  assert.equal(ja('moment.valuesDraft'), 'この瞬間を編集できるようにして');
+  assert.equal(ja('moment.noneBoth'), 'スコアなどの数を見る・ここから始める、はこのゲームではまだ使えません。');
+  assert.equal(ja('moment.connectAsk'), 'Claude にこの瞬間をゲームとつないでもらう');
+  assert.equal(ja('moment.connectDraft'), 'この瞬間の数を出して、ここから始められるようにして');
   // No word the screen must not say (10/23–10/24: code, hook, state, snapshot).
-  for (const k of ['moment.values', 'moment.noValues', 'moment.valuesAsk', 'moment.valuesDraft', 'moment.valueOnly', 'moment.valueBroken']) {
+  for (const k of ['moment.values', 'moment.noValues', 'moment.noneBoth', 'moment.connectAsk', 'moment.connectDraft', 'moment.valueOnly', 'moment.valueBroken',
+    'checkpoint.keepsMoved', 'checkpoint.demo', 'checkpoint.keptPhone']) {
     assert.doesNotMatch(en(k), /code|hook|state|snapshot/i, k);
     assert.doesNotMatch(ja(k), /コード|口|状態|スナップショット/, k);
   }

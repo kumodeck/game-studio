@@ -153,6 +153,11 @@ export function createPalette(d: PaletteDeps): Palette {
   const render = () => {
     list.replaceChildren();
     search.hidden = typed;
+    // The field's words at every render, as the list's own (pause walk 2 ✕7, 2026-10-28): it is made before the person's
+    // language is read, and a Japanese editor kept "Search actions and objects…" (the same hole as "This moment" in stage 2).
+    search.placeholder = d.t('pal.search');
+    search.setAttribute('aria-label', d.t('pal.search'));
+    list.setAttribute('aria-label', d.t('pal.title'));
     if (!open) return;
     rows = build();
     at = Math.max(0, Math.min(at, rows.length - 1));

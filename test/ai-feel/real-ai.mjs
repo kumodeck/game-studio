@@ -72,6 +72,14 @@
 // the game's code, marks the request done with one line, hands no steps back; Play from the start, pause when the boss
 // has come, ⚑ "Before the boss" (in Japanese; kept), Edit, ▶ Play ⌄ "⚑ Play from …": the game opens there (the boss
 // already there, the clock from the kept time, no "can't open" line). Since the first run: the AI's own --check-moment ok.
+// `--steps connect` (pause walk 2 fix ✕2, 2026-10-28 — ONE ✦ for the values and the checkpoints): the game is
+// examples/three-neon-boss as it ships; the person pauses, reads This moment's one line ("Numbers like the score, and
+// starting from here, aren't ready for this game yet."), presses its ✦ "Have Claude connect this moment to the game" and
+// sends the draft (`intent: "moment-connect"`), then says in the AI's window that they asked from the editor → the AI
+// writes the values AND save / load in one go, runs --check-moment itself, marks the request done with one line, hands no
+// steps back; then `--check-moment` here is ok, Play from the start: This moment lists the numbers (`--do moment.set`
+// works), and ⚑ keeps "Before the boss" (in Japanese) and ▶ Play ⌄ opens it (the moment and checkpoint checks below, one after the other).
+// Since the fix, `--steps moment` and `--steps checkpoint` send the same intent (their ✦ are this one ✦ now).
 // The game is Pillar Plaza (`pillars/`: a blue pillar that already sways), copied to a temporary folder. The editor
 // runs with its own HOME (so no KUMODeck sign-in on this computer is read) and is open in a headless Chrome the whole
 // time, as the person's editor would be; the AI's `--do` reaches it there. The skill is the package's own
@@ -113,11 +121,14 @@ const CANVAS = take('--steps') === 'canvas-ui';
 const MADE = take('--steps') === 'made';
 const MOMENT = take('--steps') === 'moment';
 const CHECKPOINT = take('--steps') === 'checkpoint';
+const CONNECT = take('--steps') === 'connect';
 // Stage 3: a Phaser or a Pixi game's UI kept as objects.
 const ENGINE = take('--steps') === 'canvas-ui-phaser' ? 'phaser' : take('--steps') === 'canvas-ui-pixi' ? 'pixi' : null;
 // The game's main script (the canvas-ui sets' game is examples/three-canvas-hud: game.js; stage 3's Phaser / Pixi game.js).
-const MAIN = CANVAS || CANVAS2 || ENGINE || MADE || MOMENT || CHECKPOINT ? 'game.js' : 'main.js';
-const STEPS = CHECKPOINT ? [
+const MAIN = CANVAS || CANVAS2 || ENGINE || MADE || MOMENT || CHECKPOINT || CONNECT ? 'game.js' : 'main.js';
+const STEPS = CONNECT ? [
+  { say: 'エディタから頼んだよ', first: true, kind: 'connect' },
+] : CHECKPOINT ? [
   { say: 'エディタから頼んだよ', first: true, kind: 'checkpoint' },
 ] : MOMENT ? [
   { say: 'エディタから頼んだよ', first: true, kind: 'moment' },
@@ -148,7 +159,10 @@ const STEPS = CHECKPOINT ? [
   { say: '街灯を 6 m おきに 10 本並べて。間は後で変えたい', first: true, kind: 'code-place' },
 ];
 // Handing the work back (Japanese and English): steps to click, asking for a reload or a Save, "in the editor, do …".
-const HANDBACK = /右クリック|再読み込み|リロード|を押して(?!くだ)|押してください|開き直|選んで.*(外|押)|手順|^\s*[1-9]\.\s|Reload|right-click|press Save|保存してください|Save を押/m;
+// "Open it again" asked of the person (the imperative form) — not the plain form alone: the connect run's reply (pause walk 2
+// fix, 2026-10-28) said it had run a test that keeps a checkpoint and opens it again (its own --check-moment), nothing
+// handed back, and the plain form matched.
+const HANDBACK = /右クリック|再読み込み|リロード|を押して(?!くだ)|押してください|開き直して|選んで.*(外|押)|手順|^\s*[1-9]\.\s|Reload|right-click|press Save|保存してください|Save を押/m;
 
 // ✦ Turn into a rule: the editor's measure in the `studio: did …` lines the AI got back ("the largest gap is lamp-3 ↔
 // lamp-row-3, 0.62 m", "… 0.12 m at 0.8 s"), and whether the reply says it (to one or two decimals).
@@ -167,7 +181,7 @@ const home = join(base, 'home');
 const out = take('--out') ? resolve(take('--out')) : join(base, 'report');
 mkdirSync(home, { recursive: true });
 mkdirSync(out, { recursive: true });
-cpSync(join(PKG, MADE || MOMENT || CHECKPOINT ? 'examples/three-neon-boss' : ENGINE ? `examples/${ENGINE === 'phaser' ? 'phaser-runner' : 'pixi-bubbles'}` : CANVAS || CANVAS2 ? 'examples/three-canvas-hud' : 'test/ai-feel/pillars'), game, { recursive: true });
+cpSync(join(PKG, MADE || MOMENT || CHECKPOINT || CONNECT ? 'examples/three-neon-boss' : ENGINE ? `examples/${ENGINE === 'phaser' ? 'phaser-runner' : 'pixi-bubbles'}` : CANVAS || CANVAS2 ? 'examples/three-canvas-hud' : 'test/ai-feel/pillars'), game, { recursive: true });
 rmSync(join(game, 'README.md'), { force: true });
 mkdirSync(join(game, '.claude/skills'), { recursive: true });
 symlinkSync(join(PKG, 'skills/arrange'), join(game, '.claude/skills/arrange'));
@@ -409,8 +423,8 @@ try {
       check(!!asked && asked.paused === true && asked.made === true && asked.here?.key === 'boss' && Math.abs((asked.here?.to?.p?.[0] ?? 0) + 3.4) < 0.01 && /^\.studio\/play\//.test(asked.shot ?? ''),
         `the editor sent the ask: paused, made, here = the boss at x -3.4, the picture (${asked ? JSON.stringify({ made: asked.made, here: asked.here, shot: asked.shot }) : 'none'})`);
     }
-    // This moment's person (pause-edit stage 2): Play, pause, This moment's line, ✦, Send.
-    if (step.kind === 'moment') {
+    // This moment's person (pause-edit stage 2; the one ✦ since pause walk 2 fix ✕2): Play, pause, This moment's line, ✦, Send.
+    if (step.kind === 'moment' || step.kind === 'connect') {
       await page.eval(`document.querySelector('button.play').click()`);
       await page.waitFor(`document.querySelector('.shell').dataset.playing === 'on' && !!document.querySelector('[data-part=play-pause]:not([hidden])')`, 30000);
       await sleep(2500);
@@ -418,7 +432,7 @@ try {
       await waitFor(() => page.eval(`document.querySelector('.shell').dataset.moment === 'on'`), 10000);
       await sleep(800);
       const line = await page.eval(`document.querySelector('[data-part=moment-none]')?.textContent ?? null`);
-      await page.eval(`document.querySelector('[data-action=moment-values-ask]')?.click()`);
+      await page.eval(`document.querySelector('[data-part=moment-values-ask]')?.click()`);
       await sleep(600);
       const box = await page.eval(`(() => { const a = document.querySelector('[data-part=ask]'); return a.querySelector('.ask-chip:not([hidden])')?.textContent + ' | ' + a.querySelector('.ask-input').value; })()`);
       console.log(`  (the person: paused — This moment says "${line}"; ✦ — the box: ${box}; sends it)`);
@@ -428,8 +442,8 @@ try {
       const dir = join(game, '.studio/requests');
       const name = existsSync(dir) ? readdirSync(dir).filter((n) => n.includes('-play-')).sort().pop() : null;
       asked = name ? JSON.parse(readFileSync(join(dir, name), 'utf8')) : null;
-      check(!!asked && asked.paused === true && asked.intent === 'moment-values' && /^\.studio\/play\//.test(asked.shot ?? ''),
-        `the editor sent the ask: paused, intent moment-values, the picture (${asked ? JSON.stringify({ intent: asked.intent, text: asked.text, shot: asked.shot }) : 'none'})`);
+      check(!!asked && asked.paused === true && asked.intent === 'moment-connect' && /^\.studio\/play\//.test(asked.shot ?? ''),
+        `the editor sent the ask: paused, intent moment-connect, the picture (${asked ? JSON.stringify({ intent: asked.intent, text: asked.text, shot: asked.shot }) : 'none'})`);
     }
     // The checkpoint's person (pause-edit stage 3): Play, pause, ⚑ — "can't start from the middle yet" — ✦, Send.
     if (step.kind === 'checkpoint') {
@@ -452,8 +466,8 @@ try {
       const dir = join(game, '.studio/requests');
       const name = existsSync(dir) ? readdirSync(dir).filter((n) => n.includes('-play-')).sort().pop() : null;
       asked = name ? JSON.parse(readFileSync(join(dir, name), 'utf8')) : null;
-      check(!!asked && asked.paused === true && asked.intent === 'moment-save' && /^\.studio\/play\//.test(asked.shot ?? ''),
-        `the editor sent the ask: paused, intent moment-save, the picture (${asked ? JSON.stringify({ intent: asked.intent, text: asked.text, shot: asked.shot }) : 'none'})`);
+      check(!!asked && asked.paused === true && asked.intent === 'moment-connect' && /^\.studio\/play\//.test(asked.shot ?? ''),
+        `the editor sent the ask: paused, intent moment-connect, the picture (${asked ? JSON.stringify({ intent: asked.intent, text: asked.text, shot: asked.shot }) : 'none'})`);
     }
     let boxes0 = null;
     if (PERSON[step.kind]) {
@@ -507,7 +521,7 @@ try {
     // A rule that does not come close is no change at all: it may just say so (it may still read the editor's --do list).
     // A rule that does not come close is no change at all, and "make it appear here" is a change of the game's code only.
     // …and "make this moment editable" too (its --do list is a look, not a change).
-    if (step.kind !== 'to-rule-none' && step.kind !== 'made' && step.kind !== 'moment' && step.kind !== 'checkpoint') check(dos.length > 0, 'it used --do (the editor\'s own work)');
+    if (step.kind !== 'to-rule-none' && step.kind !== 'made' && step.kind !== 'moment' && step.kind !== 'checkpoint' && step.kind !== 'connect') check(dos.length > 0, 'it used --do (the editor\'s own work)');
     check(!HANDBACK.test(reply), 'no steps, reload or Save handed back to the person');
     check(/^https?:\/\/127\.0\.0\.1:\d+\/__studio\/\?t=/.test(reply.trim()), 'the editor\'s link is the first line');
     const codeText = Object.values(codeNow).join('\n') + readGameJs();
@@ -675,7 +689,39 @@ try {
       const bx = ok ? JSON.parse(await page.eval(`JSON.stringify(${GW}.__gameStudio._move.list().find((i) => i.key === 'boss').pose)`)) : null;
       check(!!bx && bx.p[0] < -2.5, `Play from the start: the boss comes in on the left (x ${bx?.p?.[0]?.toFixed?.(2)})`);
       writeFileSync(join(out, 'made-after.png'), await page.screenshot());
+    } else if (step.kind === 'connect') {
+      // Both halves in one go (pause walk 2 fix ✕2): values and save / load, checked by the AI and here.
+      check(/codeMoment\s*\(/.test(codeText) && /\bvalues\s*:/.test(codeText) && /\bsave\s*[:(]/.test(codeText) && /\bload\s*[:(]/.test(codeText),
+        'one ask, both halves: codeMoment() with values AND save / load in the game\'s code');
+      check(bash.some((c) => c.includes('--check-moment')), 'it checked its hooks itself (--check-moment)');
+      check(codeNow.index === code0.index, 'the HUD (index.html) is untouched: nothing else changed on screen');
+      const st = existsSync(join(game, '.studio/status.json')) ? JSON.parse(readFileSync(join(game, '.studio/status.json'), 'utf8')) : null;
+      check(!!st && st.request === asked?.id && st.state === 'done', `the request is done (${st ? `${st.state} · ${st.note ?? ''}` : 'no status'})`);
+      // The same Chrome the AI's own --check-moment found (this machine's HOME: Playwright's headless shell). With the
+      // editor's empty HOME it found none of those and woke the full Google Chrome, which stayed there (180 s; the fix's
+      // first connect run, 2026-10-28). STUDIO_CHROME names it; HOME stays the empty one (no KUMODeck sign-in read).
+      const { findHeadlessChrome } = await import('../../src/server/view-check.mjs');
+      const chrome = findHeadlessChrome();
+      const cmk = spawnSync(process.execPath, [CLI, game, '--check-moment'], { encoding: 'utf8', env: { ...editorEnv, ...(chrome ? { STUDIO_CHROME: chrome } : {}) }, timeout: 120000 });
+      const cmLine = `${cmk.stdout || ''}${cmk.stderr || ''}`.split('\n').find((l) => /moment check/.test(l)) || `(exit ${cmk.status})`;
+      console.log(`  ${hide(cmLine)}`);
+      check(/moment check ok/.test(cmLine), `--check-moment after it delivered: ok (${hide(cmLine)})`);
+      await afterMoment();
+      await afterCheckpoint();
     } else if (step.kind === 'moment') {
+      await afterMoment();
+    } else if (step.kind === 'checkpoint') {
+      const cm = /codeMoment\s*\(\s*\{[\s\S]*?\n\}\s*\)\s*;?/.exec(codeNow.main + readGameJs());
+      console.log(`  its codeMoment:\n${cm ? cm[0].split('\n').map((l) => '    ' + l).join('\n') : '    (not found)'}`);
+      check(/codeMoment\s*\(/.test(codeText) && /\bsave\s*[:(]/.test(codeText) && /\bload\s*[:(]/.test(codeText), 'it wrote codeMoment() save / load in the game\'s code');
+      check(bash.some((c) => c.includes('--check-moment')), 'it checked its hooks itself (--check-moment)');
+      check(codeNow.index === code0.index, 'the HUD (index.html) is untouched: nothing else changed on screen');
+      const st = existsSync(join(game, '.studio/status.json')) ? JSON.parse(readFileSync(join(game, '.studio/status.json'), 'utf8')) : null;
+      check(!!st && st.request === asked?.id && st.state === 'done', `the request is done (${st ? `${st.state} · ${st.note ?? ''}` : 'no status'})`);
+      await afterCheckpoint();
+    }
+    // (the moment's and the checkpoint's person after the AI: the functions below, hoisted)
+    async function afterMoment() {
       const cm = /codeMoment\s*\(\s*\{[\s\S]*?\n\s*\}\s*\}?\s*\)\s*;?/.exec(codeNow.main + readGameJs());
       console.log(`  its codeMoment:\n${cm ? cm[0].split('\n').map((l) => '    ' + l).join('\n') : '    (not found)'}`);
       check(/codeMoment\s*\(/.test(codeText), 'it wrote a codeMoment() in the game\'s code');
@@ -703,14 +749,8 @@ try {
       console.log(`  ${hide(said).split('\n')[0]}`);
       check(/^studio: did set .* to 5 for this moment/.test(said), `--do moment.set --id ${time?.id ?? '?'} --v 5`);
       writeFileSync(join(out, 'moment-after.png'), await page.screenshot());
-    } else if (step.kind === 'checkpoint') {
-      const cm = /codeMoment\s*\(\s*\{[\s\S]*?\n\}\s*\)\s*;?/.exec(codeNow.main + readGameJs());
-      console.log(`  its codeMoment:\n${cm ? cm[0].split('\n').map((l) => '    ' + l).join('\n') : '    (not found)'}`);
-      check(/codeMoment\s*\(/.test(codeText) && /\bsave\s*[:(]/.test(codeText) && /\bload\s*[:(]/.test(codeText), 'it wrote codeMoment() save / load in the game\'s code');
-      check(bash.some((c) => c.includes('--check-moment')), 'it checked its hooks itself (--check-moment)');
-      check(codeNow.index === code0.index, 'the HUD (index.html) is untouched: nothing else changed on screen');
-      const st = existsSync(join(game, '.studio/status.json')) ? JSON.parse(readFileSync(join(game, '.studio/status.json'), 'utf8')) : null;
-      check(!!st && st.request === asked?.id && st.state === 'done', `the request is done (${st ? `${st.state} · ${st.note ?? ''}` : 'no status'})`);
+    }
+    async function afterCheckpoint() {
       // The person again: Play from the start (the new code), pause when the boss has come, ⚑ "Before the boss" (in Japanese).
       const M = `${GW}?.__gameStudio?._move`;
       await page.eval(`document.querySelector('[data-part=play-more]').click()`);
@@ -753,7 +793,8 @@ try {
       check(!!opened.boss && !!kept.boss && Math.abs(opened.boss[0] - kept.boss[0]) < 0.5 && Math.abs(opened.boss[2] - kept.boss[2]) < 4,
         `the boss is already there, near where it was kept (${kept.boss} → ${opened.boss})`);
       writeFileSync(join(out, 'checkpoint-opened.png'), await page.screenshot());
-    } else if (step.kind === 'code-place') {
+    }
+    if (step.kind === 'code-place') {
       const l = listNow();
       console.log(`  editor's list: places ${JSON.stringify((l?.places ?? []).map((p) => ({ id: p.id, name: p.name, n: p.keys?.length, knobs: p.knobs })))}`);
       const lamps = (l?.places ?? []).find((p) => (p.keys?.length ?? 0) >= 10);

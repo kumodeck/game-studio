@@ -2,7 +2,7 @@
 title: Play
 nav: Play
 order: 3
-written-for: 0.1.73
+written-for: 0.1.74
 description: Play your game in the editor, slow it down, pause it on the exact frame, edit that moment by hand or with your AI, and keep it as a checkpoint.
 ---
 
@@ -50,7 +50,7 @@ To change where the game makes something, drag it to where it should appear and 
 
 ### This moment
 
-At the top of the list, **This moment** shows your game’s own numbers on the frame you stopped on: the score, the time left, your health, whatever your game counts. Change one the way you change a number on a card: drag left or right, or click it and type. The game draws that same frame again with the new number, and its time doesn’t move. Set **Time left** to 5 and resume, and you see the end of the run five seconds later.
+At the top of the list, **This moment** shows your game’s own numbers on the frame you stopped on: the score, the time left, your health, whatever your game counts. **⚑ Checkpoint** at its right keeps the moment (see [Checkpoints](#checkpoints)). Change one the way you change a number on a card: drag left or right, or click it and type. The game draws that same frame again with the new number, and its time doesn’t move. Set **Time left** to 5 and resume, and you see the end of the run five seconds later.
 
 ![This moment at the top of the paused list: Score, Time left 5 s, Health 5 / 5](media/pause-moment.webp)
 
@@ -58,7 +58,7 @@ At the top of the list, **This moment** shows your game’s own numbers on the f
 - **Ask for it too.** “Give me 5 seconds left” in the ask box: your AI sets it in This moment for you, and <kbd>⌘</kbd><kbd>Z</kbd> undoes it.
 - A number in gray is one you can see but not change here.
 
-Your AI adds these numbers to the game once. Until it does, the list says **The game’s numbers, like the score, aren’t shown here yet.** Press **✦ Have Claude make this moment editable**: the ask box gets **Make this moment editable** with the chip **This moment**. Send it. When Claude is done, press **Reload** on its reply and pause again. The web demo has no AI, so it shows the line only.
+Your AI connects the moment to your game once: these numbers and the checkpoints, in one go. Until it does, the list says **Numbers like the score, and starting from here, aren’t ready for this game yet.** Press **✦ Have Claude connect this moment to the game**: the ask box gets **Show this moment’s numbers and let the game start from here** with the chip **This moment**. Send it. When Claude is done, press **Reload** on its reply and pause again. In the web demo, **Neon Run** already has them; a game there without numbers shows no **This moment**.
 
 ### Ask about this moment
 
@@ -67,7 +67,7 @@ The ask box says **Ask Claude about this moment…** (your AI’s name, if it is
 ### Slow it down, one frame at a time
 
 - **Speed** (**1× ⌄** in the top bar) plays at **1×**, **½×** or **¼×**. Set it before the boss comes and the moment is easy to catch. Every game slows the same way, because Studio holds the game’s clock. Sound is off while it’s slow. The next ▶ Play starts at 1× again.
-- **▶| Next frame** (or <kbd>.</kbd>) steps one frame while paused: the time moves by 0:00.01 or 0:00.02. Hold it down to go on at the speed you chose. The first time you pause, a small label under **▶|** says **Next frame .**
+- **▶| Next frame** (or <kbd>.</kbd>) steps one frame while paused: the time moves by 0:00.01 or 0:00.02. Hold it down to go on at the speed you chose. The first time you pause, a small label under **▶|** and **⚑** says **Next frame . · ⚑ Make this a checkpoint**.
 
 ![The Speed menu in the top bar: 1×, ½×, ¼×](media/pause-speed.webp)
 
@@ -75,9 +75,11 @@ The ask box says **Ask Claude about this moment…** (your AI’s name, if it is
 
 Paused just before the boss? Keep that moment, and next time start right there instead of playing back to it.
 
-1. Press **⚑** (right of the speed, while paused). A name field opens under it with the game’s time, like **0:04**. Type a name, like **Before the boss**, and press <kbd>Enter</kbd>. The ask box says **Checkpoint “Before the boss” kept**.
+1. Press **⚑ Checkpoint** at the right of **This moment** (or **⚑** right of the speed in the top bar). A name field opens under it with the game’s time, like **0:04**. Type a name, like **Before the boss**, and press <kbd>Enter</kbd>. The ask box says **Checkpoint “Before the boss” kept**.
 2. Change what you like: move things in Edit, or ask your AI to change the boss.
 3. Open **▶ Play ⌄** and choose **⚑ Play from Before the boss** (it’s in <kbd>⌘</kbd><kbd>K</kbd> too). The game opens on that moment: the same score, time left, enemies and boss, and the time in the top bar goes on from there.
+
+- **What you moved and set is kept too.** Moved the boss to the left lane and set **Time left** to 10 before keeping it? The checkpoint opens with the boss on the left and 10 seconds left. The field says so under the name.
 
 ![The paused moment with the name field under ⚑: Before the boss](media/pause-checkpoint.webp)
 
@@ -88,7 +90,7 @@ Paused just before the boss? Keep that moment, and next time start right there i
 
 ![▶ Play ⌄ with Play from the start and ⚑ Play from Before the boss](media/pause-checkpoint-open.webp)
 
-Your AI adds this to the game once, as with **This moment**. Until it does, **⚑** says **This game can’t start from the middle yet.** Press **✦ Have Claude let the game start from here**, send it, and when Claude is done press **Reload**. The web demo shows the line only.
+Your AI adds this to the game together with **This moment**. Until it does, **⚑** says **This game can’t start from the middle yet.** with the same **✦ Have Claude connect this moment to the game**: send it, and when Claude is done press **Reload**. The web demo keeps no checkpoints (**⚑** says so); your own Studio does.
 
 If your game changes so much that a checkpoint can’t open, the game starts from the beginning instead and a line at the top says **The game changed, so this checkpoint can’t open**. Press **✦ Have Claude fix it**: the game pauses and the ask box gets the request. Claude makes the game read the old checkpoint again.
 
@@ -104,9 +106,9 @@ If your game changes so much that a checkpoint can’t open, the game starts fro
 
 **▶ Play** from Edit goes on with the same game (the score and the boss go on), and so does the time in the top bar. **Play from the start** and **Reload** start again at **0:00**.
 
-On a phone or in a narrow window, the top bar shows the time, the speed, **❚❚** and **Edit**; paused, **▶ Resume**. The list opens as a sheet from the bottom. Select something the game moves or made and one line over the ask box says **Just for this moment** (after you move what the game made: **✦ Have Claude make it appear here**). In full screen, **❚❚** is in the game’s corner (the top bar isn’t visible): pressing it leaves full screen and opens the paused moment.
+On a phone or in a narrow window, the top bar shows the time, the speed, **❚❚** and **Edit**; paused, **▶ Resume**. The list opens as a sheet from the bottom, with **This moment** folded to one line (press it for the numbers) and **⚑ Checkpoint** at its right. Back in Edit, **⚑ Checkpoints · 1** at the top of the list opens your checkpoints (a phone has no **▶ Play ⌄**). Select something the game moves or made and one line over the ask box says **Just for this moment** (after you move what the game made: **✦ Have Claude make it appear here**). In full screen, **❚❚** is in the game’s corner (the top bar isn’t visible): pressing it leaves full screen and opens the paused moment.
 
-The web demo pauses too, with **Neon Run**, where a boss comes in. There’s no AI there, so there’s no ask box and no ✦.
+The web demo pauses too, with **Neon Run**, where a boss comes in: set **Time left** to 5 in **This moment** and resume. There’s no AI there, so there’s no ask box and no ✦.
 
 ## Ask while you play
 

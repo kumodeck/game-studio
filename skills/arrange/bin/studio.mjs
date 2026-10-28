@@ -2590,6 +2590,8 @@ function playMoment(r, errors) {
     // no codeMoment to show. The AI names the game's numbers once (SKILL.md "This moment"); the moment itself (picture,
     // camera, console) comes with the first request of the pause as for any paused message.
     if (r.intent === 'moment-values') out.intent = 'moment-values';
+    // Pause walk 2 fix ✕2 (2026-10-28): the one ✦ of a game without codeMoment — the values and save / load in one go.
+    if (r.intent === 'moment-connect') out.intent = 'moment-connect';
     // Pause-edit stage 3 (2026-10-28; CONTRACT.md §1.14 "Checkpoints"): ⚑'s ✦ Have Claude let the game start from here
     // ('moment-save': no save() / load() yet, or save() failed) and the line's ✦ when a checkpoint would not open
     // ('moment-load': load() threw, or is gone). `checkpoint` names it (its file id and name) with what went wrong: a hint
@@ -4211,6 +4213,9 @@ function handoffLine(rec, relPath) {
     const made = v.paused === true && v.made === true && v.here && typeof v.here.key === 'string' ? `made by the game: ${v.here.label || v.here.key}, make it appear where it was put` : '';
     // ✦ Have Claude make this moment editable (pause-edit stage 2): the moment's list had no codeMoment() to show.
     const values = v.paused === true && v.intent === 'moment-values' ? 'make this moment\'s values editable: codeMoment, SKILL.md "This moment"' : '';
+    // ✦ Have Claude connect this moment to the game (pause walk 2 fix ✕2): the one ✦ for both — the values and save / load.
+    const connect = v.paused === true && v.intent === 'moment-connect'
+      ? 'connect this moment to the game: codeMoment values + save / load in one go, SKILL.md "This moment" and "Checkpoints", --check-moment' : '';
     // ⚑'s ✦ / the line's ✦ (pause-edit stage 3): checkpoints — the hooks to write, or the checkpoint that no longer opens.
     const cp = v.checkpoint && typeof v.checkpoint === 'object' ? v.checkpoint : null;
     const cpFile = cp && cp.id ? `.studio/checkpoints/${cp.id}.json` : '';
@@ -4218,7 +4223,7 @@ function handoffLine(rec, relPath) {
       ? `let the game start from this moment: codeMoment save / load, SKILL.md "Checkpoints"${cp && cp.error ? ` (save() failed: ${cp.error})` : ''}` : '';
     const load = v.paused === true && v.intent === 'moment-load'
       ? `checkpoint ${JSON.stringify(cp && cp.name ? cp.name : '?')}${cpFile ? ` ${cpFile}` : ''} does not open${cp && cp.error ? `: ${cp.error}` : ''} — make load() read it, SKILL.md "Checkpoints"` : '';
-    const bits = [chatId ? `paused, chat .studio/chat/${chatId}.json` : 'while playing', made, values, save, load, v.shot ? `picture ${v.shot}` : '', errs ? `${errs} error${errs === 1 ? '' : 's'}` : ''].filter(Boolean);
+    const bits = [chatId ? `paused, chat .studio/chat/${chatId}.json` : 'while playing', made, values, connect, save, load, v.shot ? `picture ${v.shot}` : '', errs ? `${errs} error${errs === 1 ? '' : 's'}` : ''].filter(Boolean);
     return `studio: request play ${relPath} ${JSON.stringify((v.text || '').length > 120 ? v.text.slice(0, 119) + '…' : v.text || '')} (${bits.join(', ')})`;
   }
   // ✦ Ask … to make this UI editable (studio-canvas-ui stage 2, 2026-10-24): the line says what it is for and where the

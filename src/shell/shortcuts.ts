@@ -47,7 +47,8 @@ export function createShortcutSheet(d: ShortcutSheetDeps) {
           const note = [k.when ? d.t(`keys.when.${k.when}`) : '', k.note ? d.t(k.note) : ''].filter(Boolean).join(' · ');
           dl.append(h('div', { class: 'keys-row', dataset: { key: k.id } },
             h('dt', {}, k.playing && d.playing?.() ? k.playing.map((x) => d.t(x)).join(' / ') : d.t(k.label || `keys.${k.id}`), note ? h('span', { class: 'keys-note', text: note }) : null),
-            h('dd', {}, ...keys.flatMap((s, i) => [i ? h('span', { class: 'keys-or', text: ' ' }) : null, h('kbd', { text: s })]))));
+            h('dd', {}, ...(k.mark && !keys.length ? [h('span', { class: 'keys-mark', 'aria-hidden': 'true' }, icon(k.mark))] : []),
+              ...keys.flatMap((s, i) => [i ? h('span', { class: 'keys-or', text: ' ' }) : null, h('kbd', { text: s })]))));
         }
         // 2D adds a fourth group (draw order); the columns wrap (shell.css .keys-cols).
         holder.append(h('section', { class: `keys-group keys-${g}` }, h('h3', { text: d.t(`keys.group.${g}`) }), dl));

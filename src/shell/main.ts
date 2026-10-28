@@ -797,8 +797,9 @@ export function start(host: StudioHost) {
   // and goes (✦ on a phone, hidden while paused; Save, shown after a move) sits LEFT of it, so the bar, aligned right,
   // never slides ❚❚ out from under the finger that pressed it.
   const topActions = h('div', { class: 'top-actions', dataset: { part: 'top-actions' } }, playAskBtn, topSave, playPauseBtn, playSplit);
-  function openPlayMenu() {
-    const r = playMoreBtn.getBoundingClientRect();
+  /** ▶ Play ⌄'s menu — or, on a phone, the same rows under the list's "⚑ Checkpoints · N" (`at`; pause walk 2 ✕1). */
+  function openPlayMenu(at: HTMLElement = playMoreBtn) {
+    const r = at.getBoundingClientRect();
     // Checkpoints (pause-edit stage 3): "⚑ Play from Before the boss" under Play from the start, newest first, this level's
     // only (another level's moment is not this level's game), each with ⋯ (Rename, Delete).
     const rows: MenuEntry[] = [{ id: 'play-fresh', label: t('pal.playFresh'), run: () => void togglePlay(true) }];
@@ -806,7 +807,7 @@ export function start(host: StudioHost) {
     if (mine.length) {
       rows.push({ sep: true }, { head: t('checkpoint.head') });
       for (const c of mine.slice(0, CHECKPOINTS_LISTED)) {
-        rows.push({ id: `checkpoint-play`, label: t('checkpoint.playFrom', { name: c.name }), run: () => void playCheckpoint(c),
+        rows.push({ id: `checkpoint-play`, label: t('checkpoint.playFrom', { name: c.name }), icon: 'flag', run: () => void playCheckpoint(c),
           more: { label: t('checkpoint.more', { name: c.name }), run: (at) => checkpointMore(c, at) } });
       }
     }
@@ -815,6 +816,11 @@ export function start(host: StudioHost) {
     const m = ctxMenu.el.getBoundingClientRect();
     ctxMenu.el.style.left = `${Math.max(8, Math.round(r.right - m.width))}px`;
   }
+  // "⚑ Checkpoints · N" at the top of a phone's list in Edit (pause walk 2 ✕1, 2026-10-28): a phone's top bar has no ▶ Play
+  // ⌄ (no room: one more button pushes the game's name out), so a kept checkpoint opened only from ☰ → … → ⌘K. Shown
+  // once this level has one; a press opens ▶ Play ⌄'s rows under it. renderAll places and shows it.
+  const cpListBtn = h('button', { type: 'button', class: 'cp-list-btn', hidden: true, dataset: { action: 'checkpoint-list', part: 'checkpoint-list' }, 'aria-haspopup': 'menu',
+    onclick: () => openPlayMenu(cpListBtn) }) as HTMLButtonElement;
   // Pressed with the mouse (or a finger): let go of the focus, so Edit / Play keeps no orange ring (the third design
   // review's ⑩, 2026-10-20). WHY a ring at all after a click: the focus stayed on the button, and the keys pressed next
   // (W A S D in the game, P) went to it — Chrome then shows :focus-visible as if it had been reached with Tab.
@@ -1557,9 +1563,11 @@ export function start(host: StudioHost) {
     t,
     aiVars: () => aiVars(),
     offline: () => !!host.offline,
-    clock: () => clockText(clockNow(playHeard, performance.now())),
+    narrow: () => phone(),
     change: (id, v, end, from) => momentValueChange(id, v, end, from),
-    ask: () => momentValuesDraft(),
+    ask: () => momentConnectDraft(),
+    // ⚑ at the head's right (pause walk 2 ✕1): the same press as the top bar's ⚑, its plate under this one.
+    checkpoint: (at) => checkpointPress(at),
   });
   const placementPanel = createPlacementPanel({
     t,
@@ -1678,8 +1686,8 @@ export function start(host: StudioHost) {
     askTopic: () => {
       // ✦ Have Claude make it appear here (pause-edit decision 8): the chip "boss · here".
       if (moment && momentHere) return { chip: t('moment.here', { name: momentHere.label }), ph: t('moment.askPh', aiVars()) };
-      // ✦ Have Claude make this moment editable (pause-edit stage 2): the chip "This moment".
-      if (moment && momentValuesAsk) return { chip: t('moment.values'), ph: t('moment.askPh', aiVars()) };
+      // ✦ Have Claude connect this moment to the game (pause walk 2 ✕2; stage 2's "make this moment editable"): "This moment".
+      if (moment && momentConnectAsk) return { chip: t('moment.values'), ph: t('moment.askPh', aiVars()) };
       // ⚑'s ✦ / the line's ✦ (stage 3): the chip "⚑ This moment" / "⚑ Before the boss".
       if (moment && cpAsk) return { chip: cpAsk.checkpoint?.name ? t('checkpoint.chip', { name: cpAsk.checkpoint.name }) : t('checkpoint.chipNew'), ph: t('moment.askPh', aiVars()) };
       // ✦ Ask Claude to make this UI editable (studio-canvas-ui stage 2): "Here (bottom left)" with the place's picture.
@@ -2142,7 +2150,7 @@ export function start(host: StudioHost) {
     // The old Play, a new page (fast switch, 2026-10-22: Play's ▾ says why).
     act('play-fresh', t('pal.playFresh'), 'play', () => void togglePlay(true), undefined, t('pal.playFresh.words'));
     // Checkpoints (stage 3): this level's, as ▶ Play ⌄ lists them; while paused, ⚑ Make this a checkpoint.
-    if (playing && playAskOn && playPaused) act('checkpoint-make', t('checkpoint.make'), 'flag', () => checkpointPress(momentBar.flagBtn.offsetParent ? momentBar.flagBtn : topActions), undefined, t('checkpoint.playFromWords'));
+    if (playing && playAskOn && playPaused) act('checkpoint-make', t('checkpoint.make'), 'flag', () => checkpointPress(momentBar.flagBtn.offsetParent ? momentBar.flagBtn : momentValues.flagBtn.offsetParent ? momentValues.flagBtn : topActions), undefined, t('checkpoint.playFromWords'));
     for (const [i, c] of myCheckpoints().slice(0, CHECKPOINTS_LISTED).entries()) act(`checkpoint-play-${i}`, t('checkpoint.playFrom', { name: c.name }), 'flag', () => void playCheckpoint(c), undefined, t('checkpoint.playFromWords'));
     if (keys.length && editing) {
       act('copy', t('ops.copy'), 'copy', () => copySelection(), shortcutText('copy'), 'duplicate clone 複製');
@@ -3421,13 +3429,25 @@ export function start(host: StudioHost) {
     const sr = stage.getBoundingClientRect();
     if (!tip.hidden) {
       const br = playPauseBtn.getBoundingClientRect();
-      tip.style.right = `${Math.max(8, Math.round(sr.right - br.right))}px`;
+      // A phone / the side window (pause walk 2 ✕5): at the game's right edge, at most half its width (shell.css), so it
+      // stays off the top-left HUD ("SCORE 12,953" reaches past a third of a phone); its arrow still under ❚❚.
+      const right = phone() ? 8 : Math.max(8, Math.round(sr.right - br.right));
+      tip.style.right = `${right}px`;
+      tip.style.setProperty('--ar', `${Math.max(8, Math.round(sr.right - (br.left + br.width / 2) - right - 5))}px`);
     }
-    // "Next frame ." under ▶| (fix 1 ✕8): its arrow (shell.css .step-tip::before, 14 px in) under the button's middle.
+    // "Next frame . · ⚑ Make this a checkpoint" under ▶| and ⚑ (fix 1 ✕8, pause walk 2 ✕11): its right end just past ⚑'s,
+    // reaching left (over the game's top-left, which the floating list covers anyway — not right over its middle, where
+    // Neon Run's ⚠ BOSS is); an arrow under each button (shell.css .step-tip ::before / ::after at --a1 / --a2).
     const st = momentBar.stepTip;
     if (!st.hidden) {
-      const br = momentBar.stepBtn.getBoundingClientRect();
-      st.style.left = `${Math.max(8, Math.round(br.left + br.width / 2 - sr.left - 19))}px`;
+      const sb = momentBar.stepBtn.getBoundingClientRect();
+      const fb = momentBar.flagBtn.getBoundingClientRect();
+      const mid = (b: DOMRect) => b.left + b.width / 2 - sr.left;
+      const left = fb.width > 0 ? Math.max(8, Math.round(fb.right + 10 - sr.left - st.offsetWidth)) : Math.max(8, Math.round(mid(sb) - 19));
+      st.style.left = `${left}px`;
+      st.style.setProperty('--a1', `${Math.round(mid(sb) - left - 5)}px`);
+      st.style.setProperty('--a2', `${Math.round(mid(fb) - left - 5)}px`);
+      st.dataset.two = fb.width > 0 ? 'on' : '';
     }
   }
   /** What the game page's overlay needs (play/on). The web demo too, with `ai: false` (pause-edit decision 12). */
@@ -3481,7 +3501,7 @@ export function start(host: StudioHost) {
     renderMomentEarlier();
     // This moment's values: asked at once (the head shows until they come; the game page answers in a frame).
     momentVals = undefined;
-    momentValuesAsk = false;
+    momentConnectAsk = false;
     momentValues.show(undefined);
     // `settle`: the game draws its one frame now (moment-values.ts), so a value the person sets stays exactly as set.
     postGame({ type: 'studio:moment/ask', settle: true });
@@ -3517,7 +3537,7 @@ export function start(host: StudioHost) {
     momentEarlierOpen = false;
     renderMomentEarlier();
     momentVals = undefined;
-    momentValuesAsk = false;
+    momentConnectAsk = false;
     momentValues.hide();
     // Checkpoints (stage 3): ⚑'s field and a ✦ draft belong to this moment.
     momentCanCheckpoint = false;
@@ -3634,7 +3654,7 @@ export function start(host: StudioHost) {
     if (!playPaused) return;
     momentVals = m.values;
     momentCanCheckpoint = m.checkpoint === true;
-    momentValues.show(m.values);
+    momentValues.show(m.values, { checkpoint: momentCanCheckpoint });
   }
   /**
    * A value turned on its knob (or by ⌘Z): the game's set(v) and one frame drawn (the game page); just for this moment —
@@ -3684,12 +3704,17 @@ export function start(host: StudioHost) {
       postGame({ type: 'studio:moment/set', id, v, n });
     });
   }
-  /** ✦ Have {ai} make this moment editable: the draft and the chip "This moment" in the field; the person sends it. */
-  function momentValuesDraft() {
-    momentValuesAsk = true;
+  /**
+   * ✦ Have {ai} connect this moment to the game (pause walk 2 ✕2, 2026-10-28): the draft and the chip "This moment" in the
+   * field; the person sends it. ONE ✦ for what a game without codeMoment lacks — the values and save / load — under
+   * "This moment" and under ⚑ alike (it was two: "make this moment editable" and "let the game start from here", two asks,
+   * two waits, two reloads for one thing). The request's `intent: 'moment-connect'`: the AI writes both (SKILL.md).
+   */
+  function momentConnectDraft() {
+    momentConnectAsk = true;
     cpAsk = null;
     momentHere = null;
-    focusAsk(t('moment.valuesDraft'));
+    focusAsk(t('moment.connectDraft'));
   }
   // ----- checkpoints (pause-edit stage 3, 2026-10-28; checkpoints.ts, CONTRACT.md §1.14 "Checkpoints") -----
   /** The level checkpoints belong to: the level on screen; null for a game without levels. */
@@ -3709,20 +3734,37 @@ export function start(host: StudioHost) {
    */
   function checkpointPress(at: HTMLElement) {
     if (!playPaused || !moment) return;
-    if (cpPop.isOpen()) return cpPop.close();
+    // The first pause's "Next frame . · ⚑ Make this a checkpoint" has done its work (✕11).
+    momentBar.stepped();
+    if (cpPop.isOpen()) {
+      const was = cpPop.anchor();
+      cpPop.close();
+      // The other ⚑ (the top bar's / the head's) pressed while one plate is open: that one's plate, under it.
+      if (was === at) return;
+    }
     if (!momentCanCheckpoint || !host.checkpoints) return checkpointNone(at);
+    // △12 (an open question; (a) "keep what was seen" until it is decided, 2026-10-28): what was moved and set in this moment is kept too — said
+    // under the field, small, because the card says "Just for this moment" about the same moves.
     cpPop.name(at, { name: defaultCheckpointName(clockNow(playHeard, performance.now())), label: t('checkpoint.name'), button: t('checkpoint.keep'),
-      keep: (name) => keepCheckpoint(name, at) });
+      note: t('checkpoint.keepsMoved'), keep: (name) => keepCheckpoint(name, at) });
   }
-  /** "This game can't start from the middle yet." (or: save() failed) and ✦ Have {ai} let the game start from here. */
+  /**
+   * ⚑'s one line: "This game can't start from the middle yet." and the same ✦ as "This moment"'s (pause walk 2 ✕2:
+   * Have {ai} connect this moment to the game); save() failed: "This moment couldn't be kept…" and ✦ for that. The web
+   * demo keeps no checkpoints (no folder): a game that could keep one says so (✕3: its Neon Run has save / load now).
+   */
   function checkpointNone(at: HTMLElement, error?: string) {
-    const ask = host.offline ? undefined : { label: t('checkpoint.noneAsk', aiVars()), run: () => checkpointDraft('moment-save', error ? { error } : undefined) };
-    cpPop.line(at, error ? t('checkpoint.saveFailed') : t('checkpoint.none'), ask);
+    // The hosted demo's "This is a test version" strip is at the top middle of the game (KUMODeck hosting adds it to every
+    // page; test/web-demo-host.mjs has the same): the top bar's plate goes under it there (✕3: they overlapped).
+    const o = host.offline && at === momentBar.flagBtn ? { below: 36 } : undefined;
+    if (host.offline) return cpPop.line(at, momentCanCheckpoint ? t('checkpoint.demo') : t('checkpoint.none'), undefined, o);
+    if (error) return cpPop.line(at, t('checkpoint.saveFailed'), { label: t('checkpoint.noneAsk', aiVars()), run: () => checkpointDraft('moment-save', { error }) });
+    cpPop.line(at, t('checkpoint.none'), { label: t('moment.connectAsk', aiVars()), run: () => momentConnectDraft() });
   }
   /** ✦'s draft and chip in the field (the person sends it): the paused request gets the intent and the checkpoint. */
   function checkpointDraft(intent: CpAsk['intent'], checkpoint?: CpAsk['checkpoint']) {
     cpAsk = { intent, ...(checkpoint ? { checkpoint } : {}) };
-    momentValuesAsk = false;
+    momentConnectAsk = false;
     momentHere = null;
     focusAsk(intent === 'moment-load' ? t('checkpoint.loadDraft', { name: checkpoint?.name ?? '' }) : t('checkpoint.saveDraft'));
   }
@@ -3760,7 +3802,9 @@ export function start(host: StudioHost) {
     const a = await cps.add({ name, level: cpLevel(), time, moment: r.moment, ...(shot ? { shot } : {}) });
     if (!a.ok) return t('checkpoint.keepFailed', { error: a.error ?? '?' });
     // Said where the moment's news goes (the field's line): the game's foot, where the flash is, is the field's place while paused.
-    showToast(t('checkpoint.kept', { name }), 5000);
+    // A phone / the side window has no ▶ Play ⌄ (pause walk 2 ✕1: the line pointed at a ⌄ that is not there): Edit's
+    // list opens it there (⚑ Checkpoints · N at its top).
+    showToast(t(phone() ? 'checkpoint.keptPhone' : 'checkpoint.kept', { name }), 5000);
     await refreshCheckpoints();
     return null;
   }
@@ -3854,10 +3898,10 @@ export function start(host: StudioHost) {
     const ok = await askAi({ kind: 'play', text, paused: true, ...(first && momentAsk ? momentAsk : {}), ...(momentChat ? { chat: momentChat } : {}),
       ...(history.length ? { history } : {}), ...(keys.length ? { objects: requestObjects(keys) } : {}),
       ...(here ? { made: true, here: { key: here.key, label: here.label, at: here.at, to: here.to, time: here.time } } : {}),
-      ...(momentValuesAsk ? { intent: 'moment-values' as const } : {}),
+      ...(momentConnectAsk ? { intent: 'moment-connect' as const } : {}),
       ...(cpAsk ? { intent: cpAsk.intent, ...(cpAsk.checkpoint ? { checkpoint: cpAsk.checkpoint } : {}) } : {}) });
     if (!ok) return false;
-    momentValuesAsk = false;
+    momentConnectAsk = false;
     cpAsk = null;
     if (first && pending?.id) momentChat = pending.id;
     if (pending?.id) {
@@ -4329,10 +4373,7 @@ export function start(host: StudioHost) {
         playHeard = { t: m.t, rate: m.rate, running: m.running, at: performance.now() };
         momentBar.render();
         // A Next frame moved the game on: this moment's values may have changed (pause-edit stage 2).
-        if (playPaused) {
-          momentValues.tick();
-          postGame({ type: 'studio:moment/ask' });
-        }
+        if (playPaused) postGame({ type: 'studio:moment/ask' });
         break;
       case 'studio:moment/values':
         momentValuesHeard(m);
@@ -5108,10 +5149,10 @@ export function start(host: StudioHost) {
   let momentEarlierOpen = false;
   let momentList: Item[] | null = null;
   // This moment's values (pause-edit stage 2; moment-values.ts): as last heard (undefined = not yet, null = the game has
-  // no codeMoment), ✦ Have {ai} make this moment editable waiting in the field (the request's `intent`), and what waits
-  // for the game page's answer (the AI's `--do list` / `moment.set`).
+  // no codeMoment), ✦ Have {ai} connect this moment to the game waiting in the field (the request's `intent`), and what
+  // waits for the game page's answer (the AI's `--do list` / `moment.set`).
   let momentVals: MomentValue[] | null | undefined;
-  let momentValuesAsk = false;
+  let momentConnectAsk = false;
   let momentSetN = 0;
   const momentSetWaits = new Map<number, (r: { ok: boolean; v?: number; error?: string }) => void>();
   let momentAskWaits: Array<(v: MomentValue[] | null) => void> = [];
@@ -5982,12 +6023,15 @@ export function start(host: StudioHost) {
     if (askNews.parentElement !== box) box.append(askNews);
     askNews.textContent = text;
     askNews.hidden = false;
+    // The chips step aside while it shows (pause walk 2 ✕10, 2026-10-28): "Checkpoint “Before the boss” kept" sat right of
+    // the picked boss's chip and read as news about the boss. The field's whole width is the notice's, then (shell.css).
+    box.classList.add('has-news');
     placeNews();
     if (askNews.scrollWidth > askInput.offsetWidth + 1) {
       askNews.hidden = true;
+      box.classList.remove('has-news');
       return false;
     }
-    box.classList.add('has-news');
     return true;
   }
 
@@ -6136,8 +6180,10 @@ export function start(host: StudioHost) {
       setButton(b, playing ? 'stop' : 'play', playing ? t('btn.edit') : t('btn.play'), true, tipText(editTip, pKeys ? keyOf('play', mac) : ''));
       if (!phone() && pKeys) b.append(h('kbd', { text: 'P' }));
     }
-    playMoreBtn.title = t('pal.playFresh');
-    playMoreBtn.setAttribute('aria-label', t('pal.playFresh'));
+    // "Play from the start · checkpoints" (pause walk 2 ✕9, 2026-10-28): the tip said only "Play from the start", and a
+    // person who kept a checkpoint did not know it was in here.
+    playMoreBtn.title = t('play.moreTip');
+    playMoreBtn.setAttribute('aria-label', t('play.moreTip'));
     renderMotionNote();
     keepSoon();
   }
@@ -6209,6 +6255,15 @@ export function start(host: StudioHost) {
       // Under "This moment" (pause-edit stage 2), which stays the list's first block; over the rows.
       placementPanel.el.insertBefore(listTools, placementPanel.el.querySelector('.list-scroll'));
     }
+    // ⚑ Checkpoints · N over a phone's list in Edit (cpListBtn), and This moment's words / fold (a language or layout change).
+    const cpN = phone() && !playing && !!host.checkpoints && tool === 'placement' && page === 'tool' ? myCheckpoints().length : 0;
+    cpListBtn.hidden = !cpN;
+    if (cpN) {
+      cpListBtn.replaceChildren(icon('flag'), h('span', { class: 'label', text: t('checkpoint.list', { n: cpN }) }), icon('chevronDown'));
+      const scroll = placementPanel.el.querySelector('.list-scroll');
+      if (cpListBtn.parentElement !== placementPanel.el || cpListBtn.nextSibling !== scroll) placementPanel.el.insertBefore(cpListBtn, scroll);
+    }
+    momentValues.render();
     // The phone's list button (renderSheetBtn; again at the end, once the card is placed). A language change redraws it.
     delete sheetBtn.dataset.state;
     renderSheetBtn();

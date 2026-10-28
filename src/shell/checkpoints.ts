@@ -80,18 +80,27 @@ export interface CheckpointPopDeps {
   changed?(open: boolean): void;
 }
 
-/** The floating plate under ⚑ (or under ▶ Play ⌄ for a rename): a name field, or one line with ✦. */
+/**
+ * The floating plate under ⚑ (or under ▶ Play ⌄ for a rename): a name field, or one line with ✦. Since pause walk 2 ✕1
+ * (2026-10-28) there are two ⚑ — the top bar's (PC) and the one at the right of "This moment"'s head (every width) —
+ * and the plate hangs under the one pressed (above it when the window has no room under it: a phone's sheet).
+ */
 export interface CheckpointPop {
   el: HTMLElement;
   isOpen(): boolean;
+  /** The button the open plate hangs under (null = closed). */
+  anchor(): HTMLElement | null;
   /**
    * The name field under `at`: `name` first (selected, so typing replaces it), Enter → `keep(name)`; Esc / a press
    * outside closes. `keep` answers an error to show under the field, null (done: it closes) or undefined (the plate is
    * something else now — the one line: left as it is).
    */
-  name(at: HTMLElement, o: { name: string; label: string; button: string; keep(name: string): Promise<string | null | undefined> }): void;
-  /** One line under `at`, and ✦ when `ask` is given (the web demo: none). */
-  line(at: HTMLElement, text: string, ask?: { label: string; run(): void }): void;
+  name(at: HTMLElement, o: { name: string; label: string; button: string; note?: string; keep(name: string): Promise<string | null | undefined> }): void;
+  /**
+   * One line under `at`, and ✦ when `ask` is given (the web demo: none). `below`: px more between the button and the
+   * plate (the hosted web demo's "This is a test version" strip sits at the game's top middle: pause walk 2 ✕3).
+   */
+  line(at: HTMLElement, text: string, ask?: { label: string; run(): void }, o?: { below?: number }): void;
   close(): void;
 }
 
@@ -99,16 +108,24 @@ export function createCheckpointPop(d: CheckpointPopDeps): CheckpointPop {
   const el = h('div', { class: 'cp-pop', role: 'dialog', hidden: true, dataset: { part: 'checkpoint-pop' } });
   let open = false;
   let busy = false;
+  let anchor: HTMLElement | null = null;
 
-  const place = (at: HTMLElement) => {
+  const place = (at: HTMLElement, below = 0) => {
     el.hidden = false;
     el.style.visibility = 'hidden';
     const r = at.getBoundingClientRect();
     const m = el.getBoundingClientRect();
-    // Under the button, its left edge on the button's (the plan's find.png), kept inside the window.
+    // Under the button, its left edge on the button's (the plan's find.png), kept inside the window. Above it when there is
+    // no room under it (the phone's ⚑ at the head of "This moment" in the low sheet).
     el.style.left = `${Math.round(Math.max(8, Math.min(r.left, window.innerWidth - m.width - 8)))}px`;
-    el.style.top = `${Math.round(r.bottom + 6)}px`;
+    const under = r.bottom + 6 + below;
+    el.style.top = `${Math.round(under + m.height > window.innerHeight - 8 && r.top - 6 - m.height >= 8 ? r.top - 6 - m.height : under)}px`;
     el.style.visibility = '';
+    if (anchor !== at) {
+      anchor?.removeAttribute('aria-expanded');
+      anchor = at;
+    }
+    at.setAttribute('aria-expanded', 'true');
     if (!open) {
       open = true;
       d.changed?.(true);
@@ -120,16 +137,23 @@ export function createCheckpointPop(d: CheckpointPopDeps): CheckpointPop {
     busy = false;
     el.hidden = true;
     el.replaceChildren();
+    anchor?.removeAttribute('aria-expanded');
+    anchor = null;
     d.changed?.(false);
   };
-  // A press outside closes it (the field's own presses and ⚑'s, which opens it again, do not).
+  // A press outside closes it (the field's own presses and a ⚑'s, which opens or moves it, do not).
   document.addEventListener('pointerdown', (e) => {
-    if (open && !el.contains(e.target as Node) && !(e.target as Element | null)?.closest?.('[data-part=checkpoint]')) close();
+    if (open && !el.contains(e.target as Node) && !(e.target as Element | null)?.closest?.('[data-action=checkpoint]')) close();
   }, true);
+  // Esc closes the one line too (the name field closes itself: its own keydown).
+  document.addEventListener('keydown', (e) => {
+    if (open && e.key === 'Escape' && el.dataset.mode === 'line') close();
+  });
 
   return {
     el,
     isOpen: () => open,
+    anchor: () => (open ? anchor : null),
     name(at, o) {
       const input = h('input', { type: 'text', class: 'cp-name', maxlength: '40', value: o.name, 'aria-label': o.label, dataset: { part: 'checkpoint-name' }, autocomplete: 'off', spellcheck: 'false' }) as HTMLInputElement;
       const err = h('p', { class: 'cp-err', role: 'alert', hidden: true, dataset: { part: 'checkpoint-error' } });
@@ -163,12 +187,13 @@ export function createCheckpointPop(d: CheckpointPopDeps): CheckpointPop {
       keep.addEventListener('click', () => void go());
       el.dataset.mode = 'name';
       el.setAttribute('aria-label', o.label);
-      el.replaceChildren(h('label', { class: 'cp-label', text: o.label }), h('div', { class: 'cp-row' }, input, keep), err);
+      el.replaceChildren(h('label', { class: 'cp-label', text: o.label }), h('div', { class: 'cp-row' }, input, keep), err,
+        ...(o.note ? [h('p', { class: 'cp-keeps muted', dataset: { part: 'checkpoint-keeps' }, text: o.note })] : []));
       place(at);
       input.focus({ preventScroll: true });
       input.select();
     },
-    line(at, text, ask) {
+    line(at, text, ask, o = {}) {
       el.dataset.mode = 'line';
       el.setAttribute('aria-label', text);
       const b = ask
@@ -176,7 +201,7 @@ export function createCheckpointPop(d: CheckpointPopDeps): CheckpointPop {
           h('span', { class: 'ai-spark', 'aria-hidden': 'true' }, icon('spark')), h('span', { class: 'label', text: ask.label }))
         : null;
       el.replaceChildren(h('p', { class: 'cp-line', dataset: { part: 'checkpoint-none' }, text }), ...(b ? [b] : []));
-      place(at);
+      place(at, o.below ?? 0);
       (b ?? el).focus?.({ preventScroll: true });
     },
     close,

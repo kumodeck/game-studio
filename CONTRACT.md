@@ -880,8 +880,11 @@ codeMoment({ values: {
   paused`, `the game has no codeMoment()…`, `the game's codeMoment() has no "lives" (it has: …)`, `"wave" (Wave) is shown
   only…`, `"v" must be a number`, `its get() failed (…)`, `its set(v) failed (…)`.
 - **In the editor page** (`src/shell/moment-values.ts`): the paused moment's list starts with **This moment** (its head
-  with the game's time, as the top bar's clock), one row per value: the name, the rules' knob (`knob.ts`: drag left /
-  right, press to type, ↑ / ↓; live while dragged, one step when let go), "/ 5" after a value with a `max` and no unit.
+  with **⚑ Checkpoint** at its right — the same press as the top bar's ⚑, every width; no clock since pause walk 2 fix:
+  the top bar's says it), one row per value: the name, the rules' knob (`knob.ts`: drag left / right, press to type,
+  ↑ / ↓; live while dragged, one step when let go), "/ 5" after a value with a `max` and no unit, the thousands with ","
+  ("13,100"). On a phone and in the side window the block is one line at first ("▸ This moment Score 13,072 · Time left
+  25 s …" and ⚑), a press opens the knobs.
   A value shown only (no `set`, words, a failed `get()`) is grey with its reason as the tip. A change is **just for this
   moment**: not in the scene, not counted on Save · N, written nowhere; one ⌘Z step while paused (undo kind
   `moment-value`), taken out of the history at ▶ Resume (`UndoStack.dropMoment`), as the moment's moves (§3.5.1).
@@ -892,12 +895,16 @@ codeMoment({ values: {
   by hand, two composers, a HUD scene drawn after the world; §3.5.1 "The picture"). Kept as `draw` on the same object as
   `values` (a new one replaces it, `draw: null` takes it away, anything else is said once and left out); a call with
   `values` only leaves it, and the other way round. Outside the editor nothing calls it. SKILL.md "The paused picture".
-- **None** (`values: null` or empty): one line, "The game's numbers, like the score, aren't shown here yet." (it names
-  no number: the editor does not know which the game has) and **✦ Have {ai} make this moment editable**: the draft
-  "Make this moment editable" with the chip "This moment" in the field; the person sends it — the paused `play` request
-  with `intent: 'moment-values'` (and the moment, with the pause's first request), the AI's line `… (paused, chat …,
-  make this moment's values editable: codeMoment, SKILL.md "This moment")`. The web demo (no AI): the line alone. The AI
-  delivers all the values at once (SKILL.md "This moment"), never on its own.
+- **None** (`values: null` or empty): one line — "Numbers like the score, and starting from here, aren't ready for this
+  game yet." (no save / load either; with them: "The game's numbers, like the score, aren't shown here yet."; it names
+  no number: the editor does not know which the game has) and ONE **✦ Have {ai} connect this moment to the game** (pause
+  walk 2 fix ✕2, 2026-10-28; ⚑'s line has the same ✦): the draft "Show this moment's numbers and let the game start from
+  here" with the chip "This moment" in the field; the person sends it — the paused `play` request with `intent:
+  'moment-connect'` (and the moment, with the pause's first request), the AI's line `… (paused, chat …, connect this
+  moment to the game: codeMoment values + save / load in one go, SKILL.md "This moment" and "Checkpoints",
+  --check-moment)`. The AI delivers the values and save / load at once, never on its own. `intent: 'moment-values'`
+  (stage 2's ✦) is still read. The web demo (no AI): nothing for a game without values (Lantern Cove has no score);
+  its Neon Run has them (scripts/web-demo-delivered.mjs).
 - **The AI's hands** (§3.6): `--do list` has `moment` (the values read from the page now; null = none) and `paused`;
   `--do moment.set --id timeLeft --v 5` sets one in a paused moment, as the knob does (one ⌘Z, the line "Claude set Time
   left to 5 s for this moment"); not paused (playing, Edit, or no editor open): `do failed moment.set - the game is not
@@ -950,15 +957,22 @@ codeMoment({ values: { … },
   name keeps its letters; never a dot or a slash); kept again with the same name in the same level it replaces that one, the same name
   in another level gets `-2`. A file that does not read as a checkpoint (cut short, hand-edited, no `moment`) is listed
   as `broken` and never offered. At most 200 per game; a newer `version` is read as far as it has these fields.
-- **In the editor page** (`src/shell/checkpoints.ts`, `main.ts`): ⚑ right of Speed while paused (not on a phone's bar:
-  ⌘K "Make this a checkpoint") → the name field under it, the game's time first ("0:42", selected), Enter keeps it
-  (`CheckpointHost.add`) and the field's line says "Checkpoint “Before the boss” kept · ▶ Play ⌄ opens it"; Esc closes.
-  A game without the hooks (or the web demo, which keeps none): one line, "This game can't start from the middle yet."
-  and ✦ Have {ai} let the game start from here (the draft "Let the game start from this moment", the chip "⚑ This
-  moment"; the paused request's `intent: 'moment-save'`; a `save()` that threw: the line "This moment couldn't be kept…"
-  and the same ✦ with `checkpoint.error`). ▶ Play ⌄ lists this level's checkpoints under Play from the start, newest
-  first (12), "⚑ Play from Before the boss", each with ⋯ → Rename (the file follows the name) / Delete (Undo on its
-  line); ⌘K the same rows. A checkpoint that does not open: Play from the start and one line at the top of the game,
+- **In the editor page** (`src/shell/checkpoints.ts`, `main.ts`): ⚑ right of Speed while paused (not on a phone's bar)
+  and ⚑ Checkpoint at the right of This moment's head (every width; pause walk 2 fix ✕1), and ⌘K "Make this a
+  checkpoint" → the name field under the one pressed (above it when there is no room under it), the game's time first
+  ("0:42", selected), under it "What you moved and set in this moment is kept too." (△12 (a)); Enter keeps it
+  (`CheckpointHost.add`) and the field's line says "Checkpoint “Before the boss” kept · ▶ Play ⌄ opens it" (a phone /
+  the side window: "… kept · in Edit, ⚑ Checkpoints opens it" — no ▶ Play ⌄ there); Esc closes. A game without the
+  hooks: one line, "This game can't start from the middle yet." and This moment's ✦ Have {ai} connect this moment to
+  the game (`intent: 'moment-connect'`); a `save()` that threw: the line "This moment couldn't be kept…" and ✦ Have {ai}
+  let the game start from here (the draft "Let the game start from this moment", the chip "⚑ This moment", `intent:
+  'moment-save'` with `checkpoint.error`). The web demo keeps none: "This test version keeps no checkpoints. Your own
+  Studio does." (a game without the hooks: "This game can't start from the middle yet."), under the hosted demo's "This
+  is a test version" strip. The first pause of a person hangs "Next frame . · ⚑ Make this a checkpoint" under ▶| and ⚑
+  (PC; not on a phone or in the side window). ▶ Play ⌄ (its tip "Play from the start · checkpoints") lists this level's
+  checkpoints under Play from the start, newest first (12), "Play from Before the boss" with the flag as the row's
+  picture, each with ⋯ → Rename (the file follows the name) / Delete (Undo on its line); ⌘K the same rows; a phone in
+  Edit has them under "⚑ Checkpoints · N" at the top of its list. A checkpoint that does not open: Play from the start and one line at the top of the game,
   "The game changed, so this checkpoint can't open" with ✦ Have {ai} fix it (pauses; the draft "Make the checkpoint
   “Before the boss” open again", the chip "⚑ Before the boss"; the request's `intent: 'moment-load'` and `checkpoint:
   { id, name, error, logs }`) and ×; it goes back in Edit. Beside the reply's Reload (the paused moment's line, and the

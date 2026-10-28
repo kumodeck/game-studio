@@ -56,6 +56,11 @@ export interface MenuItem {
    * row's thing (the menu closes first; `at` = the ⋯ button, for a menu of its own under it). → on the keys opens it too.
    */
   more?: { label: string; run(at: DOMRect): void };
+  /**
+   * A small picture before the label (pause walk 2 ✕9, 2026-10-28: ▶ Play ⌄'s checkpoint rows — the flag was a "⚑" in
+   * the words, and ⌘K drew its own flag before them: two flags). The row's mark, as ⌘K's rows have one; absent = none.
+   */
+  icon?: string;
   run(): void;
 }
 /**
@@ -161,7 +166,7 @@ export function createContextMenu(d: ContextMenuDeps) {
         continue;
       }
       const btn = h('button', { type: 'button', class: `${e.ai ? 'ctx-row ai' : e.danger ? 'ctx-row danger' : 'ctx-row'}${e.sub ? ' two' : ''}`, role: e.checked === undefined ? 'menuitem' : 'menuitemradio', tabindex: '-1', dataset: { action: `ctx-${e.id}` }, disabled: !!e.disabled, 'aria-disabled': e.disabled ? 'true' : undefined, 'aria-checked': e.checked === undefined ? undefined : String(e.checked) },
-        h('span', { class: 'ctx-label' }, e.ai ? h('span', { class: 'ctx-spark', 'aria-hidden': 'true' }, icon('spark')) : null, e.label,
+        h('span', { class: 'ctx-label' }, e.ai ? h('span', { class: 'ctx-spark', 'aria-hidden': 'true' }, icon('spark')) : e.icon ? h('span', { class: 'ctx-mark', 'aria-hidden': 'true' }, icon(e.icon)) : null, e.label,
           e.sub ? h('span', { class: 'ctx-sub', text: e.sub }) : null),
         e.checked ? h('span', { class: 'ctx-key ctx-check', text: '✓', 'aria-hidden': 'true' }) : !phone && e.key ? h('kbd', { class: 'ctx-key', text: e.key }) : null);
       const i = items.length;

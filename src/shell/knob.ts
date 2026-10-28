@@ -33,6 +33,11 @@ export interface KnobOpts {
   set(v: number, end: boolean, from: number): void;
   /** The mouse over the knob / not (the guide in the game lights while it is turned). Absent = nothing. */
   hover?(on: boolean): void;
+  /**
+   * The number as the box writes it (absent = knobNumber). This moment's values give theirs (pause walk 2 ✕8,
+   * 2026-10-28: "13,100" with the HUD's thousands, not "13100"); the field a press opens keeps the bare number.
+   */
+  format?(v: number): string;
 }
 
 /** px of drag across the whole range (min → max): about a card's width, so a hand can land on a number. */
@@ -87,7 +92,8 @@ function letGo(box: HTMLElement): Array<() => void> {
 export function knobEl(o: KnobOpts): HTMLElement {
   const [lo, hi] = rangeOf(o);
   const whole = !!o.step && o.step >= 1;
-  const val = h('span', { class: 'knob-v', text: `${knobNumber(o.v, o.step)}${o.unit}` });
+  const num = (v: number) => (o.format ? o.format(v) : knobNumber(v, o.step));
+  const val = h('span', { class: 'knob-v', text: `${num(o.v)}${o.unit}` });
   const fill = h('i', {});
   const bar = h('span', { class: 'knob-bar', 'aria-hidden': 'true' }, fill);
   const box = h('span', { class: 'knob-box', tabindex: '0', role: 'slider', title: o.tip, 'aria-label': o.label,
@@ -96,7 +102,7 @@ export function knobEl(o: KnobOpts): HTMLElement {
   let now = o.v;
   const show = (v: number) => {
     now = v;
-    val.textContent = `${knobNumber(v, o.step)}${o.unit}`;
+    val.textContent = `${num(v)}${o.unit}`;
     box.setAttribute('aria-valuenow', String(v));
     fill.style.width = `${Math.max(0, Math.min(100, ((v - lo) / (hi - lo || 1)) * 100))}%`;
   };

@@ -52,6 +52,12 @@ export interface KeyDef {
    * owns new ones).
    */
   playing?: string[];
+  /**
+   * A row with no key (`keys: []`): the button's picture in the key's place (pause walk 2 ✕11, 2026-10-28: ⚑ Make this a
+   * checkpoint — a person looking for "how do I keep this moment" opens this sheet; no key is given it, as Speed has none:
+   * while playing the keys are the game's).
+   */
+  mark?: string;
 }
 
 export const KEYMAP: KeyDef[] = [
@@ -98,6 +104,8 @@ export const KEYMAP: KeyDef[] = [
   // WITHOUT pausing (2026-10-20 "fix it without stopping the game") is this key only, and the sheet is where it is said.
   // Read in the game page (bridge/play-ask.ts), not by main.ts: it does nothing in Edit, hence the note "While playing".
   { id: 'askPlaying', group: 'play', keys: ['`'], note: 'keys.askPlaying.note' },
+  // ⚑ (pause walk 2 ✕11): the paused moment's checkpoint, a button only (the top bar's on PC, This moment's head everywhere).
+  { id: 'checkpoint', group: 'play', keys: [], label: 'checkpoint.make', note: 'keys.checkpoint.note', mark: 'flag' },
   { id: 'frame', group: 'view', keys: ['F'], label: 'btn.frame' },
   { id: 'home', group: 'view', keys: ['⇧F'], label: 'pal.home' },
   { id: 'look', group: 'view', keys: ['Space'] },

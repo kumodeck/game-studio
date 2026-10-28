@@ -339,6 +339,8 @@ function playMoment(r, errors) {
     // no codeMoment to show. The AI names the game's numbers once (SKILL.md "This moment"); the moment itself (picture,
     // camera, console) comes with the first request of the pause as for any paused message.
     if (r.intent === 'moment-values') out.intent = 'moment-values';
+    // Pause walk 2 fix ✕2 (2026-10-28): the one ✦ of a game without codeMoment — the values and save / load in one go.
+    if (r.intent === 'moment-connect') out.intent = 'moment-connect';
     // Pause-edit stage 3 (2026-10-28; CONTRACT.md §1.14 "Checkpoints"): ⚑'s ✦ Have Claude let the game start from here
     // ('moment-save': no save() / load() yet, or save() failed) and the line's ✦ when a checkpoint would not open
     // ('moment-load': load() threw, or is gone). `checkpoint` names it (its file id and name) with what went wrong: a hint

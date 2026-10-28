@@ -40,7 +40,9 @@ test('the ask box gets words only from ✦ buttons (focusAsk callers)', () => {
     [/^focusAsk\(t\('moment\.appearDraft', \{ name \}\)\);$/, 'the paused moment\'s ✦ Have Claude make it appear here (a draft)'],
     // pause-edit stage 2 (2026-10-28): the moment's "This moment" with no codeMoment — ✦ Have Claude make this moment
     // editable puts the draft "Make this moment editable" and the chip "This moment" in the field (the person sends it).
-    [/^focusAsk\(t\('moment\.valuesDraft'\)\);$/, 'the paused moment\'s ✦ Have Claude make this moment editable (a draft)'],
+    // pause walk 2 fix ✕2 (2026-10-28): that ✦ and ⚑'s became ONE — Have Claude connect this moment to the game, the
+    // draft "Show this moment's numbers and let the game start from here" and the chip "This moment".
+    [/^focusAsk\(t\('moment\.connectDraft'\)\);$/, 'the paused moment\'s ✦ Have Claude connect this moment to the game (a draft)'],
     // pause-edit stage 3 (2026-10-28): ⚑'s ✦ Have Claude let the game start from here, and the line's ✦ Have Claude fix it
     // when a checkpoint does not open — the drafts "Let the game start from this moment" / "Make the checkpoint … open
     // again" and the chip "⚑ …" in the field (the person sends them).

@@ -2,7 +2,7 @@
 // browser: the real local server, the built editor, the starters and examples, and the stand-in AI
 // (test/ai-feel/fake-agent.mjs), which answers a paused message in its `done` note.
 //
-//   node test/studio-pause.browser.mjs [--only cove,ruins,glow,phone,side,dark,timers,moment,moment2d,momentnarrow,momentdark,momentdemo,values,valuesdark,light,lightcode,checkpoint,checkpointdark]
+//   node test/studio-pause.browser.mjs [--only cove,ruins,glow,phone,side,dark,timers,moment,moment2d,momentnarrow,momentkeep,momentdark,momentdemo,values,valuesdark,light,lightcode,checkpoint,checkpointdark]
 //                                       [--shots <dir>] [--lang ja] [--before <studio-ui dir of an older build>]
 //
 // Until pause-edit (2026-10-28) a pause opened a chat panel over the game ("Pause and talk", stage 1) with "✥ Move" in
@@ -885,6 +885,10 @@ async function momentNarrow(layout, theme) {
     // ("0:0x", not cut), Speed pressable (it slid under ✦).
     assert.equal(await page.eval(`!!document.querySelector('.play-note')?.offsetParent`), false, 'no "Playing" note on a narrow screen');
     assert.equal(await page.eval(`!!document.querySelector('[data-part=play-tip]:not([hidden])')`), true, 'the first-Play line');
+    // pause walk 2 ✕5: it wraps at the right under ❚❚, off the game's top-left HUD (it crossed "SCORE").
+    const ptip = await j(page, box('[data-part=play-tip]'));
+    const frame = await j(page, box('iframe.game:not(.leaving)'));
+    assert.ok(ptip && frame && ptip.left >= frame.left + frame.w * 0.45, `the first-Play line off the HUD corner ${JSON.stringify({ ptip, frame: frame && [frame.left, frame.w] })}`);
     const tm = await j(page, box('[data-part=play-time]'));
     const brand = await j(page, box('.brand'));
     assert.ok(tm && /^0:\d\d$/.test(tm.text) && tm.right <= brand.right + 0.5, `the clock whole in the bar ${JSON.stringify({ tm, brand: brand && brand.right })}`);
@@ -902,6 +906,8 @@ async function momentNarrow(layout, theme) {
     const pr = await j(page, box('[data-part=play-pause]'));
     const ed = await j(page, box('button.play'));
     assert.ok(pr && ed && pr.right <= ed.left + 1, `Resume and Edit side by side ${JSON.stringify({ pr, ed })}`);
+    // pause walk 2 ✕5: no "Next frame" pill on a narrow screen (it sat on SCORE; a phone has no . key).
+    assert.equal(await page.eval(`document.querySelector('[data-part=step-tip]')?.hidden`), true, 'no first-pause line on a narrow screen');
     await shot(tag, 'paused');
     // The sheet's ▴ (the field's left end) opens the list: the moment's, with what the game made.
     const sheetBtn = await j(page, box('.bar [data-action=sheet], .bar .sheet-btn'));
@@ -911,6 +917,9 @@ async function momentNarrow(layout, theme) {
     }
     const rows = await j(page, IN.rows);
     assert.ok(rows.some((r) => r.cls.includes('made-head')), `the list has "Made by the game" ${JSON.stringify(rows.map((r) => r.text))}`);
+    // The example as it ships (no codeMoment): This moment's one line and ONE ✦, ⚑ at its head (pause walk 2 ✕1, ✕2).
+    assert.ok(await j(page, box('[data-part=moment-checkpoint]')), '⚑ at This moment\'s head on a narrow screen');
+    assert.equal(await page.eval(`document.querySelectorAll('.moment-values .mv-ask').length`), 1, 'one ✦');
     await shot(tag, 'list');
     // fix 1 ✕5: the bottom folded (▾ on the field's left end), the boss picked: its card is away, so ONE line right
     // over the field says "Just for this moment"; dragged, it offers ✦ Have Claude make it appear here.
@@ -937,6 +946,110 @@ async function momentNarrow(layout, theme) {
     await press(page, await j(page, box('[data-part=play-pause]')), layout.mobile);
     await page.waitFor(IN.running, 5000);
     console.log('  ok: paused from the top bar, the sheet lists the moment, the boss\'s card, resumed');
+  } finally {
+    await g.close();
+  }
+}
+
+/**
+ * pause walk 2 fix (2026-10-28) on a phone and in the side window, Neon Run with its values and save / load delivered:
+ *   ✕6: the sheet's This moment is ONE line ("▸ This moment Score 13,099 · Time left …" and ⚑), the list shows 3 rows or
+ *       more under it; a press opens the knobs;
+ *   ✕1: ⚑ at that line's right → the name field (on screen) → Enter: the kept line says no "⌄" (a phone has no ▶ Play ⌄)
+ *       — "in Edit, ⚑ Checkpoints opens it"; Edit: the list's "⚑ Checkpoints · 1" → its row → the game opens there.
+ */
+async function momentNarrowKeep(layout, theme) {
+  const tag = `keep-${layout.id}${theme === 'dark' ? '-dark' : ''}`;
+  console.log(`${tag}: ⚑ and This moment on a narrow screen, ${layout.width}×${layout.height} (${theme})`);
+  const NAME = ja ? 'ボスの前' : 'Before the boss';
+  const g = await open('examples/three-neon-boss', layout, { theme, play: false });
+  const { root, page, srv, shot } = g;
+  try {
+    deliverCheckpoint(root);
+    await page.goto(srv.url);
+    await page.waitFor(IN.ready, 90000);
+    await press(page, await j(page, box('button.play')), layout.mobile);
+    await page.waitFor(IN.playing, 30000);
+    await until(async () => (await j(page, `JSON.stringify(${M}.list().map((i) => i.key))`)).includes('boss'), 60000, 'the boss');
+    await press(page, await j(page, box('[data-part=play-pause]')), layout.mobile);
+    await page.waitFor(IN.moment, 8000);
+    await sleep(600);
+    const sheetBtn = await j(page, box('.bar [data-action=sheet], .bar .sheet-btn'));
+    if (sheetBtn && (await page.eval(`${SHELL}.dataset.sheet`)) !== 'open') {
+      await press(page, sheetBtn, layout.mobile);
+      await sleep(600);
+    }
+    // ✕6: one line, and the list's rows under it.
+    const mv = await until(() => j(page, box('[data-part=moment-values]')), 4000, 'This moment');
+    assert.equal(await page.eval(`document.querySelector('[data-part=moment-values]').dataset.fold`), 'closed', 'folded at first on a narrow screen');
+    const sum = await page.eval(`document.querySelector('[data-part=moment-sum]')?.textContent || ''`);
+    assert.match(sum, ja ? /^スコア \d{2},\d{3} · 残り時間/ : /^Score \d{2},\d{3} · Time left/, `the folded line's numbers: ${sum}`);
+    assert.ok(mv.h <= 60, `This moment is one line (a 44 px touch row) (${mv.h} px)`);
+    const visible = await page.eval(`(() => { const s = document.querySelector('.list-scroll'); const r = s.getBoundingClientRect(); const bar = document.querySelector('.bar')?.getBoundingClientRect(); const bottom = Math.min(r.bottom, bar ? bar.top : innerHeight);
+      return [...s.querySelectorAll('.objects > li')].filter((li) => { const b = li.getBoundingClientRect(); return b.height > 0 && b.top >= r.top - 1 && b.bottom <= bottom + 1; }).length; })()`);
+    assert.ok(visible >= 3, `3 rows of the list or more under This moment (${visible})`);
+    await shot(tag, 'sheet');
+    await press(page, await j(page, box('[data-part=moment-values-fold]')), layout.mobile);
+    await sleep(300);
+    assert.equal(await page.eval(`document.querySelectorAll('[data-part=moment-value]').length`), 3, 'opened: the three knobs');
+    await shot(tag, 'sheet-open');
+    await press(page, await j(page, box('[data-part=moment-values-fold]')), layout.mobile);
+    await sleep(300);
+    // The boss picked (its row is at the list's foot: the sheet scrolls to it) and let go: This moment's line stays at the
+    // sheet's top, its ⚑ pressable (the fix's walk in the side window: it had scrolled out of sight).
+    await page.eval(`studioShell.actions.select('boss')`);
+    await page.waitFor(`studioShell.selected() === 'boss'`, 4000);
+    await sleep(600);
+    await page.eval(`studioShell.actions.select(null)`);
+    await sleep(500);
+    if ((await page.eval(`${SHELL}.dataset.sheet`)) !== 'open') {
+      await press(page, await j(page, box('.bar [data-action=sheet], .bar .sheet-btn')), layout.mobile);
+      await sleep(600);
+    }
+    const scrolled = await page.eval(`document.querySelector('.panel')?.scrollTop ?? 0`);
+    const hf0 = await j(page, box('[data-part=moment-checkpoint]'));
+    assert.equal(await page.eval(`!!document.elementFromPoint(${hf0.x}, ${hf0.y})?.closest('[data-part=moment-checkpoint]')`), true, `⚑ seen and pressable with the list scrolled (${scrolled} px)`);
+    // ✕1: ⚑ at the head → the name field, all on screen.
+    const hf = await j(page, box('[data-part=moment-checkpoint]'));
+    assert.ok(hf && hf.text.includes(ja ? 'チェックポイント' : 'Checkpoint'), `⚑ Checkpoint at the head ${JSON.stringify(hf)}`);
+    await press(page, hf, layout.mobile);
+    await page.waitFor(`document.activeElement?.dataset?.part === 'checkpoint-name'`, 3000);
+    const pop = await j(page, `(() => { const e = document.querySelector('[data-part=checkpoint-pop]'); const r = e.getBoundingClientRect(); return JSON.stringify({ top: r.top, bottom: r.bottom, left: r.left, right: r.right }); })()`);
+    assert.ok(pop.top >= 0 && pop.bottom <= layout.height && pop.left >= 0 && pop.right <= layout.width, `the field on screen ${JSON.stringify(pop)}`);
+    await page.eval(`(document.activeElement.value = '', true)`);
+    await type(page, NAME);
+    await sleep(200);
+    await shot(tag, 'name');
+    await keyIn(page, 'Enter', 'Enter', '\r');
+    await until(() => cpFiles(root).length === 1, 5000, 'the checkpoint file');
+    const said = await until(() => page.eval(`[...document.querySelectorAll('.toast, .ask-news')].filter((e) => e.offsetParent && !e.hidden).map((e) => e.textContent).join(' ')`), 3000, 'kept: said');
+    assert.match(said, ja ? /チェックポイント「ボスの前」を残しました · 編集の ⚑ チェックポイント から開けます/ : /Checkpoint “Before the boss” kept · in Edit, ⚑ Checkpoints opens it/);
+    assert.doesNotMatch(said, /⌄/, 'no ⌄ on a narrow screen (✕1)');
+    await shot(tag, 'kept');
+    // Edit: the list's ⚑ Checkpoints · 1 opens it.
+    await press(page, await j(page, box('button.play')), layout.mobile);
+    await page.waitFor(`${SHELL}.dataset.playing !== 'on' && ${IN.ready}`, 30000);
+    await sleep(500);
+    if ((await page.eval(`${SHELL}.dataset.sheet`)) !== 'open') {
+      const sb = await j(page, box('.bar [data-action=sheet], .bar .sheet-btn'));
+      if (sb) await press(page, sb, layout.mobile);
+      await sleep(600);
+    }
+    const cl = await until(() => j(page, box('[data-part=checkpoint-list]')), 4000, '⚑ Checkpoints · 1 in the list');
+    assert.match(cl.text, ja ? /チェックポイント · 1/ : /Checkpoints · 1/);
+    // Seen and pressable even with the list scrolled (the sheet keeps the paused list's scroll back in Edit).
+    assert.equal(await page.eval(`!!document.elementFromPoint(${cl.x}, ${cl.y})?.closest('[data-part=checkpoint-list]')`), true,
+      `⚑ Checkpoints · 1 on top (the list scrolled ${await page.eval(`document.querySelector('.panel')?.scrollTop ?? 0`)} px)`);
+    await shot(tag, 'edit-list');
+    await press(page, cl, layout.mobile);
+    const row = await until(() => j(page, box('[data-action=ctx-checkpoint-play]')), 3000, 'its row');
+    assert.equal(row.text, ja ? 'ボスの前から遊ぶ' : 'Play from Before the boss');
+    await shot(tag, 'edit-menu');
+    await press(page, row, layout.mobile);
+    await page.waitFor(IN.playing, 60000);
+    const opened = await until(() => page.eval(`(() => { const e = document.querySelector('[data-part=play-flash]'); return e && !e.hidden ? e.textContent : ''; })()`), 8000, 'the flash');
+    assert.match(opened, ja ? /ボスの前から遊んでいます/ : /Playing from Before the boss/);
+    console.log(`  ok: one line (${mv.h} px, ${visible} rows under it), ⚑ at its head → kept "${said.trim()}", Edit's ⚑ Checkpoints · 1 opened it`);
   } finally {
     await g.close();
   }
@@ -970,6 +1083,8 @@ async function momentDemo() {
     const rows = await j(page, IN.rows);
     assert.ok(rows.length > 3, 'the moment\'s list in the demo');
     assert.equal(await page.eval(`!!document.querySelector('.ask-input')?.offsetParent`), false, 'no ✦ field in the demo (no AI), as its Edit');
+    // pause walk 2 ✕3: Lantern Cove has no score — no "This moment" line about numbers it does not have (nothing to press).
+    assert.equal(await page.eval(`document.querySelector('[data-part=moment-values]')?.hidden`), true, 'no This moment for a game without values in the demo');
     const placed = ['sea-stack', 'lighthouse', 'sea-stack-small'].find((k) => rows.some((r) => r.key === k));
     if (placed) {
       const spot = await freeSpot(page, [0.5, 0.2]);
@@ -1004,17 +1119,39 @@ async function momentDemo() {
     const spotD = await freeSpot(page, [0.5, 0.18]);
     await stripDrag(page, 'boss', -90, 0, { from: [spotD.x, spotD.y] });
     assert.equal(await page.eval(`!!document.querySelector('[data-action=moment-appear]')?.offsetParent`), false, 'no ✦ in the demo (no AI)');
-    // This moment (pause-edit stage 2): Neon Run ships without codeMoment — the one line alone, no ✦ (no AI here).
-    const noneDemo = (await until(() => page.eval(`document.querySelector('[data-part=moment-none]')?.textContent || ''`), 4000, 'This moment\'s line in the demo')).replace(/\u200b/g, '');
-    assert.equal(noneDemo, ja ? 'スコアなどのゲームの数は、まだここに出ません。' : 'The game’s numbers, like the score, aren’t shown here yet.');
+    // This moment (pause walk 2 ✕3): the demo's Neon Run is in its "AI delivered it" form (scripts/web-demo-delivered.mjs)
+    // — its numbers are there to turn, as the HUD writes them ("13,099").
+    const vals = await until(async () => {
+      const r = await j(page, `JSON.stringify([...document.querySelectorAll('[data-part=moment-value]')].map((e) => ({ id: e.dataset.id, text: e.textContent })))`);
+      return r?.length ? r : null;
+    }, 4000, 'This moment\'s values in the demo');
+    assert.deepEqual(vals.map((v) => v.id), ['score', 'timeLeft', 'hp'], `the demo's values ${JSON.stringify(vals)}`);
+    assert.equal(vals[0].text.replace(/^\D+/, ''), (await hudText(page, '#hud .score')).replace(/^SCORE\s*/, ''), 'the demo\'s Score is its HUD\'s');
     assert.equal(await page.eval(`!!document.querySelector('[data-part=moment-values-ask]')`), false, 'no ✦ under This moment in the demo');
     await shot('neon-paused');
-    // Checkpoints (pause-edit stage 3): the demo keeps none (no host for them) — ⚑ says the one line, no ✦.
+    // Checkpoints: the demo keeps none (no folder for them) — the top bar's ⚑ says so, under the hosted demo's "This is a
+    // test version" strip (✕3: they overlapped), no ✦.
+    const fl = await j(page, box('[data-part=checkpoint]'));
     await page.eval(`document.querySelector('[data-part=checkpoint]').click()`);
     const flagDemo = (await until(() => page.eval(`document.querySelector('[data-part=checkpoint-pop]:not([hidden]) [data-part=checkpoint-none]')?.textContent || ''`), 3000, '⚑\'s line in the demo')).replace(/\u200b/g, '');
-    assert.equal(flagDemo, ja ? 'このゲームは、まだ途中から始められません。' : 'This game can’t start from the middle yet.');
+    assert.equal(flagDemo, ja ? '試し版にはチェックポイントを残せません。自分の Studio なら残せます。' : 'This test version keeps no checkpoints. Your own Studio does.');
+    const popTop = await page.eval(`document.querySelector('[data-part=checkpoint-pop]').getBoundingClientRect().top`);
+    assert.ok(popTop >= fl.bottom + 36, `the plate under the test version's strip (${popTop} ≥ ${fl.bottom} + 36)`);
     assert.equal(await page.eval(`!!document.querySelector('[data-part=checkpoint-ask]')`), false, 'no ✦ under ⚑ in the demo');
-    console.log('  ok: Neon Run in the demo — Made by the game, the boss just for this moment, no ✦; This moment and ⚑: the line alone');
+    await shot('neon-flag');
+    await keyIn(page, 'Escape', 'Escape');
+    // Time left → 5, Resume: the run FINISHes 5 s later — stage 2's try, in the demo too.
+    await press(page, await j(page, box('[data-part=moment-knob-timeLeft]')));
+    await page.waitFor(`document.activeElement?.dataset?.part === 'moment-knob-timeLeft-in'`, 3000);
+    await type(page, '5');
+    await keyIn(page, 'Enter', 'Enter', '\r');
+    await until(async () => (await hudText(page, '#hud .time')) === 'TIME 0:05', 3000, 'the demo\'s HUD: 0:05');
+    await page.eval(`(document.activeElement?.blur?.(), true)`);
+    await page.eval(`document.querySelector('[data-part=play-pause]').click()`);
+    await page.waitFor(IN.running, 5000);
+    const end = await until(() => page.eval(`(() => { const e = ${GW}.document.getElementById('end'); return e && !e.hidden ? e.textContent : ''; })()`), 15000, 'the end of the run in the demo');
+    assert.match(end, /FINISH|GAME OVER/);
+    console.log(`  ok: Neon Run in the demo — Made by the game, the boss just for this moment, no ✦; This moment ${vals.map((v) => v.text).join(' · ')}; ⚑: the demo's line under the strip; Time left 5 → ${end}`);
   } finally {
     await page.close();
     host.close();
@@ -1236,7 +1373,7 @@ const MOMENT_VALUES = (lang) => {
   return `
 // This moment's values (the delivered form: SKILL.md "This moment").
 codeMoment({ values: {
-  score: { name: '${n.score}', get: () => score, set: (v) => { score = v; }, round: 0 },
+  score: { name: '${n.score}', get: () => Math.floor(score), set: (v) => { score = v; }, round: 0 },
   timeLeft: { name: '${n.timeLeft}', unit: 's', min: 0, get: () => timeLeft, set: (v) => { timeLeft = v; } },
   hp: { name: '${n.hp}', min: 0, max: maxHp, step: 1, get: () => hp, set: (v) => { hp = v; } },
 } });
@@ -1290,14 +1427,22 @@ async function values(theme = 'light') {
     await sleep(300);
     await pauseP(page, [640, 120]);
     const block = await until(() => j(page, box('[data-part=moment-values]')), 4000, 'This moment');
-    assert.match(block.text, ja ? /^この瞬間\s*0:0\d\.\d/ : /^This moment\s*0:0\d\.\d/, `the head: ${block.text}`);
+    // The head: "This moment" and ⚑ Checkpoint at its right (pause walk 2 ✕1); no clock (✕8: the top bar's says it).
+    assert.match(block.text, ja ? /^この瞬間\s*チェックポイント/ : /^This moment\s*Checkpoint/, `the head: ${block.text}`);
+    const head = await j(page, box('.mv-head'));
+    const headFlag = await j(page, box('[data-part=moment-checkpoint]'));
+    assert.ok(headFlag && head && headFlag.right >= head.right - 2 && headFlag.top >= head.top - 1 && headFlag.bottom <= head.bottom + 1, `⚑ at the head's right ${JSON.stringify({ head, headFlag })}`);
+    assert.equal(await page.eval(`!!document.querySelector('[data-part=moment-time]')`), false, 'no clock in the head');
     const rows = await until(async () => {
       const r = await j(page, `JSON.stringify([...document.querySelectorAll('[data-part=moment-value]')].map((e) => ({ id: e.dataset.id, text: e.textContent, off: e.classList.contains('off') })))`);
       return r?.length ? r : null;
     }, 4000, 'the values');
     assert.deepEqual(rows.map((r) => r.id), ['score', 'timeLeft', 'hp'], 'three values, in the code\'s order');
     assert.ok(rows.every((r) => !r.off), 'each can be changed');
-    assert.match(rows[0].text, ja ? /^スコア\s*\d{5}$/ : /^Score\s*\d{5}$/, `Score whole (round 0): ${rows[0].text}`);
+    assert.match(rows[0].text, ja ? /^スコア\s*\d{2},\d{3}$/ : /^Score\s*\d{2},\d{3}$/, `Score whole (round 0), with the thousands' "," (✕8): ${rows[0].text}`);
+    // The same number as the game's HUD (✕8: "13100" over "SCORE 13,099" — the delivered get() rounds as the HUD does).
+    const hudScore = (await hudText(page, '#hud .score')).replace(/^SCORE\s*/, '');
+    assert.equal(rows[0].text.replace(/^\D+/, ''), hudScore, `This moment's Score is the HUD's (${hudScore})`);
     assert.match(rows[1].text, ja ? /^残り時間\s*[\d.]+ 秒$/ : /^Time left\s*[\d.]+ s$/, `Time left with its unit: ${rows[1].text}`);
     assert.match(rows[2].text, ja ? /^体力\s*\d \/ 5$/ : /^Health\s*\d \/ 5$/, `Health of 5: ${rows[2].text}`);
     // The three boxes in one line (the "/ 5" in Health's box, not beside it).
@@ -1407,21 +1552,23 @@ async function values(theme = 'light') {
       const b = await j(page, box(sel));
       assert.ok(b && b.right <= sideBox.right - 4, `${sel} inside the list (${b?.right} ≤ ${sideBox.right})`);
     }
-    assert.equal(none, ja ? 'スコアなどのゲームの数は、まだここに出ません。' : 'The game’s numbers, like the score, aren’t shown here yet.');
+    // pause walk 2 ✕2: no values and no save / load — ONE line and ONE ✦ for both (connect this moment to the game).
+    assert.equal(none, ja ? 'スコアなどの数を見る・ここから始める、はこのゲームではまだ使えません。' : 'Numbers like the score, and starting from here, aren’t ready for this game yet.');
     const ask = await j(page, box('[data-part=moment-values-ask]'));
     assert.ok(ask, '✦');
-    assert.match(ask.text.replace(/\u200b/g, ''), ja ? /Claude\s*にこの瞬間を編集できるようにしてもらう/ : /Have Claude make this moment editable/);
+    assert.match(ask.text.replace(/\u200b/g, ''), ja ? /Claude\s*にこの瞬間をゲームとつないでもらう/ : /Have Claude connect this moment to the game/);
+    assert.equal(await page.eval(`document.querySelectorAll('.moment-values .mv-ask').length`), 1, 'one ✦ under This moment');
     await press(page, ask);
     await sleep(400);
-    assert.equal(await page.eval(`document.querySelector('.ask-input').value`), ja ? 'この瞬間を編集できるようにして' : 'Make this moment editable');
+    assert.equal(await page.eval(`document.querySelector('.ask-input').value`), ja ? 'この瞬間の数を出して、ここから始められるようにして' : 'Show this moment’s numbers and let the game start from here');
     assert.match(await page.eval(`document.querySelector('.ask-chip')?.textContent || ''`), ja ? /この瞬間/ : /This moment/);
     await shot(tag, 'none');
     await page.eval(`(document.querySelector('.ask-input').focus(), true)`);
     await keyIn(page, 'Enter', 'Enter', '\r');
     const rec = await until(() => requests(root).find((r) => r.kind === 'play' && r.paused), 10000, 'the paused request');
-    assert.equal(rec.intent, 'moment-values', 'the request says what it is for');
+    assert.equal(rec.intent, 'moment-connect', 'the request says what it is for: the values and save / load in one go');
     assert.ok(rec.shot, 'the moment\'s picture with it');
-    console.log('  ok: no codeMoment — the line, ✦, the draft and chip, the request\'s intent moment-values');
+    console.log('  ok: no codeMoment — one line, one ✦, the draft and chip, the request\'s intent moment-connect');
   } finally {
     await agent.stop();
     await h.close();
@@ -1497,7 +1644,7 @@ const cpFiles = (root) => {
  *      and the boss's place noted; ⚑ → the field under it says "0:0x" (the game's time) → "Before the boss" → Enter:
  *      .studio/checkpoints/Before-the-boss.json { version, name, at, level, time, moment, shot }, the flash;
  *   2. Edit; the gate (placed) moved in the scene (the AI's hands: object.move) — a checkpoint never holds placed things;
- *   3. ▶ Play ⌄ → "⚑ Play from Before the boss" (the menu's photo) → a new page: the FIRST frame drew the kept moment
+ *   3. ▶ Play ⌄ → ⚑ "Play from Before the boss" (the flag is the row's picture: pause walk 2 ✕9; the menu's photo) → a new page: the FIRST frame drew the kept moment
  *      (score, time left, health, the boss's place: exactly), the top bar's clock goes on from it, the flash "Playing from
  *      …", the gate where the scene has it NOW; paused: the boss is "made by the game" (just for this moment);
  *      ⌘K lists it too; ⋯ Rename;
@@ -1541,6 +1688,10 @@ async function checkpoint(theme = 'light') {
     const pop = await j(page, `(() => { const e = document.querySelector('[data-part=checkpoint-pop]'); if (!e || e.hidden) return null; const r = e.getBoundingClientRect(); return JSON.stringify({ top: r.top, left: r.left }); })()`);
     if (!(pop.top >= flag.bottom && Math.abs(pop.left - flag.left) < 4)) await shot(tag, 'debug-pop');
     assert.ok(pop.top >= flag.bottom && Math.abs(pop.left - flag.left) < 4, `the field hangs under ⚑ ${JSON.stringify({ pop, flag })}`);
+    // △12 ((a) "keep what was seen" until it is decided): what was moved and set in this moment is kept too — said under the field.
+    assert.equal(await page.eval(`document.querySelector('[data-part=checkpoint-keeps]')?.textContent || ''`), ja ? 'この瞬間に動かした物と数も残ります。' : 'What you moved and set in this moment is kept too.');
+    // The first pause's line names ⚑ too (✕11): "Next frame . · ⚑ Make this a checkpoint" — it stepped aside for the field.
+    assert.equal(await page.eval(`document.querySelector('[data-part=step-tip]')?.hidden`), true, 'the first-pause line gone at ⚑');
     await type(page, NAME);
     await sleep(200);
     await shot(tag, 'name');
@@ -1550,7 +1701,8 @@ async function checkpoint(theme = 'light') {
     assert.equal(file.name, NAME);
     assert.equal(file.level, null);
     assert.ok(Math.abs(file.time - kept.seconds) < 0.05, `its time is the game's (${file.time} / ${kept.seconds})`);
-    assert.equal(file.moment.score, kept.score);
+    // (This moment's Score is the HUD's whole number — get() floors it, ✕8 — the moment keeps the game's own.)
+    assert.equal(Math.floor(file.moment.score), kept.score);
     assert.equal(file.moment.timeLeft, kept.timeLeft);
     assert.deepEqual(file.moment.boss.p, kept.boss);
     assert.match(file.shot, /^data:image\/jpeg;base64,/);
@@ -1560,21 +1712,44 @@ async function checkpoint(theme = 'light') {
     assert.match(said, ja ? /チェックポイント「ボスの前」を残しました/ : /Checkpoint “Before the boss” kept/);
     await shot(tag, 'kept-said');
     assert.equal(await page.eval(`!!document.querySelector('[data-part=checkpoint-pop]:not([hidden])')`), false, 'the field closed');
+    // ⚑ at This moment's head (pause walk 2 ✕1) opens the same field, under it; Esc closes it.
+    const hf = await j(page, box('[data-part=moment-checkpoint]'));
+    await press(page, hf);
+    await page.waitFor(`document.activeElement?.dataset?.part === 'checkpoint-name'`, 3000);
+    const pop2 = await j(page, `(() => { const e = document.querySelector('[data-part=checkpoint-pop]'); if (!e || e.hidden) return null; const r = e.getBoundingClientRect(); return JSON.stringify({ top: r.top, left: r.left }); })()`);
+    assert.ok(pop2.top >= hf.bottom && Math.abs(pop2.left - hf.left) < 4, `the head's ⚑: the field under it ${JSON.stringify({ pop2, hf })}`);
+    assert.equal(await page.eval(`document.querySelector('[data-part=moment-checkpoint]').getAttribute('aria-expanded')`), 'true');
+    await keyIn(page, 'Escape', 'Escape');
+    await sleep(200);
+    assert.equal(await page.eval(`!!document.querySelector('[data-part=checkpoint-pop]:not([hidden])')`), false, 'Esc closed it');
     // 2. Edit, the gate moved in the scene.
     await page.eval(`document.querySelector('button.play').click()`);
     await page.waitFor(`${SHELL}.dataset.playing !== 'on' && ${IN.ready}`, 30000);
     await sleep(500);
+    // The docs' picture of ▶ Play ⌄ (pause-checkpoint-open), taken before the AI's hands move the gate: their lines ("Saved:
+    // moved gate · Claude is putting it in the code…", "Claude moved gate · ⌘Z undoes it") are not this picture's
+    // (pause walk 2 ✕4). The kept line has gone too.
+    await until(async () => !(await page.eval(`[...document.querySelectorAll('.toast.on, .ask-news')].some((e) => e.offsetParent && !e.hidden)`)), 8000, 'the kept line gone');
+    await page.eval(`document.querySelector('[data-part=play-more]').click()`);
+    await until(() => j(page, box('[data-action=ctx-checkpoint-play]')), 3000, 'the menu\'s checkpoint row');
+    await sleep(300);
+    await shot(tag, 'menu');
+    await keyIn(page, 'Escape', 'Escape');
+    await sleep(200);
     const moved = await ai([{ do: 'object.move', key: 'gate', to: [1.5, 0, -12] }]);
     assert.equal(moved.results?.[0]?.ok, true, JSON.stringify(moved));
     // Saved (⌘S), so ▶ Play asks nothing (with Save · 1 it asks first, as Play from the start does).
     await keyIn(page, 's', 'KeyS', '', 2);
     await until(async () => (await page.eval(IN.save)) === '', 10000, 'saved');
     // 3. ▶ Play ⌄ → ⚑ Play from Before the boss.
+    // ▶ Play ⌄'s tip says the checkpoints are in it (✕9).
+    assert.equal(await page.eval(`document.querySelector('[data-part=play-more]').title`), ja ? '最初から遊ぶ · チェックポイント' : 'Play from the start · checkpoints');
     await page.eval(`document.querySelector('[data-part=play-more]').click()`);
     const row = await until(() => j(page, box('[data-action=ctx-checkpoint-play]')), 3000, 'the menu\'s checkpoint row');
-    assert.equal(row.text, ja ? '⚑ ボスの前から遊ぶ' : '⚑ Play from Before the boss');
+    // The flag is the row's picture, not a "⚑" in its words (✕9: ⌘K drew a flag before "⚑ Play from…").
+    assert.equal(row.text, ja ? 'ボスの前から遊ぶ' : 'Play from Before the boss');
+    assert.equal(await page.eval(`!!document.querySelector('[data-action=ctx-checkpoint-play] .ctx-mark svg')`), true, 'the row\'s flag picture');
     assert.ok(await j(page, box('[data-action=ctx-checkpoint-play-more]')), 'its ⋯');
-    await shot(tag, 'menu');
     await press(page, row);
     await until(() => page.eval(`!!${GW}?.__first`), 60000, 'the checkpoint\'s first frame').catch(async (e) => {
       await shot(tag, 'debug-open');
@@ -1582,7 +1757,7 @@ async function checkpoint(theme = 'light') {
       throw e;
     });
     const drew = await j(page, `JSON.stringify(${GW}.__first)`);
-    assert.deepEqual({ score: drew.score, timeLeft: drew.timeLeft, hp: drew.hp, boss: drew.boss },
+    assert.deepEqual({ score: Math.floor(drew.score), timeLeft: drew.timeLeft, hp: drew.hp, boss: drew.boss },
       { score: kept.score, timeLeft: kept.timeLeft, hp: kept.hp, boss: kept.boss }, 'the first frame drew the kept moment: the numbers and the boss, exactly');
     await page.waitFor(IN.playing, 30000);
     const clock = await page.eval(`${M}.seconds()`);
@@ -1603,6 +1778,9 @@ async function checkpoint(theme = 'light') {
     await sleep(300);
     const palRow = await page.eval(`[...document.querySelectorAll('[data-row^=checkpoint-play]')].map((e) => e.textContent).join('|')`);
     assert.match(palRow, ja ? /ボスの前から遊ぶ/ : /Play from Before the boss/);
+    assert.doesNotMatch(palRow, /⚑/, 'one flag: the row\'s picture (✕9)');
+    // ⌘K's field in the person's language (✕7: it kept "Search actions and objects…" in a Japanese editor).
+    assert.equal(await page.eval(`document.querySelector('[data-part=palette-search]').placeholder`), ja ? '操作や物を探す…' : 'Search actions and objects…');
     assert.match(await page.eval(`[...document.querySelectorAll('[data-row=checkpoint-make]')].map((e) => e.textContent).join('|')`), ja ? /ここをチェックポイントにする/ : /Make this a checkpoint/);
     await keyIn(page, 'Escape', 'Escape');
     await sleep(200);
@@ -1652,18 +1830,21 @@ async function checkpoint(theme = 'light') {
     assert.equal(line, ja ? 'このゲームは、まだ途中から始められません。' : 'This game can’t start from the middle yet.');
     await sleep(300);
     const ask = await j(page, `(() => { const e = document.querySelector('[data-part=checkpoint-ask]'); if (!e) return null; const r = e.getBoundingClientRect(); return JSON.stringify({ x: r.left + r.width / 2, y: r.top + r.height / 2, text: e.textContent }); })()`);
-    assert.match(ask.text.replace(/\u200b/g, ''), ja ? /Claude\s*にこの瞬間から始められるようにしてもらう/ : /Have Claude let the game start from here/);
+    // pause walk 2 ✕2: the same ✦ as This moment's — one ask for both.
+    assert.match(ask.text.replace(/\u200b/g, ''), ja ? /Claude\s*にこの瞬間をゲームとつないでもらう/ : /Have Claude connect this moment to the game/);
+    const listAsk = (await page.eval(`document.querySelector('[data-part=moment-values-ask]')?.textContent || ''`)).replace(/\u200b/g, '');
+    assert.equal(ask.text.replace(/\u200b/g, ''), listAsk, 'ONE ✦: ⚑\'s is This moment\'s');
     await shot(tag, 'none');
     await press(page, ask);
     await sleep(400);
-    assert.equal(await page.eval(`document.querySelector('.ask-input').value`), ja ? 'この瞬間から始められるようにして' : 'Let the game start from this moment');
-    assert.match(await page.eval(`document.querySelector('.ask-chip')?.textContent || ''`), ja ? /⚑ この瞬間/ : /⚑ This moment/);
+    assert.equal(await page.eval(`document.querySelector('.ask-input').value`), ja ? 'この瞬間の数を出して、ここから始められるようにして' : 'Show this moment’s numbers and let the game start from here');
+    assert.match(await page.eval(`document.querySelector('.ask-chip')?.textContent || ''`), ja ? /この瞬間/ : /This moment/);
     await page.eval(`(document.querySelector('.ask-input').focus(), true)`);
     await keyIn(page, 'Enter', 'Enter', '\r');
     const rec = await until(() => requests(root).find((r) => r.kind === 'play' && r.paused), 10000, 'the paused request');
-    assert.equal(rec.intent, 'moment-save');
+    assert.equal(rec.intent, 'moment-connect');
     assert.equal(cpFiles(root).length, 0, 'nothing kept');
-    console.log('  ok: no hooks — ⚑\'s one line, ✦, the draft and chip, the request\'s intent moment-save');
+    console.log('  ok: no hooks — ⚑\'s one line, the same ✦ as This moment\'s, the draft and chip, the request\'s intent moment-connect');
   } finally {
     await agent2.stop();
     await h.close();
@@ -1692,6 +1873,12 @@ try {
         await momentNarrow(LAYOUTS.phone, theme);
         await momentNarrow(LAYOUTS.side, theme);
       }
+    }
+    // pause walk 2 fix: ⚑ and This moment on a narrow screen (light: the phone; dark: the side window). Part of
+    // momentnarrow; `--only momentkeep` runs it alone.
+    if (on('momentnarrow') || on('momentkeep')) {
+      await momentNarrowKeep(LAYOUTS.phone, 'light');
+      await momentNarrowKeep(LAYOUTS.side, 'dark');
     }
     if (on('momentdark')) await moment('dark');
     if (on('momentdemo')) await momentDemo();

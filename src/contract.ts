@@ -1910,11 +1910,15 @@ export interface StudioRequestInput {
  * into the rule's own numbers (a knob in the game's words: "From the road"), names it in `drag`, and sends `place.code
  * --fold <way>`; the offset row becomes that knob on the card.
  */
-export type RequestIntent = 'avoid' | 'to-code' | 'to-knob' | 'ui-code' | 'moment-values' | 'moment-save' | 'moment-load';
+export type RequestIntent = 'avoid' | 'to-code' | 'to-knob' | 'ui-code' | 'moment-values' | 'moment-save' | 'moment-load' | 'moment-connect';
 // 'moment-values' (pause-edit stage 2, 2026-10-28; §1.14): a "play" + `paused` request from the moment's ✦ Have {ai} make
 // this moment editable — the game has no codeMoment() yet; the AI names its numbers (score, time left, health) once.
 // 'moment-save' (stage 3): ⚑'s ✦ Have {ai} let the game start from here — the game has no save() / load() yet (or its
 // save() failed: `checkpoint.error`); the AI writes them (SKILL.md "Checkpoints").
+// 'moment-connect' (pause walk 2 fix ✕2, 2026-10-28): the ONE ✦ a game without codeMoment shows — under This moment and
+// under ⚑ alike, "Have {ai} connect this moment to the game". The AI writes what is missing of the values and save / load
+// in one go (SKILL.md "This moment", "Checkpoints"). The editor no longer sends 'moment-values', nor 'moment-save' but
+// for a save() that threw (`checkpoint.error`); an AI still reads both (a request queued by an older editor).
 // 'moment-load' (stage 3): the line's ✦ when a checkpoint would not open — `checkpoint` names it, with load()'s error and
 // the console's lines; the AI makes load() read it again (an old checkpoint must keep opening).
 /** A rule layout named in an ask (StudioRequestInput.places): its id and name, its knobs now, its keep-out areas. */
