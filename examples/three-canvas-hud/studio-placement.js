@@ -1204,6 +1204,12 @@ if (isNum(v.step) && v.step > 0) e.step = v.step;
 if (isNum(v.round) && v.round >= 0 && v.round <= 6) e.round = Math.round(v.round);
 g.values.set(id, e);
 }
+if (def && typeof def === 'object') {
+if (typeof def.save === 'function') g.save = def.save;
+else if (def.save !== undefined) warnOnce('codeMoment: save must be a function that returns this moment as plain data');
+if (typeof def.load === 'function') g.load = def.load;
+else if (def.load !== undefined) warnOnce('codeMoment: load must be a function that takes a saved moment');
+}
 }
 function uiCanvas(e) {
 let c = e.canvasOf;

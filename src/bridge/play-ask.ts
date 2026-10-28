@@ -56,6 +56,11 @@ export interface PlayAskOptions {
    * overlay, no key taken — until the page becomes Play (wake()). Absent = a Play page: awake from the start, as before.
    */
   standby?: boolean;
+  /**
+   * A page opened from a checkpoint (pause-edit stage 3; moment-load.ts) is holding the game for load(m): no pause until
+   * it let go (a pause on top of that hold would keep the frames held after Resume).
+   */
+  busy?: () => boolean;
 }
 
 /** What play-switch.ts needs of this module in an edit page. */
@@ -73,6 +78,12 @@ export interface PlayAskHandle {
   sleep(): void;
   /** An edit page's own editor wakes over its paused moments (play-switch.ts momentHost), not a new one. */
   useHost(host: MomentHost): void;
+  /**
+   * A page opened from a checkpoint, right before the game's load(m) (moment-load.ts): the top bar's clock goes on from
+   * the checkpoint's `seconds`, and a pause calls anything not in `scene` (the scene's keys) made by the game — the boss
+   * is already there at this page's start, and must still be "just for this moment".
+   */
+  startFrom(seconds: number, scene: string[]): void;
 }
 
 // ---------------------------------------------------------------------------
@@ -417,8 +428,10 @@ export function startPlayAsk(o: PlayAskOptions): PlayAskHandle {
   // Reload) starts at 0:00.
   let t0 = 0;
   let before = 0;
+  // A page opened from a checkpoint (stage 3, startFrom): its first frame is the checkpoint's second, not 0:00.
+  let from = 0;
   if (hold && !o.standby) void firstFrame().then(() => {
-    t0 = hold.now();
+    t0 = hold.now() - from * 1000;
     tellTime();
   });
   const playSeconds = () => (hold ? Math.max(0, (hold.now() - t0) / 1000) : 0);
@@ -636,7 +649,7 @@ export function startPlayAsk(o: PlayAskOptions): PlayAskHandle {
   // ----- the paused moment (play-pause.ts holds the game; play-move.ts wakes the editor over it) -----
   let pausing = false;
   async function pauseNow() {
-    if (!hold || hold.paused || pausing) return;
+    if (!hold || hold.paused || pausing || o.busy?.()) return;
     pausing = true;
     try {
       // Words already typed in the ✦ field go to the editor page's field (the person was about to ask; now they can).
@@ -893,6 +906,15 @@ export function startPlayAsk(o: PlayAskOptions): PlayAskHandle {
       b.title = w('reloadTip');
       b.addEventListener('click', () => post({ type: 'studio:play/reload' }));
       acts.append(b);
+      // "⚑ From Before the boss" (pause-edit stage 3): the fixed game opened at a checkpoint (the editor says which).
+      if (s.from) {
+        const f = el('button', 'b', s.from) as HTMLButtonElement;
+        f.type = 'button';
+        f.dataset.action = 'play-reload-from';
+        f.title = s.from;
+        f.addEventListener('click', () => post({ type: 'studio:play/reload', from: true }));
+        acts.append(f);
+      }
     }
     if (s.state === 'fixed' || s.state === 'failed' || s.state === 'kept') {
       // "Keep playing": the line goes; the fix waits for Reload (or for the next time the game opens).
@@ -1036,6 +1058,11 @@ export function startPlayAsk(o: PlayAskOptions): PlayAskHandle {
     },
     useHost(h) {
       momentHost = h;
+    },
+    startFrom(seconds, scene) {
+      from = Math.max(0, seconds);
+      if (hold) t0 = hold.now() - from * 1000;
+      kinds?.madeBefore(scene);
     },
   };
 }

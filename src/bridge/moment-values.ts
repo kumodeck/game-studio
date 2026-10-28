@@ -17,6 +17,7 @@
 // opened for Play alike — the moment's editor may be either (play-move.ts) and `--do list` asks in Edit too.
 import type { BridgeToShell, MomentValue, ShellToBridge } from '../contract.ts';
 import { isStudioMessage } from '../contract.ts';
+import { momentHooks } from './moment-load.ts';
 
 /** One value as the loader keeps it (codeMoment, src/loader/studio-placement.js). */
 interface Entry {
@@ -143,11 +144,12 @@ export function startMomentValues(o: MomentValuesOptions): void {
           console.warn('[studio] the game failed drawing one frame:', err);
         }
       }
-      post({ type: 'studio:moment/values', values: readMoment(win) });
+      // `checkpoint` (stage 3): ⚑ knows at once whether this game can start from the middle.
+      post({ type: 'studio:moment/values', values: readMoment(win), checkpoint: !!momentHooks(win) });
     } else if (m.type === 'studio:moment/set') {
       const n = num(m.n) ? { n: m.n } : {};
       if (!o.paused()) {
-        post({ type: 'studio:moment/values', values: readMoment(win), set: { id: String(m.id), ...n, ok: false, error: 'the game is not paused' } });
+        post({ type: 'studio:moment/values', values: readMoment(win), checkpoint: !!momentHooks(win), set: { id: String(m.id), ...n, ok: false, error: 'the game is not paused' } });
         return;
       }
       const r = setValue(win, String(m.id), m.v);
@@ -158,7 +160,7 @@ export function startMomentValues(o: MomentValuesOptions): void {
           console.warn('[studio] the game failed drawing one frame:', err);
         }
       }
-      post({ type: 'studio:moment/values', values: readMoment(win), set: { id: String(m.id), ...n, ...r } });
+      post({ type: 'studio:moment/values', values: readMoment(win), checkpoint: !!momentHooks(win), set: { id: String(m.id), ...n, ...r } });
     }
   });
 }

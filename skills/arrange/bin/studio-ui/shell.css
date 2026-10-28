@@ -339,6 +339,38 @@ img.thumb:not([src]) { content: url("data:image/gif;base64,R0lGODlhAQABAIAAAAAAA
 .play-tip.step-tip::before { right: auto; left: 14px; }
 .play-flash { left: 50%; bottom: 24px; transform: translateX(-50%); }
 .play-flash .icon { width: 12px; height: 12px; }
+/* ⚑ Make this a checkpoint (pause-edit stage 3): after Speed while paused, the guide's small round button. A phone's bar has
+   no room for one more (fix 1 ✕4): there it is in ⌘K. */
+.play-guide .play-flag { width: 28px; padding: 0; color: var(--text); }
+.play-guide .play-flag .icon { width: 14px; height: 14px; }
+.shell[data-checkpoint="open"] .play-guide .play-flag { background: var(--you-soft); color: var(--you-text); }
+.shell[data-layout="phone"] .play-guide .play-flag { display: none; }
+/* Its plate under it: the name field ("0:42" first, Enter keeps), or one line with ✦ (a game that cannot start from the
+   middle). Opaque, as the floating list (walk of 10/28: the glass let the game's "⚠ BOSS" through the words). The
+   first-pause "Next frame ." under ▶| steps aside while it is open (they met at ⚑'s left edge). */
+.cp-pop { position: fixed; z-index: 62; width: max-content; max-width: min(320px, calc(100vw - 16px)); display: grid; gap: 8px; padding: 10px 12px;
+  border-radius: 12px; background: var(--float-solid); box-shadow: var(--shadow); font-size: var(--fs-s); animation: studio-rise var(--dur-in) var(--ease); }
+.shell[data-checkpoint="open"] .step-tip { display: none; }
+.cp-pop[hidden] { display: none; }
+.cp-label { color: var(--text-2); }
+.cp-row { display: flex; gap: 6px; align-items: center; }
+.cp-name { width: 200px; min-width: 0; height: 28px; padding: 0 8px; border-radius: 8px; border: 0; background: var(--raise); color: var(--text); font: inherit;
+  box-shadow: inset 0 0 0 1px var(--line); }
+.cp-name:focus { outline: none; box-shadow: inset 0 0 0 1.5px var(--you); }
+.cp-keep { height: 28px; padding: 0 12px; border-radius: 999px; background: var(--solid); color: var(--solid-fg); font-weight: 600; }
+.cp-err { margin: 0; color: var(--danger); max-width: 280px; }
+.cp-line { margin: 0; max-width: 280px; line-height: 1.45; word-break: keep-all; overflow-wrap: anywhere; }
+/* The line at the top of the game when a checkpoint did not open (decision 14): stays until × or Edit. Opaque too: it sits
+   over the game's own HUD. */
+.cp-note { position: absolute; z-index: 7; top: 8px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 8px;
+  max-width: calc(100% - 16px); padding: 6px 6px 6px 12px; border-radius: 999px; background: var(--float-solid); box-shadow: var(--shadow);
+  font-size: var(--fs-s); animation: studio-rise var(--dur-in) var(--ease); }
+.cp-note[hidden] { display: none; }
+.cp-note > .icon { width: 13px; height: 13px; flex: none; color: var(--text-2); }
+.cp-note-text { min-width: 0; word-break: keep-all; overflow-wrap: anywhere; }
+.cp-note .mv-ask { flex: none; }
+.cp-note-x { flex: none; width: 26px; height: 26px; padding: 0; border-radius: 50%; color: var(--text-2); }
+.cp-note-x .icon { width: 12px; height: 12px; }
 .brand .adapter { color: var(--text-3); font-size: var(--fs-s); }
 .brand .lang { font-size: var(--fs-s); color: var(--text-2); }
 .top-right { flex: none; display: flex; align-items: center; gap: 12px; }
@@ -1527,6 +1559,12 @@ button.shelf-file.to:hover { background: var(--raise-2); }
 .ctx-spark { display: inline-grid; vertical-align: -2px; margin-right: 6px; color: var(--ai); }
 .ctx-spark .icon { width: 13px; height: 13px; }
 .ctx-key { margin-left: auto; flex: none; color: var(--text-3); }
+/* A row with ⋯ at its end (pause-edit stage 3: ▶ Play ⌄'s checkpoints — Rename, Delete): the row and its ⋯ on one line. */
+.ctx-line { display: flex; align-items: center; gap: 2px; }
+.ctx-line > .ctx-row { flex: 1; min-width: 0; }
+.ctx-more { flex: none; width: 28px; height: var(--h); padding: 0; border: 0; border-radius: var(--r); background: none; color: var(--text-2); }
+.ctx-more:hover { background: var(--raise-2); color: var(--text); }
+.ctx-more .icon { width: 14px; height: 14px; }
 .ctx-row:disabled .ctx-key { opacity: .6; }
 /* The chosen one of a list (the level on screen): the check in the text colour, not the third grey of a key. */
 .ctx-key.ctx-check { color: var(--text); padding-left: 16px; }

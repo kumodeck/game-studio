@@ -27,6 +27,7 @@ import { runSelfCheck } from './selfcheck.ts';
 import { createEditor, type Editor } from './editor.ts';
 import { startPlayAsk, type PlayAskHandle } from './play-ask.ts';
 import { startMomentValues } from './moment-values.ts';
+import { fromCheckpoint, startCheckpointHold, startMomentSave, type CheckpointHold } from './moment-load.ts';
 import { createPlaySwitch, type PlaySwitch } from './play-switch.ts';
 import { arrangeInPlay, moveInPlay, type PlayFile } from './play-arrange.ts';
 import { applyPlacement, placementForLevel } from '../loader/studio-placement.js';
@@ -322,11 +323,17 @@ export function startBridge(opts: BridgeOptions): void {
       }),
       enumerable: false,
     });
+    // Checkpoints (pause-edit stage 3, 2026-10-28; moment-load.ts): a Play page opened from one holds the game's frames
+    // from now — before any game code — until the editor's moment came and the game's load(m) ran before its first frame.
+    const checkpoint: CheckpointHold | null = !edit && fromCheckpoint(win.location.href)
+      ? startCheckpointHold({ win, parentOrigin, time: core.time, clock: playClock, before: (s, scene) => playAsk?.startFrom(s, scene) })
+      : null;
     // The edit page shows the draft already (the editor's own work): nothing to arrange; Play gives its motions then.
     const arranged = edit ? Promise.resolve([] as string[]) : showFileEditsInPlay();
     // Pause-move (stage 2): the editor that wakes in a paused game needs the core and the game's rules, and the draft's
     // motions (what the game page moves for the editor) to say "just for this moment" on them.
     playAsk = startPlayAsk({ win, parentOrigin, probes: () => [...gameProbes, ...opts.builtins], standby: edit,
+      ...(checkpoint ? { busy: () => checkpoint.holding } : {}),
       ...(playClock ? { pause: { time: core.time, clock: playClock }, move: { core, rules, arranged } } : {}) });
     // This moment's values (pause-edit stage 2, 2026-10-28; moment-values.ts): the game's codeMoment() read and changed
     // for the editor page — in an edit page and a page opened for Play alike (the moment's editor may be either).
@@ -334,6 +341,8 @@ export function startBridge(opts: BridgeOptions): void {
       if (redrawFn) redrawFn();
       else if (core.time.frozen) core.time.step();
     } });
+    // ⚑ Make this a checkpoint (stage 3): the game's save() in a paused moment.
+    startMomentSave({ win, parentOrigin, paused: () => !!playAsk?.paused });
   }
   if (!edit || !inFrame) return;
   // A tap in the game before the editor is ready is kept for it (early-press.ts): from the very start, before the game's code.

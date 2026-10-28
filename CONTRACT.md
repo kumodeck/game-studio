@@ -906,6 +906,79 @@ codeMoment({ values: {
   words, the request), `test/studio-pause.browser.mjs --only values` (the editor: three values, the time left set to 5,
   the HUD drawn with it, Resume from it; a game without them: the line and ✦; English, Japanese, dark).
 
+#### 1.14.1 Checkpoints (2026-10-28, pause-edit stage 3)
+
+A paused moment can be **kept** and the game **opened there** next time (01-decisions decision 14; the plan's Q2
+answered (a), "in the editor only"): ⚑ in the paused moment's top bar, a name, and ▶ Play ⌄ "⚑ Play from Before the boss". The
+editor cannot know a game's state (the score, each enemy, the random seed), and a checkpoint of where things stand alone
+would be another moment's — so, as for the values, the AI writes the game's two hooks once, when asked, in the same
+`codeMoment()` (SKILL.md "Checkpoints"):
+
+```js
+codeMoment({ values: { … },
+  save: () => ({ v: 1, seed, score, timeLeft, boss: boss && { p: boss.position.toArray() } }),   // plain data
+  load: (m) => { ({ seed, score, timeLeft } = m); if (m.boss) { spawnBoss(); boss.position.fromArray(m.boss.p); } },
+});
+```
+
+- **The hooks** (on the same `globalThis[Symbol.for('game-studio.moment')]`: `save`, `load`): both or neither (a game
+  with one cannot start from the middle); kept as given, replaced by a later call that gives them, left by a call with
+  values only; not a function = left out, said once. `save()` returns this moment as **JSON data**, everything the next
+  frame needs (the seed, the game's clocks as durations, what the game made) and not the placed things; `load(m)` puts
+  one back (it may return a promise, given 10 s) and reads older versions of its data too. **Outside the editor nothing
+  calls them.**
+- **Keep** (`src/bridge/moment-load.ts`): `studio:moment/save { n }` — only in a paused moment — → `save()` → checked as
+  JSON (a cycle, a BigInt, a function or nothing at the top, more than `CHECKPOINT_MAX_CHARS` = 1 000 000 characters:
+  `error`) → `studio:moment/saved { n, ok, moment | error, none? }` (`none` = no hooks). `studio:moment/values` carries
+  `checkpoint: true` when the game has both hooks, so ⚑ knows at once.
+- **Open**: the editor opens a new ▶ Play page with `?studioMoment=1` (`LOCAL_PATHS.momentParam`). That page holds the
+  game's frames from its first line (core time `freeze()`; the game's clock stops from its first `requestAnimationFrame`
+  call), and at its `play/hello` the editor sends `studio:moment/load { moment, name, time, scene }`. Once the moment is
+  there and the game asked for its first frame (40 ms after, so a `codeMoment()` written after the loop's start is in;
+  a game with no frames: 3 s after `load`), the page calls `load(moment)` and lets the frames go: **the game's first
+  frame draws the checkpoint**. `studio:moment/loaded { ok }`; not ok: `why: 'none'` (no `load` any more — nothing was
+  loaded, the page plays from its start), `'threw'` (`error`, `logs` = the console's warnings / errors while it ran and
+  load's stack; the page stays held and the editor opens the game again from its start), `'late'` (no moment in 8 s).
+  Placed things are the scene's as it is now (the page reads the editor's draft as every Play page: the loader before
+  the first frame, play-arrange after it). `time` starts the top bar's clock at the checkpoint's seconds; `scene` (the
+  keys of the Edit list) makes a later pause there call anything else "made by the game" (the boss already there at
+  the page's start is still "just for this moment"). No pause while the page holds (play-ask `busy`).
+- **The file** (the editor's, `.studio/checkpoints/<id>.json`; the server's `src/server/checkpoints.mjs`, §3.2):
+  `{ version: 1, name, at, level, time, moment, shot? }` — `level` null for a game without levels, `time` the game's
+  seconds, `moment` = `save()`'s data, `shot` = the moment's picture made small (≤ 240 px JPEG). The id is the name made
+  safe for a file (letters and digits of any language, the rest `-`: "Before the boss" → `Before-the-boss`, a Japanese
+  name keeps its letters; never a dot or a slash); kept again with the same name in the same level it replaces that one, the same name
+  in another level gets `-2`. A file that does not read as a checkpoint (cut short, hand-edited, no `moment`) is listed
+  as `broken` and never offered. At most 200 per game; a newer `version` is read as far as it has these fields.
+- **In the editor page** (`src/shell/checkpoints.ts`, `main.ts`): ⚑ right of Speed while paused (not on a phone's bar:
+  ⌘K "Make this a checkpoint") → the name field under it, the game's time first ("0:42", selected), Enter keeps it
+  (`CheckpointHost.add`) and the field's line says "Checkpoint “Before the boss” kept · ▶ Play ⌄ opens it"; Esc closes.
+  A game without the hooks (or the web demo, which keeps none): one line, "This game can't start from the middle yet."
+  and ✦ Have {ai} let the game start from here (the draft "Let the game start from this moment", the chip "⚑ This
+  moment"; the paused request's `intent: 'moment-save'`; a `save()` that threw: the line "This moment couldn't be kept…"
+  and the same ✦ with `checkpoint.error`). ▶ Play ⌄ lists this level's checkpoints under Play from the start, newest
+  first (12), "⚑ Play from Before the boss", each with ⋯ → Rename (the file follows the name) / Delete (Undo on its
+  line); ⌘K the same rows. A checkpoint that does not open: Play from the start and one line at the top of the game,
+  "The game changed, so this checkpoint can't open" with ✦ Have {ai} fix it (pauses; the draft "Make the checkpoint
+  “Before the boss” open again", the chip "⚑ Before the boss"; the request's `intent: 'moment-load'` and `checkpoint:
+  { id, name, error, logs }`) and ×; it goes back in Edit. Beside the reply's Reload (the paused moment's line, and the
+  line over the game: `PlayLine.from`, `play/reload { from: true }`) "⚑ From Before the boss": the checkpoint this Play
+  opened from, else this level's newest.
+- **The AI's check** (`src/server/moment-check.mjs`): `studio.mjs <folder> --check-moment [seconds]` plays the game as
+  it is played (no editor) in a private headless Chrome for that long (default 6 s), calls `save()`, then opens it fresh
+  with a script before the game's own that calls `load(that moment)` at its first frame — the editor's way — and says
+  one line: `studio: moment check ok …` (exit 0; `.studio/shot/moment-kept.png` / `moment-opened.png`), `… failed: load(m)
+  threw "…" (game.js:212 …)` (exit 1), `… skipped` (exit 3: no Chrome, no hooks). Added after the first real Claude run
+  wrote `fire().position` on a `fire()` that returns nothing and said it had not tried opening one.
+- **The AI's line**: `… (paused, chat …, let the game start from this moment: codeMoment save / load, SKILL.md
+  "Checkpoints")` / `… checkpoint "Before the boss" .studio/checkpoints/Before-the-boss.json does not open: <error> —
+  make load() read it, SKILL.md "Checkpoints"`.
+- Tests: `test/checkpoint.test.ts` (the hooks, save checked, the hold: load before the first frame, a throw, none, a
+  promise; the kinds; the menu's rules), `test/checkpoint-files.test.mjs` (the file, ids, broken files, levels, rename,
+  delete, the API, the requests), `test/studio-pause.browser.mjs --only checkpoint` (kept before the boss, opened after
+  a move in Edit: the first frame's numbers and the boss's place exactly, the gate where the scene has it; a changed
+  game; a game without hooks).
+
 ## 2. Messages (bridge ⇄ shell)
 
 `window.postMessage` with `{ type: 'studio:<tool>/<verb>', … }`. Receivers check
@@ -928,7 +1001,8 @@ origin, never `'*'`. Full payload types: `ShellToBridge`, `BridgeToShell`.
 | | `ui/found` · `ui/missing` | studio-canvas-ui stage 2 (§1.13): the UI seen but not selectable yet (`UiFound[]`: `box`, `from`), when editing starts and when it changes; a press on the UI layer beside every UI box (`at`, `place` = one of the 9, `none` = nothing selectable, `shot` = the picture round it) or `at: null` = the cross went (the next press in the game) |
 | | `ui/screens` · `ui/props` · `ui/theme` | UI stages 2–3 (§1.11): the screens and the one shown (`forced` = the editor chose it), when editing starts and after `ui/screen` (only for a game with screens); the picked UI element's props (`text`, `fontSize`, `color`, `background`, `button`, `state`, `was` = the game's own, `sample`), after a UI pick and each `ui/*` change of it; the theme's variables (`name`, `type` color / font, `value`, `was`, `label` = a codeTheme's word, §1.13), when editing starts and after `ui/theme-set` (only when there are some) |
 | | `ui/edges` | studio-canvas-ui-3 (§1.13): the HTML UI's edges — per element `key`, `from` (the nearest of the 9 places of the window), `at` (CSS px from there), `box`, `frame` — after every gesture, ⌘Z or resize that changed them |
-| | `moment/values` | pause-edit stage 2 (§1.14): `{ values: MomentValue[] \| null, set? }` — the game's codeMoment() values now (null = none), in reply to `moment/ask` / `moment/set` (`set`: that change's `{ id, n, ok, v \| error }`) |
+| | `moment/values` | pause-edit stage 2 (§1.14): `{ values: MomentValue[] \| null, set?, checkpoint? }` — the game's codeMoment() values now (null = none), in reply to `moment/ask` / `moment/set` (`set`: that change's `{ id, n, ok, v \| error }`; `checkpoint`: stage 3, the game has save / load) |
+| | `moment/saved` · `moment/loaded` | pause-edit stage 3 (§1.14.1): save()'s answer `{ n, ok, moment \| error, none? }`; a checkpoint's page after load `{ ok, why?: 'none' \| 'threw' \| 'late', error?, logs? }` |
 | | `placement/selected` | `{ key, item? }` |
 | | `placement/moved` | `{ key, pose, end?, from?, press?, hold?, alone? }` (`alone`: ⌥ held — a rule's object put by hand, §1.12) |
 | | `placement/thumb` | `{ key, src }` (`data:image/png;base64,…` or null), one per key asked for by `placement/thumbs` |
@@ -945,6 +1019,7 @@ origin, never `'*'`. Full payload types: `ShellToBridge`, `BridgeToShell`.
 | | `core/play` | `{ on, motion?, motions?, viewState? }` (§3.5.3, 2026-10-22): ▶ Play and back to Edit in the page on screen. `on`: the editor puts its tools away and the game goes on from the edit layout (`motion` = the draft's motions, played from their start, every `when` through the game's loader; `motions` = the Library's); the page then says `play/hello` as a Play page. Off: the game held, every object back where Play found it (three.js: also what the game added held out of the scene and what it took away put back, both handed back to the game at the next `on`; adapter `watch(on, whole)`), the editor up again on `viewState` (`core/ready` with `editing: true`, the list). Only to a page whose editor is up |
 | | `ui/missing-clear` | studio-canvas-ui stage 2 (§1.13): the line "This UI can't be selected yet" went by the shell's hand (Esc, ✦, a pick): the cross goes too |
 | | `moment/ask` · `moment/set` | pause-edit stage 2 (§1.14): read this moment's values; set one (`{ id, v, n? }`, only while paused: fitted to its step / min / max, then one frame drawn with time stopped) |
+| | `moment/save` · `moment/load` | pause-edit stage 3 (§1.14.1): keep this moment (`{ n }`, paused only: the game's save()); a page opened with `?studioMoment=1` gets its moment at its `play/hello` (`{ moment, name, time?, scene? }`): load(m) before its first frame |
 | | `ui/screen` · `ui/sample` · `ui/set` · `ui/state` · `ui/theme-set` · `ui/props-get` | UI stages 2–3 (§1.11; only after `core/ready` listed `layers`): show a screen (`id` null = as the game shows it); a sample text (`null` = its own); one look field (`name`, `value`, `state?`; `null` = the game's own; `quiet` = no `ui/props` back, for the values the file holds, given again when a page opens); a button's look; a theme variable; ask for an element's props |
 | | `core/layer` | `{ layer: 'world' \| 'ui' }` (UI stage 1, only after `core/ready` listed `layers`): drop the pick, put the input on that layer's adapter, answer `core/ready` + its `placement/items`. The world's edit camera goes to the game's own view while the UI is edited and back after; `core/view-state` is only sent for the world |
 | | `core/view` | `frameAll`, `home`, `focus`, `zoom`, `orbit`, `pan`, `rise` (camera up / down by `by` × the game's height; 3D adapters with `view.rise(dy)`, which `core/ready` reports as `rise: true`; adapters with `view.fly(right, up, fwd)` — and `view.look(dx, dy)` — report `fly: true`, and the editor page then sends the fly keys held there as `core/fly { keys, fast }`), `restore` (adapters may also have `view.home({ glide? })` — the opening view, the game camera in three.js — and `view.settle(key)` — the first pick from it glides to an editing angle; the bridge uses them itself. `home` (⌘K "Back to the opening view", ⇧F) calls `view.home({ glide: true })`, or `frameAll()` when the adapter has no `home`) |
@@ -1097,6 +1172,9 @@ except `.studio/adapter.js` through its own route).
 | `GET /__studio/game-tools.js` | — | `<game>/.studio/tools.js`, or an empty script (§7) |
 | `GET /__studio/api/config` | — | `{ value }` from `.studio/studio.json` (read only; `error` when not JSON) (§7) |
 | `GET/PUT /__studio/api/data/:id` | tool data JSON | `.studio/data/<id>.json` (`id` = `TOOL_ID_RE`, ≤ 256 KB); PUT prints `studio: saved .studio/data/<id>.json` (§7) |
+| `GET /__studio/api/checkpoints` | — | `{ checkpoints: CheckpointInfo[], broken: string[] }`: `.studio/checkpoints/` newest first (`id`, `name`, `at`, `level`, `time`; no moment), files that do not read as one apart (pause-edit stage 3, §1.14.1) |
+| `POST /__studio/api/checkpoints` | `{ name, level, time, moment, shot? }` | `{ ok, id, path }`: kept as `.studio/checkpoints/<id>.json` (`id` from the name; the same name in the same level replaced); 422 when it is not one (`moment` not JSON or > 1 000 000 characters, no name …); 409 past 200. No stdout line |
+| `GET / PATCH / DELETE /__studio/api/checkpoints/:id` | — / `{ name }` / — | `{ value: Checkpoint }` (404 when missing or broken) / `{ ok, id, path }` (renamed: the file follows the name) / `{ ok }` (404 when there was none) |
 | `GET/PUT /__studio/api/ui` | UI prefs JSON | `.studio/ui/prefs.json` (≤ 16 KB) (§8) |
 | `GET /__studio/game-ui.css`, `/__studio/game-ui.js` | — | `.studio/ui/studio.css`, `.studio/ui/shell.js`, or empty (§8) |
 | `GET /<path>` | — | Game files; HTML gets the two script tags of §1.4 first in `<head>` |
@@ -1450,6 +1528,8 @@ away, one line right over the field says "Just for this moment" (and ✦, below)
   pause of a person hangs "Next frame ." under ▶| once (`prefs.seen` `step-tip`).
 - **This moment** (stage 2, §1.14): the list's first block — the game's codeMoment() values, changed for this moment
   only (one frame drawn; ⌘Z while paused; gone at Resume) — or one line and ✦ when the game has none.
+- **Checkpoints** (stage 3, §1.14.1): ⚑ right of Speed keeps this moment (a name, the game's save()); ▶ Play ⌄ "⚑ Play
+  from …" opens a new page there (load(m) before its first frame); a game without save / load: one line and ✦.
 - **The AI's hands in a paused moment** (§3.6): done on the moment, not back in Edit first.
 - Messages: shell → bridge `studio:play/pause { on? }`, `studio:play/speed { rate }`, `studio:play/step { on }`,
   `studio:play/on { …, ai? }`, `studio:core/edit { on, moment }`; bridge → shell `studio:play/paused { on, edit, why,

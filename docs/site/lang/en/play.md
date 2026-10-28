@@ -2,8 +2,8 @@
 title: Play
 nav: Play
 order: 3
-written-for: 0.1.71
-description: Play your game in the editor, slow it down, pause it on the exact frame, and edit that moment by hand or with your AI.
+written-for: 0.1.73
+description: Play your game in the editor, slow it down, pause it on the exact frame, edit that moment by hand or with your AI, and keep it as a checkpoint.
 ---
 
 # Play
@@ -70,6 +70,27 @@ The ask box says **Ask Claude about this moment…** (your AI’s name, if it is
 - **▶| Next frame** (or <kbd>.</kbd>) steps one frame while paused: the time moves by 0:00.01 or 0:00.02. Hold it down to go on at the speed you chose. The first time you pause, a small label under **▶|** says **Next frame .**
 
 ![The Speed menu in the top bar: 1×, ½×, ¼×](media/pause-speed.webp)
+
+### Checkpoints
+
+Paused just before the boss? Keep that moment, and next time start right there instead of playing back to it.
+
+1. Press **⚑** (right of the speed, while paused). A name field opens under it with the game’s time, like **0:04**. Type a name, like **Before the boss**, and press <kbd>Enter</kbd>. The ask box says **Checkpoint “Before the boss” kept**.
+2. Change what you like: move things in Edit, or ask your AI to change the boss.
+3. Open **▶ Play ⌄** and choose **⚑ Play from Before the boss** (it’s in <kbd>⌘</kbd><kbd>K</kbd> too). The game opens on that moment: the same score, time left, enemies and boss, and the time in the top bar goes on from there.
+
+![The paused moment with the name field under ⚑: Before the boss](media/pause-checkpoint.webp)
+
+- **Your scene is always the current one.** A checkpoint keeps the game’s moment, not your layout: a gate you moved after keeping it stands where you moved it.
+- **Rename or delete** with **⋯** on its row in **▶ Play ⌄**. **Play ⌄** lists the checkpoints of the level you’re on, newest first.
+- **After your AI fixes something**, its reply has **⚑ From Before the boss** next to **Reload**: the fixed game opens right at the boss.
+- Checkpoints stay in the editor (in the game folder’s `.studio/checkpoints/`). They’re never part of your published game.
+
+![▶ Play ⌄ with Play from the start and ⚑ Play from Before the boss](media/pause-checkpoint-open.webp)
+
+Your AI adds this to the game once, as with **This moment**. Until it does, **⚑** says **This game can’t start from the middle yet.** Press **✦ Have Claude let the game start from here**, send it, and when Claude is done press **Reload**. The web demo shows the line only.
+
+If your game changes so much that a checkpoint can’t open, the game starts from the beginning instead and a line at the top says **The game changed, so this checkpoint can’t open**. Press **✦ Have Claude fix it**: the game pauses and the ask box gets the request. Claude makes the game read the old checkpoint again.
 
 ### The ways out of a paused moment
 

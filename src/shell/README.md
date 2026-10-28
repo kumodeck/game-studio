@@ -266,3 +266,9 @@ off, the person's ("Farthest off: …"). "Undo AI change" puts the folded parts 
 rule (it was "Make this way a knob"): `code-place-wire.ts` ruleAsk — the request's `intent: "to-knob"` with the way, the
 offsets and the ranks; a knob the AI adds lights once on the card. Jitter (`how: "jitter"` + seed): the card's ⋯ Add
 jitter, a row's ⋯ Add jitter / Shuffle (`offset-model.ts` jitterRow). `test/write-back.test.ts`.
+
+The paused moment (pause-edit, 2026-10-28): `moment.ts` (the top bar's guide, ❚❚, ▶|, Speed, and since stage 3 ⚑),
+`moment-values.ts` (stage 2: "This moment", the game's numbers) and `checkpoints.ts` (stage 3: ⚑'s name field and its one
+line, the line when a checkpoint can't open, this level's checkpoints newest first, the one "⚑ From …" beside Reload
+opens; `test/checkpoint.test.ts`). The host keeps checkpoints (`host-local.ts` → `/api/checkpoints`); ▶ Play ⌄ and ⌘K list
+them (`main.ts`), each row's ⋯ (`context-menu.ts` `more`) renames or deletes.

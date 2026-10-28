@@ -15,6 +15,7 @@ import {
   UI,
   isStudioMessage,
   type BridgeToShell,
+  type CheckpointInfo,
   type Dim,
   type EditLayer,
   type FlyKey,
@@ -33,6 +34,7 @@ import {
   type OffsetWay,
   type Lang,
   type PlacementFile,
+  type PlayLog,
   type Pose,
   type SelfCheckResult,
   type ShellContext,
@@ -76,6 +78,7 @@ import { playLine, playWords } from './play-ask.ts';
 import { clockNow, clockText, createMomentBar, madeRows, speedText, splitMoves, type HeardClock } from './moment.ts';
 import { chatOnLine, historyOf, type ChatModel } from './moment-talk.ts';
 import { createMomentValues } from './moment-values.ts';
+import { CHECKPOINTS_LISTED, checkpointsOf, createCheckpointNote, createCheckpointPop, defaultCheckpointName, reloadCheckpoint, smallShot } from './checkpoints.ts';
 import { LINE_FADE_MS, LINE_GRACE_MS, lineFades, lineKey, lineStayMs } from './line-fade.ts';
 import { renderSettings } from './settings-page.ts';
 import { DEFAULT_UI, effectiveTheme, normalizeUi } from './ui-prefs.ts';
@@ -762,6 +765,7 @@ export function start(host: StudioHost) {
     resume: () => postGame({ type: 'studio:play/pause', on: false }),
     step: (on) => postGame({ type: 'studio:play/step', on }),
     speed: (rate) => postGame({ type: 'studio:play/speed', rate }),
+    checkpoint: (at) => checkpointPress(at),
     menu: (at, rows, head) => {
       const r = at.getBoundingClientRect();
       // The menu's head (fix 1 ✕13): "Speed" over 1× · ½× · ¼×; Next frame after a line while paused.
@@ -795,7 +799,18 @@ export function start(host: StudioHost) {
   const topActions = h('div', { class: 'top-actions', dataset: { part: 'top-actions' } }, playAskBtn, topSave, playPauseBtn, playSplit);
   function openPlayMenu() {
     const r = playMoreBtn.getBoundingClientRect();
-    ctxMenu.show([{ id: 'play-fresh', label: t('pal.playFresh'), run: () => void togglePlay(true) }], r.right, r.bottom + 4, { place: 'play', label: t('pal.playFresh') });
+    // Checkpoints (pause-edit stage 3): "⚑ Play from Before the boss" under Play from the start, newest first, this level's
+    // only (another level's moment is not this level's game), each with ⋯ (Rename, Delete).
+    const rows: MenuEntry[] = [{ id: 'play-fresh', label: t('pal.playFresh'), run: () => void togglePlay(true) }];
+    const mine = myCheckpoints();
+    if (mine.length) {
+      rows.push({ sep: true }, { head: t('checkpoint.head') });
+      for (const c of mine.slice(0, CHECKPOINTS_LISTED)) {
+        rows.push({ id: `checkpoint-play`, label: t('checkpoint.playFrom', { name: c.name }), run: () => void playCheckpoint(c),
+          more: { label: t('checkpoint.more', { name: c.name }), run: (at) => checkpointMore(c, at) } });
+      }
+    }
+    ctxMenu.show(rows, r.right, r.bottom + 4, { place: 'play', label: t('pal.playFresh') });
     // Right-aligned under ▾: the menu's right edge on the button's.
     const m = ctxMenu.el.getBoundingClientRect();
     ctxMenu.el.style.left = `${Math.max(8, Math.round(r.right - m.width))}px`;
@@ -1128,7 +1143,10 @@ export function start(host: StudioHost) {
   const dock = h('section', { class: 'ask-strip dock' }, caption, cardSlot, h('div', { class: 'palette-slot' }), introLine, motionNote.el, uiMissing.el, presenceRow, momentLine, bar);
   noteReady = true;
   // (introLine over presenceRow: the presence words on a narrow PC bar belong to the field, so they stay on it.)
-  const stage = h('div', { class: 'stage', dataset: { part: 'stage' } }, iframe, scrim, assetsPage, inspector, dock, levelNote, momentBar.tip, momentBar.stepTip, momentBar.note, momentUnfoldBtn);
+  // Checkpoints (stage 3; checkpoints.ts): the line when one did not open, at the top of the game; the field under ⚑.
+  const cpNote = createCheckpointNote({ t, aiVars: () => aiVars() });
+  const cpPop = createCheckpointPop({ t, aiVars: () => aiVars(), changed: (on) => (app.dataset.checkpoint = on ? 'open' : 'closed') });
+  const stage = h('div', { class: 'stage', dataset: { part: 'stage' } }, iframe, scrim, assetsPage, inspector, dock, levelNote, momentBar.tip, momentBar.stepTip, momentBar.note, cpNote.el, momentUnfoldBtn);
   const app = h('div', { class: 'shell', dataset: { part: 'app' } }, header, side, stage);
   document.getElementById('app')!.replaceWith(app);
   panel.append(toolEl);
@@ -1170,7 +1188,7 @@ export function start(host: StudioHost) {
       motionTool.sync();
     },
   });
-  app.append(ctxMenu.catcher, ctxMenu.el);
+  app.append(ctxMenu.catcher, ctxMenu.el, cpPop.el);
   // The level in the top bar's path (level-switch.ts); what its rows do is below (goLevel and the rest).
   const levelSwitch = createLevelSwitch({
     t,
@@ -1662,6 +1680,8 @@ export function start(host: StudioHost) {
       if (moment && momentHere) return { chip: t('moment.here', { name: momentHere.label }), ph: t('moment.askPh', aiVars()) };
       // ✦ Have Claude make this moment editable (pause-edit stage 2): the chip "This moment".
       if (moment && momentValuesAsk) return { chip: t('moment.values'), ph: t('moment.askPh', aiVars()) };
+      // ⚑'s ✦ / the line's ✦ (stage 3): the chip "⚑ This moment" / "⚑ Before the boss".
+      if (moment && cpAsk) return { chip: cpAsk.checkpoint?.name ? t('checkpoint.chip', { name: cpAsk.checkpoint.name }) : t('checkpoint.chipNew'), ph: t('moment.askPh', aiVars()) };
       // ✦ Ask Claude to make this UI editable (studio-canvas-ui stage 2): "Here (bottom left)" with the place's picture.
       const ui = uiAskNow();
       if (ui) return { chip: ui.chip, ph: askPh(), ...(ui.pic ? { pic: ui.pic } : {}), tip: ui.tip };
@@ -2121,6 +2141,9 @@ export function start(host: StudioHost) {
     }
     // The old Play, a new page (fast switch, 2026-10-22: Play's ▾ says why).
     act('play-fresh', t('pal.playFresh'), 'play', () => void togglePlay(true), undefined, t('pal.playFresh.words'));
+    // Checkpoints (stage 3): this level's, as ▶ Play ⌄ lists them; while paused, ⚑ Make this a checkpoint.
+    if (playing && playAskOn && playPaused) act('checkpoint-make', t('checkpoint.make'), 'flag', () => checkpointPress(momentBar.flagBtn.offsetParent ? momentBar.flagBtn : topActions), undefined, t('checkpoint.playFromWords'));
+    for (const [i, c] of myCheckpoints().slice(0, CHECKPOINTS_LISTED).entries()) act(`checkpoint-play-${i}`, t('checkpoint.playFrom', { name: c.name }), 'flag', () => void playCheckpoint(c), undefined, t('checkpoint.playFromWords'));
     if (keys.length && editing) {
       act('copy', t('ops.copy'), 'copy', () => copySelection(), shortcutText('copy'), 'duplicate clone 複製');
       act('remove', t('ops.remove'), 'trash', () => removeSelection(), shortcutText('remove'), 'delete remove 削除');
@@ -3220,6 +3243,9 @@ export function start(host: StudioHost) {
       const codeNow = code === undefined || loadedCode === undefined ? undefined : code !== loadedCode;
       if (ph === 'done' && playing && playPaused && !!pending?.id && momentAsks.has(pending.id) && (n > 0 || codeNow === true)) {
         link('moment-reload', 'toolRotate', t('play.reload'), () => loadGame(), t('play.reloadMomentTip'));
+        // …and from a checkpoint (stage 3, the brief's 5): the one this Play opened from, else this level's newest.
+        const rc = reloadCheckpoint(checkpointList, cpLevel(), cpPlayed?.id ?? null);
+        if (rc) link('moment-reload-from', 'flag', t('checkpoint.fromReload', { name: rc.name }), () => void playCheckpoint(rc), t('checkpoint.fromReloadTip', { name: rc.name }));
       }
       const aiReloaded = aiReloadFor !== null && aiStatus?.at === aiReloadFor;
       if (ph === 'done' && !playing && aiReloaded) {
@@ -3412,6 +3438,11 @@ export function start(host: StudioHost) {
     // paused (the moment's own field at the foot is the way to ask then).
     const show = playing && playAskOn && phone() && !host.offline && !playPaused;
     playAskBtn.hidden = !show;
+    // The checkpoint's line (stage 3) is about this Play: back in Edit it goes.
+    if (!playing && cpFailed) {
+      cpFailed = null;
+      cpNote.hide();
+    }
     // ❚❚ Pause to edit / ▶ Resume, the game's clock, Next frame, Speed (moment.ts): every width.
     momentBar.render();
     placePlayTip();
@@ -3466,6 +3497,12 @@ export function start(host: StudioHost) {
     renderAll(true);
     // Words typed in the ✦ field over the game when it paused: the field at the foot now (the person was about to ask).
     if (m.draft && !host.offline) focusAsk(m.draft);
+    // The line's ✦ "Have Claude fix it" (stage 3) paused the game for its draft: in the field now.
+    if (cpAskSoon) {
+      const a = cpAskSoon;
+      cpAskSoon = null;
+      checkpointDraft(a.intent, a.checkpoint);
+    }
   }
   /** play/paused off (Resume, Edit, a new page): the moment's own steps leave ⌘Z (undo.ts dropMoment), its tools go. */
   function momentEnd() {
@@ -3482,6 +3519,12 @@ export function start(host: StudioHost) {
     momentVals = undefined;
     momentValuesAsk = false;
     momentValues.hide();
+    // Checkpoints (stage 3): ⚑'s field and a ✦ draft belong to this moment.
+    momentCanCheckpoint = false;
+    cpAsk = null;
+    cpPop.close();
+    for (const [, w] of cpSaveWaits) w({ ok: false, error: 'the game is not paused' });
+    cpSaveWaits.clear();
     for (const w of momentAskWaits.splice(0)) w(null);
     for (const [, w] of momentSetWaits) w({ ok: false, error: 'the game is not paused' });
     momentSetWaits.clear();
@@ -3590,6 +3633,7 @@ export function start(host: StudioHost) {
     }
     if (!playPaused) return;
     momentVals = m.values;
+    momentCanCheckpoint = m.checkpoint === true;
     momentValues.show(m.values);
   }
   /**
@@ -3643,8 +3687,164 @@ export function start(host: StudioHost) {
   /** ✦ Have {ai} make this moment editable: the draft and the chip "This moment" in the field; the person sends it. */
   function momentValuesDraft() {
     momentValuesAsk = true;
+    cpAsk = null;
     momentHere = null;
     focusAsk(t('moment.valuesDraft'));
+  }
+  // ----- checkpoints (pause-edit stage 3, 2026-10-28; checkpoints.ts, CONTRACT.md §1.14 "Checkpoints") -----
+  /** The level checkpoints belong to: the level on screen; null for a game without levels. */
+  const cpLevel = () => (levels.active ? levels.current || null : null);
+  /** This level's checkpoints, newest first (▶ Play ⌄, ⌘K). */
+  const myCheckpoints = () => checkpointsOf(checkpointList, cpLevel());
+  /** The host's list again (after keeping, renaming, deleting; at the start). */
+  async function refreshCheckpoints() {
+    if (!host.checkpoints) return;
+    checkpointList = (await host.checkpoints.list()).checkpoints;
+    renderAiLine();
+    sendPlayLine(true);
+  }
+  /**
+   * ⚑ pressed (paused): the name field under it, "0:42" first — or, for a game that cannot start from the middle (no
+   * save / load; the web demo keeps none), its one line and ✦ (decision 14: no checkpoint of the positions alone).
+   */
+  function checkpointPress(at: HTMLElement) {
+    if (!playPaused || !moment) return;
+    if (cpPop.isOpen()) return cpPop.close();
+    if (!momentCanCheckpoint || !host.checkpoints) return checkpointNone(at);
+    cpPop.name(at, { name: defaultCheckpointName(clockNow(playHeard, performance.now())), label: t('checkpoint.name'), button: t('checkpoint.keep'),
+      keep: (name) => keepCheckpoint(name, at) });
+  }
+  /** "This game can't start from the middle yet." (or: save() failed) and ✦ Have {ai} let the game start from here. */
+  function checkpointNone(at: HTMLElement, error?: string) {
+    const ask = host.offline ? undefined : { label: t('checkpoint.noneAsk', aiVars()), run: () => checkpointDraft('moment-save', error ? { error } : undefined) };
+    cpPop.line(at, error ? t('checkpoint.saveFailed') : t('checkpoint.none'), ask);
+  }
+  /** ✦'s draft and chip in the field (the person sends it): the paused request gets the intent and the checkpoint. */
+  function checkpointDraft(intent: CpAsk['intent'], checkpoint?: CpAsk['checkpoint']) {
+    cpAsk = { intent, ...(checkpoint ? { checkpoint } : {}) };
+    momentValuesAsk = false;
+    momentHere = null;
+    focusAsk(intent === 'moment-load' ? t('checkpoint.loadDraft', { name: checkpoint?.name ?? '' }) : t('checkpoint.saveDraft'));
+  }
+  /** The game page's save() now (moment/save → moment/saved), or why not. */
+  function momentSaveNow(): Promise<{ ok: boolean; moment?: unknown; error?: string; none?: boolean }> {
+    const n = ++cpSaveN;
+    return new Promise((done) => {
+      const timer = window.setTimeout(() => {
+        cpSaveWaits.delete(n);
+        done({ ok: false, error: 'the game page did not answer in 3 s' });
+      }, 3000);
+      cpSaveWaits.set(n, (r) => {
+        window.clearTimeout(timer);
+        done(r);
+      });
+      postGame({ type: 'studio:moment/save', n });
+    });
+  }
+  /**
+   * Enter in ⚑'s field: save() in the game page, then the host keeps it with the moment's small picture, the level and
+   * the game's time. Answers the field's error line, null (kept: the field closes) or undefined (the plate became the
+   * one line: save() said there is nothing to keep, or failed).
+   */
+  async function keepCheckpoint(name: string, at: HTMLElement): Promise<string | null | undefined> {
+    const cps = host.checkpoints;
+    if (!cps || !playPaused) return t('checkpoint.keepFailed', { error: 'the game is not paused' });
+    const time = Math.round(clockNow(playHeard, performance.now()) * 1000) / 1000;
+    const r = await momentSaveNow();
+    if (!r.ok) {
+      if (r.error === 'the game is not paused' || r.error?.startsWith('the game page')) return t('checkpoint.keepFailed', { error: r.error });
+      checkpointNone(at, r.none ? undefined : r.error);
+      return undefined;
+    }
+    const shot = await smallShot(momentAsk?.shot);
+    const a = await cps.add({ name, level: cpLevel(), time, moment: r.moment, ...(shot ? { shot } : {}) });
+    if (!a.ok) return t('checkpoint.keepFailed', { error: a.error ?? '?' });
+    // Said where the moment's news goes (the field's line): the game's foot, where the flash is, is the field's place while paused.
+    showToast(t('checkpoint.kept', { name }), 5000);
+    await refreshCheckpoints();
+    return null;
+  }
+  /**
+   * ▶ Play from a checkpoint (▶ Play ⌄, ⌘K, "⚑ From …" beside Reload): a new Play page, as Play from the start, that
+   * holds its first frame until its load(m) ran with the checkpoint's moment (sent at its hello). Placed things come
+   * from the scene as it is now (the page reads the draft as every Play page does).
+   */
+  async function playCheckpoint(info: CheckpointInfo) {
+    const cps = host.checkpoints;
+    if (!cps) return;
+    const c = await cps.get(info.id);
+    if (!c) {
+      // Deleted meanwhile, or the file no longer reads as a checkpoint: the list again, and the line.
+      await refreshCheckpoints();
+      showToast(t('checkpoint.cantOpen'), 5000);
+      return;
+    }
+    cpFailed = null;
+    cpNote.hide();
+    cpOpening = { id: info.id, name: c.name, moment: c.moment, time: c.time };
+    await togglePlay(true);
+    if (!playing) cpOpening = null;
+  }
+  /**
+   * The checkpoint's page said how it went (moment/loaded). Opened: "⚑ Playing from Before the boss" at the game's foot.
+   * Not (decision 14): load() threw → the page is held half-loaded, so the game opens again from its start; no load()
+   * any more → the page already plays from its start. Either way the line at the top, with ✦ (load's error and the
+   * console's lines go with it).
+   */
+  function checkpointLoaded(m: Extract<BridgeToShell, { type: 'studio:moment/loaded' }>) {
+    const from = cpPlayed;
+    if (!playing || !from) return;
+    if (m.ok) {
+      momentBar.flash(t('checkpoint.from', { name: from.name }), 'flag');
+      return;
+    }
+    const error = m.error ?? (m.why === 'none' ? 'the game has no codeMoment() load() any more' : 'the editor sent no moment');
+    cpFailed = { id: from.id, name: from.name, error, logs: m.logs ?? [] };
+    cpPlayed = null;
+    if (m.why === 'threw') loadGame();
+    const f = cpFailed;
+    cpNote.show({ ask: host.offline ? undefined : () => {
+      cpNote.hide();
+      cpAskSoon = { intent: 'moment-load', checkpoint: { id: f.id, name: f.name, error: f.error, ...(f.logs.length ? { logs: f.logs } : {}) } };
+      // The field is the paused moment's: pause for it (momentStart puts the draft in).
+      if (playPaused && moment) {
+        const a = cpAskSoon;
+        cpAskSoon = null;
+        checkpointDraft(a.intent, a.checkpoint);
+      } else if (playAskOn) postGame({ type: 'studio:play/pause', on: true });
+      else pauseSoon = true;
+    } });
+    renderAll();
+  }
+  /** A row's ⋯ in ▶ Play ⌄: Rename, Delete. */
+  function checkpointMore(c: CheckpointInfo, at: DOMRect) {
+    ctxMenu.show([
+      { id: 'checkpoint-rename', label: t('checkpoint.rename'), run: () => checkpointRename(c) },
+      { id: 'checkpoint-delete', label: t('checkpoint.delete'), danger: true, run: () => void checkpointDelete(c) },
+    ], at.right, at.bottom + 4, { place: 'checkpoint', label: t('checkpoint.more', { name: c.name }) });
+  }
+  /** Where the rename field hangs: under ▶ Play ⌄ (a phone has it in ⌘K only: under the top bar's right end). */
+  const playMenuAnchor = (): HTMLElement => (playMoreBtn.offsetParent ? playMoreBtn : topActions);
+  function checkpointRename(c: CheckpointInfo) {
+    cpPop.name(playMenuAnchor(), { name: c.name, label: t('checkpoint.renameLabel'), button: t('checkpoint.renameKeep'), keep: async (name) => {
+      if (name === c.name) return null;
+      const r = await host.checkpoints!.rename(c.id, name);
+      if (!r.ok) return t('checkpoint.keepFailed', { error: r.error ?? '?' });
+      if (cpPlayed?.id === c.id) cpPlayed = { id: r.id ?? c.id, name };
+      showToast(t('checkpoint.renamed', { name }), 3500);
+      await refreshCheckpoints();
+      return null;
+    } });
+  }
+  /** Delete: at once (one press), with Undo on its toast for a while (the whole file is kept until then). */
+  async function checkpointDelete(c: CheckpointInfo) {
+    const cps = host.checkpoints!;
+    const whole = await cps.get(c.id);
+    const r = await cps.remove(c.id);
+    await refreshCheckpoints();
+    if (!r.ok) return void showToast(t('checkpoint.keepFailed', { error: r.error ?? '?' }), 5000);
+    showToast(t('checkpoint.deleted', { name: c.name }), 6000, whole ? [{ label: t('btn.undo'), run: () => void cps.add({ name: whole.name, level: whole.level, time: whole.time, moment: whole.moment,
+      ...(whole.shot ? { shot: whole.shot } : {}) }).then(() => refreshCheckpoints()) }] : undefined);
   }
   /** The field's words while paused: the same "play" request as before, `paused`; the first one carries the moment. */
   async function momentRequest(text: string, keys: string[]): Promise<boolean> {
@@ -3654,9 +3854,11 @@ export function start(host: StudioHost) {
     const ok = await askAi({ kind: 'play', text, paused: true, ...(first && momentAsk ? momentAsk : {}), ...(momentChat ? { chat: momentChat } : {}),
       ...(history.length ? { history } : {}), ...(keys.length ? { objects: requestObjects(keys) } : {}),
       ...(here ? { made: true, here: { key: here.key, label: here.label, at: here.at, to: here.to, time: here.time } } : {}),
-      ...(momentValuesAsk ? { intent: 'moment-values' as const } : {}) });
+      ...(momentValuesAsk ? { intent: 'moment-values' as const } : {}),
+      ...(cpAsk ? { intent: cpAsk.intent, ...(cpAsk.checkpoint ? { checkpoint: cpAsk.checkpoint } : {}) } : {}) });
     if (!ok) return false;
     momentValuesAsk = false;
+    cpAsk = null;
     if (first && pending?.id) momentChat = pending.id;
     if (pending?.id) {
       momentAsks.add(pending.id);
@@ -3688,8 +3890,11 @@ export function start(host: StudioHost) {
   function sendPlayLine(force = false) {
     if (!playing || host.offline) return;
     const mine = !!pending && pending.sent >= playSince;
-    const v = mine ? playLine({ phase: currentPhase(), status: aiStatus, asked: pending?.text,
+    let v = mine ? playLine({ phase: currentPhase(), status: aiStatus, asked: pending?.text,
       codeChanged: code === undefined || loadedCode === undefined ? undefined : code !== loadedCode, agent: aiAgent, t }) : null;
+    // Beside Reload over the game (stage 3): "⚑ From Before the boss" — the fixed game opened at the checkpoint.
+    const rc = v?.reload ? reloadCheckpoint(checkpointList, cpLevel(), cpPlayed?.id ?? null) : null;
+    if (v && rc) v = { ...v, from: t('checkpoint.fromReload', { name: rc.name }) };
     const sig = JSON.stringify(v);
     if (!force && sig === playSig) return;
     playSig = sig;
@@ -4071,6 +4276,11 @@ export function start(host: StudioHost) {
       // Ask while playing (§3.5): the game page can take a request; say whether an AI can get one (never offline).
       // The web demo too since pause-edit (decision 12): the pause and the moment need no AI (play/on `ai: false`).
       case 'studio:play/hello':
+        // A page opened from a checkpoint (stage 3): its moment, for load(m) before its first frame (bridge/moment-load.ts).
+        if (playing && cpOpening) {
+          postGame({ type: 'studio:moment/load', moment: cpOpening.moment, name: cpOpening.name, time: cpOpening.time, scene: worldItems.map((i) => i.key) });
+          cpOpening = null;
+        }
         if (playing) {
           playAskOn = true;
           playMark = !phone();
@@ -4127,13 +4337,29 @@ export function start(host: StudioHost) {
       case 'studio:moment/values':
         momentValuesHeard(m);
         break;
+      case 'studio:moment/saved': {
+        const w = cpSaveWaits.get(m.n);
+        if (w) {
+          cpSaveWaits.delete(m.n);
+          w(m);
+        }
+        break;
+      }
+      case 'studio:moment/loaded':
+        checkpointLoaded(m);
+        break;
       case 'studio:play/answer':
         if (playing && !host.offline) void answerAi(m.text).then((ok) => postGame({ type: 'studio:play/sent', ok }));
         break;
-      case 'studio:play/reload':
-        // The person chose to see the fix: the game opens again from its new code, still in Play.
-        if (playing) loadGame();
+      case 'studio:play/reload': {
+        // The person chose to see the fix: the game opens again from its new code, still in Play. `from` (stage 3): the
+        // line's "⚑ From Before the boss" — from that checkpoint.
+        if (!playing) break;
+        const rc = m.from ? reloadCheckpoint(checkpointList, cpLevel(), cpPlayed?.id ?? null) : null;
+        if (rc) void playCheckpoint(rc);
+        else loadGame();
         break;
+      }
       case 'studio:core/levels': {
         // Levels (2026-10-22): the game said its levels. The first time (a file without levels), the opened file's
         // world part is the level on screen's. A page that built another level than the one restored (it ignored
@@ -4889,6 +5115,20 @@ export function start(host: StudioHost) {
   let momentSetN = 0;
   const momentSetWaits = new Map<number, (r: { ok: boolean; v?: number; error?: string }) => void>();
   let momentAskWaits: Array<(v: MomentValue[] | null) => void> = [];
+  // Checkpoints (pause-edit stage 3, 2026-10-28; checkpoints.ts): the host's list (every level's), whether this moment's
+  // game has save() / load() (moment/values `checkpoint`), the one being opened (sent at the new page's hello), the one
+  // this Play opened from, the one that did not open (the line at the top), ✦'s draft in the field / waiting for the
+  // pause it asks for, and ⚑'s save() waiting for the game page.
+  let checkpointList: CheckpointInfo[] = [];
+  let momentCanCheckpoint = false;
+  let cpOpening: { id: string; name: string; moment: unknown; time: number } | null = null;
+  let cpPlayed: { id: string; name: string } | null = null;
+  let cpFailed: { id: string; name: string; error: string; logs: PlayLog[] } | null = null;
+  type CpAsk = { intent: 'moment-save' | 'moment-load'; checkpoint?: { id?: string; name?: string; error?: string; logs?: PlayLog[] } };
+  let cpAsk: CpAsk | null = null;
+  let cpAskSoon: CpAsk | null = null;
+  let cpSaveN = 0;
+  const cpSaveWaits = new Map<number, (r: { ok: boolean; moment?: unknown; error?: string; none?: boolean }) => void>();
   let playHeard: HeardClock | null = null;
   /** Just for this moment: the game moves it or made it (null = placed, or no moment). */
   const momentOf = (k: string): MomentKind | null => (moment ? momentWhy.get(k) ?? null : null);
@@ -5287,6 +5527,8 @@ export function start(host: StudioHost) {
     if (playing) u.searchParams.delete(k);
     else u.searchParams.set(k, v);
     if (gameOrigin !== location.origin) u.searchParams.set(LOCAL_PATHS.parentParam, location.origin);
+    // A Play page opened from a checkpoint (stage 3): it holds its first frame for the moment (bridge/moment-load.ts).
+    if (playing && cpOpening) u.searchParams.set(LOCAL_PATHS.momentParam, '1');
     // A game with levels opens on the level shown (edit and Play alike; bridge/levels.ts reads these).
     if (levels.active && levels.current) {
       u.searchParams.set(LOCAL_PATHS.levelParam, levels.current);
@@ -5298,6 +5540,9 @@ export function start(host: StudioHost) {
   function loadGame(soft = false) {
     playHere = false;
     playFrom = null;
+    // Checkpoints (stage 3): this page opens from one (cpOpening, sent at its hello), or from the start (none).
+    if (!playing) cpOpening = null;
+    cpPlayed = playing && cpOpening ? { id: cpOpening.id, name: cpOpening.name } : null;
     bridgeAlive = false;
     timeline.reset();
     // A new game page asks again (play/hello), and starts unpaused (and at 1×: a new page's clock).
@@ -6496,6 +6741,8 @@ export function start(host: StudioHost) {
       }, () => undefined);
       loadGame();
       void pollStatus();
+      // ▶ Play ⌄'s "⚑ Play from …" rows (pause-edit stage 3).
+      void refreshCheckpoints();
       // The AI's hands (ai-hands.ts): jobs from `studio.mjs --do` from now on (they wait for the game to be listed).
       host.hands?.((job) => aiHands.run(job));
     } catch (e) {

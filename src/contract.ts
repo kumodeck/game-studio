@@ -1371,6 +1371,19 @@ export type ShellToBridge =
    */
   | { type: 'studio:moment/set'; id: string; v: number; n?: number }
   /**
+   * Checkpoints (pause-edit stage 3, 2026-10-28; §1.14 "Checkpoints"): ⚑ Make this a checkpoint — the game's codeMoment
+   * save() now, only while paused; answered by `studio:moment/saved` with the same `n`.
+   */
+  | { type: 'studio:moment/save'; n: number }
+  /**
+   * A page opened from a checkpoint (its URL has LOCAL_PATHS.momentParam): the saved moment to load(m) before the game's
+   * first frame. Sent in answer to that page's `play/hello`. `scene` = the keys of the scene's objects (the editor's
+   * Edit list): anything else on the page at the start was made by the game (the boss already there), so a pause
+   * calls it "just for this moment" as in a Play from the start. `time` = the game's seconds at the checkpoint (the top
+   * bar's clock goes on from it).
+   */
+  | { type: 'studio:moment/load'; moment: unknown; name: string; time?: number; scene?: string[] }
+  /**
    * The request was kept (`ok`) or not, so the field can close or say it failed. `id`: the kept request's id (the
    * chat over a paused game names its first one in the messages after it, `chat`).
    */
@@ -1393,6 +1406,11 @@ export interface PlayLine {
   more?: string;
   choices?: string[];
   reload?: boolean;
+  /**
+   * Beside Reload (pause-edit stage 3): "⚑ Before the boss" in the person's language — a checkpoint of this level to open
+   * the fixed game from (the one this Play opened from, else the newest). Absent = Reload alone.
+   */
+  from?: string;
 }
 
 /** One line of the game's console the bridge kept for a play request (§3.5). */
@@ -1633,13 +1651,30 @@ export type BridgeToShell =
   | { type: 'studio:play/time'; t: number; rate: number; running: boolean }
   /** The person's answer to the AI's question, from the line over the game. */
   | { type: 'studio:play/answer'; text: string }
-  /** Reload pressed over the game: open the game again (its new code), still playing. */
-  | { type: 'studio:play/reload' }
+  /**
+   * Reload pressed over the game: open the game again (its new code), still playing. `from` (pause-edit stage 3): the
+   * line's "⚑ Before the boss" beside Reload — open it from that checkpoint (PlayLine.from), not from the start.
+   */
+  | { type: 'studio:play/reload'; from?: boolean }
   /**
    * This moment's values (pause-edit stage 2; §1.14), in reply to `moment/ask` and `moment/set`: `values` null = the game
    * has no codeMoment() (the moment's one line and ✦ then). `set`: the change asked for (`n` given back), done or why not.
    */
-  | { type: 'studio:moment/values'; values: MomentValue[] | null; set?: { id: string; n?: number; ok: boolean; v?: number; error?: string } };
+  | { type: 'studio:moment/values'; values: MomentValue[] | null; set?: { id: string; n?: number; ok: boolean; v?: number; error?: string };
+    /** Stage 3: the game's codeMoment has save() and load() — ⚑ can keep this moment (false: its one line and ✦). */
+    checkpoint?: boolean }
+  /**
+   * Checkpoints (stage 3): the answer to `moment/save`. `moment` = what save() returned, as JSON data (checked here:
+   * a cycle, a function, a BigInt or more than CHECKPOINT_MAX_CHARS is `error`); `none` = no save() / load() in the game.
+   */
+  | { type: 'studio:moment/saved'; n: number; ok: boolean; moment?: unknown; error?: string; none?: boolean }
+  /**
+   * A page opened from a checkpoint: load(m) ran before the first frame (`ok`), or the checkpoint cannot open — `why`:
+   * 'none' = the game has no load() any more (the page plays from the start as it is), 'threw' = load(m) threw or
+   * its promise failed (`error`, `logs` = the console's lines while it ran: the editor opens the game again from the
+   * start), 'late' = no moment came from the editor (the page plays from the start).
+   */
+  | { type: 'studio:moment/loaded'; ok: boolean; why?: 'none' | 'threw' | 'late'; error?: string; logs?: PlayLog[] };
 
 /**
  * One of this moment's values (pause-edit stage 2, 2026-10-28; §1.14; the loader's codeMoment, read by
@@ -1861,6 +1896,12 @@ export interface StudioRequestInput {
    */
   made?: boolean;
   here?: { key: string; label?: string; at: Pose; to: Pose; time?: number };
+  /**
+   * "play" + `paused` with `intent: 'moment-save' | 'moment-load'` (pause-edit stage 3): the checkpoint it is about —
+   * its file id (`.studio/checkpoints/<id>.json`), its name, and what went wrong (save() / load() threw: `error`, the
+   * console's lines then: `logs`).
+   */
+  checkpoint?: { id?: string; name?: string; error?: string; logs?: PlayLog[] };
 }
 
 /**
@@ -1869,9 +1910,13 @@ export interface StudioRequestInput {
  * into the rule's own numbers (a knob in the game's words: "From the road"), names it in `drag`, and sends `place.code
  * --fold <way>`; the offset row becomes that knob on the card.
  */
-export type RequestIntent = 'avoid' | 'to-code' | 'to-knob' | 'ui-code' | 'moment-values';
+export type RequestIntent = 'avoid' | 'to-code' | 'to-knob' | 'ui-code' | 'moment-values' | 'moment-save' | 'moment-load';
 // 'moment-values' (pause-edit stage 2, 2026-10-28; §1.14): a "play" + `paused` request from the moment's ✦ Have {ai} make
 // this moment editable — the game has no codeMoment() yet; the AI names its numbers (score, time left, health) once.
+// 'moment-save' (stage 3): ⚑'s ✦ Have {ai} let the game start from here — the game has no save() / load() yet (or its
+// save() failed: `checkpoint.error`); the AI writes them (SKILL.md "Checkpoints").
+// 'moment-load' (stage 3): the line's ✦ when a checkpoint would not open — `checkpoint` names it, with load()'s error and
+// the console's lines; the AI makes load() read it again (an old checkpoint must keep opening).
 /** A rule layout named in an ask (StudioRequestInput.places): its id and name, its knobs now, its keep-out areas. */
 export interface RequestPlace {
   id: string;
@@ -2060,6 +2105,60 @@ export interface StudioHost {
    * page shows no "Make with AI" (the web demo, other hosts).
    */
   readonly kumo?: KumoHost;
+  /**
+   * Checkpoints (pause-edit stage 3, 2026-10-28; CONTRACT.md §1.14 "Checkpoints", §3.2): paused moments the person kept
+   * with ⚑, to open ▶ Play there later. In the editor only (the plan's Q2 answered (a)): the local server keeps them in
+   * `.studio/checkpoints/<id>.json`, never in the game. Left out (the web demo) = ⚑ says the one line, nothing is kept.
+   */
+  readonly checkpoints?: CheckpointHost;
+}
+
+/** The longest saved moment kept (JSON characters): a game's state, not its assets — 1 MB is far past any we know. */
+export const CHECKPOINT_MAX_CHARS = 1_000_000;
+
+/**
+ * A checkpoint file (`.studio/checkpoints/<id>.json`; pause-edit stage 3). `moment` is what the game's save() returned
+ * (the game's own data, read back only by its load()); the rest is the editor's.
+ */
+export interface Checkpoint {
+  /** The file's form (1). A later form reads this one. */
+  version: 1;
+  /** The person's name for it ("Before the boss"; first "0:42", the game's time). */
+  name: string;
+  /** When it was kept (ISO time). */
+  at: string;
+  /** The level it is of (a game with levels); null = a game without levels. Only that level's ▶ Play ⌄ lists it. */
+  level: string | null;
+  /** The game's seconds since ▶ Play when it was kept (the top bar's clock). */
+  time: number;
+  /** save()'s data. */
+  moment: unknown;
+  /** The moment's small picture (a JPEG data URL, ≤ 240 px wide), or absent. */
+  shot?: string;
+}
+
+/** A checkpoint as ▶ Play ⌄ lists it: its file id and the file without the moment. */
+export interface CheckpointInfo {
+  id: string;
+  name: string;
+  at: string;
+  level: string | null;
+  time: number;
+}
+
+export interface CheckpointHost {
+  /** Every checkpoint, newest first; `broken` = file ids that are not checkpoints (hand-edited, cut short): never listed. */
+  list(): Promise<{ checkpoints: CheckpointInfo[]; broken: string[] }>;
+  /** One whole, or null (gone, or broken). */
+  get(id: string): Promise<Checkpoint | null>;
+  /**
+   * Keep one. Its id comes from its name (local: src/server/checkpoints.mjs): the same name in the same level replaces
+   * that one (kept again), another level's gets "-2".
+   */
+  add(c: Omit<Checkpoint, 'version' | 'at'>): Promise<{ ok: boolean; id?: string; path?: string; error?: string }>;
+  /** A new name; the file's id follows the name (a free one), the answer says which. */
+  rename(id: string, name: string): Promise<{ ok: boolean; id?: string; error?: string }>;
+  remove(id: string): Promise<{ ok: boolean; error?: string }>;
 }
 
 /** The person's KUMODeck sign-in as the editor sees it (never a key). */
@@ -2981,4 +3080,10 @@ export const LOCAL_PATHS = {
    */
   levelParam: 'studioLevel',
   buildParam: 'studioBuild',
+  /**
+   * Checkpoints (pause-edit stage 3, 2026-10-28): a ▶ Play page opened from a checkpoint (`studioMoment=1`). The page
+   * holds the game's first frame until the editor sends the moment (`studio:moment/load`) and the game's load(m) ran
+   * (bridge/moment-load.ts).
+   */
+  momentParam: 'studioMoment',
 } as const;

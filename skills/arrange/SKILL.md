@@ -287,7 +287,7 @@ any) in every command for this game: start, `--watch`, `--status`, `--stop`.
 | `studio: did … - in the editor …` / `- in placement.json …` | Your `--do` (§3.4) did that op, there | The link first, then one line of what changed |
 | `studio: do failed <op> - <why>` | That op was not done (the others were) | Fix what it says (a key, a motion's name: `--do list`) and run that op again |
 | `studio: list {…}` | `--do list`: the objects (key, the name the person sees, their motions), the Library's motions, the levels | Find what their words mean ("the blue pillar") there |
-| `studio: request play` | The person asked while **playing** the game in the editor (▶ Play; the game is still running): their words, then `while playing`, the picture of that moment and how many console errors came with it. `paused, chat .studio/chat/<id>.json` instead of `while playing`: they **paused** the game and ask you about that moment from the editor over it; `make this moment's values editable` after it: the ✦ under "This moment" | §3.1 (`play`): fix it without stopping their game; paused: **answer** first (§3.1.1, "Paused"); `make this moment's values editable`: "This moment" (§4) |
+| `studio: request play` | The person asked while **playing** the game in the editor (▶ Play; the game is still running): their words, then `while playing`, the picture of that moment and how many console errors came with it. `paused, chat .studio/chat/<id>.json` instead of `while playing`: they **paused** the game and ask you about that moment from the editor over it; `make this moment's values editable` after it: the ✦ under "This moment"; `let the game start from this moment` / `checkpoint "…" does not open`: ⚑'s ✦ / the checkpoint line's ✦ | §3.1 (`play`): fix it without stopping their game; paused: **answer** first (§3.1.1, "Paused"); `make this moment's values editable`: "This moment" (§4); checkpoints: "Checkpoints" (§4) |
 | `studio: answer` | The person answered your `asking` question in the editor (a button or their own words; the question and the request it is about follow) | §3.1 (`answer`): go on with that answer |
 | `studio: from the Game Studio editor …` | The plugin's hook woke you (below, "Woken by the editor"): the lines under it are requests, same words as above, each ending with the game folder in `[…]` | Handle them in order (§3.1), like watch lines |
 
@@ -491,6 +491,15 @@ a conversation, not a bug report:
   list's "This moment" had nothing to show: the game has no `codeMoment()` yet. Deliver it — "This moment" (§4) — then
   `--status done --changed 0 --note "<one line: which numbers>"` ("Score, time left and health are in This moment
   now."; no object changed: the editor sees the code did and offers Reload next to it). Not "press Reload".
+- **"Let the game start from this moment" (`intent: "moment-save"`, the line says `let the game start from this moment`).**
+  They pressed ⚑ (Make this a checkpoint) and the game cannot start from the middle: write `save` / `load` —
+  "Checkpoints" (§4), `--check-moment` ok — then `--status done --changed 0 --note "<one line>"` ("Checkpoints keep the score, the time, the
+  boss and its shots now."). `checkpoint.error` set = your `save()` threw: fix that.
+- **A checkpoint that does not open (`intent: "moment-load"`, the line says `checkpoint "…" … does not open: <error>`).**
+  The game changed since it was kept and `load()` threw on the old data (or is gone). `checkpoint` has its file
+  (`.studio/checkpoints/<id>.json`: read its `moment`), `load`'s error and the console's lines. Make `load()` read it —
+  "Checkpoints" (§4, old checkpoints; `--check-moment` ok) — never by editing the person's checkpoint file. `--status done --changed 0
+  --note "<one line>"`; the editor offers "⚑ From <name>" next to Reload.
 - **"5 seconds left, I want to see the end"** while paused, with a `codeMoment()` there: `--do moment.set --id timeLeft
   --v 5` (§3.4) — the value is set for this moment only and the game draws it; Resume goes on from there. Not a code
   change. "Start with 90 seconds" is (the code's first value).
@@ -1083,6 +1092,77 @@ codeMoment({ draw: () => {
   nothing else; outside the editor nothing calls it.
 - **Check**: the game still runs (§3.3); `--status done --request <id> --changed 0 --note "The paused picture keeps the
   game's look now."`. The person's Reload brings the new code; pausing and moving something keeps the look.
+
+### Checkpoints (`codeMoment` `save` / `load`, `intent: "moment-save"` / `"moment-load"`)
+
+A paused moment can be **kept**: ⚑ (Make this a checkpoint) in the paused top bar → a name ("Before the boss") → the
+editor asks the game for this moment and keeps it in `.studio/checkpoints/<name>.json` — the editor's folder, never the
+game (nothing of it is published). Next time ▶ Play ⌄ "⚑ Play from Before the boss" opens the game there: a new page,
+and before its **first frame** the editor hands your `load()` that moment, so the first picture is the kept one. The
+editor cannot see a game's state (the score, each enemy, the random seed are your JS), and a checkpoint of where things
+stand alone would be a lie (another moment's score and enemies) — so without your two functions ⚑ only says "This game
+can't start from the middle yet. ✦ Have Claude let the game start from here".
+
+**When**: only when asked — a paused `play` request with `intent: "moment-save"` (that ✦), or their words ("let me start
+from the boss", "save this moment"). `save` / `load` reach deep into the game: never on your own.
+
+1. **`save()` — everything the next frame needs, as plain data** (JSON: numbers, words, lists, objects; no class
+   instances, no functions, no DOM, no three.js objects — their numbers instead: `boss.position.toArray()`):
+   - **the random seed / generator state** (a seeded `rand()`: its seed; `Math.random()` cannot be saved — say so in your
+     note, or move the game to a seeded one if they want the same run every time);
+   - **every enemy, bullet, pickup the game made**, with what makes each go on the same: where it is, its velocity,
+     health, its timer to the next shot, its state ("diving");
+   - **the game's own clocks as durations**: the time left, the seconds since the round began, each cooldown — never a
+     `performance.now()` / `Date.now()` timestamp (the page that loads it has another clock: turn "started at t0" into
+     "running for 12.4 s" when saving, back into `t0 = now − 12.4` when loading);
+   - the player's state (position if the game moves it, velocity, health, power-ups), the score, the wave, flags (`over`).
+   - **Not the placed things**: what the person placed (the scene, placement.json) comes from the scene as it is now —
+     a gate they moved after keeping the checkpoint must stand where they moved it. Only what the game moves or makes.
+   - Add a version: `{ v: 1, … }`.
+2. **`load(m)` — put a saved moment back**, called once the game has built its world and asked for its first frame,
+   before that frame runs: set the variables, make what the game makes the way the game makes it (your `spawnBoss()`,
+   `fire()`), then put each one where `m` says. **Read what each of those functions returns before you use it**: a
+   `fire()` that pushes the shot into `shots` and returns nothing is followed by `shots[shots.length - 1]`, not
+   `fire().position` (the first real run did that: the person's first checkpoint could not open). It may return a
+   promise (a level's files to fetch first).
+   - **Old checkpoints keep opening**: read `m.v` and fill what an older version lacks with what a fresh run has
+     (`m.shield ?? 0`). A person's checkpoint from before your change must still open after it — when you change what
+     `save()` writes, change `load()` to read both. A `load()` that throws makes the editor say "The game changed, so this
+     checkpoint can't open" and play from the start (the person's ✦ then sends you `intent: "moment-load"` with the error).
+3. **Write it** in the same `codeMoment()` call as the values (or its own call — the hooks and the values are kept
+   apart), next to the variables:
+
+   ```js
+   codeMoment({
+     values: { … },
+     save: () => ({ v: 1, seed, score, timeLeft, hp, t,
+       boss: boss && { p: boss.position.toArray(), hp: boss.hp },
+       shots: shots.map((s) => ({ p: s.position.toArray(), v: s.v })) }),
+     load: (m) => {
+       ({ seed, score, timeLeft, hp, t } = m);
+       if (m.boss) { if (!boss) spawnBoss(); boss.position.fromArray(m.boss.p); boss.hp = m.boss.hp ?? BOSS_HP; }
+       for (const s of m.shots) {
+         fire();                                             // this game's fire() returns nothing: the new shot is the last
+         shots[shots.length - 1].position.fromArray(s.p);
+       }
+     },
+   });
+   ```
+
+   Both or neither: a `save` without a `load` cannot start from the middle. Outside the editor nothing calls them.
+4. **Check — always, before you report**: `node <skill>/bin/studio.mjs <game folder> --check-moment [seconds]` plays the
+   game in a private headless Chrome for that long (default 6 s; choose a time when what the game makes is there: the
+   boss, the bullets), calls your `save()`, then opens the game fresh and calls your `load()` before its first frame —
+   the editor's way. `studio: moment check ok …` and the two pictures `.studio/shot/moment-kept.png` /
+   `moment-opened.png` (look at them: the same moment); `studio: moment check failed: load(m) threw "…" (game.js:212 …)`
+   → fix it and run it again until it is ok. Exit 3 = no Chrome here: then say in your note that you could not check.
+   Keeping and opening a checkpoint is the person's (⚑, ▶ Play ⌄): don't explain it to them.
+5. `--status done --request <id> --changed 0 --note "<one line>"` ("Checkpoints keep the score, the time, the boss and its
+   shots now."). The editor offers Reload; don't tell them to press it, nor how to keep a checkpoint (⚑ says it).
+
+**A checkpoint that does not open** (`intent: "moment-load"`): read the checkpoint's file (`.studio/checkpoints/<id>.json`,
+its `moment`) and `checkpoint.error`; make `load()` read that form (default what it lacks) — do not edit or delete the
+person's file. `--status done --changed 0 --note "<one line>"`: the editor shows "⚑ From <name>" next to Reload.
 
 ### Motion (`motions`, `motion`)
 

@@ -100,6 +100,7 @@ Browser checks run headless.
 - `studio-layers.browser.mjs` — 2D draw order: buttons, Cmd/Ctrl+[ ], dragging in the list (mouse and finger), undo, "to back" stops in front of the ground (`Item.backdrop`), save (`order` in placement.json), reopen. `--lang ja` for Japanese screenshots
 - `studio-edit-ops.browser.mjs` — copy, delete, several at once: real copies (three-crates, pixi-garden, canvas-stars; PC and phone), group turn, undo, save (`added` / `removed`), a small "AI" that writes them into the code, reopen; stand-ins on dom-board. `--lang ja` for Japanese screenshots
 - `edit-ops.test.ts` — the same without a browser (model file, copy keys, group maths, stand-ins) plus a check that every shell text key exists
+- `checkpoint.test.ts` / `checkpoint-files.test.mjs` - checkpoints (pause-edit stage 3): codeMoment save / load, save checked, the hold that loads before the first frame (a throw, none, a promise), the kinds there, the menu's rules; the files, ids, broken files, levels, rename, delete, the API, the requests, `--check-moment`'s script
 - `view-check.browser.mjs` - `studio.mjs --check-view` fails on the pre-cc4bd6e5 pixi-garden adapter
   (fixture in `view-check/`) and passes on the current one; `studio.mjs --shot` shoots three-crates at both sizes:
   `node --test test/view-check.browser.mjs`

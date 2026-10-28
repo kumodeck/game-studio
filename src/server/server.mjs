@@ -33,6 +33,7 @@ import {
   readStudioFileInfo, writeNextStep, addAsset, httpError,
 } from './files.mjs';
 import { addChatTurn, chatIdOf } from './play-chat.mjs';
+import { addCheckpoint, deleteCheckpoint, getCheckpoint, listCheckpoints, renameCheckpoint, CHECKPOINT_MAX_FILE } from './checkpoints.mjs';
 import { normalizeRequestInput, normalizeStatus, requestId, isRequestId, KUMODECK_STEP_IDS, FILE_STEP_IDS, HANDOFF_LIMITS } from '../schema/handoff.mjs';
 import { listAssets } from './assets.mjs';
 import { nextStepMarkdown, NEXT_STEP_IDS } from './next-steps.mjs';
@@ -424,6 +425,49 @@ async function handleApi(req, res, u, ctx) {
     await recordRequest(ctx, { kind: 'saved', text: '', files: [p] });
     ctx.log(`studio: saved ${p}`);
     return sendJson(res, 200, { ok: true, path: p });
+  }
+
+  // Checkpoints (pause-edit stage 3, 2026-10-28; checkpoints.mjs): the paused moments the person kept with ⚑, in
+  // .studio/checkpoints/ — the editor's, never the game's (the plan's Q2 answered (a)). No stdout line: nothing for the AI to do.
+  if (route === 'checkpoints' && m === 'GET') return sendJson(res, 200, await listCheckpoints(ctx.rootReal));
+  if (route === 'checkpoints' && m === 'POST') {
+    const body = await readBody(req, CHECKPOINT_MAX_FILE);
+    let v;
+    try {
+      v = JSON.parse(body.toString('utf8'));
+    } catch {
+      throw httpError(400, 'body must be JSON');
+    }
+    const r = await addCheckpoint(ctx.rootReal, v);
+    return sendJson(res, 200, { ok: true, id: r.id, path: r.path });
+  }
+  const cpRoute = /^checkpoints\/([^/]+)$/.exec(route);
+  if (cpRoute) {
+    let id;
+    try {
+      id = decodeURIComponent(cpRoute[1]).normalize('NFC');
+    } catch {
+      throw httpError(400, 'bad checkpoint id');
+    }
+    if (m === 'GET') {
+      const c = await getCheckpoint(ctx.rootReal, id);
+      return sendJson(res, c ? 200 : 404, c ? { value: c } : { value: null, error: 'no such checkpoint (or it does not read as one)' });
+    }
+    if (m === 'PATCH') {
+      const body = await readBody(req, 4096);
+      let v;
+      try {
+        v = JSON.parse(body.toString('utf8'));
+      } catch {
+        throw httpError(400, 'body must be JSON');
+      }
+      const r = await renameCheckpoint(ctx.rootReal, id, v && v.name);
+      return sendJson(res, 200, { ok: true, id: r.id, path: r.path });
+    }
+    if (m === 'DELETE') {
+      const gone = await deleteCheckpoint(ctx.rootReal, id);
+      return sendJson(res, gone ? 200 : 404, gone ? { ok: true } : { ok: false, error: 'no such checkpoint' });
+    }
   }
 
   if (route === 'check' && m === 'POST') {

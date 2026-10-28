@@ -7,6 +7,9 @@
 import {
   LOCAL_PATHS,
   type AssetFile,
+  type Checkpoint,
+  type CheckpointHost,
+  type CheckpointInfo,
   type AssetType,
   type GameConfig,
   type KumoHost,
@@ -65,6 +68,21 @@ function createKumoHost(base: string): KumoHost {
   };
 }
 
+/**
+ * Checkpoints (pause-edit stage 3, 2026-10-28; src/server/checkpoints.mjs): `.studio/checkpoints/` through the server.
+ * A failure is an answer ({ ok: false, error }), never a throw: ⚑ and ▶ Play ⌄ say it in one line.
+ */
+function createCheckpointHost(call: <T>(method: string, path: string, body?: BodyInit, type?: string) => Promise<T>): CheckpointHost {
+  const err = (e: unknown) => ({ ok: false, error: (e as Error).message });
+  return {
+    list: () => call<{ checkpoints: CheckpointInfo[]; broken: string[] }>('GET', 'checkpoints').catch(() => ({ checkpoints: [], broken: [] })),
+    get: (id) => call<{ value: Checkpoint | null }>('GET', `checkpoints/${encodeURIComponent(id)}`).then((r) => r.value ?? null, () => null),
+    add: (c) => call<{ id: string; path: string }>('POST', 'checkpoints', JSON.stringify(c), 'application/json').then((r) => ({ ok: true, id: r.id, path: r.path }), err),
+    rename: (id, name) => call<{ id: string }>('PATCH', `checkpoints/${encodeURIComponent(id)}`, JSON.stringify({ name }), 'application/json').then((r) => ({ ok: true, id: r.id }), err),
+    remove: (id) => call('DELETE', `checkpoints/${encodeURIComponent(id)}`).then(() => ({ ok: true }), err),
+  };
+}
+
 export function createLocalHost(base: string = LOCAL_PATHS.api): StudioHost {
   const call = async <T>(method: string, path: string, body?: BodyInit, type?: string, keepalive = false): Promise<T> => {
     const headers: Record<string, string> = {};
@@ -80,6 +98,7 @@ export function createLocalHost(base: string = LOCAL_PATHS.api): StudioHost {
 
   return {
     kumo: createKumoHost(base),
+    checkpoints: createCheckpointHost(call),
     async open() {
       const r = await call<{ gameUrl: string; origin: string; title?: string }>('GET', 'open');
       return { gameUrl: r.gameUrl, origin: r.origin, title: r.title };

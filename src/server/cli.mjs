@@ -38,6 +38,7 @@ import { fileURLToPath } from 'node:url';
 // Node stops with one line before any other code runs (node-check.mjs).
 import { NODE_MIN } from './node-check.mjs';
 import { startStudioServer } from './server.mjs';
+import { momentCheck } from './moment-check.mjs';
 import { encodeQR, qrToTerminal } from './qr.mjs';
 import { runViewCheck, runGameShot } from './view-check.mjs';
 import { writeStudioFile } from './files.mjs';
@@ -82,6 +83,11 @@ Options:
   --shot           shoot the game as it is played (no editor) in a private headless Chrome:
                    .studio/shot/game.png (1280x800) and game-phone.png (390x844), then exit.
                    Look at them after changing the game, before you report. Exit 3 = no Chrome
+  --check-moment [s]  check the game's checkpoint hooks (codeMoment save / load) as the editor
+                   uses them, in a private headless Chrome: play s seconds (default 6), save(),
+                   then a fresh run with load(that) before its first frame. One line; pictures
+                   .studio/shot/moment-kept.png and moment-opened.png. Exit 0 ok, 1 failed (what
+                   threw), 3 could not check (no Chrome, no hooks)
   --ui <folder>    built editor UI (default: studio-ui next to this file)
 
 A folder without a game (no index.html and no other page that looks like a game):
@@ -187,7 +193,7 @@ export async function main(argv) {
     root = found.root;
     entry = found.entry;
     // Only for the editor itself: the hand-off commands print nothing extra, so the watch stays quiet.
-    if (!args.watch && !args.requests && args.status === undefined && args.do === undefined && !args.checkView && !args.shot) process.stdout.write(found.line + '\n');
+    if (!args.watch && !args.requests && args.status === undefined && args.do === undefined && !args.checkView && !args.shot && !args.checkMoment) process.stdout.write(found.line + '\n');
   }
   if (!existsSync(path.join(root, entry))) {
     // No game here. With the default page that usually means "an empty folder": say on stdout what
@@ -223,6 +229,7 @@ export async function main(argv) {
 
   if (args.checkView) return checkView(root, entry, args, here);
   if (args.shot) return gameShot(root, entry);
+  if (args.checkMoment) return momentCheck(root, entry, args.checkMomentAt);
   const srv = await startStudioServer({
     root,
     entry,
@@ -577,6 +584,11 @@ function parseArgs(argv) {
     else if (a === '--stop') out.stop = true;
     else if (a === '--check-view') out.checkView = true;
     else if (a === '--shot') out.shot = true;
+    // --check-moment [seconds] (pause-edit stage 3; moment-check.mjs): the seconds are optional (a number next).
+    else if (a === '--check-moment') {
+      out.checkMoment = true;
+      if (/^\d+(\.\d+)?$/.test(argv[i + 1] ?? '')) out.checkMomentAt = Number(argv[++i]);
+    }
     else if (a === '--entry') out.entry = argv[++i];
     else if (a === '--ui') out.ui = argv[++i];
     else if (a === '--port') out.port = Number(argv[++i]) || 0;

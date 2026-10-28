@@ -50,6 +50,12 @@ export interface MenuItem {
    * the row is for, so rows that each put a draft in the box can be told apart before one is pressed. Absent = one line.
    */
   sub?: string;
+  /**
+   * ⋯ at the row's end (pause-edit stage 3, 2026-10-28: ▶ Play ⌄'s "⚑ Play from Before the boss" rows — Rename, Delete).
+   * Its own small button beside the row: the row still runs on a press, the ⋯ opens what else can be done with that
+   * row's thing (the menu closes first; `at` = the ⋯ button, for a menu of its own under it). → on the keys opens it too.
+   */
+  more?: { label: string; run(at: DOMRect): void };
   run(): void;
 }
 /**
@@ -168,7 +174,20 @@ export function createContextMenu(d: ContextMenuDeps) {
         e.run();
       });
       items.push({ item: e, btn });
-      el.append(btn);
+      if (e.more) {
+        // A sibling of the row (a button cannot hold a button): the two share one line (shell.css .ctx-line).
+        const more = e.more;
+        const mb = h('button', { type: 'button', class: 'ctx-more', tabindex: '-1', dataset: { action: `ctx-${e.id}-more` }, 'aria-label': more.label, title: more.label }, icon('more'));
+        mb.addEventListener('pointerenter', (ev) => {
+          if ((ev as PointerEvent).pointerType === 'mouse') highlight(i);
+        });
+        mb.addEventListener('click', () => {
+          const r = mb.getBoundingClientRect();
+          hide(false);
+          more.run(r);
+        });
+        el.append(h('div', { class: 'ctx-line' }, btn, mb));
+      } else el.append(btn);
     }
     el.dataset.place = o.place;
     if (o.label) el.setAttribute('aria-label', o.label);
@@ -215,6 +234,13 @@ export function createContextMenu(d: ContextMenuDeps) {
     if (e.key === 'Meta' || e.key === 'Control' || e.key === 'Shift' || e.key === 'Alt') return;
     const k = e.key;
     if (k === 'ArrowDown' || k === 'ArrowUp') move(k === 'ArrowDown' ? 1 : -1);
+    else if (k === 'ArrowRight' && items[at]?.item.more) {
+      // The highlighted row's ⋯ (stage 3): its menu opens under the row's end.
+      const x = items[at]!;
+      const r = x.btn.getBoundingClientRect();
+      hide(false);
+      x.item.more!.run(new DOMRect(r.right - 28, r.top, 28, r.height));
+    }
     else if (k === 'Home' || k === 'End') {
       const list = enabled();
       if (list.length) highlight(k === 'Home' ? list[0]! : list[list.length - 1]!);

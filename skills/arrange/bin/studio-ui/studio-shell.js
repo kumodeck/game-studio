@@ -1,4 +1,4 @@
-/* KUMODeck Game Studio 0.1.72 — MIT License — built file, edit src/ instead */
+/* KUMODeck Game Studio 0.1.73 — MIT License — built file, edit src/ instead */
 (() => {
 const __defs = [];
 const __cache = [];
@@ -1387,6 +1387,19 @@ const MSG_PREFIX = 'studio:';
      
                                                                     
      
+                                                                                                                        
+                                                                                        
+     
+                                             
+     
+                                                                                                                         
+                                                                                                                     
+                                                                                                                 
+                                                                                                                        
+                                  
+     
+                                                                                                  
+     
                                                                                                                   
                                                                                    
      
@@ -1409,6 +1422,11 @@ const MSG_PREFIX = 'studio:';
                 
                      
                    
+     
+                                                                                                                          
+                                                                                                 
+     
+                
  
 
 /** One line of the game's console the bridge kept for a play request (§3.5). */
@@ -1649,13 +1667,30 @@ const MSG_PREFIX = 'studio:';
                                                                            
                                                                                
                                                 
-                                                                                         
-                                  
+     
+                                                                                                                      
+                                                                                                                 
+     
+                                                  
      
                                                                                                                           
                                                                                                                            
      
-                                                                                                                                              
+                                                                                                                                            
+                                                                                                                     
+                          
+     
+                                                                                                                     
+                                                                                                                          
+     
+                                                                                                             
+     
+                                                                                                                       
+                                                                                                                  
+                                                                                                                     
+                                                                                     
+     
+                                                                                                                     
 
 /**
  * One of this moment's values (pause-edit stage 2, 2026-10-28; §1.14; the loader's codeMoment, read by
@@ -1877,6 +1912,12 @@ function isStudioMessage(x         )                     {
      
                  
                                                                             
+     
+                                                                                                                      
+                                                                                                                      
+                                   
+     
+                                                                                
  
 
 /**
@@ -1885,9 +1926,13 @@ function isStudioMessage(x         )                     {
  * into the rule's own numbers (a knob in the game's words: "From the road"), names it in `drag`, and sends `place.code
  * --fold <way>`; the offset row becomes that knob on the card.
  */
-                                                                                          
+                                                                                                                          
 // 'moment-values' (pause-edit stage 2, 2026-10-28; §1.14): a "play" + `paused` request from the moment's ✦ Have {ai} make
 // this moment editable — the game has no codeMoment() yet; the AI names its numbers (score, time left, health) once.
+// 'moment-save' (stage 3): ⚑'s ✦ Have {ai} let the game start from here — the game has no save() / load() yet (or its
+// save() failed: `checkpoint.error`); the AI writes them (SKILL.md "Checkpoints").
+// 'moment-load' (stage 3): the line's ✦ when a checkpoint would not open — `checkpoint` names it, with load()'s error and
+// the console's lines; the AI makes load() read it again (an old checkpoint must keep opening).
 /** A rule layout named in an ask (StudioRequestInput.places): its id and name, its knobs now, its keep-out areas. */
                                
              
@@ -2076,6 +2121,60 @@ function isStudioMessage(x         )                     {
                                                               
      
                            
+     
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+     
+                                        
+ 
+
+/** The longest saved moment kept (JSON characters): a game's state, not its assets — 1 MB is far past any we know. */
+const CHECKPOINT_MAX_CHARS = 1_000_000;
+
+/**
+ * A checkpoint file (`.studio/checkpoints/<id>.json`; pause-edit stage 3). `moment` is what the game's save() returned
+ * (the game's own data, read back only by its load()); the rest is the editor's.
+ */
+                             
+                                                          
+             
+                                                                                     
+               
+                                     
+             
+                                                                                                                    
+                       
+                                                                                
+               
+                       
+                  
+                                                                                
+                
+ 
+
+/** A checkpoint as ▶ Play ⌄ lists it: its file id and the file without the moment. */
+                                 
+             
+               
+             
+                       
+               
+ 
+
+                                 
+                                                                                                                             
+                                                                       
+                                              
+                                              
+     
+                                                                                                                       
+                                                      
+     
+                                                                                                                   
+                                                                                        
+                                                                                          
+                                                               
  
 
 /** The person's KUMODeck sign-in as the editor sees it (never a key). */
@@ -2997,12 +3096,19 @@ const LOCAL_PATHS = {
    */
   levelParam: 'studioLevel',
   buildParam: 'studioBuild',
+  /**
+   * Checkpoints (pause-edit stage 3, 2026-10-28): a ▶ Play page opened from a checkpoint (`studioMoment=1`). The page
+   * holds the game's first frame until the editor sends the moment (`studio:moment/load`) and the game's load(m) ran
+   * (bridge/moment-load.ts).
+   */
+  momentParam: 'studioMoment',
 }         ;
 
 __def(__exports, "CONTRACT_VERSION", () => CONTRACT_VERSION);
 __def(__exports, "TOOL_ID_RE", () => TOOL_ID_RE);
 __def(__exports, "MSG_PREFIX", () => MSG_PREFIX);
 __def(__exports, "isStudioMessage", () => isStudioMessage);
+__def(__exports, "CHECKPOINT_MAX_CHARS", () => CHECKPOINT_MAX_CHARS);
 __def(__exports, "RESULT_FILES", () => RESULT_FILES);
 __def(__exports, "LIMITS", () => LIMITS);
 __def(__exports, "KEY_RE", () => KEY_RE);
@@ -9704,6 +9810,7 @@ __defs[19] = function (__exports) {
 // This moment's values (pause-edit stage 2, 2026-10-28): codeMoment({ values: { score: { name, get, set, unit, min, max,
 // step, round } } }) — the score, the time left, the health shown and changed in a paused moment; and (pause-light,
 // 2026-10-28) codeMoment({ draw }) — the game's picture drawn once without its update. See "This moment's values".
+// Stage 3 (the same day): codeMoment({ save, load }) — a paused moment kept as a checkpoint and the game opened there.
 
 const KEY_CHARS = /[^A-Za-z0-9_:#.\-\/]/g;
 const cleanName = (s) => (typeof s === 'string' && s ? s.replace(KEY_CHARS, '_').slice(0, 80) : '');
@@ -11416,11 +11523,33 @@ function codeTheme(def) {
 // composer), but a hand-made post-processing, two composers or a HUD scene drawn after the world are the game's own
 // knowledge. Its camera is the game's (the editor stands it where the edit view is for that one draw).
 //
-// Nothing here calls get(), set() or draw(): only the editor does, while it shows a paused moment
+// Nothing here calls get(), set(), draw(), save() or load(): only the editor does, while it shows a paused moment
 // (src/bridge/moment-values.ts, src/adapters/three/adapter.js paintMoment; a get() or a draw() that throws stops
 // nothing). Outside the editor this only keeps the list (globalThis[Symbol.for('game-studio.moment')], one per page,
 // shared with the editor's copy of this file); called again, a value with the same id is replaced (a new round), the
-// others stay, and a new `draw` replaces the old (`draw: null` takes it away). Stage 3 adds save / load to the same object.
+// others stay, and a new `draw` replaces the old (`draw: null` takes it away).
+//
+// Checkpoints (pause-edit stage 3, 2026-10-28; CONTRACT.md §1.14 "Checkpoints"): the same call takes save / load —
+//
+//   codeMoment({ values: { … },
+//     save: () => ({ v: 1, seed, score, timeLeft, ship: { x: ship.x }, foes: foes.map((f) => f.save()) }),
+//     load: (m) => startFrom(m),
+//   });
+//
+//   save()   this moment of the game as plain data (JSON: numbers, words, lists, objects — no class instances, no
+//            functions), everything the next frame needs to go on exactly from here: the random seed, each enemy's
+//            state, the game's own clocks as "seconds left / seconds since", not performance.now() timestamps
+//   load(m)  put a saved moment back: called by the editor once the game has built its world and asked for its first
+//            frame, BEFORE that frame runs — so the game's first picture is the checkpoint's. Placed things (the
+//            scene's layout) are not in it: the editor puts them where the scene has them now
+//
+// Why the person wants it (2026-10-28: "pause in the middle of a scene and give instructions"): pause just
+// before the boss, keep it as a checkpoint (⚑ in the editor's top bar), change the code or the layout, and next time
+// ▶ Play ⌄ "⚑ Play from Before the boss" opens there instead of playing 40 s to get back. The editor keeps checkpoints
+// in its own folder (.studio/checkpoints/, the plan's Q2 answered (a) on 2026-10-28): a published game has the hooks and
+// nothing else — outside the editor nothing calls them. Both or neither: a game with save but no load (or the other way)
+// cannot start from the middle, and the editor says so (the ⚑ line). A later call that gives them replaces them; a call
+// with values only leaves them as they are.
 const MOMENT = Symbol.for('game-studio.moment');
 // Ids as the AI names them in code (score, timeLeft, hp-max): letters first, then letters, digits, _ and -.
 const MOMENT_ID = /^[A-Za-z][A-Za-z0-9_-]{0,39}$/;
@@ -11449,6 +11578,13 @@ function codeMoment(def) {
     if (isNum(v.step) && v.step > 0) e.step = v.step;
     if (isNum(v.round) && v.round >= 0 && v.round <= 6) e.round = Math.round(v.round);
     g.values.set(id, e);
+  }
+  // Checkpoints (stage 3): kept as given, called only by the editor (src/bridge/moment-load.ts).
+  if (def && typeof def === 'object') {
+    if (typeof def.save === 'function') g.save = def.save;
+    else if (def.save !== undefined) warnOnce('codeMoment: save must be a function that returns this moment as plain data');
+    if (typeof def.load === 'function') g.load = def.load;
+    else if (def.load !== undefined) warnOnce('codeMoment: load must be a function that takes a saved moment');
   }
 }
 
@@ -12014,6 +12150,8 @@ const PATHS                         = {
   trash: 'M3.5 5.5h13|M8 5.5V4.25a.75.75 0 0 1 .75-.75h2.5a.75.75 0 0 1 .75.75V5.5|M5.5 5.5l.75 10.1a1 1 0 0 0 1 .9h5.5a1 1 0 0 0 1-.9l.75-10.1|M8.5 8.5v5|M11.5 8.5v5',
   chevronUp: 'M5.5 12.5 10 8l4.5 4.5',
   chevronDown: 'M5.5 7.5 10 12l4.5-4.5',
+  // ⚑ a checkpoint (pause-edit stage 3): a pole and a flag waving off it, the flag filled-looking by its closed shape.
+  flag: 'M5.5 17V3.5|M5.5 4.25c1.6-.8 3.2-.8 4.75 0s3.15.8 4.75 0v6.5c-1.6.8-3.2.8-4.75 0s-3.15-.8-4.75 0',
   // ▶| Next frame (pause-edit, 2026-10-28): Play's triangle and a bar after it, as on a video player's step button.
   stepFrame: 'M4.5 5.6v8.8a.8.8 0 0 0 1.22.68l6.6-4.4a.8.8 0 0 0 0-1.36l-6.6-4.4A.8.8 0 0 0 4.5 5.6z|M14.25 5h1.5a.75.75 0 0 1 .75.75v8.5a.75.75 0 0 1-.75.75h-1.5a.75.75 0 0 1-.75-.75v-8.5a.75.75 0 0 1 .75-.75z',
   chevronLeft: 'M12 5l-5 5 5 5',
@@ -18755,6 +18893,38 @@ const en = {
   'moment.valueBroken': 'The game couldn’t read this one',
   'undo.value': 'change {name}',
   'hands.moment.set': '{Ai} set {name} to {v} for this moment',
+  // Checkpoints (pause-edit stage 3, 2026-10-28; checkpoints.ts; the word list's "Checkpoint", "Can't start from the
+  // middle" and "A checkpoint that can't open" rows — Gemini not asked yet): ⚑ and its field, the one line of a game
+  // without save / load and its ✦, ▶ Play ⌄'s rows and ⋯, the line when one does not open and its ✦, Reload's "⚑ From".
+  'checkpoint.make': 'Make this a checkpoint',
+  'checkpoint.makeTip': 'Make this a checkpoint — ▶ Play ⌄ opens the game here next time',
+  'checkpoint.name': 'Checkpoint name',
+  'checkpoint.keep': 'Keep',
+  'checkpoint.none': 'This game can’t start from the middle yet.',
+  'checkpoint.noneAsk': 'Have {ai} let the game start from here',
+  'checkpoint.saveDraft': 'Let the game start from this moment',
+  'checkpoint.saveFailed': 'This moment couldn’t be kept: the game failed while keeping it.',
+  'checkpoint.keepFailed': 'Couldn’t keep it ({error})',
+  'checkpoint.kept': 'Checkpoint “{name}” kept · ▶ Play ⌄ opens it',
+  'checkpoint.head': 'Checkpoints',
+  'checkpoint.playFrom': '⚑ Play from {name}',
+  'checkpoint.playFromWords': 'checkpoint start from middle resume チェックポイント 途中から',
+  'checkpoint.more': 'More for “{name}”',
+  'checkpoint.rename': 'Rename',
+  'checkpoint.renameLabel': 'New name',
+  'checkpoint.renameKeep': 'Rename',
+  'checkpoint.delete': 'Delete',
+  'checkpoint.deleted': 'Checkpoint “{name}” deleted',
+  'checkpoint.renamed': 'Renamed to “{name}”',
+  'checkpoint.from': 'Playing from {name}',
+  'checkpoint.fromReload': '⚑ From {name}',
+  'checkpoint.fromReloadTip': 'Open the fixed game from the checkpoint “{name}”',
+  'checkpoint.cantOpen': 'The game changed, so this checkpoint can’t open',
+  'checkpoint.fixAsk': 'Have {ai} fix it',
+  'checkpoint.loadDraft': 'Make the checkpoint “{name}” open again',
+  'checkpoint.chip': '⚑ {name}',
+  'checkpoint.chipNew': '⚑ This moment',
+  'checkpoint.close': 'Close',
   // The rule's own parts on screen (studio-code-knobs, 2026-10-24): the card's Layout, its knobs, the timeline's rule
   // motion strip. The words: "rule" (chosen on 10/24) and Gemini's wording of that day.
   'rule.tag': 'Rule',
@@ -19793,6 +19963,35 @@ const ja                               = {
   'moment.valueBroken': 'ゲームがこの数を読めませんでした',
   'undo.value': '{name} を変更',
   'hands.moment.set': '{ai}がこの瞬間の{name}を{v}にしました',
+  'checkpoint.make': 'ここをチェックポイントにする',
+  'checkpoint.makeTip': 'ここをチェックポイントにする — 次から ▶ 遊ぶ ⌄ でここから開けます',
+  'checkpoint.name': 'チェックポイントの名前',
+  'checkpoint.keep': '残す',
+  'checkpoint.none': 'このゲームは、\u200bまだ\u200b途中から\u200b始められません。',
+  'checkpoint.noneAsk': '{ai}に\u200bこの瞬間から\u200b始められるように\u200bしてもらう',
+  'checkpoint.saveDraft': 'この瞬間から始められるようにして',
+  'checkpoint.saveFailed': 'この瞬間を残せませんでした（ゲームが残す所で失敗しました）。',
+  'checkpoint.keepFailed': '残せませんでした（{error}）',
+  'checkpoint.kept': 'チェックポイント「{name}」を残しました · ▶ 遊ぶ ⌄ から開けます',
+  'checkpoint.head': 'チェックポイント',
+  'checkpoint.playFrom': '⚑ {name}から遊ぶ',
+  'checkpoint.playFromWords': 'checkpoint start from middle resume チェックポイント 途中から 続きから',
+  'checkpoint.more': '「{name}」の操作',
+  'checkpoint.rename': '名前を変える',
+  'checkpoint.renameLabel': '新しい名前',
+  'checkpoint.renameKeep': '変える',
+  'checkpoint.delete': '消す',
+  'checkpoint.deleted': 'チェックポイント「{name}」を消しました',
+  'checkpoint.renamed': '「{name}」に名前を変えました',
+  'checkpoint.from': '{name}から遊んでいます',
+  'checkpoint.fromReload': '⚑ {name}から',
+  'checkpoint.fromReloadTip': '直ったゲームをチェックポイント「{name}」から開く',
+  'checkpoint.cantOpen': 'ゲームが変わって、このチェックポイントは開けません',
+  'checkpoint.fixAsk': '{ai}に直してもらう',
+  'checkpoint.loadDraft': 'チェックポイント「{name}」が開けるようにして',
+  'checkpoint.chip': '⚑ {name}',
+  'checkpoint.chipNew': '⚑ この瞬間',
+  'checkpoint.close': '閉じる',
   'rule.tag': 'ルール',
   'rule.tagTip': 'ゲームのルールで並んでいます。数字はここで、ルールそのものは {ai} に',
   'rule.layout': 'ルール',
@@ -20420,6 +20619,32 @@ function playMoment(r, errors) {
     // no codeMoment to show. The AI names the game's numbers once (SKILL.md "This moment"); the moment itself (picture,
     // camera, console) comes with the first request of the pause as for any paused message.
     if (r.intent === 'moment-values') out.intent = 'moment-values';
+    // Pause-edit stage 3 (2026-10-28; CONTRACT.md §1.14 "Checkpoints"): ⚑'s ✦ Have Claude let the game start from here
+    // ('moment-save': no save() / load() yet, or save() failed) and the line's ✦ when a checkpoint would not open
+    // ('moment-load': load() threw, or is gone). `checkpoint` names it (its file id and name) with what went wrong: a hint
+    // like the rest, a bad part dropped.
+    if (r.intent === 'moment-save' || r.intent === 'moment-load') {
+      out.intent = r.intent;
+      const c = r.checkpoint && typeof r.checkpoint === 'object' ? r.checkpoint : null;
+      if (c) {
+        const cp = {};
+        if (typeof c.id === 'string' && /^[\p{L}\p{N}][\p{L}\p{N}\p{M}_-]{0,59}$/u.test(c.id)) cp.id = c.id;
+        const name = oneLine(c.name, HANDOFF_LIMITS.maxLabel);
+        if (name) cp.name = name;
+        const error = oneLine(c.error, HANDOFF_LIMITS.maxLog);
+        if (error) cp.error = error;
+        if (Array.isArray(c.logs)) {
+          const logs = [];
+          for (const l of c.logs.slice(-HANDOFF_LIMITS.maxLogs)) {
+            if (!l || typeof l !== 'object') continue;
+            const t = oneLine(l.text, HANDOFF_LIMITS.maxLog);
+            if (t) logs.push({ level: l.level === 'error' || l.level === 'warn' ? l.level : 'log', text: t });
+          }
+          if (logs.length) cp.logs = logs;
+        }
+        if (Object.keys(cp).length) out.checkpoint = cp;
+      }
+    }
   }
   return out;
 }
@@ -21191,6 +21416,9 @@ __defs[47] = function (__exports) {
 //     guide never shrinks (shell.css: the game's name gives way) — "0:01." was cut and 1× slid under ✦.
 //   - ✕15: a phone while paused says "▶ Resume" in words: ▶ alone sat beside ▶| and ▶ of the speed menu (three play
 //     signs in a row), and the room was there.
+//
+// pause-edit stage 3 (2026-10-28, checkpoints; the plan's find.png "⚑"): ⚑ right of Speed while paused — "Make this a
+// checkpoint". main.ts opens the name field under it (or, for a game that cannot start from the middle, its one line).
                                                  
 const { h } = __require(16);
 const { icon, setButton } = __require(21);
@@ -21275,6 +21503,8 @@ function splitMoves                           (moves     , why                  
                  
                           
                             
+                                                                                                  
+                                    
      
                                                                                                                       
                                                                 
@@ -21299,9 +21529,12 @@ function splitMoves                           (moves     , why                  
                        
                                                     
                              
+                                                            
+                             
                                                                                                                           
                     
-                            
+                                                                                                        
+                                           
                  
                                                                                                 
                   
@@ -21319,7 +21552,13 @@ function createMomentBar(d               )            {
   const where = h('span', { class: 'play-where', dataset: { part: 'play-where' } }, mark, word, time);
   const stepBtn = h('button', { type: 'button', class: 'play-step', dataset: { action: 'play-step', part: 'play-step' } })                     ;
   const speedBtn = h('button', { type: 'button', class: 'play-speed', dataset: { action: 'play-speed', part: 'play-speed' }, 'aria-haspopup': 'menu' })                     ;
-  const guide = h('span', { class: 'play-guide', hidden: true, dataset: { part: 'play-guide' } }, where, stepBtn, speedBtn);
+  // ⚑ (stage 3): after Speed, as the plan's bar draws it ("❚❚ Paused 0:42.3 ▶| ¼× ⌄ ⚑"). Paused only: a checkpoint is a
+  // paused moment kept, and while the game runs there is no one moment to keep.
+  const flagBtn = h('button', { type: 'button', class: 'play-flag', hidden: true, dataset: { action: 'checkpoint', part: 'checkpoint' }, 'aria-haspopup': 'dialog' })                     ;
+  flagBtn.addEventListener('click', () => {
+    if (d.paused()) d.checkpoint(flagBtn);
+  });
+  const guide = h('span', { class: 'play-guide', hidden: true, dataset: { part: 'play-guide' } }, where, stepBtn, speedBtn, flagBtn);
   const pauseBtn = h('button', { type: 'button', class: 'play-pause', hidden: true, dataset: { action: 'play-pause', part: 'play-pause' } })                     ;
   const tip = h('div', { class: 'play-tip', role: 'status', hidden: true, dataset: { part: 'play-tip' } });
   const stepTip = h('div', { class: 'play-tip step-tip', role: 'status', hidden: true, dataset: { part: 'step-tip' } });
@@ -21407,6 +21646,11 @@ function createMomentBar(d               )            {
       return;
     }
     guide.dataset.state = paused ? 'paused' : 'playing';
+    // The flash ("▶ Resumed…", "⚑ Playing from …") is at the game's foot, where the moment's field is: away at a pause.
+    if (paused && !note.hidden) {
+      window.clearTimeout(noteTimer);
+      note.hidden = true;
+    }
     mark.replaceChildren(paused ? icon('pause') : h('span', { class: 'play-dot' }));
     word.textContent = paused ? d.t('play.paused') : d.t('status.playingShort');
     where.title = d.t('play.timeTip');
@@ -21416,6 +21660,8 @@ function createMomentBar(d               )            {
     else if (!running && ticker) (window.clearInterval(ticker), (ticker = 0));
     stepBtn.hidden = !paused;
     setButton(stepBtn, 'stepFrame', d.t('play.step'), false, tipText(d.t('play.step'), '.'));
+    flagBtn.hidden = !paused;
+    setButton(flagBtn, 'flag', d.t('checkpoint.make'), false, d.t('checkpoint.makeTip'));
     const rate = d.clock()?.rate ?? 1;
     speedBtn.replaceChildren(h('span', { class: 'label', text: speedText(rate) }), icon('chevronDown'));
     speedBtn.title = d.t('play.speedTip');
@@ -21444,9 +21690,10 @@ function createMomentBar(d               )            {
     tip,
     stepTip,
     stepBtn,
+    flagBtn,
     note,
-    flash(text) {
-      note.replaceChildren(icon('play'), h('span', { text }));
+    flash(text, mark = 'play') {
+      note.replaceChildren(icon(mark), h('span', { text }));
       note.hidden = false;
       window.clearTimeout(noteTimer);
       noteTimer = window.setTimeout(() => (note.hidden = true), 2000);
@@ -21697,6 +21944,244 @@ __def(__exports, "unitText", () => unitText);
 };
 __defs[50] = function (__exports) {
 'use strict';
+// checkpoints.ts
+
+// Checkpoints, the editor page's side (pause-edit stage 3, 2026-10-28; CONTRACT.md §1.14 "Checkpoints").
+//
+// The request (2026-10-28): "pause in the middle of a scene and give instructions, by hand or to the AI";
+// stage 3 answers the plan's need 5 — to try a fix of the boss, a person played 40 s to get back to the boss every
+// time. Decision 14 and the plan's Q2 answered (a) ("in the editor only"):
+//   - ⚑ in the paused moment's top bar (moment.ts) → the name field under it, "0:42" at first (the game's time) → Enter
+//     keeps it: the game page's save() (bridge/moment-load.ts), the host's .studio/checkpoints/<name>.json;
+//   - ▶ Play ⌄ lists "⚑ Play from Before the boss", newest first, this level's only, each row with ⋯ (Rename, Delete);
+//     ⌘K too. Opening one is a new Play page that loads the moment before its first frame; placed things stand where
+//     the scene has them NOW (a checkpoint is the game's moment, the layout is always the scene's);
+//   - a game that cannot start from the middle (no save / load): ⚑ says so in one line, "This game can't start from
+//     the middle yet." with ✦ Have {ai} let the game start from here (the web demo: the line alone). A checkpoint of
+//     the position of things only is never made: the score and the enemies would be another moment's — a lie;
+//   - a checkpoint that does not open (load threw, or the game has no load any more): Play from the start, and one line
+//     at the top "The game changed, so this checkpoint can't open" with ✦ (the error and the console's lines go along).
+// This file holds the pure rules (test/checkpoint.test.ts) and the two small pieces drawn for it — the floating field
+// under ⚑ (also the one line there) and the line at the top; main.ts wires them to the game page, the host and the
+// field at the foot.
+                                                     
+const { h } = __require(16);
+const { icon } = __require(21);
+const { clockText } = __require(47);
+
+/** ▶ Play ⌄ and ⌘K list this many (the newest): a longer list is a save folder, not a menu. */
+const CHECKPOINTS_LISTED = 12;
+
+/** This level's checkpoints, newest first (the menu's order). `level` null = a game without levels. */
+function checkpointsOf(list                  , level               )                   {
+  return list.filter((c) => (c.level ?? null) === (level ?? null)).sort((a, b) => Date.parse(b.at) - Date.parse(a.at) || a.id.localeCompare(b.id));
+}
+
+/** The name field's first words: the game's time as the top bar writes it while playing on a phone ("0:42"). */
+function defaultCheckpointName(seconds        )         {
+  return clockText(seconds, 0);
+}
+
+/** A name as the field gives it: one line, trimmed, ≤ 40 characters ('' = none: Enter does nothing). */
+function checkpointName(v        )         {
+  return v.normalize('NFC').replace(/\s+/g, ' ').trim().slice(0, 40).trim();
+}
+
+/**
+ * The checkpoint "⚑ From …" beside Reload opens (the brief's 5): the one this Play opened from while it is still kept,
+ * else the newest of this level, else none.
+ */
+function reloadCheckpoint(list                  , level               , playedFrom               )                        {
+  const mine = checkpointsOf(list, level);
+  return (playedFrom ? mine.find((c) => c.id === playedFrom) : undefined) ?? mine[0] ?? null;
+}
+
+/**
+ * The moment's picture made small for the file (≤ `w` px wide, JPEG): the menu has room for a name, not a picture, and
+ * a checkpoint is kept for its moment — 240 px is enough to tell two apart in the folder. Undefined when it cannot.
+ */
+function smallShot(dataUrl                    , w = 240)                              {
+  if (!dataUrl || typeof Image === 'undefined') return Promise.resolve(undefined);
+  return new Promise((done) => {
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const k = Math.min(1, w / (img.naturalWidth || w));
+        const c = document.createElement('canvas');
+        c.width = Math.max(1, Math.round((img.naturalWidth || w) * k));
+        c.height = Math.max(1, Math.round((img.naturalHeight || w * 0.6) * k));
+        c.getContext('2d') .drawImage(img, 0, 0, c.width, c.height);
+        done(c.toDataURL('image/jpeg', 0.72));
+      } catch {
+        done(undefined);
+      }
+    };
+    img.onerror = () => done(undefined);
+    img.src = dataUrl;
+  });
+}
+
+                                    
+                                                                 
+                                   
+                                                  
+                                
+ 
+
+/** The floating plate under ⚑ (or under ▶ Play ⌄ for a rename): a name field, or one line with ✦. */
+                                
+                  
+                    
+     
+                                                                                                                   
+                                                                                                                       
+                                                       
+     
+                                                                                                                                          
+                                                                             
+                                                                                  
+                
+ 
+
+function createCheckpointPop(d                   )                {
+  const el = h('div', { class: 'cp-pop', role: 'dialog', hidden: true, dataset: { part: 'checkpoint-pop' } });
+  let open = false;
+  let busy = false;
+
+  const place = (at             ) => {
+    el.hidden = false;
+    el.style.visibility = 'hidden';
+    const r = at.getBoundingClientRect();
+    const m = el.getBoundingClientRect();
+    // Under the button, its left edge on the button's (the plan's find.png), kept inside the window.
+    el.style.left = `${Math.round(Math.max(8, Math.min(r.left, window.innerWidth - m.width - 8)))}px`;
+    el.style.top = `${Math.round(r.bottom + 6)}px`;
+    el.style.visibility = '';
+    if (!open) {
+      open = true;
+      d.changed?.(true);
+    }
+  };
+  const close = () => {
+    if (!open) return;
+    open = false;
+    busy = false;
+    el.hidden = true;
+    el.replaceChildren();
+    d.changed?.(false);
+  };
+  // A press outside closes it (the field's own presses and ⚑'s, which opens it again, do not).
+  document.addEventListener('pointerdown', (e) => {
+    if (open && !el.contains(e.target        ) && !(e.target                  )?.closest?.('[data-part=checkpoint]')) close();
+  }, true);
+
+  return {
+    el,
+    isOpen: () => open,
+    name(at, o) {
+      const input = h('input', { type: 'text', class: 'cp-name', maxlength: '40', value: o.name, 'aria-label': o.label, dataset: { part: 'checkpoint-name' }, autocomplete: 'off', spellcheck: 'false' })                    ;
+      const err = h('p', { class: 'cp-err', role: 'alert', hidden: true, dataset: { part: 'checkpoint-error' } });
+      const keep = h('button', { type: 'button', class: 'cp-keep', dataset: { action: 'checkpoint-keep', part: 'checkpoint-keep' }, text: o.button })                     ;
+      const go = async () => {
+        const n = checkpointName(input.value);
+        if (!n || busy) return;
+        busy = true;
+        keep.disabled = true;
+        const e = await o.keep(n);
+        busy = false;
+        keep.disabled = false;
+        if (!open || e === undefined) return;
+        if (e === null) return close();
+        err.textContent = e;
+        err.hidden = false;
+      };
+      input.addEventListener('keydown', (e) => {
+        // The editor's own keys (P, ., ⌘Z) are not for a field being typed in; Enter keeps, Esc closes.
+        e.stopPropagation();
+        if (e.isComposing) return;
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          void go();
+        } else if (e.key === 'Escape') {
+          e.preventDefault();
+          close();
+          at.focus({ preventScroll: true });
+        }
+      });
+      keep.addEventListener('click', () => void go());
+      el.dataset.mode = 'name';
+      el.setAttribute('aria-label', o.label);
+      el.replaceChildren(h('label', { class: 'cp-label', text: o.label }), h('div', { class: 'cp-row' }, input, keep), err);
+      place(at);
+      input.focus({ preventScroll: true });
+      input.select();
+    },
+    line(at, text, ask) {
+      el.dataset.mode = 'line';
+      el.setAttribute('aria-label', text);
+      const b = ask
+        ? h('button', { type: 'button', class: 'link-btn mv-ask ai', dataset: { action: 'checkpoint-ask', part: 'checkpoint-ask' }, title: ask.label, onclick: () => (close(), ask.run()) },
+          h('span', { class: 'ai-spark', 'aria-hidden': 'true' }, icon('spark')), h('span', { class: 'label', text: ask.label }))
+        : null;
+      el.replaceChildren(h('p', { class: 'cp-line', dataset: { part: 'checkpoint-none' }, text }), ...(b ? [b] : []));
+      place(at);
+      (b ?? el).focus?.({ preventScroll: true });
+    },
+    close,
+  };
+}
+
+                                     
+                                                                 
+                                   
+ 
+
+/**
+ * The line at the top of the game when a checkpoint did not open (decision 14): "The game changed, so this checkpoint
+ * can't open" · ✦ Have {ai} fix it · ×. Stays until × or the end of this Play (a line that goes by itself was missed
+ * in walk 1's tests of the first-Play line).
+ */
+                                 
+                  
+                                      
+               
+                          
+ 
+
+function createCheckpointNote(d                    )                 {
+  const el = h('div', { class: 'cp-note', role: 'status', hidden: true, dataset: { part: 'checkpoint-note' } });
+  return {
+    el,
+    show(o) {
+      const close = h('button', { type: 'button', class: 'cp-note-x', dataset: { action: 'checkpoint-note-close' }, 'aria-label': d.t('checkpoint.close'), title: d.t('checkpoint.close'),
+        onclick: () => (el.hidden = true) }, icon('close'));
+      const ask = o.ask
+        ? h('button', { type: 'button', class: 'link-btn mv-ask ai', dataset: { action: 'checkpoint-fix', part: 'checkpoint-fix' }, title: d.t('checkpoint.fixAsk', d.aiVars()), onclick: () => o.ask () },
+          h('span', { class: 'ai-spark', 'aria-hidden': 'true' }, icon('spark')), h('span', { class: 'label', text: d.t('checkpoint.fixAsk', d.aiVars()) }))
+        : null;
+      el.replaceChildren(icon('flag'), h('span', { class: 'cp-note-text', text: d.t('checkpoint.cantOpen') }), ...(ask ? [ask] : []), close);
+      el.hidden = false;
+    },
+    hide() {
+      el.hidden = true;
+    },
+    get shown() {
+      return !el.hidden;
+    },
+  };
+}
+
+__def(__exports, "CHECKPOINTS_LISTED", () => CHECKPOINTS_LISTED);
+__def(__exports, "checkpointsOf", () => checkpointsOf);
+__def(__exports, "defaultCheckpointName", () => defaultCheckpointName);
+__def(__exports, "checkpointName", () => checkpointName);
+__def(__exports, "reloadCheckpoint", () => reloadCheckpoint);
+__def(__exports, "smallShot", () => smallShot);
+__def(__exports, "createCheckpointPop", () => createCheckpointPop);
+__def(__exports, "createCheckpointNote", () => createCheckpointNote);
+};
+__defs[51] = function (__exports) {
+'use strict';
 // line-fade.ts
 
 // The AI's finished line goes by itself (2026-10-20: "this line is always there, it's in the way" — the line "● Moved the pillar to the
@@ -21758,7 +22243,7 @@ __def(__exports, "lineFades", () => lineFades);
 __def(__exports, "lineStayMs", () => lineStayMs);
 __def(__exports, "lineKey", () => lineKey);
 };
-__defs[51] = function (__exports) {
+__defs[52] = function (__exports) {
 'use strict';
 // ui-prefs.ts
 
@@ -21846,7 +22331,7 @@ __def(__exports, "UI_LIMITS", () => UI_LIMITS);
 __def(__exports, "normalizeUi", () => normalizeUi);
 __def(__exports, "effectiveTheme", () => effectiveTheme);
 };
-__defs[52] = function (__exports) {
+__defs[53] = function (__exports) {
 'use strict';
 // settings-page.ts
 
@@ -21856,7 +22341,7 @@ __defs[52] = function (__exports) {
                                                     
 const { h } = __require(16);
 const { icon } = __require(21);
-const { DEFAULT_UI, UI_LIMITS } = __require(51);
+const { DEFAULT_UI, UI_LIMITS } = __require(52);
 
                                
                          
@@ -21939,7 +22424,7 @@ function renderSettings(el             , d              )       {
 
 __def(__exports, "renderSettings", () => renderSettings);
 };
-__defs[53] = function (__exports) {
+__defs[54] = function (__exports) {
 'use strict';
 // edit-ops.ts
 
@@ -22043,7 +22528,7 @@ __def(__exports, "groupLayerMoves", () => groupLayerMoves);
 __def(__exports, "groupLayerPossible", () => groupLayerPossible);
 __def(__exports, "sameKind", () => sameKind);
 };
-__defs[54] = function (__exports) {
+__defs[55] = function (__exports) {
 'use strict';
 // placement-panel.ts
 
@@ -22076,7 +22561,7 @@ __defs[54] = function (__exports) {
                                                       
 const { h, safeImageSrc } = __require(16);
 const { hasLayer, layerBlocks, layerTarget, siblingsOf } = __require(32);
-const { groupLayerPossible, sameKind } = __require(53);
+const { groupLayerPossible, sameKind } = __require(54);
 const { icon, setButton } = __require(21);
 const { afterKnob, knobHeld } = __require(25);
 const { tipText } = __require(46);
@@ -23488,7 +23973,7 @@ __def(__exports, "shortName", () => shortName);
 __def(__exports, "createPlacementPanel", () => createPlacementPanel);
 __def(__exports, "heldGameText", () => heldGameText);
 };
-__defs[55] = function (__exports) {
+__defs[56] = function (__exports) {
 'use strict';
 // rule-motion.ts
 
@@ -23558,7 +24043,7 @@ __def(__exports, "knobSaid", () => knobSaid);
 __def(__exports, "ruleWords", () => ruleWords);
 __def(__exports, "ruleKnobsAfter", () => ruleKnobsAfter);
 };
-__defs[56] = function (__exports) {
+__defs[57] = function (__exports) {
 'use strict';
 // to-rule.ts
 
@@ -23764,7 +24249,7 @@ __def(__exports, "gapText", () => gapText);
 __def(__exports, "timeText", () => timeText);
 __def(__exports, "RuleCompare", () => RuleCompare);
 };
-__defs[57] = function (__exports) {
+__defs[58] = function (__exports) {
 'use strict';
 // path-edit.ts
 
@@ -23892,7 +24377,7 @@ __def(__exports, "setKind", () => setKind);
 __def(__exports, "toggleCorner", () => toggleCorner);
 __def(__exports, "insertAt", () => insertAt);
 };
-__defs[58] = function (__exports) {
+__defs[59] = function (__exports) {
 'use strict';
 // scene-motion.ts
 
@@ -24012,7 +24497,7 @@ __def(__exports, "withTrack", () => withTrack);
 __def(__exports, "withoutTrack", () => withoutTrack);
 __def(__exports, "withOrder", () => withOrder);
 };
-__defs[59] = function (__exports) {
+__defs[60] = function (__exports) {
 'use strict';
 // motion-card.ts
 
@@ -24174,7 +24659,7 @@ function motionMenu(d                , c            , at                        
 __def(__exports, "motionCardRow", () => motionCardRow);
 __def(__exports, "motionMenu", () => motionMenu);
 };
-__defs[60] = function (__exports) {
+__defs[61] = function (__exports) {
 'use strict';
 // timeline-wire.ts
 
@@ -24195,13 +24680,13 @@ __defs[60] = function (__exports) {
 // WHY its own file: main.ts is 3,900 lines and other members change it the same week; main.ts only routes moves,
 // the card's numbers, undo and the bridge's messages through here.
                                                                                                                                                                                                                       
-const { ruleKnobsAfter, ruleOf, ruleWords } = __require(55);
-const { handPath } = __require(56);
+const { ruleKnobsAfter, ruleOf, ruleWords } = __require(56);
+const { handPath } = __require(57);
 const { motionRunner, whenOf, whensOf } = __require(19);
-const { bend, insertAt, pointKind, setKind, toggleCorner } = __require(57);
-const { asOrdinary, asScene, joinClip, likeScene, sceneMembers, trackOrder: sceneOrder, withOrder, withTrack, withoutTrack } = __require(58);
+const { bend, insertAt, pointKind, setKind, toggleCorner } = __require(58);
+const { asOrdinary, asScene, joinClip, likeScene, sceneMembers, trackOrder: sceneOrder, withOrder, withTrack, withoutTrack } = __require(59);
 const { libOf } = __require(35);
-const { motionCardRow } = __require(59);
+const { motionCardRow } = __require(60);
                                                    
                                                      
 const { sameMotion: sameFile } = __require(36);
@@ -26195,7 +26680,7 @@ function createTimeline(d              , makePanel                             =
 
 __def(__exports, "createTimeline", () => createTimeline);
 };
-__defs[61] = function (__exports) {
+__defs[62] = function (__exports) {
 'use strict';
 // motion-note.ts
 
@@ -26323,7 +26808,7 @@ function createMotionNote(d                ) {
 __def(__exports, "noteOf", () => noteOf);
 __def(__exports, "createMotionNote", () => createMotionNote);
 };
-__defs[62] = function (__exports) {
+__defs[63] = function (__exports) {
 'use strict';
 // motion-ask.ts
 
@@ -26375,7 +26860,7 @@ function createMotionAsk(d               ) {
 
 __def(__exports, "createMotionAsk", () => createMotionAsk);
 };
-__defs[63] = function (__exports) {
+__defs[64] = function (__exports) {
 'use strict';
 // save-receipt.ts
 
@@ -26487,7 +26972,7 @@ __def(__exports, "RECEIPT_NAMES", () => RECEIPT_NAMES);
 __def(__exports, "savedList", () => savedList);
 __def(__exports, "receipt", () => receipt);
 };
-__defs[64] = function (__exports) {
+__defs[65] = function (__exports) {
 'use strict';
 // offset-model.ts
 
@@ -26650,7 +27135,7 @@ __def(__exports, "snapAmount", () => snapAmount);
 __def(__exports, "noAmount", () => noAmount);
 __def(__exports, "rowAt", () => rowAt);
 };
-__defs[65] = function (__exports) {
+__defs[66] = function (__exports) {
 'use strict';
 // offset-choices.ts
 
@@ -26673,7 +27158,7 @@ __defs[65] = function (__exports) {
                                                                                                                   
 const { h } = __require(16);
 const { knobEl } = __require(25);
-const { addOffset } = __require(64);
+const { addOffset } = __require(65);
 
                                                                          
                                                        
@@ -26984,7 +27469,7 @@ __def(__exports, "createOffsetChoices", () => createOffsetChoices);
 __def(__exports, "offsetRowWords", () => offsetRowWords);
 __def(__exports, "offsetRowsEl", () => offsetRowsEl);
 };
-__defs[66] = function (__exports) {
+__defs[67] = function (__exports) {
 'use strict';
 // code-place-wire.ts
 
@@ -27034,10 +27519,10 @@ __defs[66] = function (__exports) {
 const { h } = __require(16);
 const { knobEl, knobNumber } = __require(25);
 const { turnKnobs } = __require(34);
-const { amountWords, createOffsetChoices, offsetRowWords, offsetRowsEl } = __require(65);
-const { addOffset, dragAmount, jitterRow, lastOf, movesRank, noAmount, MAX_OFFSETS } = __require(64);
+const { amountWords, createOffsetChoices, offsetRowWords, offsetRowsEl } = __require(66);
+const { addOffset, dragAmount, jitterRow, lastOf, movesRank, noAmount, MAX_OFFSETS } = __require(65);
 const { roundPose } = __require(31);
-const { gapText, placeGaps } = __require(56);
+const { gapText, placeGaps } = __require(57);
 
                                                                          
 
@@ -27801,7 +28286,7 @@ function createCodePlaceWire(d                   )                {
 
 __def(__exports, "createCodePlaceWire", () => createCodePlaceWire);
 };
-__defs[67] = function (__exports) {
+__defs[68] = function (__exports) {
 'use strict';
 // keep-out-model.ts
 
@@ -28010,7 +28495,7 @@ __def(__exports, "changedRows", () => changedRows);
 __def(__exports, "rowKey", () => rowKey);
 __def(__exports, "inBox", () => inBox);
 };
-__defs[68] = function (__exports) {
+__defs[69] = function (__exports) {
 'use strict';
 // keep-out-wire.ts
 
@@ -28041,7 +28526,7 @@ const { h } = __require(16);
 const { icon } = __require(21);
 const { knobEl } = __require(25);
                                                    
-const { MAX_AVOID, addBox, canRemove, changedRows, copyRowTo, knobRow, knobsNow, nextBoxName, removeRow, rowKey, rowsOf, setBox, switchRow } = __require(67);
+const { MAX_AVOID, addBox, canRemove, changedRows, copyRowTo, knobRow, knobsNow, nextBoxName, removeRow, rowKey, rowsOf, setBox, switchRow } = __require(68);
 
                                                                          
                                    
@@ -28335,7 +28820,7 @@ function createKeepOutWire(d                 )              {
 
 __def(__exports, "createKeepOutWire", () => createKeepOutWire);
 };
-__defs[69] = function (__exports) {
+__defs[70] = function (__exports) {
 'use strict';
 // palette.ts
 
@@ -28641,7 +29126,7 @@ __def(__exports, "SUGGEST_MIN", () => SUGGEST_MIN);
 __def(__exports, "suggests", () => suggests);
 __def(__exports, "createPalette", () => createPalette);
 };
-__defs[70] = function (__exports) {
+__defs[71] = function (__exports) {
 'use strict';
 // thumb-fit.ts
 
@@ -28742,7 +29227,7 @@ function fitPicture(src        , out = OUT)                  {
 __def(__exports, "FIT_MARGIN", () => FIT_MARGIN);
 __def(__exports, "fitPicture", () => fitPicture);
 };
-__defs[71] = function (__exports) {
+__defs[72] = function (__exports) {
 'use strict';
 // undo.ts
 
@@ -28989,7 +29474,7 @@ __def(__exports, "poseChange", () => poseChange);
 __def(__exports, "UndoStack", () => UndoStack);
 __def(__exports, "sharedMotion", () => sharedMotion);
 };
-__defs[72] = function (__exports) {
+__defs[73] = function (__exports) {
 'use strict';
 // write-back.ts
 
@@ -29082,7 +29567,7 @@ __def(__exports, "FOLD_TOL", () => FOLD_TOL);
 __def(__exports, "foldGaps", () => foldGaps);
 __def(__exports, "foldSaid", () => foldSaid);
 };
-__defs[73] = function (__exports) {
+__defs[74] = function (__exports) {
 'use strict';
 // ai-hands.ts
 
@@ -29105,8 +29590,8 @@ const { uiBoxAt } = __require(19);
 const { HANDS_MAKE_WHEN, handsAvoid, handsClip, handsMotion, handsPose, handsSaid, handsUiIds, readHandsInput } = __require(33);
 const { roundKnob, turnKnobs } = __require(34);
 const { CODE_LEN } = __require(35);
-const { MOTION_SAMPLES, gapText, motionGap, placeGaps, timeText } = __require(56);
-const { foldGaps, foldSaid } = __require(72);
+const { MOTION_SAMPLES, gapText, motionGap, placeGaps, timeText } = __require(57);
+const { foldGaps, foldSaid } = __require(73);
 const { momentNumber } = __require(49);
 
                            
@@ -30007,7 +30492,7 @@ function createAiHands(d           ) {
 
 __def(__exports, "createAiHands", () => createAiHands);
 };
-__defs[74] = function (__exports) {
+__defs[75] = function (__exports) {
 'use strict';
 // tooltip.ts
 
@@ -30127,7 +30612,7 @@ function installTooltips(root             )                                    {
 
 __def(__exports, "installTooltips", () => installTooltips);
 };
-__defs[75] = function (__exports) {
+__defs[76] = function (__exports) {
 'use strict';
 // shortcuts.ts
 
@@ -30216,7 +30701,7 @@ function createShortcutSheet(d                   ) {
 
 __def(__exports, "createShortcutSheet", () => createShortcutSheet);
 };
-__defs[76] = function (__exports) {
+__defs[77] = function (__exports) {
 'use strict';
 // context-menu.ts
 
@@ -30272,6 +30757,12 @@ const { icon } = __require(21);
                                                                                                                          
      
                
+     
+                                                                                                                         
+                                                                                                                    
+                                                                                                                          
+     
+                                                   
               
  
 /**
@@ -30390,7 +30881,20 @@ function createContextMenu(d                 ) {
         e.run();
       });
       items.push({ item: e, btn });
-      el.append(btn);
+      if (e.more) {
+        // A sibling of the row (a button cannot hold a button): the two share one line (shell.css .ctx-line).
+        const more = e.more;
+        const mb = h('button', { type: 'button', class: 'ctx-more', tabindex: '-1', dataset: { action: `ctx-${e.id}-more` }, 'aria-label': more.label, title: more.label }, icon('more'));
+        mb.addEventListener('pointerenter', (ev) => {
+          if ((ev                ).pointerType === 'mouse') highlight(i);
+        });
+        mb.addEventListener('click', () => {
+          const r = mb.getBoundingClientRect();
+          hide(false);
+          more.run(r);
+        });
+        el.append(h('div', { class: 'ctx-line' }, btn, mb));
+      } else el.append(btn);
     }
     el.dataset.place = o.place;
     if (o.label) el.setAttribute('aria-label', o.label);
@@ -30437,6 +30941,13 @@ function createContextMenu(d                 ) {
     if (e.key === 'Meta' || e.key === 'Control' || e.key === 'Shift' || e.key === 'Alt') return;
     const k = e.key;
     if (k === 'ArrowDown' || k === 'ArrowUp') move(k === 'ArrowDown' ? 1 : -1);
+    else if (k === 'ArrowRight' && items[at]?.item.more) {
+      // The highlighted row's ⋯ (stage 3): its menu opens under the row's end.
+      const x = items[at] ;
+      const r = x.btn.getBoundingClientRect();
+      hide(false);
+      x.item.more .run(new DOMRect(r.right - 28, r.top, 28, r.height));
+    }
     else if (k === 'Home' || k === 'End') {
       const list = enabled();
       if (list.length) highlight(k === 'Home' ? list[0]  : list[list.length - 1] );
@@ -30485,7 +30996,7 @@ function createContextMenu(d                 ) {
 __def(__exports, "placeMenu", () => placeMenu);
 __def(__exports, "createContextMenu", () => createContextMenu);
 };
-__defs[77] = function (__exports) {
+__defs[78] = function (__exports) {
 'use strict';
 // levels.ts
 
@@ -30905,7 +31416,7 @@ __def(__exports, "slugOf", () => slugOf);
 __def(__exports, "levelIdOf", () => levelIdOf);
 __def(__exports, "Levels", () => Levels);
 };
-__defs[78] = function (__exports) {
+__defs[79] = function (__exports) {
 'use strict';
 // check-note.ts
 
@@ -30944,7 +31455,7 @@ function checkNoteId(check                        , items                       
 
 __def(__exports, "checkNoteId", () => checkNoteId);
 };
-__defs[79] = function (__exports) {
+__defs[80] = function (__exports) {
 'use strict';
 // level-switch.ts
 
@@ -31118,7 +31629,7 @@ function createLevelSwitch(d                 ) {
 __def(__exports, "makeRows", () => makeRows);
 __def(__exports, "createLevelSwitch", () => createLevelSwitch);
 };
-__defs[80] = function (__exports) {
+__defs[81] = function (__exports) {
 'use strict';
 // context-rows.ts
 
@@ -31316,7 +31827,7 @@ function contextRows(place          , f          )           {
 
 __def(__exports, "contextRows", () => contextRows);
 };
-__defs[81] = function (__exports) {
+__defs[82] = function (__exports) {
 'use strict';
 // safe-save.ts
 
@@ -31427,7 +31938,7 @@ function createSafeSave(deps                              ) {
 __def(__exports, "bigChanges", () => bigChanges);
 __def(__exports, "createSafeSave", () => createSafeSave);
 };
-__defs[82] = function (__exports) {
+__defs[83] = function (__exports) {
 'use strict';
 // unsaved-guard.ts
 
@@ -31584,7 +32095,7 @@ __def(__exports, "lostBy", () => lostBy);
 __def(__exports, "playAsks", () => playAsks);
 __def(__exports, "createUnsavedGuard", () => createUnsavedGuard);
 };
-__defs[83] = function (__exports) {
+__defs[84] = function (__exports) {
 'use strict';
 // layer-switch.ts
 
@@ -31654,7 +32165,7 @@ function createLayerSwitch(choose                        , togglePeek           
 
 __def(__exports, "createLayerSwitch", () => createLayerSwitch);
 };
-__defs[84] = function (__exports) {
+__defs[85] = function (__exports) {
 'use strict';
 // ui-layer.ts
 
@@ -31757,7 +32268,7 @@ __def(__exports, "uiEntries", () => uiEntries);
 __def(__exports, "withLooks", () => withLooks);
 __def(__exports, "withUi", () => withUi);
 };
-__defs[85] = function (__exports) {
+__defs[86] = function (__exports) {
 'use strict';
 // ui-card.ts
 
@@ -31927,7 +32438,7 @@ function createUiCard(d            ) {
 
 __def(__exports, "createUiCard", () => createUiCard);
 };
-__defs[86] = function (__exports) {
+__defs[87] = function (__exports) {
 'use strict';
 // ui-screens.ts
 
@@ -31990,7 +32501,7 @@ function createUiScreens(d               ) {
 
 __def(__exports, "createUiScreens", () => createUiScreens);
 };
-__defs[87] = function (__exports) {
+__defs[88] = function (__exports) {
 'use strict';
 // ui-style-model.ts
 
@@ -32225,7 +32736,7 @@ __def(__exports, "validLook", () => validLook);
 __def(__exports, "validTheme", () => validTheme);
 __def(__exports, "UiStyleModel", () => UiStyleModel);
 };
-__defs[88] = function (__exports) {
+__defs[89] = function (__exports) {
 'use strict';
 // ui-theme.ts
 
@@ -32340,7 +32851,7 @@ function createUiTheme(d             ) {
 
 __def(__exports, "createUiTheme", () => createUiTheme);
 };
-__defs[89] = function (__exports) {
+__defs[90] = function (__exports) {
 'use strict';
 // ui-wire.ts
 
@@ -32356,11 +32867,11 @@ __defs[89] = function (__exports) {
 //     end of editing) and here only to draw the card — never saved. A new game page starts without them.
                                                                                                                                                                             
                                                    
-const { createUiCard } = __require(85);
-const { withLooks } = __require(84);
-const { createUiScreens } = __require(86);
-const { UiStyleModel, validLook, validTheme } = __require(87);
-const { createUiTheme } = __require(88);
+const { createUiCard } = __require(86);
+const { withLooks } = __require(85);
+const { createUiScreens } = __require(87);
+const { UiStyleModel, validLook, validTheme } = __require(88);
+const { createUiTheme } = __require(89);
                                                    
 
                              
@@ -32627,7 +33138,7 @@ function createUiWire(d            ) {
 
 __def(__exports, "createUiWire", () => createUiWire);
 };
-__defs[90] = function (__exports) {
+__defs[91] = function (__exports) {
 'use strict';
 // ui-missing.ts
 
@@ -32745,7 +33256,7 @@ function createUiMissing(d               ) {
 
 __def(__exports, "createUiMissing", () => createUiMissing);
 };
-__defs[91] = function (__exports) {
+__defs[92] = function (__exports) {
 'use strict';
 // sheet-fold.ts
 
@@ -32822,7 +33333,7 @@ __def(__exports, "barPress", () => barPress);
 __def(__exports, "FOLD_DRAG", () => FOLD_DRAG);
 __def(__exports, "gripEnd", () => gripEnd);
 };
-__defs[92] = function (__exports) {
+__defs[93] = function (__exports) {
 'use strict';
 // main.ts
 
@@ -32864,44 +33375,45 @@ const { playLine, playWords } = __require(45);
 const { clockNow, clockText, createMomentBar, madeRows, speedText, splitMoves } = __require(47);
 const { chatOnLine, historyOf } = __require(48);
 const { createMomentValues } = __require(49);
-const { LINE_FADE_MS, LINE_GRACE_MS, lineFades, lineKey, lineStayMs } = __require(50);
-const { renderSettings } = __require(52);
-const { DEFAULT_UI, effectiveTheme, normalizeUi } = __require(51);
+const { CHECKPOINTS_LISTED, checkpointsOf, createCheckpointNote, createCheckpointPop, defaultCheckpointName, reloadCheckpoint, smallShot } = __require(50);
+const { LINE_FADE_MS, LINE_GRACE_MS, lineFades, lineKey, lineStayMs } = __require(51);
+const { renderSettings } = __require(53);
+const { DEFAULT_UI, effectiveTheme, normalizeUi } = __require(52);
 const { dropTarget, hasLayer, layerTarget } = __require(32);
-const { createPlacementPanel } = __require(54);
-const { createTimeline } = __require(60);
-const { createMotionNote, noteOf } = __require(61);
+const { createPlacementPanel } = __require(55);
+const { createTimeline } = __require(61);
+const { createMotionNote, noteOf } = __require(62);
 const { libCounted } = __require(24);
-const { createMotionAsk } = __require(62);
+const { createMotionAsk } = __require(63);
 const { CODE_LEN, motionLibrary } = __require(35);
 const { attachWorld, roundLib } = __require(36);
 const { icon, setButton } = __require(21);
-const { receipt } = __require(63);
-const { createCodePlaceWire } = __require(66);
-const { createKeepOutWire } = __require(68);
-const { createPalette } = __require(69);
-const { fitPicture } = __require(70);
+const { receipt } = __require(64);
+const { createCodePlaceWire } = __require(67);
+const { createKeepOutWire } = __require(69);
+const { createPalette } = __require(70);
+const { fitPicture } = __require(71);
 const { PlacementModel } = __require(37);
-const { UndoStack, poseChange, sharedMotion } = __require(71);
-const { createAiHands } = __require(73);
-const { MOTION_SAMPLES, RuleCompare, gapText, motionGap, timeText } = __require(56);
-const { copyKey, groupLayerMoves, groupLayerPossible, sameKind } = __require(53);
+const { UndoStack, poseChange, sharedMotion } = __require(72);
+const { createAiHands } = __require(74);
+const { MOTION_SAMPLES, RuleCompare, gapText, motionGap, timeText } = __require(57);
+const { copyKey, groupLayerMoves, groupLayerPossible, sameKind } = __require(54);
 const { displayName, forgetNames, noteItems, useGivenNames, useNameLang } = __require(14);
 const { keyOf, tipText } = __require(46);
-const { installTooltips } = __require(74);
-const { createShortcutSheet } = __require(75);
-const { createContextMenu } = __require(76);
-const { Levels, worldOf } = __require(77);
-const { checkNoteId } = __require(78);
-const { createLevelSwitch, makeRows } = __require(79);
-const { contextRows } = __require(80);
-const { bigChanges, createSafeSave } = __require(81);
-const { createUnsavedGuard, lostBy, playAsks } = __require(82);
-const { createLayerSwitch } = __require(83);
-const { uiAsPlacement, uiEntries, withUi } = __require(84);
-const { createUiWire } = __require(89);
-const { createUiMissing } = __require(90);
-const { barPress, FOLD_DRAG, gripEnd, readFold, writeFold } = __require(91);
+const { installTooltips } = __require(75);
+const { createShortcutSheet } = __require(76);
+const { createContextMenu } = __require(77);
+const { Levels, worldOf } = __require(78);
+const { checkNoteId } = __require(79);
+const { createLevelSwitch, makeRows } = __require(80);
+const { contextRows } = __require(81);
+const { bigChanges, createSafeSave } = __require(82);
+const { createUnsavedGuard, lostBy, playAsks } = __require(83);
+const { createLayerSwitch } = __require(84);
+const { uiAsPlacement, uiEntries, withUi } = __require(85);
+const { createUiWire } = __require(90);
+const { createUiMissing } = __require(91);
+const { barPress, FOLD_DRAG, gripEnd, readFold, writeFold } = __require(92);
 
                                                                         
 
@@ -33550,6 +34062,7 @@ function start(host            ) {
     resume: () => postGame({ type: 'studio:play/pause', on: false }),
     step: (on) => postGame({ type: 'studio:play/step', on }),
     speed: (rate) => postGame({ type: 'studio:play/speed', rate }),
+    checkpoint: (at) => checkpointPress(at),
     menu: (at, rows, head) => {
       const r = at.getBoundingClientRect();
       // The menu's head (fix 1 ✕13): "Speed" over 1× · ½× · ¼×; Next frame after a line while paused.
@@ -33583,7 +34096,18 @@ function start(host            ) {
   const topActions = h('div', { class: 'top-actions', dataset: { part: 'top-actions' } }, playAskBtn, topSave, playPauseBtn, playSplit);
   function openPlayMenu() {
     const r = playMoreBtn.getBoundingClientRect();
-    ctxMenu.show([{ id: 'play-fresh', label: t('pal.playFresh'), run: () => void togglePlay(true) }], r.right, r.bottom + 4, { place: 'play', label: t('pal.playFresh') });
+    // Checkpoints (pause-edit stage 3): "⚑ Play from Before the boss" under Play from the start, newest first, this level's
+    // only (another level's moment is not this level's game), each with ⋯ (Rename, Delete).
+    const rows              = [{ id: 'play-fresh', label: t('pal.playFresh'), run: () => void togglePlay(true) }];
+    const mine = myCheckpoints();
+    if (mine.length) {
+      rows.push({ sep: true }, { head: t('checkpoint.head') });
+      for (const c of mine.slice(0, CHECKPOINTS_LISTED)) {
+        rows.push({ id: `checkpoint-play`, label: t('checkpoint.playFrom', { name: c.name }), run: () => void playCheckpoint(c),
+          more: { label: t('checkpoint.more', { name: c.name }), run: (at) => checkpointMore(c, at) } });
+      }
+    }
+    ctxMenu.show(rows, r.right, r.bottom + 4, { place: 'play', label: t('pal.playFresh') });
     // Right-aligned under ▾: the menu's right edge on the button's.
     const m = ctxMenu.el.getBoundingClientRect();
     ctxMenu.el.style.left = `${Math.max(8, Math.round(r.right - m.width))}px`;
@@ -33916,7 +34440,10 @@ function start(host            ) {
   const dock = h('section', { class: 'ask-strip dock' }, caption, cardSlot, h('div', { class: 'palette-slot' }), introLine, motionNote.el, uiMissing.el, presenceRow, momentLine, bar);
   noteReady = true;
   // (introLine over presenceRow: the presence words on a narrow PC bar belong to the field, so they stay on it.)
-  const stage = h('div', { class: 'stage', dataset: { part: 'stage' } }, iframe, scrim, assetsPage, inspector, dock, levelNote, momentBar.tip, momentBar.stepTip, momentBar.note, momentUnfoldBtn);
+  // Checkpoints (stage 3; checkpoints.ts): the line when one did not open, at the top of the game; the field under ⚑.
+  const cpNote = createCheckpointNote({ t, aiVars: () => aiVars() });
+  const cpPop = createCheckpointPop({ t, aiVars: () => aiVars(), changed: (on) => (app.dataset.checkpoint = on ? 'open' : 'closed') });
+  const stage = h('div', { class: 'stage', dataset: { part: 'stage' } }, iframe, scrim, assetsPage, inspector, dock, levelNote, momentBar.tip, momentBar.stepTip, momentBar.note, cpNote.el, momentUnfoldBtn);
   const app = h('div', { class: 'shell', dataset: { part: 'app' } }, header, side, stage);
   document.getElementById('app') .replaceWith(app);
   panel.append(toolEl);
@@ -33958,7 +34485,7 @@ function start(host            ) {
       motionTool.sync();
     },
   });
-  app.append(ctxMenu.catcher, ctxMenu.el);
+  app.append(ctxMenu.catcher, ctxMenu.el, cpPop.el);
   // The level in the top bar's path (level-switch.ts); what its rows do is below (goLevel and the rest).
   const levelSwitch = createLevelSwitch({
     t,
@@ -34450,6 +34977,8 @@ function start(host            ) {
       if (moment && momentHere) return { chip: t('moment.here', { name: momentHere.label }), ph: t('moment.askPh', aiVars()) };
       // ✦ Have Claude make this moment editable (pause-edit stage 2): the chip "This moment".
       if (moment && momentValuesAsk) return { chip: t('moment.values'), ph: t('moment.askPh', aiVars()) };
+      // ⚑'s ✦ / the line's ✦ (stage 3): the chip "⚑ This moment" / "⚑ Before the boss".
+      if (moment && cpAsk) return { chip: cpAsk.checkpoint?.name ? t('checkpoint.chip', { name: cpAsk.checkpoint.name }) : t('checkpoint.chipNew'), ph: t('moment.askPh', aiVars()) };
       // ✦ Ask Claude to make this UI editable (studio-canvas-ui stage 2): "Here (bottom left)" with the place's picture.
       const ui = uiAskNow();
       if (ui) return { chip: ui.chip, ph: askPh(), ...(ui.pic ? { pic: ui.pic } : {}), tip: ui.tip };
@@ -34909,6 +35438,9 @@ function start(host            ) {
     }
     // The old Play, a new page (fast switch, 2026-10-22: Play's ▾ says why).
     act('play-fresh', t('pal.playFresh'), 'play', () => void togglePlay(true), undefined, t('pal.playFresh.words'));
+    // Checkpoints (stage 3): this level's, as ▶ Play ⌄ lists them; while paused, ⚑ Make this a checkpoint.
+    if (playing && playAskOn && playPaused) act('checkpoint-make', t('checkpoint.make'), 'flag', () => checkpointPress(momentBar.flagBtn.offsetParent ? momentBar.flagBtn : topActions), undefined, t('checkpoint.playFromWords'));
+    for (const [i, c] of myCheckpoints().slice(0, CHECKPOINTS_LISTED).entries()) act(`checkpoint-play-${i}`, t('checkpoint.playFrom', { name: c.name }), 'flag', () => void playCheckpoint(c), undefined, t('checkpoint.playFromWords'));
     if (keys.length && editing) {
       act('copy', t('ops.copy'), 'copy', () => copySelection(), shortcutText('copy'), 'duplicate clone 複製');
       act('remove', t('ops.remove'), 'trash', () => removeSelection(), shortcutText('remove'), 'delete remove 削除');
@@ -36008,6 +36540,9 @@ function start(host            ) {
       const codeNow = code === undefined || loadedCode === undefined ? undefined : code !== loadedCode;
       if (ph === 'done' && playing && playPaused && !!pending?.id && momentAsks.has(pending.id) && (n > 0 || codeNow === true)) {
         link('moment-reload', 'toolRotate', t('play.reload'), () => loadGame(), t('play.reloadMomentTip'));
+        // …and from a checkpoint (stage 3, the brief's 5): the one this Play opened from, else this level's newest.
+        const rc = reloadCheckpoint(checkpointList, cpLevel(), cpPlayed?.id ?? null);
+        if (rc) link('moment-reload-from', 'flag', t('checkpoint.fromReload', { name: rc.name }), () => void playCheckpoint(rc), t('checkpoint.fromReloadTip', { name: rc.name }));
       }
       const aiReloaded = aiReloadFor !== null && aiStatus?.at === aiReloadFor;
       if (ph === 'done' && !playing && aiReloaded) {
@@ -36200,6 +36735,11 @@ function start(host            ) {
     // paused (the moment's own field at the foot is the way to ask then).
     const show = playing && playAskOn && phone() && !host.offline && !playPaused;
     playAskBtn.hidden = !show;
+    // The checkpoint's line (stage 3) is about this Play: back in Edit it goes.
+    if (!playing && cpFailed) {
+      cpFailed = null;
+      cpNote.hide();
+    }
     // ❚❚ Pause to edit / ▶ Resume, the game's clock, Next frame, Speed (moment.ts): every width.
     momentBar.render();
     placePlayTip();
@@ -36254,6 +36794,12 @@ function start(host            ) {
     renderAll(true);
     // Words typed in the ✦ field over the game when it paused: the field at the foot now (the person was about to ask).
     if (m.draft && !host.offline) focusAsk(m.draft);
+    // The line's ✦ "Have Claude fix it" (stage 3) paused the game for its draft: in the field now.
+    if (cpAskSoon) {
+      const a = cpAskSoon;
+      cpAskSoon = null;
+      checkpointDraft(a.intent, a.checkpoint);
+    }
   }
   /** play/paused off (Resume, Edit, a new page): the moment's own steps leave ⌘Z (undo.ts dropMoment), its tools go. */
   function momentEnd() {
@@ -36270,6 +36816,12 @@ function start(host            ) {
     momentVals = undefined;
     momentValuesAsk = false;
     momentValues.hide();
+    // Checkpoints (stage 3): ⚑'s field and a ✦ draft belong to this moment.
+    momentCanCheckpoint = false;
+    cpAsk = null;
+    cpPop.close();
+    for (const [, w] of cpSaveWaits) w({ ok: false, error: 'the game is not paused' });
+    cpSaveWaits.clear();
     for (const w of momentAskWaits.splice(0)) w(null);
     for (const [, w] of momentSetWaits) w({ ok: false, error: 'the game is not paused' });
     momentSetWaits.clear();
@@ -36378,6 +36930,7 @@ function start(host            ) {
     }
     if (!playPaused) return;
     momentVals = m.values;
+    momentCanCheckpoint = m.checkpoint === true;
     momentValues.show(m.values);
   }
   /**
@@ -36431,8 +36984,164 @@ function start(host            ) {
   /** ✦ Have {ai} make this moment editable: the draft and the chip "This moment" in the field; the person sends it. */
   function momentValuesDraft() {
     momentValuesAsk = true;
+    cpAsk = null;
     momentHere = null;
     focusAsk(t('moment.valuesDraft'));
+  }
+  // ----- checkpoints (pause-edit stage 3, 2026-10-28; checkpoints.ts, CONTRACT.md §1.14 "Checkpoints") -----
+  /** The level checkpoints belong to: the level on screen; null for a game without levels. */
+  const cpLevel = () => (levels.active ? levels.current || null : null);
+  /** This level's checkpoints, newest first (▶ Play ⌄, ⌘K). */
+  const myCheckpoints = () => checkpointsOf(checkpointList, cpLevel());
+  /** The host's list again (after keeping, renaming, deleting; at the start). */
+  async function refreshCheckpoints() {
+    if (!host.checkpoints) return;
+    checkpointList = (await host.checkpoints.list()).checkpoints;
+    renderAiLine();
+    sendPlayLine(true);
+  }
+  /**
+   * ⚑ pressed (paused): the name field under it, "0:42" first — or, for a game that cannot start from the middle (no
+   * save / load; the web demo keeps none), its one line and ✦ (decision 14: no checkpoint of the positions alone).
+   */
+  function checkpointPress(at             ) {
+    if (!playPaused || !moment) return;
+    if (cpPop.isOpen()) return cpPop.close();
+    if (!momentCanCheckpoint || !host.checkpoints) return checkpointNone(at);
+    cpPop.name(at, { name: defaultCheckpointName(clockNow(playHeard, performance.now())), label: t('checkpoint.name'), button: t('checkpoint.keep'),
+      keep: (name) => keepCheckpoint(name, at) });
+  }
+  /** "This game can't start from the middle yet." (or: save() failed) and ✦ Have {ai} let the game start from here. */
+  function checkpointNone(at             , error         ) {
+    const ask = host.offline ? undefined : { label: t('checkpoint.noneAsk', aiVars()), run: () => checkpointDraft('moment-save', error ? { error } : undefined) };
+    cpPop.line(at, error ? t('checkpoint.saveFailed') : t('checkpoint.none'), ask);
+  }
+  /** ✦'s draft and chip in the field (the person sends it): the paused request gets the intent and the checkpoint. */
+  function checkpointDraft(intent                 , checkpoint                      ) {
+    cpAsk = { intent, ...(checkpoint ? { checkpoint } : {}) };
+    momentValuesAsk = false;
+    momentHere = null;
+    focusAsk(intent === 'moment-load' ? t('checkpoint.loadDraft', { name: checkpoint?.name ?? '' }) : t('checkpoint.saveDraft'));
+  }
+  /** The game page's save() now (moment/save → moment/saved), or why not. */
+  function momentSaveNow()                                                                             {
+    const n = ++cpSaveN;
+    return new Promise((done) => {
+      const timer = window.setTimeout(() => {
+        cpSaveWaits.delete(n);
+        done({ ok: false, error: 'the game page did not answer in 3 s' });
+      }, 3000);
+      cpSaveWaits.set(n, (r) => {
+        window.clearTimeout(timer);
+        done(r);
+      });
+      postGame({ type: 'studio:moment/save', n });
+    });
+  }
+  /**
+   * Enter in ⚑'s field: save() in the game page, then the host keeps it with the moment's small picture, the level and
+   * the game's time. Answers the field's error line, null (kept: the field closes) or undefined (the plate became the
+   * one line: save() said there is nothing to keep, or failed).
+   */
+  async function keepCheckpoint(name        , at             )                                     {
+    const cps = host.checkpoints;
+    if (!cps || !playPaused) return t('checkpoint.keepFailed', { error: 'the game is not paused' });
+    const time = Math.round(clockNow(playHeard, performance.now()) * 1000) / 1000;
+    const r = await momentSaveNow();
+    if (!r.ok) {
+      if (r.error === 'the game is not paused' || r.error?.startsWith('the game page')) return t('checkpoint.keepFailed', { error: r.error });
+      checkpointNone(at, r.none ? undefined : r.error);
+      return undefined;
+    }
+    const shot = await smallShot(momentAsk?.shot);
+    const a = await cps.add({ name, level: cpLevel(), time, moment: r.moment, ...(shot ? { shot } : {}) });
+    if (!a.ok) return t('checkpoint.keepFailed', { error: a.error ?? '?' });
+    // Said where the moment's news goes (the field's line): the game's foot, where the flash is, is the field's place while paused.
+    showToast(t('checkpoint.kept', { name }), 5000);
+    await refreshCheckpoints();
+    return null;
+  }
+  /**
+   * ▶ Play from a checkpoint (▶ Play ⌄, ⌘K, "⚑ From …" beside Reload): a new Play page, as Play from the start, that
+   * holds its first frame until its load(m) ran with the checkpoint's moment (sent at its hello). Placed things come
+   * from the scene as it is now (the page reads the draft as every Play page does).
+   */
+  async function playCheckpoint(info                ) {
+    const cps = host.checkpoints;
+    if (!cps) return;
+    const c = await cps.get(info.id);
+    if (!c) {
+      // Deleted meanwhile, or the file no longer reads as a checkpoint: the list again, and the line.
+      await refreshCheckpoints();
+      showToast(t('checkpoint.cantOpen'), 5000);
+      return;
+    }
+    cpFailed = null;
+    cpNote.hide();
+    cpOpening = { id: info.id, name: c.name, moment: c.moment, time: c.time };
+    await togglePlay(true);
+    if (!playing) cpOpening = null;
+  }
+  /**
+   * The checkpoint's page said how it went (moment/loaded). Opened: "⚑ Playing from Before the boss" at the game's foot.
+   * Not (decision 14): load() threw → the page is held half-loaded, so the game opens again from its start; no load()
+   * any more → the page already plays from its start. Either way the line at the top, with ✦ (load's error and the
+   * console's lines go with it).
+   */
+  function checkpointLoaded(m                                                          ) {
+    const from = cpPlayed;
+    if (!playing || !from) return;
+    if (m.ok) {
+      momentBar.flash(t('checkpoint.from', { name: from.name }), 'flag');
+      return;
+    }
+    const error = m.error ?? (m.why === 'none' ? 'the game has no codeMoment() load() any more' : 'the editor sent no moment');
+    cpFailed = { id: from.id, name: from.name, error, logs: m.logs ?? [] };
+    cpPlayed = null;
+    if (m.why === 'threw') loadGame();
+    const f = cpFailed;
+    cpNote.show({ ask: host.offline ? undefined : () => {
+      cpNote.hide();
+      cpAskSoon = { intent: 'moment-load', checkpoint: { id: f.id, name: f.name, error: f.error, ...(f.logs.length ? { logs: f.logs } : {}) } };
+      // The field is the paused moment's: pause for it (momentStart puts the draft in).
+      if (playPaused && moment) {
+        const a = cpAskSoon;
+        cpAskSoon = null;
+        checkpointDraft(a.intent, a.checkpoint);
+      } else if (playAskOn) postGame({ type: 'studio:play/pause', on: true });
+      else pauseSoon = true;
+    } });
+    renderAll();
+  }
+  /** A row's ⋯ in ▶ Play ⌄: Rename, Delete. */
+  function checkpointMore(c                , at         ) {
+    ctxMenu.show([
+      { id: 'checkpoint-rename', label: t('checkpoint.rename'), run: () => checkpointRename(c) },
+      { id: 'checkpoint-delete', label: t('checkpoint.delete'), danger: true, run: () => void checkpointDelete(c) },
+    ], at.right, at.bottom + 4, { place: 'checkpoint', label: t('checkpoint.more', { name: c.name }) });
+  }
+  /** Where the rename field hangs: under ▶ Play ⌄ (a phone has it in ⌘K only: under the top bar's right end). */
+  const playMenuAnchor = ()              => (playMoreBtn.offsetParent ? playMoreBtn : topActions);
+  function checkpointRename(c                ) {
+    cpPop.name(playMenuAnchor(), { name: c.name, label: t('checkpoint.renameLabel'), button: t('checkpoint.renameKeep'), keep: async (name) => {
+      if (name === c.name) return null;
+      const r = await host.checkpoints .rename(c.id, name);
+      if (!r.ok) return t('checkpoint.keepFailed', { error: r.error ?? '?' });
+      if (cpPlayed?.id === c.id) cpPlayed = { id: r.id ?? c.id, name };
+      showToast(t('checkpoint.renamed', { name }), 3500);
+      await refreshCheckpoints();
+      return null;
+    } });
+  }
+  /** Delete: at once (one press), with Undo on its toast for a while (the whole file is kept until then). */
+  async function checkpointDelete(c                ) {
+    const cps = host.checkpoints ;
+    const whole = await cps.get(c.id);
+    const r = await cps.remove(c.id);
+    await refreshCheckpoints();
+    if (!r.ok) return void showToast(t('checkpoint.keepFailed', { error: r.error ?? '?' }), 5000);
+    showToast(t('checkpoint.deleted', { name: c.name }), 6000, whole ? [{ label: t('btn.undo'), run: () => void cps.add({ name: whole.name, level: whole.level, time: whole.time, moment: whole.moment,
+      ...(whole.shot ? { shot: whole.shot } : {}) }).then(() => refreshCheckpoints()) }] : undefined);
   }
   /** The field's words while paused: the same "play" request as before, `paused`; the first one carries the moment. */
   async function momentRequest(text        , keys          )                   {
@@ -36442,9 +37151,11 @@ function start(host            ) {
     const ok = await askAi({ kind: 'play', text, paused: true, ...(first && momentAsk ? momentAsk : {}), ...(momentChat ? { chat: momentChat } : {}),
       ...(history.length ? { history } : {}), ...(keys.length ? { objects: requestObjects(keys) } : {}),
       ...(here ? { made: true, here: { key: here.key, label: here.label, at: here.at, to: here.to, time: here.time } } : {}),
-      ...(momentValuesAsk ? { intent: 'moment-values'          } : {}) });
+      ...(momentValuesAsk ? { intent: 'moment-values'          } : {}),
+      ...(cpAsk ? { intent: cpAsk.intent, ...(cpAsk.checkpoint ? { checkpoint: cpAsk.checkpoint } : {}) } : {}) });
     if (!ok) return false;
     momentValuesAsk = false;
+    cpAsk = null;
     if (first && pending?.id) momentChat = pending.id;
     if (pending?.id) {
       momentAsks.add(pending.id);
@@ -36476,8 +37187,11 @@ function start(host            ) {
   function sendPlayLine(force = false) {
     if (!playing || host.offline) return;
     const mine = !!pending && pending.sent >= playSince;
-    const v = mine ? playLine({ phase: currentPhase(), status: aiStatus, asked: pending?.text,
+    let v = mine ? playLine({ phase: currentPhase(), status: aiStatus, asked: pending?.text,
       codeChanged: code === undefined || loadedCode === undefined ? undefined : code !== loadedCode, agent: aiAgent, t }) : null;
+    // Beside Reload over the game (stage 3): "⚑ From Before the boss" — the fixed game opened at the checkpoint.
+    const rc = v?.reload ? reloadCheckpoint(checkpointList, cpLevel(), cpPlayed?.id ?? null) : null;
+    if (v && rc) v = { ...v, from: t('checkpoint.fromReload', { name: rc.name }) };
     const sig = JSON.stringify(v);
     if (!force && sig === playSig) return;
     playSig = sig;
@@ -36859,6 +37573,11 @@ function start(host            ) {
       // Ask while playing (§3.5): the game page can take a request; say whether an AI can get one (never offline).
       // The web demo too since pause-edit (decision 12): the pause and the moment need no AI (play/on `ai: false`).
       case 'studio:play/hello':
+        // A page opened from a checkpoint (stage 3): its moment, for load(m) before its first frame (bridge/moment-load.ts).
+        if (playing && cpOpening) {
+          postGame({ type: 'studio:moment/load', moment: cpOpening.moment, name: cpOpening.name, time: cpOpening.time, scene: worldItems.map((i) => i.key) });
+          cpOpening = null;
+        }
         if (playing) {
           playAskOn = true;
           playMark = !phone();
@@ -36915,13 +37634,29 @@ function start(host            ) {
       case 'studio:moment/values':
         momentValuesHeard(m);
         break;
+      case 'studio:moment/saved': {
+        const w = cpSaveWaits.get(m.n);
+        if (w) {
+          cpSaveWaits.delete(m.n);
+          w(m);
+        }
+        break;
+      }
+      case 'studio:moment/loaded':
+        checkpointLoaded(m);
+        break;
       case 'studio:play/answer':
         if (playing && !host.offline) void answerAi(m.text).then((ok) => postGame({ type: 'studio:play/sent', ok }));
         break;
-      case 'studio:play/reload':
-        // The person chose to see the fix: the game opens again from its new code, still in Play.
-        if (playing) loadGame();
+      case 'studio:play/reload': {
+        // The person chose to see the fix: the game opens again from its new code, still in Play. `from` (stage 3): the
+        // line's "⚑ From Before the boss" — from that checkpoint.
+        if (!playing) break;
+        const rc = m.from ? reloadCheckpoint(checkpointList, cpLevel(), cpPlayed?.id ?? null) : null;
+        if (rc) void playCheckpoint(rc);
+        else loadGame();
         break;
+      }
       case 'studio:core/levels': {
         // Levels (2026-10-22): the game said its levels. The first time (a file without levels), the opened file's
         // world part is the level on screen's. A page that built another level than the one restored (it ignored
@@ -37677,6 +38412,20 @@ function start(host            ) {
   let momentSetN = 0;
   const momentSetWaits = new Map                                                                  ();
   let momentAskWaits                                           = [];
+  // Checkpoints (pause-edit stage 3, 2026-10-28; checkpoints.ts): the host's list (every level's), whether this moment's
+  // game has save() / load() (moment/values `checkpoint`), the one being opened (sent at the new page's hello), the one
+  // this Play opened from, the one that did not open (the line at the top), ✦'s draft in the field / waiting for the
+  // pause it asks for, and ⚑'s save() waiting for the game page.
+  let checkpointList                   = [];
+  let momentCanCheckpoint = false;
+  let cpOpening                                                                     = null;
+  let cpPlayed                                      = null;
+  let cpFailed                                                                      = null;
+                                                                                                                                        
+  let cpAsk               = null;
+  let cpAskSoon               = null;
+  let cpSaveN = 0;
+  const cpSaveWaits = new Map                                                                                        ();
   let playHeard                    = null;
   /** Just for this moment: the game moves it or made it (null = placed, or no moment). */
   const momentOf = (k        )                    => (moment ? momentWhy.get(k) ?? null : null);
@@ -38075,6 +38824,8 @@ function start(host            ) {
     if (playing) u.searchParams.delete(k);
     else u.searchParams.set(k, v);
     if (gameOrigin !== location.origin) u.searchParams.set(LOCAL_PATHS.parentParam, location.origin);
+    // A Play page opened from a checkpoint (stage 3): it holds its first frame for the moment (bridge/moment-load.ts).
+    if (playing && cpOpening) u.searchParams.set(LOCAL_PATHS.momentParam, '1');
     // A game with levels opens on the level shown (edit and Play alike; bridge/levels.ts reads these).
     if (levels.active && levels.current) {
       u.searchParams.set(LOCAL_PATHS.levelParam, levels.current);
@@ -38086,6 +38837,9 @@ function start(host            ) {
   function loadGame(soft = false) {
     playHere = false;
     playFrom = null;
+    // Checkpoints (stage 3): this page opens from one (cpOpening, sent at its hello), or from the start (none).
+    if (!playing) cpOpening = null;
+    cpPlayed = playing && cpOpening ? { id: cpOpening.id, name: cpOpening.name } : null;
     bridgeAlive = false;
     timeline.reset();
     // A new game page asks again (play/hello), and starts unpaused (and at 1×: a new page's clock).
@@ -39284,6 +40038,8 @@ function start(host            ) {
       }, () => undefined);
       loadGame();
       void pollStatus();
+      // ▶ Play ⌄'s "⚑ Play from …" rows (pause-edit stage 3).
+      void refreshCheckpoints();
       // The AI's hands (ai-hands.ts): jobs from `studio.mjs --do` from now on (they wait for the game to be listed).
       host.hands?.((job) => aiHands.run(job));
     } catch (e) {
@@ -39294,7 +40050,7 @@ function start(host            ) {
 
 __def(__exports, "start", () => start);
 };
-__defs[93] = function (__exports) {
+__defs[94] = function (__exports) {
 'use strict';
 // host-local.ts
 
@@ -39348,6 +40104,21 @@ function createKumoHost(base        )           {
   };
 }
 
+/**
+ * Checkpoints (pause-edit stage 3, 2026-10-28; src/server/checkpoints.mjs): `.studio/checkpoints/` through the server.
+ * A failure is an answer ({ ok: false, error }), never a throw: ⚑ and ▶ Play ⌄ say it in one line.
+ */
+function createCheckpointHost(call                                                                                 )                 {
+  const err = (e         ) => ({ ok: false, error: (e         ).message });
+  return {
+    list: () => call                                                     ('GET', 'checkpoints').catch(() => ({ checkpoints: [], broken: [] })),
+    get: (id) => call                              ('GET', `checkpoints/${encodeURIComponent(id)}`).then((r) => r.value ?? null, () => null),
+    add: (c) => call                              ('POST', 'checkpoints', JSON.stringify(c), 'application/json').then((r) => ({ ok: true, id: r.id, path: r.path }), err),
+    rename: (id, name) => call                ('PATCH', `checkpoints/${encodeURIComponent(id)}`, JSON.stringify({ name }), 'application/json').then((r) => ({ ok: true, id: r.id }), err),
+    remove: (id) => call('DELETE', `checkpoints/${encodeURIComponent(id)}`).then(() => ({ ok: true }), err),
+  };
+}
+
 function createLocalHost(base         = LOCAL_PATHS.api)             {
   const call = async    (method        , path        , body           , type         , keepalive = false)             => {
     const headers                         = {};
@@ -39363,6 +40134,7 @@ function createLocalHost(base         = LOCAL_PATHS.api)             {
 
   return {
     kumo: createKumoHost(base),
+    checkpoints: createCheckpointHost(call),
     async open() {
       const r = await call                                                     ('GET', 'open');
       return { gameUrl: r.gameUrl, origin: r.origin, title: r.title };
@@ -39494,19 +40266,19 @@ function createLocalHost(base         = LOCAL_PATHS.api)             {
 
 __def(__exports, "createLocalHost", () => createLocalHost);
 };
-__defs[94] = function (__exports) {
+__defs[95] = function (__exports) {
 'use strict';
 // local.ts
 
 // Entry of studio-shell.js: the shell page served by the local server
 // (skills/arrange/bin/studio.mjs), talking to it through createLocalHost().
 // The browser-only web demo has its own entry (src/hosts/browser/main.ts).
-const { start } = __require(92);
-const { createLocalHost } = __require(93);
+const { start } = __require(93);
+const { createLocalHost } = __require(94);
 
 start(createLocalHost());
 
 
 };
-__require(94);
+__require(95);
 })();

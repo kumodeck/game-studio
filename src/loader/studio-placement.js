@@ -95,6 +95,7 @@
 // This moment's values (pause-edit stage 2, 2026-10-28): codeMoment({ values: { score: { name, get, set, unit, min, max,
 // step, round } } }) — the score, the time left, the health shown and changed in a paused moment; and (pause-light,
 // 2026-10-28) codeMoment({ draw }) — the game's picture drawn once without its update. See "This moment's values".
+// Stage 3 (the same day): codeMoment({ save, load }) — a paused moment kept as a checkpoint and the game opened there.
 
 const KEY_CHARS = /[^A-Za-z0-9_:#.\-\/]/g;
 const cleanName = (s) => (typeof s === 'string' && s ? s.replace(KEY_CHARS, '_').slice(0, 80) : '');
@@ -1807,11 +1808,33 @@ export function codeTheme(def) {
 // composer), but a hand-made post-processing, two composers or a HUD scene drawn after the world are the game's own
 // knowledge. Its camera is the game's (the editor stands it where the edit view is for that one draw).
 //
-// Nothing here calls get(), set() or draw(): only the editor does, while it shows a paused moment
+// Nothing here calls get(), set(), draw(), save() or load(): only the editor does, while it shows a paused moment
 // (src/bridge/moment-values.ts, src/adapters/three/adapter.js paintMoment; a get() or a draw() that throws stops
 // nothing). Outside the editor this only keeps the list (globalThis[Symbol.for('game-studio.moment')], one per page,
 // shared with the editor's copy of this file); called again, a value with the same id is replaced (a new round), the
-// others stay, and a new `draw` replaces the old (`draw: null` takes it away). Stage 3 adds save / load to the same object.
+// others stay, and a new `draw` replaces the old (`draw: null` takes it away).
+//
+// Checkpoints (pause-edit stage 3, 2026-10-28; CONTRACT.md §1.14 "Checkpoints"): the same call takes save / load —
+//
+//   codeMoment({ values: { … },
+//     save: () => ({ v: 1, seed, score, timeLeft, ship: { x: ship.x }, foes: foes.map((f) => f.save()) }),
+//     load: (m) => startFrom(m),
+//   });
+//
+//   save()   this moment of the game as plain data (JSON: numbers, words, lists, objects — no class instances, no
+//            functions), everything the next frame needs to go on exactly from here: the random seed, each enemy's
+//            state, the game's own clocks as "seconds left / seconds since", not performance.now() timestamps
+//   load(m)  put a saved moment back: called by the editor once the game has built its world and asked for its first
+//            frame, BEFORE that frame runs — so the game's first picture is the checkpoint's. Placed things (the
+//            scene's layout) are not in it: the editor puts them where the scene has them now
+//
+// Why the person wants it (2026-10-28: "pause in the middle of a scene and give instructions"): pause just
+// before the boss, keep it as a checkpoint (⚑ in the editor's top bar), change the code or the layout, and next time
+// ▶ Play ⌄ "⚑ Play from Before the boss" opens there instead of playing 40 s to get back. The editor keeps checkpoints
+// in its own folder (.studio/checkpoints/, the plan's Q2 answered (a) on 2026-10-28): a published game has the hooks and
+// nothing else — outside the editor nothing calls them. Both or neither: a game with save but no load (or the other way)
+// cannot start from the middle, and the editor says so (the ⚑ line). A later call that gives them replaces them; a call
+// with values only leaves them as they are.
 const MOMENT = Symbol.for('game-studio.moment');
 // Ids as the AI names them in code (score, timeLeft, hp-max): letters first, then letters, digits, _ and -.
 const MOMENT_ID = /^[A-Za-z][A-Za-z0-9_-]{0,39}$/;
@@ -1840,6 +1863,13 @@ export function codeMoment(def) {
     if (isNum(v.step) && v.step > 0) e.step = v.step;
     if (isNum(v.round) && v.round >= 0 && v.round <= 6) e.round = Math.round(v.round);
     g.values.set(id, e);
+  }
+  // Checkpoints (stage 3): kept as given, called only by the editor (src/bridge/moment-load.ts).
+  if (def && typeof def === 'object') {
+    if (typeof def.save === 'function') g.save = def.save;
+    else if (def.save !== undefined) warnOnce('codeMoment: save must be a function that returns this moment as plain data');
+    if (typeof def.load === 'function') g.load = def.load;
+    else if (def.load !== undefined) warnOnce('codeMoment: load must be a function that takes a saved moment');
   }
 }
 

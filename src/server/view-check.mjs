@@ -264,7 +264,7 @@ function viewCheckMarkdown(ok, pct, cmp, rect) {
 }
 
 /** Files of the game folder, exactly as they are on disk: no edit script, no adapter. Loopback only. */
-async function startPlainServer(rootReal) {
+export async function startPlainServer(rootReal) {
   const server = http.createServer(async (req, res) => {
     try {
       const u = new URL(req.url, 'http://127.0.0.1');
@@ -290,7 +290,7 @@ async function startPlainServer(rootReal) {
   };
 }
 
-const pause = (ms) => new Promise((r) => setTimeout(r, ms));
+export const pause = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /** A headless-capable Chrome / Chromium binary, or null. STUDIO_CHROME wins. */
 export function findHeadlessChrome() {
@@ -321,7 +321,7 @@ export function findHeadlessChrome() {
  * tabs are never involved). Minimal Chrome DevTools Protocol over Node's built-in WebSocket; the
  * same approach as test/adapters-2d/cdp.mjs, trimmed to what the view check needs.
  */
-async function launchHeadless(bin) {
+export async function launchHeadless(bin) {
   const profile = mkdtempSync(path.join(os.tmpdir(), 'studio-view-check-'));
   const proc = spawn(bin, [
     '--headless=new', '--remote-debugging-port=0', `--user-data-dir=${profile}`,
@@ -390,7 +390,7 @@ async function launchHeadless(bin) {
   };
 }
 
-async function openTab(browser, width, height) {
+export async function openTab(browser, width, height) {
   const { targetId } = await browser.send('Target.createTarget', { url: 'about:blank' });
   const { sessionId } = await browser.send('Target.attachToTarget', { targetId, flatten: true });
   const send = (m, p) => browser.send(m, p, sessionId);
@@ -410,6 +410,8 @@ async function openTab(browser, width, height) {
       await send('Page.navigate', { url });
       await Promise.race([loaded, pause(30000)]);
     },
+    /** A script that runs in every new document of this tab before the page's own (moment-check.mjs). */
+    beforePage: (source) => send('Page.addScriptToEvaluateOnNewDocument', { source }),
     async eval(expr) {
       const r = await send('Runtime.evaluate', { expression: expr, awaitPromise: true, returnByValue: true });
       if (r.exceptionDetails) throw new Error(r.exceptionDetails.exception?.description || r.exceptionDetails.text);

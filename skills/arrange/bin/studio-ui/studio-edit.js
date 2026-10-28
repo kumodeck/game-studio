@@ -1,4 +1,4 @@
-/* KUMODeck Game Studio 0.1.72 — MIT License — built file, edit src/ instead */
+/* KUMODeck Game Studio 0.1.73 — MIT License — built file, edit src/ instead */
 (() => {
 const __defs = [];
 const __cache = [];
@@ -5298,6 +5298,19 @@ const MSG_PREFIX = 'studio:';
      
                                                                     
      
+                                                                                                                        
+                                                                                        
+     
+                                             
+     
+                                                                                                                         
+                                                                                                                     
+                                                                                                                 
+                                                                                                                        
+                                  
+     
+                                                                                                  
+     
                                                                                                                   
                                                                                    
      
@@ -5320,6 +5333,11 @@ const MSG_PREFIX = 'studio:';
                 
                      
                    
+     
+                                                                                                                          
+                                                                                                 
+     
+                
  
 
 /** One line of the game's console the bridge kept for a play request (§3.5). */
@@ -5560,13 +5578,30 @@ const MSG_PREFIX = 'studio:';
                                                                            
                                                                                
                                                 
-                                                                                         
-                                  
+     
+                                                                                                                      
+                                                                                                                 
+     
+                                                  
      
                                                                                                                           
                                                                                                                            
      
-                                                                                                                                              
+                                                                                                                                            
+                                                                                                                     
+                          
+     
+                                                                                                                     
+                                                                                                                          
+     
+                                                                                                             
+     
+                                                                                                                       
+                                                                                                                  
+                                                                                                                     
+                                                                                     
+     
+                                                                                                                     
 
 /**
  * One of this moment's values (pause-edit stage 2, 2026-10-28; §1.14; the loader's codeMoment, read by
@@ -5788,6 +5823,12 @@ function isStudioMessage(x         )                     {
      
                  
                                                                             
+     
+                                                                                                                      
+                                                                                                                      
+                                   
+     
+                                                                                
  
 
 /**
@@ -5796,9 +5837,13 @@ function isStudioMessage(x         )                     {
  * into the rule's own numbers (a knob in the game's words: "From the road"), names it in `drag`, and sends `place.code
  * --fold <way>`; the offset row becomes that knob on the card.
  */
-                                                                                          
+                                                                                                                          
 // 'moment-values' (pause-edit stage 2, 2026-10-28; §1.14): a "play" + `paused` request from the moment's ✦ Have {ai} make
 // this moment editable — the game has no codeMoment() yet; the AI names its numbers (score, time left, health) once.
+// 'moment-save' (stage 3): ⚑'s ✦ Have {ai} let the game start from here — the game has no save() / load() yet (or its
+// save() failed: `checkpoint.error`); the AI writes them (SKILL.md "Checkpoints").
+// 'moment-load' (stage 3): the line's ✦ when a checkpoint would not open — `checkpoint` names it, with load()'s error and
+// the console's lines; the AI makes load() read it again (an old checkpoint must keep opening).
 /** A rule layout named in an ask (StudioRequestInput.places): its id and name, its knobs now, its keep-out areas. */
                                
              
@@ -5987,6 +6032,60 @@ function isStudioMessage(x         )                     {
                                                               
      
                            
+     
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+     
+                                        
+ 
+
+/** The longest saved moment kept (JSON characters): a game's state, not its assets — 1 MB is far past any we know. */
+const CHECKPOINT_MAX_CHARS = 1_000_000;
+
+/**
+ * A checkpoint file (`.studio/checkpoints/<id>.json`; pause-edit stage 3). `moment` is what the game's save() returned
+ * (the game's own data, read back only by its load()); the rest is the editor's.
+ */
+                             
+                                                          
+             
+                                                                                     
+               
+                                     
+             
+                                                                                                                    
+                       
+                                                                                
+               
+                       
+                  
+                                                                                
+                
+ 
+
+/** A checkpoint as ▶ Play ⌄ lists it: its file id and the file without the moment. */
+                                 
+             
+               
+             
+                       
+               
+ 
+
+                                 
+                                                                                                                             
+                                                                       
+                                              
+                                              
+     
+                                                                                                                       
+                                                      
+     
+                                                                                                                   
+                                                                                        
+                                                                                          
+                                                               
  
 
 /** The person's KUMODeck sign-in as the editor sees it (never a key). */
@@ -6908,12 +7007,19 @@ const LOCAL_PATHS = {
    */
   levelParam: 'studioLevel',
   buildParam: 'studioBuild',
+  /**
+   * Checkpoints (pause-edit stage 3, 2026-10-28): a ▶ Play page opened from a checkpoint (`studioMoment=1`). The page
+   * holds the game's first frame until the editor sends the moment (`studio:moment/load`) and the game's load(m) ran
+   * (bridge/moment-load.ts).
+   */
+  momentParam: 'studioMoment',
 }         ;
 
 __def(__exports, "CONTRACT_VERSION", () => CONTRACT_VERSION);
 __def(__exports, "TOOL_ID_RE", () => TOOL_ID_RE);
 __def(__exports, "MSG_PREFIX", () => MSG_PREFIX);
 __def(__exports, "isStudioMessage", () => isStudioMessage);
+__def(__exports, "CHECKPOINT_MAX_CHARS", () => CHECKPOINT_MAX_CHARS);
 __def(__exports, "RESULT_FILES", () => RESULT_FILES);
 __def(__exports, "LIMITS", () => LIMITS);
 __def(__exports, "KEY_RE", () => KEY_RE);
@@ -8346,6 +8452,7 @@ __defs[20] = function (__exports) {
 // This moment's values (pause-edit stage 2, 2026-10-28): codeMoment({ values: { score: { name, get, set, unit, min, max,
 // step, round } } }) — the score, the time left, the health shown and changed in a paused moment; and (pause-light,
 // 2026-10-28) codeMoment({ draw }) — the game's picture drawn once without its update. See "This moment's values".
+// Stage 3 (the same day): codeMoment({ save, load }) — a paused moment kept as a checkpoint and the game opened there.
 
 const KEY_CHARS = /[^A-Za-z0-9_:#.\-\/]/g;
 const cleanName = (s) => (typeof s === 'string' && s ? s.replace(KEY_CHARS, '_').slice(0, 80) : '');
@@ -10058,11 +10165,33 @@ function codeTheme(def) {
 // composer), but a hand-made post-processing, two composers or a HUD scene drawn after the world are the game's own
 // knowledge. Its camera is the game's (the editor stands it where the edit view is for that one draw).
 //
-// Nothing here calls get(), set() or draw(): only the editor does, while it shows a paused moment
+// Nothing here calls get(), set(), draw(), save() or load(): only the editor does, while it shows a paused moment
 // (src/bridge/moment-values.ts, src/adapters/three/adapter.js paintMoment; a get() or a draw() that throws stops
 // nothing). Outside the editor this only keeps the list (globalThis[Symbol.for('game-studio.moment')], one per page,
 // shared with the editor's copy of this file); called again, a value with the same id is replaced (a new round), the
-// others stay, and a new `draw` replaces the old (`draw: null` takes it away). Stage 3 adds save / load to the same object.
+// others stay, and a new `draw` replaces the old (`draw: null` takes it away).
+//
+// Checkpoints (pause-edit stage 3, 2026-10-28; CONTRACT.md §1.14 "Checkpoints"): the same call takes save / load —
+//
+//   codeMoment({ values: { … },
+//     save: () => ({ v: 1, seed, score, timeLeft, ship: { x: ship.x }, foes: foes.map((f) => f.save()) }),
+//     load: (m) => startFrom(m),
+//   });
+//
+//   save()   this moment of the game as plain data (JSON: numbers, words, lists, objects — no class instances, no
+//            functions), everything the next frame needs to go on exactly from here: the random seed, each enemy's
+//            state, the game's own clocks as "seconds left / seconds since", not performance.now() timestamps
+//   load(m)  put a saved moment back: called by the editor once the game has built its world and asked for its first
+//            frame, BEFORE that frame runs — so the game's first picture is the checkpoint's. Placed things (the
+//            scene's layout) are not in it: the editor puts them where the scene has them now
+//
+// Why the person wants it (2026-10-28: "pause in the middle of a scene and give instructions"): pause just
+// before the boss, keep it as a checkpoint (⚑ in the editor's top bar), change the code or the layout, and next time
+// ▶ Play ⌄ "⚑ Play from Before the boss" opens there instead of playing 40 s to get back. The editor keeps checkpoints
+// in its own folder (.studio/checkpoints/, the plan's Q2 answered (a) on 2026-10-28): a published game has the hooks and
+// nothing else — outside the editor nothing calls them. Both or neither: a game with save but no load (or the other way)
+// cannot start from the middle, and the editor says so (the ⚑ line). A later call that gives them replaces them; a call
+// with values only leaves them as they are.
 const MOMENT = Symbol.for('game-studio.moment');
 // Ids as the AI names them in code (score, timeLeft, hp-max): letters first, then letters, digits, _ and -.
 const MOMENT_ID = /^[A-Za-z][A-Za-z0-9_-]{0,39}$/;
@@ -10091,6 +10220,13 @@ function codeMoment(def) {
     if (isNum(v.step) && v.step > 0) e.step = v.step;
     if (isNum(v.round) && v.round >= 0 && v.round <= 6) e.round = Math.round(v.round);
     g.values.set(id, e);
+  }
+  // Checkpoints (stage 3): kept as given, called only by the editor (src/bridge/moment-load.ts).
+  if (def && typeof def === 'object') {
+    if (typeof def.save === 'function') g.save = def.save;
+    else if (def.save !== undefined) warnOnce('codeMoment: save must be a function that returns this moment as plain data');
+    if (typeof def.load === 'function') g.load = def.load;
+    else if (def.load !== undefined) warnOnce('codeMoment: load must be a function that takes a saved moment');
   }
 }
 
@@ -24542,6 +24678,8 @@ const PATHS                         = {
   trash: 'M3.5 5.5h13|M8 5.5V4.25a.75.75 0 0 1 .75-.75h2.5a.75.75 0 0 1 .75.75V5.5|M5.5 5.5l.75 10.1a1 1 0 0 0 1 .9h5.5a1 1 0 0 0 1-.9l.75-10.1|M8.5 8.5v5|M11.5 8.5v5',
   chevronUp: 'M5.5 12.5 10 8l4.5 4.5',
   chevronDown: 'M5.5 7.5 10 12l4.5-4.5',
+  // ⚑ a checkpoint (pause-edit stage 3): a pole and a flag waving off it, the flag filled-looking by its closed shape.
+  flag: 'M5.5 17V3.5|M5.5 4.25c1.6-.8 3.2-.8 4.75 0s3.15.8 4.75 0v6.5c-1.6.8-3.2.8-4.75 0s-3.15-.8-4.75 0',
   // ▶| Next frame (pause-edit, 2026-10-28): Play's triangle and a bar after it, as on a video player's step button.
   stepFrame: 'M4.5 5.6v8.8a.8.8 0 0 0 1.22.68l6.6-4.4a.8.8 0 0 0 0-1.36l-6.6-4.4A.8.8 0 0 0 4.5 5.6z|M14.25 5h1.5a.75.75 0 0 1 .75.75v8.5a.75.75 0 0 1-.75.75h-1.5a.75.75 0 0 1-.75-.75v-8.5a.75.75 0 0 1 .75-.75z',
   chevronLeft: 'M12 5l-5 5 5 5',
@@ -24966,6 +25104,12 @@ function poseWords(p      , dim             )         {
                                                                                                                      
                                                 
                               
+     
+                                                                                                                       
+                                                                                                                        
+                                                                                                                       
+     
+                                    
  
 
 /**
@@ -24980,6 +25124,8 @@ function createMomentKinds(startList              , firstFrame                  
   let moving = new Set        ();
   let atPause                           = null;
   let why = new Map                    ();
+  // madeBefore(): the scene's keys on a page opened from a checkpoint (null = a Play from the start: not needed).
+  let scene                     = null;
   // Which Play this is (▶ Play in the same page starts these again, restart()); a look still going from an earlier one stops.
   let run = 0;
   const findStart = (a                   ) => {
@@ -25011,6 +25157,7 @@ function createMomentKinds(startList              , firstFrame                  
       moving = new Set();
       atPause = null;
       why = new Map();
+      scene = null;
       findStart(a);
     },
     pause(list, dim) {
@@ -25018,10 +25165,15 @@ function createMomentKinds(startList              , firstFrame                  
       if (!start) start = new Map(atPause);
       why = new Map();
       for (const i of list) {
-        const w = momentWhy(i.key, i.pose, start, mine, moving, dim);
+        let w = momentWhy(i.key, i.pose, start, mine, moving, dim);
+        // Opened from a checkpoint: the game made what the scene does not have, wherever it stood at this page's start.
+        if (scene && w !== 'motion' && !scene.has(i.key) && !mine.has(i.key)) w = 'new';
         if (w) why.set(i.key, w);
       }
       return Object.fromEntries(why);
+    },
+    madeBefore(keys) {
+      scene = keys.length ? new Set(keys) : null;
     },
     resumed(list, dim) {
       if (atPause) {
@@ -25174,6 +25326,11 @@ const { nativeSetTimeout, nativeClearTimeout } = __require(0);
                                                                                                                          
      
                     
+     
+                                                                                                                         
+                                                                                     
+     
+                       
  
 
 /** What play-switch.ts needs of this module in an edit page. */
@@ -25191,6 +25348,12 @@ const { nativeSetTimeout, nativeClearTimeout } = __require(0);
                 
                                                                                                             
                                   
+     
+                                                                                                                        
+                                                                                                                         
+                                                                                     
+     
+                                                    
  
 
 // ---------------------------------------------------------------------------
@@ -25535,8 +25698,10 @@ function startPlayAsk(o                )                {
   // Reload) starts at 0:00.
   let t0 = 0;
   let before = 0;
+  // A page opened from a checkpoint (stage 3, startFrom): its first frame is the checkpoint's second, not 0:00.
+  let from = 0;
   if (hold && !o.standby) void firstFrame().then(() => {
-    t0 = hold.now();
+    t0 = hold.now() - from * 1000;
     tellTime();
   });
   const playSeconds = () => (hold ? Math.max(0, (hold.now() - t0) / 1000) : 0);
@@ -25754,7 +25919,7 @@ function startPlayAsk(o                )                {
   // ----- the paused moment (play-pause.ts holds the game; play-move.ts wakes the editor over it) -----
   let pausing = false;
   async function pauseNow() {
-    if (!hold || hold.paused || pausing) return;
+    if (!hold || hold.paused || pausing || o.busy?.()) return;
     pausing = true;
     try {
       // Words already typed in the ✦ field go to the editor page's field (the person was about to ask; now they can).
@@ -26011,6 +26176,15 @@ function startPlayAsk(o                )                {
       b.title = w('reloadTip');
       b.addEventListener('click', () => post({ type: 'studio:play/reload' }));
       acts.append(b);
+      // "⚑ From Before the boss" (pause-edit stage 3): the fixed game opened at a checkpoint (the editor says which).
+      if (s.from) {
+        const f = el('button', 'b', s.from)                     ;
+        f.type = 'button';
+        f.dataset.action = 'play-reload-from';
+        f.title = s.from;
+        f.addEventListener('click', () => post({ type: 'studio:play/reload', from: true }));
+        acts.append(f);
+      }
     }
     if (s.state === 'fixed' || s.state === 'failed' || s.state === 'kept') {
       // "Keep playing": the line goes; the fix waits for Reload (or for the next time the game opens).
@@ -26155,6 +26329,11 @@ function startPlayAsk(o                )                {
     useHost(h) {
       momentHost = h;
     },
+    startFrom(seconds, scene) {
+      from = Math.max(0, seconds);
+      if (hold) t0 = hold.now() - from * 1000;
+      kinds?.madeBefore(scene);
+    },
   };
 }
 
@@ -26169,6 +26348,297 @@ __def(__exports, "isStepKey", () => isStepKey);
 __def(__exports, "startPlayAsk", () => startPlayAsk);
 };
 __defs[62] = function (__exports) {
+'use strict';
+// moment-load.ts
+
+// Checkpoints in the game page (pause-edit stage 3, 2026-10-28; CONTRACT.md §1.14 "Checkpoints").
+//
+// The request (2026-10-28): "pause in the middle of a scene and give instructions, by hand or to the AI" —
+// and the plan's need 5: to try a fix of the boss, a person played 40 s to get back to the boss every time. Now ⚑ in the
+// paused moment's top bar keeps the moment, and ▶ Play ⌄ "⚑ Play from Before the boss" opens the game there. The editor
+// cannot know what a moment of a game is (the score, each enemy, the random seed live in the game's JS), so the AI
+// writes save() / load() once in the game's code (the loader's codeMoment, SKILL.md "Checkpoints") and this file is
+// the hands in the game page:
+//   - keep: `studio:moment/save` (only while paused) → save() → checked as JSON data (a cycle, a function, a BigInt, a
+//     moment of more than CHECKPOINT_MAX_CHARS is said, never kept half) → `studio:moment/saved`;
+//   - open: a page with ?studioMoment=1 (the editor's ▶ Play from a checkpoint) holds the game's frames from the very
+//     start (core time freeze(), the same hold Edit uses — time.ts itself is not changed), waits for the moment
+//     (`studio:moment/load`, the editor's answer to play/hello) AND for the game to ask for its first frame (it has
+//     built its world and called codeMoment by then), then load(m), then lets the frames go: the game's FIRST picture
+//     is the checkpoint's (decision 14: "before the game draws its first frame"). The game's clock stops from that
+//     first ask until load ran, so the wait is not a long first frame.
+// What does not open, and what is said (decision 14 / the brief's 4): load() throws (or its promise fails) → `threw`
+// with the error and the console's lines while it ran; the page stays held (half a moment is not a game) and the
+// editor opens the game again from the start, with one line "The game changed, so this checkpoint can't open" and ✦.
+// No load() any more (the AI took it out, a game rewritten) → `none`: nothing was loaded, the page simply plays from
+// its start. Placed things are not in a checkpoint: the scene's layout comes from placement.json as on every Play page
+// (the loader before the first frame, play-arrange after it), so a gate moved since the checkpoint stands where the
+// scene has it now.
+                                                                            
+const { CHECKPOINT_MAX_CHARS, LOCAL_PATHS, isStudioMessage } = __require(13);
+const { nativeClearTimeout, nativeNow, nativeSetTimeout } = __require(0);
+
+                                      
+
+/** The game's save() / load() as the loader keeps them (codeMoment), or null when either is missing. */
+function momentHooks(win     )                                                                {
+  const g = (win                                      )[Symbol.for('game-studio.moment')]                                                  ;
+  if (!g || typeof g.save !== 'function' || typeof g.load !== 'function') return null;
+  return { save: g.save                 , load: g.load                            };
+}
+
+/** "Error: x is undefined" → "x is undefined", one line. */
+const why = (err         ) => String((err         )?.message ?? err).split('\n')[0] .slice(0, 200);
+
+/**
+ * What save() returned, as JSON data (pure; test/checkpoint.test.ts). The file keeps JSON, so the moment is checked
+ * here, where the AI's line can say what to fix: a function or undefined at the top (nothing to keep), a cycle or a
+ * BigInt (JSON.stringify throws), more than `max` characters. Inside, JSON's own rules hold (a function in an object is
+ * left out, a Map becomes {}): SKILL.md "Checkpoints" asks for plain data, and load() reads what the file has.
+ */
+function momentData(v         , max = CHECKPOINT_MAX_CHARS)                                                                              {
+  let s                    ;
+  try {
+    s = JSON.stringify(v);
+  } catch (err) {
+    return { ok: false, error: `save() returned something that is not plain data (${why(err)})` };
+  }
+  if (s === undefined) return { ok: false, error: `save() returned ${typeof v === 'function' ? 'a function' : 'nothing'}: return this moment as plain data` };
+  if (s.length > max) return { ok: false, error: `save() returned ${s.length} characters of data (at most ${max}): keep what the next frame needs, not the assets` };
+  return { ok: true, moment: JSON.parse(s), chars: s.length };
+}
+
+/** save() now, checked (the answer of `moment/save`). */
+function saveMoment(win     )                                                                               {
+  const h = momentHooks(win);
+  if (!h) return { ok: false, none: true, error: 'the game has no codeMoment() save() and load() (SKILL.md "Checkpoints")' };
+  let v         ;
+  try {
+    v = h.save();
+  } catch (err) {
+    return { ok: false, error: `save() failed (${why(err)})` };
+  }
+  const d = momentData(v);
+  return d.ok ? { ok: true, moment: d.moment } : d;
+}
+
+                                    
+           
+                       
+                                                                               
+                    
+ 
+
+/** Answer the editor page's `moment/save` (⚑) in this game page. */
+function startMomentSave(o                   )       {
+  const { win } = o;
+  win.addEventListener('message', (ev              ) => {
+    if (ev.source !== win.parent || ev.origin !== o.parentOrigin || !isStudioMessage(ev.data)) return;
+    const m = ev.data                 ;
+    if (m.type !== 'studio:moment/save') return;
+    const r                = !o.paused()
+      ? { type: 'studio:moment/saved', n: m.n, ok: false, error: 'the game is not paused' }
+      : { type: 'studio:moment/saved', n: m.n, ...saveMoment(win) };
+    try {
+      win.parent.postMessage(r, o.parentOrigin);
+    } catch {
+      /* parent gone */
+    }
+  });
+}
+
+/** Is this page opened from a checkpoint? (?studioMoment=1, the editor's ▶ Play from a checkpoint) */
+function fromCheckpoint(href        )          {
+  try {
+    return new URL(href).searchParams.get(LOCAL_PATHS.momentParam) === '1';
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * When to load (pure; test/checkpoint.test.ts), checked every TICK_MS from the page's start:
+ *   'wait'  — not yet;
+ *   'load'  — the moment is here and the game asked for its first frame at least SETTLE_MS ago (a codeMoment written
+ *             after the loop's start in the same script is in by then), or it never asks (a game with no frames of its
+ *             own) and NO_FRAME_MS passed since the page loaded;
+ *   'late'  — no moment from the editor after MOMENT_WAIT_MS (an editor page that went away): play from the start.
+ */
+function holdStep(s                                                                                                  )                           {
+  if (!s.moment) return s.now - s.start >= MOMENT_WAIT_MS ? 'late' : 'wait';
+  if (s.askedAt !== null) return s.now - s.askedAt >= SETTLE_MS ? 'load' : 'wait';
+  return s.loadedAt !== null && s.now - s.loadedAt >= NO_FRAME_MS ? 'load' : 'wait';
+}
+const TICK_MS = 20;
+const SETTLE_MS = 40;
+const NO_FRAME_MS = 3000;
+const MOMENT_WAIT_MS = 8000;
+/** A load(m) that returns a promise (a game that loads a level's files first) gets this long. */
+const LOAD_PROMISE_MS = 10_000;
+
+                                        
+           
+                       
+                                                                        
+                                         
+                                                                                                     
+                                             
+     
+                                                                                                                       
+                                                                              
+     
+                                                 
+ 
+
+                                 
+                                                                                       
+                            
+ 
+
+/** A page opened from a checkpoint: hold, load(m) before the first frame, let go (see the top of this file). */
+function startCheckpointHold(o                       )                 {
+  const { win } = o;
+  const post = (msg               ) => {
+    try {
+      win.parent.postMessage(msg, o.parentOrigin);
+    } catch {
+      /* parent gone */
+    }
+  };
+  let holding = true;
+  let got                                                                = null;
+  let askedAt                = null;
+  let loadedAt                = null;
+  const start = nativeNow();
+  o.time.freeze();
+
+  // The game's first ask for a frame: its world is built and its loop starts (three's setAnimationLoop, Pixi's Ticker,
+  // a hand-made loop all go through requestAnimationFrame, looked up at call time). Wrapped only on this page, only
+  // until load ran; the call goes on to core time's own wrapper, which keeps it until thaw().
+  const raf = win.requestAnimationFrame;
+  const asking = function requestAnimationFrame(               cb                      )         {
+    if (askedAt === null) {
+      askedAt = nativeNow();
+      // From here the game's time waits for load: its first frame steps one frame, not the wait.
+      o.clock?.stop();
+    }
+    return raf.call(win, cb);
+  };
+  win.requestAnimationFrame = asking                                    ;
+  if (win.document.readyState === 'complete') loadedAt = nativeNow();
+  else win.addEventListener('load', () => (loadedAt = nativeNow()), { once: true });
+
+  win.addEventListener('message', (ev              ) => {
+    if (ev.source !== win.parent || ev.origin !== o.parentOrigin || !isStudioMessage(ev.data)) return;
+    const m = ev.data                 ;
+    if (m.type === 'studio:moment/load' && holding && !got) got = m;
+  });
+
+  let timer = 0;
+  const done = (thaw         ) => {
+    holding = false;
+    nativeClearTimeout(timer);
+    if (win.requestAnimationFrame === asking) win.requestAnimationFrame = raf;
+    if (!thaw) return;
+    o.clock?.go();
+    o.time.thaw();
+  };
+
+  async function open() {
+    const h = momentHooks(win);
+    if (!h) {
+      // Nothing loaded: the game as its code starts it, which is "Play from the start" already.
+      done(true);
+      post({ type: 'studio:moment/loaded', ok: false, why: 'none' });
+      return;
+    }
+    const m = got ;
+    const scene = Array.isArray(m.scene) ? m.scene.filter((k)              => typeof k === 'string') : [];
+    o.before(typeof m.time === 'number' && Number.isFinite(m.time) && m.time >= 0 ? m.time : 0, scene);
+    // The console while load runs: what goes with ✦ when it fails (the game's own warnings say what it missed).
+    const logs            = [];
+    const con = win.console                                                                  ;
+    const keep = { error: con.error, warn: con.warn };
+    for (const level of ['error', 'warn']         ) {
+      con[level] = function (...a           ) {
+        if (logs.length < 20) logs.push({ level, text: a.map((x) => (x instanceof Error ? x.message : typeof x === 'string' ? x : safeJson(x))).join(' ').slice(0, 300), ago: 0 });
+        return keep[level].apply(this, a);
+      };
+    }
+    let error                = null;
+    try {
+      const r = h.load(m.moment)                                  ;
+      if (r && typeof r.then === 'function') {
+        let late = 0;
+        try {
+          await Promise.race([r, new Promise((_, no) => (late = nativeSetTimeout(() => no(new Error(`load(m) did not finish in ${LOAD_PROMISE_MS / 1000} s`)), LOAD_PROMISE_MS)))]);
+        } finally {
+          nativeClearTimeout(late);
+        }
+      }
+    } catch (err) {
+      error = why(err);
+      const stack = String((err         )?.stack ?? '').split('\n').slice(1, 4).map((l) => l.trim()).filter(Boolean);
+      logs.push({ level: 'error', text: `load(m) failed: ${error}${stack.length ? ` (${stack.join(' ← ')})` : ''}`.slice(0, 300), ago: 0 });
+    } finally {
+      con.error = keep.error;
+      con.warn = keep.warn;
+    }
+    if (error !== null) {
+      // Held: half a moment is not a game. The editor opens the game again from its start.
+      done(false);
+      post({ type: 'studio:moment/loaded', ok: false, why: 'threw', error, logs });
+      return;
+    }
+    done(true);
+    post({ type: 'studio:moment/loaded', ok: true });
+  }
+
+  const tick = () => {
+    if (!holding) return;
+    const s = holdStep({ now: nativeNow(), start, moment: !!got, askedAt, loadedAt });
+    if (s === 'wait') {
+      timer = nativeSetTimeout(tick, TICK_MS);
+      return;
+    }
+    if (s === 'late') {
+      done(true);
+      post({ type: 'studio:moment/loaded', ok: false, why: 'late' });
+      return;
+    }
+    void open();
+  };
+  timer = nativeSetTimeout(tick, TICK_MS);
+
+  return {
+    get holding() {
+      return holding;
+    },
+  };
+}
+
+function safeJson(x         )         {
+  try {
+    return JSON.stringify(x) ?? String(x);
+  } catch {
+    return String(x);
+  }
+}
+
+__def(__exports, "momentHooks", () => momentHooks);
+__def(__exports, "momentData", () => momentData);
+__def(__exports, "saveMoment", () => saveMoment);
+__def(__exports, "startMomentSave", () => startMomentSave);
+__def(__exports, "fromCheckpoint", () => fromCheckpoint);
+__def(__exports, "holdStep", () => holdStep);
+__def(__exports, "TICK_MS", () => TICK_MS);
+__def(__exports, "SETTLE_MS", () => SETTLE_MS);
+__def(__exports, "NO_FRAME_MS", () => NO_FRAME_MS);
+__def(__exports, "MOMENT_WAIT_MS", () => MOMENT_WAIT_MS);
+__def(__exports, "LOAD_PROMISE_MS", () => LOAD_PROMISE_MS);
+__def(__exports, "startCheckpointHold", () => startCheckpointHold);
+};
+__defs[63] = function (__exports) {
 'use strict';
 // moment-values.ts
 
@@ -26191,6 +26661,7 @@ __defs[62] = function (__exports) {
 // opened for Play alike — the moment's editor may be either (play-move.ts) and `--do list` asks in Edit too.
                                                                                 
 const { isStudioMessage } = __require(13);
+const { momentHooks } = __require(62);
 
 /** One value as the loader keeps it (codeMoment, src/loader/studio-placement.js). */
                  
@@ -26317,11 +26788,12 @@ function startMomentValues(o                     )       {
           console.warn('[studio] the game failed drawing one frame:', err);
         }
       }
-      post({ type: 'studio:moment/values', values: readMoment(win) });
+      // `checkpoint` (stage 3): ⚑ knows at once whether this game can start from the middle.
+      post({ type: 'studio:moment/values', values: readMoment(win), checkpoint: !!momentHooks(win) });
     } else if (m.type === 'studio:moment/set') {
       const n = num(m.n) ? { n: m.n } : {};
       if (!o.paused()) {
-        post({ type: 'studio:moment/values', values: readMoment(win), set: { id: String(m.id), ...n, ok: false, error: 'the game is not paused' } });
+        post({ type: 'studio:moment/values', values: readMoment(win), checkpoint: !!momentHooks(win), set: { id: String(m.id), ...n, ok: false, error: 'the game is not paused' } });
         return;
       }
       const r = setValue(win, String(m.id), m.v);
@@ -26332,7 +26804,7 @@ function startMomentValues(o                     )       {
           console.warn('[studio] the game failed drawing one frame:', err);
         }
       }
-      post({ type: 'studio:moment/values', values: readMoment(win), set: { id: String(m.id), ...n, ...r } });
+      post({ type: 'studio:moment/values', values: readMoment(win), checkpoint: !!momentHooks(win), set: { id: String(m.id), ...n, ...r } });
     }
   });
 }
@@ -26344,7 +26816,7 @@ __def(__exports, "fitValue", () => fitValue);
 __def(__exports, "setValue", () => setValue);
 __def(__exports, "startMomentValues", () => startMomentValues);
 };
-__defs[63] = function (__exports) {
+__defs[64] = function (__exports) {
 'use strict';
 // levels.ts
 
@@ -26399,7 +26871,7 @@ function pickLevel(list         , href        , inFrame         )               
 __def(__exports, "cleanLevels", () => cleanLevels);
 __def(__exports, "pickLevel", () => pickLevel);
 };
-__defs[64] = function (__exports) {
+__defs[65] = function (__exports) {
 'use strict';
 // early-press.ts
 
@@ -26481,7 +26953,7 @@ function watchEarlyTaps(win        )            {
 
 __def(__exports, "watchEarlyTaps", () => watchEarlyTaps);
 };
-__defs[65] = function (__exports) {
+__defs[66] = function (__exports) {
 'use strict';
 // bridge.ts
 
@@ -26501,12 +26973,13 @@ const { findUi: findUiNow, markHudCanvases } = __require(26);
 const { runSelfCheck } = __require(27);
 const { createEditor } = __require(56);
 const { startPlayAsk } = __require(61);
-const { startMomentValues } = __require(62);
+const { startMomentValues } = __require(63);
+const { fromCheckpoint, startCheckpointHold, startMomentSave } = __require(62);
 const { createPlaySwitch } = __require(50);
 const { arrangeInPlay, moveInPlay } = __require(49);
 const { applyPlacement, placementForLevel } = __require(20);
-const { pickLevel } = __require(63);
-const { watchEarlyTaps } = __require(64);
+const { pickLevel } = __require(64);
+const { watchEarlyTaps } = __require(65);
                                                     
 const { nativeSetTimeout } = __require(0);
 
@@ -26797,11 +27270,17 @@ function startBridge(opts               )       {
       }),
       enumerable: false,
     });
+    // Checkpoints (pause-edit stage 3, 2026-10-28; moment-load.ts): a Play page opened from one holds the game's frames
+    // from now — before any game code — until the editor's moment came and the game's load(m) ran before its first frame.
+    const checkpoint                        = !edit && fromCheckpoint(win.location.href)
+      ? startCheckpointHold({ win, parentOrigin, time: core.time, clock: playClock, before: (s, scene) => playAsk?.startFrom(s, scene) })
+      : null;
     // The edit page shows the draft already (the editor's own work): nothing to arrange; Play gives its motions then.
     const arranged = edit ? Promise.resolve([]            ) : showFileEditsInPlay();
     // Pause-move (stage 2): the editor that wakes in a paused game needs the core and the game's rules, and the draft's
     // motions (what the game page moves for the editor) to say "just for this moment" on them.
     playAsk = startPlayAsk({ win, parentOrigin, probes: () => [...gameProbes, ...opts.builtins], standby: edit,
+      ...(checkpoint ? { busy: () => checkpoint.holding } : {}),
       ...(playClock ? { pause: { time: core.time, clock: playClock }, move: { core, rules, arranged } } : {}) });
     // This moment's values (pause-edit stage 2, 2026-10-28; moment-values.ts): the game's codeMoment() read and changed
     // for the editor page — in an edit page and a page opened for Play alike (the moment's editor may be either).
@@ -26809,6 +27288,8 @@ function startBridge(opts               )       {
       if (redrawFn) redrawFn();
       else if (core.time.frozen) core.time.step();
     } });
+    // ⚑ Make this a checkpoint (stage 3): the game's save() in a paused moment.
+    startMomentSave({ win, parentOrigin, paused: () => !!playAsk?.paused });
   }
   if (!edit || !inFrame) return;
   // A tap in the game before the editor is ready is kept for it (early-press.ts): from the very start, before the game's code.
@@ -27006,7 +27487,7 @@ function startBridge(opts               )       {
 __def(__exports, "readEditParams", () => readEditParams);
 __def(__exports, "startBridge", () => startBridge);
 };
-__defs[66] = function (__exports) {
+__defs[67] = function (__exports) {
 'use strict';
 // main.ts
 
@@ -27025,11 +27506,11 @@ __require(0);
 // the three.js adapter: it installs __THREE_DEVTOOLS__ and wraps rAF/render.
 __require(1);
 const { threeProbe } = __require(12);
-const { startBridge } = __require(65);
+const { startBridge } = __require(66);
 
 startBridge({ builtins: [threeProbe] });
 
 
 };
-__require(66);
+__require(67);
 })();

@@ -187,7 +187,14 @@ export async function writeStudioNote(rootReal, name, text) {
 // chat/<id>.json (pause, 2026-10-22): the talk over a paused game, named by its first `play` request (play-chat.mjs).
 // play/<id>.jpg: a "play" request's picture, and since studio-canvas-ui stage 2 (2026-10-24) an "ask" one's (✦ Ask … to
 // make this UI editable: the picture round the place pressed).
-const STUDIO_WRITABLE = /^(generated\.json|requests\/[0-9]{8}-[0-9]{6}-[0-9]{3}-[a-z-]{2,10}-[0-9a-f]{4}\.json|play\/[0-9]{8}-[0-9]{6}-[0-9]{3}-(?:play|ask)-[0-9a-f]{4}\.(?:jpg|png)|chat\/[0-9]{8}-[0-9]{6}-[0-9]{3}-play-[0-9a-f]{4}\.json|status\.json|watch\.json|wake\.json|told\.json|server\.json|open\.json|next-step\.md|check\.md|view-check\.md|view-check\/(?:game|editor)\.png|shot\/game(?:-phone)?\.png|ui\/prefs\.json|data\/[a-z0-9][a-z0-9-]{0,39}\.json)$/;
+const STUDIO_WRITABLE = /^(generated\.json|requests\/[0-9]{8}-[0-9]{6}-[0-9]{3}-[a-z-]{2,10}-[0-9a-f]{4}\.json|play\/[0-9]{8}-[0-9]{6}-[0-9]{3}-(?:play|ask)-[0-9a-f]{4}\.(?:jpg|png)|chat\/[0-9]{8}-[0-9]{6}-[0-9]{3}-play-[0-9a-f]{4}\.json|status\.json|watch\.json|wake\.json|told\.json|server\.json|open\.json|next-step\.md|check\.md|view-check\.md|view-check\/(?:game|editor)\.png|shot\/game(?:-phone)?\.png|shot\/moment-(?:kept|opened)\.png|ui\/prefs\.json|data\/[a-z0-9][a-z0-9-]{0,39}\.json)$/;
+
+// checkpoints/<id>.json (pause-edit stage 3, 2026-10-28; checkpoints.mjs): the paused moments the person kept with ⚑. The
+// id comes from the person's name ("Before the boss" → Before-the-boss; a Japanese name keeps its letters): letters and digits of any
+// language, _ and -, ≤ 60 — never a dot or a slash, so it cannot leave the folder or hide as a dot-file. A separate test
+// (the u flag for any language's letters) from STUDIO_WRITABLE above.
+export const CHECKPOINT_ID = /^[\p{L}\p{N}][\p{L}\p{N}\p{M}_-]{0,59}$/u;
+const isCheckpointRel = (rel) => typeof rel === 'string' && rel.startsWith('checkpoints/') && rel.endsWith('.json') && CHECKPOINT_ID.test(rel.slice(12, -5));
 
 async function ensureRealDir(dir) {
   const check = async () => {
@@ -214,7 +221,7 @@ async function ensureRealDir(dir) {
  * agent, the person's UI preferences (ui/prefs.json), and game tools' data. Folders must be real (no symlinks).
  */
 export async function writeStudioFile(rootReal, rel, text) {
-  if (!STUDIO_WRITABLE.test(rel)) throw httpError(400, 'not a writable studio file');
+  if (!STUDIO_WRITABLE.test(rel) && !isCheckpointRel(rel)) throw httpError(400, 'not a writable studio file');
   let dir = path.join(rootReal, '.studio');
   await ensureRealDir(dir);
   const parts = rel.split('/');
@@ -243,7 +250,8 @@ export async function readStudioFile(rootReal, rel, maxBytes) {
 /** Like readStudioFile, plus when the file was last written (ms): the AI's status (CONTRACT.md §3.4). */
 export async function readStudioFileInfo(rootReal, rel, maxBytes) {
   // chat/<id>.json (pause, 2026-10-22): read back only to add a turn (play-chat.mjs); no route serves it.
-  if (!/^(generated\.json|adapter\.js|tools\.js|studio\.json|status\.json|watch\.json|wake\.json|told\.json|open\.json|ui\/prefs\.json|ui\/studio\.css|ui\/shell\.js|data\/[a-z0-9][a-z0-9-]{0,39}\.json|chat\/[0-9]{8}-[0-9]{6}-[0-9]{3}-play-[0-9a-f]{4}\.json)$/.test(rel)) return null;
+  // checkpoints/<id>.json (pause-edit stage 3): read by its own route (checkpoints.mjs), for the editor page only.
+  if (!isCheckpointRel(rel) && !/^(generated\.json|adapter\.js|tools\.js|studio\.json|status\.json|watch\.json|wake\.json|told\.json|open\.json|ui\/prefs\.json|ui\/studio\.css|ui\/shell\.js|data\/[a-z0-9][a-z0-9-]{0,39}\.json|chat\/[0-9]{8}-[0-9]{6}-[0-9]{3}-play-[0-9a-f]{4}\.json)$/.test(rel)) return null;
   let p = path.join(rootReal, '.studio');
   try {
     for (const part of ['', ...rel.split('/').slice(0, -1)]) {
@@ -256,6 +264,37 @@ export async function readStudioFileInfo(rootReal, rel, maxBytes) {
     return { text: await fs.readFile(target, 'utf8'), mtimeMs: st.mtimeMs };
   } catch {
     return null;
+  }
+}
+
+/**
+ * The plain files of a folder under .studio/ (no symlinks along the way), or [] when it is not there. Only the
+ * checkpoints' folder is listed (pause-edit stage 3: ▶ Play ⌄ lists them).
+ */
+export async function listStudioDir(rootReal, dir) {
+  if (dir !== 'checkpoints') return [];
+  try {
+    for (const p of [path.join(rootReal, '.studio'), path.join(rootReal, '.studio', dir)]) if (!(await fs.lstat(p)).isDirectory()) return [];
+    const out = [];
+    for (const e of await fs.readdir(path.join(rootReal, '.studio', dir), { withFileTypes: true })) if (e.isFile()) out.push(e.name);
+    return out;
+  } catch {
+    return [];
+  }
+}
+
+/** Delete one checkpoint file (a plain file under a real .studio/checkpoints/); false when there was none. */
+export async function removeStudioFile(rootReal, rel) {
+  if (!isCheckpointRel(rel)) throw httpError(400, 'not a removable studio file');
+  try {
+    for (const p of [path.join(rootReal, '.studio'), path.join(rootReal, '.studio', 'checkpoints')]) if (!(await fs.lstat(p)).isDirectory()) return false;
+    const target = path.join(rootReal, '.studio', rel);
+    if (!(await fs.lstat(target)).isFile()) throw httpError(409, `${path.basename(target)} is not a plain file; not removing it`);
+    await fs.rm(target);
+    return true;
+  } catch (e) {
+    if (e.code === 'ENOENT') return false;
+    throw e;
   }
 }
 

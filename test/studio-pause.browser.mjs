@@ -2,7 +2,7 @@
 // browser: the real local server, the built editor, the starters and examples, and the stand-in AI
 // (test/ai-feel/fake-agent.mjs), which answers a paused message in its `done` note.
 //
-//   node test/studio-pause.browser.mjs [--only cove,ruins,glow,phone,side,dark,timers,moment,moment2d,momentnarrow,momentdark,momentdemo,values,valuesdark,light,lightcode]
+//   node test/studio-pause.browser.mjs [--only cove,ruins,glow,phone,side,dark,timers,moment,moment2d,momentnarrow,momentdark,momentdemo,values,valuesdark,light,lightcode,checkpoint,checkpointdark]
 //                                       [--shots <dir>] [--lang ja] [--before <studio-ui dir of an older build>]
 //
 // Until pause-edit (2026-10-28) a pause opened a chat panel over the game ("Pause and talk", stage 1) with "✥ Move" in
@@ -30,6 +30,9 @@
 // timers Lantern Cove PC, a game stepped by timers and the wall clock (polish-1022; core/play-timers.ts).
 // values / valuesdark  This moment (pause-edit stage 2, CONTRACT.md §1.14) on examples/three-neon-boss, PC: see values()
 //            below. --shots: values-*-set.png is the docs' pause-moment picture.
+// checkpoint / checkpointdark  Checkpoints (pause-edit stage 3, CONTRACT.md §1.14 "Checkpoints") on examples/three-neon-boss,
+//            PC: see checkpoint() below. --shots: checkpoint-*-name.png / checkpoint-*-menu.png are the docs'
+//            pause-checkpoint / pause-checkpoint-open pictures.
 //
 // The paused moment (pause-edit's checks (1)–(5)), examples/three-neon-boss (a boss, drones and shots the
 // game makes a few seconds in):
@@ -1006,7 +1009,12 @@ async function momentDemo() {
     assert.equal(noneDemo, ja ? 'スコアなどのゲームの数は、まだここに出ません。' : 'The game’s numbers, like the score, aren’t shown here yet.');
     assert.equal(await page.eval(`!!document.querySelector('[data-part=moment-values-ask]')`), false, 'no ✦ under This moment in the demo');
     await shot('neon-paused');
-    console.log('  ok: Neon Run in the demo — Made by the game, the boss just for this moment, no ✦; This moment: the line alone');
+    // Checkpoints (pause-edit stage 3): the demo keeps none (no host for them) — ⚑ says the one line, no ✦.
+    await page.eval(`document.querySelector('[data-part=checkpoint]').click()`);
+    const flagDemo = (await until(() => page.eval(`document.querySelector('[data-part=checkpoint-pop]:not([hidden]) [data-part=checkpoint-none]')?.textContent || ''`), 3000, '⚑\'s line in the demo')).replace(/\u200b/g, '');
+    assert.equal(flagDemo, ja ? 'このゲームは、まだ途中から始められません。' : 'This game can’t start from the middle yet.');
+    assert.equal(await page.eval(`!!document.querySelector('[data-part=checkpoint-ask]')`), false, 'no ✦ under ⚑ in the demo');
+    console.log('  ok: Neon Run in the demo — Made by the game, the boss just for this moment, no ✦; This moment and ⚑: the line alone');
   } finally {
     await page.close();
     host.close();
@@ -1420,6 +1428,248 @@ async function values(theme = 'light') {
   }
 }
 
+/**
+ * The delivered form of examples/three-neon-boss's checkpoint hooks (pause-edit stage 3; SKILL.md "Checkpoints"): what the
+ * AI writes when asked "let the game start from this moment" — beside the values of stage 2, save() of everything the
+ * next frame needs (the seed, the run's numbers and clock, the ship, the hexagons, the boss, its drones and shots) and
+ * load(m) that puts it back, making what the game makes on the way (spawnBoss, spawnDrones, fire) as the game would.
+ * Placed things (the gate, the pillars) are not in it: the scene puts them.
+ */
+const MOMENT_CHECKPOINT = `
+// Checkpoints (the delivered form: SKILL.md "Checkpoints").
+codeMoment({
+  save: () => ({
+    v: 1, seed, score, timeLeft, hp, over, t, fireIn,
+    ship: { x: ship.position.x },
+    hexes: hexes.map((h) => [h.position.x, h.position.z, h.rotation.y]),
+    boss: boss ? { p: boss.position.toArray(), ry: boss.rotation.y } : null,
+    drones: drones.map((d) => d.position.toArray()),
+    shots: shots.map((s) => s.position.toArray()),
+  }),
+  load: (m) => {
+    if (!m || m.v !== 1) return;
+    ({ seed, score, timeLeft, hp, over, t, fireIn } = m);
+    ship.position.x = m.ship.x;
+    m.hexes.forEach(([x, z, ry], i) => { if (hexes[i]) { hexes[i].position.x = x; hexes[i].position.z = z; hexes[i].rotation.y = ry; } });
+    if (m.boss) {
+      if (!boss) spawnBoss();
+      boss.position.fromArray(m.boss.p);
+      boss.rotation.y = m.boss.ry;
+    }
+    if (m.drones.length && !drones.length) spawnDrones();
+    m.drones.forEach((p, i) => drones[i]?.position.fromArray(p));
+    for (const p of m.shots) {
+      fire();
+      shots[shots.length - 1].position.fromArray(p);
+    }
+    if (over) {
+      endEl.textContent = hp <= 0 ? 'GAME OVER' : 'FINISH';
+      endEl.hidden = false;
+    }
+  },
+});
+// The test's own eye (not part of the delivered form): the numbers the game's FIRST frame drew after load.
+{
+  const k = globalThis[Symbol.for('game-studio.moment')];
+  const load = k.load;
+  k.load = (m) => {
+    load(m);
+    requestAnimationFrame(() => {
+      globalThis.__first = { score, timeLeft, hp, t, boss: boss && boss.position.toArray(), shots: shots.length };
+    });
+  };
+}
+`;
+/** The example's game.js with the values (stage 2) and the checkpoint hooks in it, and the import. */
+function deliverCheckpoint(root) {
+  deliverMoment(root);
+  const f = join(root, 'game.js');
+  writeFileSync(f, readFileSync(f, 'utf8').replace('const speed = 12;\n', `const speed = 12;\n${MOMENT_CHECKPOINT}`));
+}
+const cpFiles = (root) => {
+  const d = join(root, '.studio/checkpoints');
+  return existsSync(d) ? readdirSync(d).filter((n) => n.endsWith('.json')).map((n) => ({ id: n.slice(0, -5), ...JSON.parse(readFileSync(join(d, n), 'utf8')) })) : [];
+};
+
+/**
+ * Checkpoints (pause-edit stage 3, 2026-10-28; CONTRACT.md §1.14 "Checkpoints"; the brief's screen test), Neon Run, PC:
+ *   1. the AI's save / load delivered; ▶ Play; the boss comes; P (before the boss reaches the gate): the moment's numbers
+ *      and the boss's place noted; ⚑ → the field under it says "0:0x" (the game's time) → "Before the boss" → Enter:
+ *      .studio/checkpoints/Before-the-boss.json { version, name, at, level, time, moment, shot }, the flash;
+ *   2. Edit; the gate (placed) moved in the scene (the AI's hands: object.move) — a checkpoint never holds placed things;
+ *   3. ▶ Play ⌄ → "⚑ Play from Before the boss" (the menu's photo) → a new page: the FIRST frame drew the kept moment
+ *      (score, time left, health, the boss's place: exactly), the top bar's clock goes on from it, the flash "Playing from
+ *      …", the gate where the scene has it NOW; paused: the boss is "made by the game" (just for this moment);
+ *      ⌘K lists it too; ⋯ Rename;
+ *   4. the game changed (its load reads a field the old checkpoint does not have): the checkpoint does not open → Play
+ *      from the start, the line "The game changed, so this checkpoint can't open" and ✦ → paused, the draft and chip in
+ *      the field, sent: intent moment-load with the checkpoint's name and the error;
+ *   5. the example as it ships (no hooks): ⚑ → "This game can't start from the middle yet." and ✦ → the draft, sent:
+ *      intent moment-save.
+ */
+async function checkpoint(theme = 'light') {
+  const tag = theme === 'dark' ? 'checkpoint-dark' : 'checkpoint';
+  console.log(`${tag}: Checkpoints, Neon Run, PC 1280×800 (${theme})`);
+  const NAME = ja ? 'ボスの前' : 'Before the boss';
+  const ID = ja ? 'ボスの前' : 'Before-the-boss';
+  const g = await open('examples/three-neon-boss', LAYOUTS.pc, { theme, play: false });
+  const { root, page, srv, shot } = g;
+  const agent = startFakeAgent(root);
+  const ai = (ops) => askEditor({ origin: srv.origin, stopToken: srv.stopToken }, ops, 'claude');
+  const numbers = () => j(page, `JSON.stringify((() => { const k = ${GW}[Symbol.for('game-studio.moment')]; const v = (id) => k.values.get(id).get(); return { score: v('score'), timeLeft: v('timeLeft'), hp: v('hp') }; })())`);
+  try {
+    // 1. Delivered (the code changed under the open editor: the editor page opened again on it), played, paused.
+    deliverCheckpoint(root);
+    await page.goto(srv.url);
+    await page.waitFor(IN.ready, 90000);
+    await page.eval(`document.querySelector('button.play').click()`);
+    await page.waitFor(IN.playing, 30000);
+    await until(async () => (await j(page, `JSON.stringify(${M}.list().map((i) => i.key))`)).includes('shot'), 60000, 'the boss and its first shot');
+    await pauseP(page, [640, 120]);
+    const kept = { ...(await numbers()), boss: (await poseOf(page, 'boss')).p, seconds: await page.eval(`${M}.seconds()`) };
+    assert.ok(kept.boss[2] < -15, `the boss still far down the road ${kept.boss}`);
+    await shot(tag, 'kept');
+    // ⚑ right of Speed: the field under it, the game's time first.
+    const flag = await j(page, box('[data-part=checkpoint]'));
+    const speed = await j(page, box('[data-part=play-speed]'));
+    assert.ok(flag && speed && flag.left >= speed.right, `⚑ right of Speed ${JSON.stringify({ flag, speed })}`);
+    await press(page, flag);
+    await page.waitFor(`document.activeElement?.dataset?.part === 'checkpoint-name'`, 3000);
+    const first = await page.eval(`document.activeElement.value`);
+    assert.match(first, /^0:0\d$/, `the name first: the game's time (${first})`);
+    // (position: fixed — no offsetParent, so not box())
+    const pop = await j(page, `(() => { const e = document.querySelector('[data-part=checkpoint-pop]'); if (!e || e.hidden) return null; const r = e.getBoundingClientRect(); return JSON.stringify({ top: r.top, left: r.left }); })()`);
+    if (!(pop.top >= flag.bottom && Math.abs(pop.left - flag.left) < 4)) await shot(tag, 'debug-pop');
+    assert.ok(pop.top >= flag.bottom && Math.abs(pop.left - flag.left) < 4, `the field hangs under ⚑ ${JSON.stringify({ pop, flag })}`);
+    await type(page, NAME);
+    await sleep(200);
+    await shot(tag, 'name');
+    await keyIn(page, 'Enter', 'Enter', '\r');
+    const file = await until(() => cpFiles(root).find((c) => c.id === ID), 5000, 'the checkpoint file');
+    assert.deepEqual(Object.keys(file).filter((k) => k !== 'id'), ['version', 'name', 'at', 'level', 'time', 'moment', 'shot']);
+    assert.equal(file.name, NAME);
+    assert.equal(file.level, null);
+    assert.ok(Math.abs(file.time - kept.seconds) < 0.05, `its time is the game's (${file.time} / ${kept.seconds})`);
+    assert.equal(file.moment.score, kept.score);
+    assert.equal(file.moment.timeLeft, kept.timeLeft);
+    assert.deepEqual(file.moment.boss.p, kept.boss);
+    assert.match(file.shot, /^data:image\/jpeg;base64,/);
+    assert.ok(!('gate' in file.moment), 'placed things are not in it');
+    // Said in the field's line (the moment's news; the game's foot is the field's place while paused).
+    const said = await until(() => page.eval(`[...document.querySelectorAll('.toast, .ask-news')].filter((e) => e.offsetParent && !e.hidden).map((e) => e.textContent).join(' ')`), 3000, 'kept: said');
+    assert.match(said, ja ? /チェックポイント「ボスの前」を残しました/ : /Checkpoint “Before the boss” kept/);
+    await shot(tag, 'kept-said');
+    assert.equal(await page.eval(`!!document.querySelector('[data-part=checkpoint-pop]:not([hidden])')`), false, 'the field closed');
+    // 2. Edit, the gate moved in the scene.
+    await page.eval(`document.querySelector('button.play').click()`);
+    await page.waitFor(`${SHELL}.dataset.playing !== 'on' && ${IN.ready}`, 30000);
+    await sleep(500);
+    const moved = await ai([{ do: 'object.move', key: 'gate', to: [1.5, 0, -12] }]);
+    assert.equal(moved.results?.[0]?.ok, true, JSON.stringify(moved));
+    // Saved (⌘S), so ▶ Play asks nothing (with Save · 1 it asks first, as Play from the start does).
+    await keyIn(page, 's', 'KeyS', '', 2);
+    await until(async () => (await page.eval(IN.save)) === '', 10000, 'saved');
+    // 3. ▶ Play ⌄ → ⚑ Play from Before the boss.
+    await page.eval(`document.querySelector('[data-part=play-more]').click()`);
+    const row = await until(() => j(page, box('[data-action=ctx-checkpoint-play]')), 3000, 'the menu\'s checkpoint row');
+    assert.equal(row.text, ja ? '⚑ ボスの前から遊ぶ' : '⚑ Play from Before the boss');
+    assert.ok(await j(page, box('[data-action=ctx-checkpoint-play-more]')), 'its ⋯');
+    await shot(tag, 'menu');
+    await press(page, row);
+    await until(() => page.eval(`!!${GW}?.__first`), 60000, 'the checkpoint\'s first frame').catch(async (e) => {
+      await shot(tag, 'debug-open');
+      console.log('  debug:', await page.eval(`${FR}?.src`));
+      throw e;
+    });
+    const drew = await j(page, `JSON.stringify(${GW}.__first)`);
+    assert.deepEqual({ score: drew.score, timeLeft: drew.timeLeft, hp: drew.hp, boss: drew.boss },
+      { score: kept.score, timeLeft: kept.timeLeft, hp: kept.hp, boss: kept.boss }, 'the first frame drew the kept moment: the numbers and the boss, exactly');
+    await page.waitFor(IN.playing, 30000);
+    const clock = await page.eval(`${M}.seconds()`);
+    assert.ok(clock >= kept.seconds - 0.01 && clock < kept.seconds + 5, `the top bar's clock goes on from ${kept.seconds} (${clock})`);
+    const opened = await until(() => page.eval(`(() => { const e = document.querySelector('[data-part=play-flash]'); return e && !e.hidden ? e.textContent : ''; })()`), 3000, 'the flash');
+    assert.match(opened, ja ? /ボスの前から遊んでいます/ : /Playing from Before the boss/);
+    await pressPause(page);
+    const gate = (await poseOf(page, 'gate')).p;
+    assert.ok(Math.abs(gate[0] - 1.5) < 0.01, `the gate where the scene has it now (${gate})`);
+    assert.equal(await page.eval(`${M}.why('boss')`), 'new', 'the boss is the game\'s (just for this moment) on a checkpoint\'s page too');
+    const now = await numbers();
+    // On from it (a few seconds of a slow headless machine's frames: their dt is capped at 0.05 s, so not to the ms).
+    assert.ok(now.score >= kept.score && now.score < kept.score + 1200 && now.timeLeft <= kept.timeLeft && now.timeLeft > kept.timeLeft - 8,
+      `on from the kept moment ${JSON.stringify({ now, kept })}`);
+    await shot(tag, 'opened');
+    // ⌘K lists it; ⋯ Rename.
+    await keyIn(page, 'k', 'KeyK', '', 2);
+    await sleep(300);
+    const palRow = await page.eval(`[...document.querySelectorAll('[data-row^=checkpoint-play]')].map((e) => e.textContent).join('|')`);
+    assert.match(palRow, ja ? /ボスの前から遊ぶ/ : /Play from Before the boss/);
+    assert.match(await page.eval(`[...document.querySelectorAll('[data-row=checkpoint-make]')].map((e) => e.textContent).join('|')`), ja ? /ここをチェックポイントにする/ : /Make this a checkpoint/);
+    await keyIn(page, 'Escape', 'Escape');
+    await sleep(200);
+    console.log(`  ok: kept at ${kept.seconds.toFixed(2)} s (score ${kept.score}, boss z ${kept.boss[2].toFixed(2)}); opened: the first frame drew it exactly, the clock from ${clock.toFixed(2)}, the gate moved in Edit at 1.5, the boss the game's`);
+    // 4. The game changed: its load reads a field this checkpoint does not have.
+    await page.eval(`document.querySelector('button.play').click()`);
+    await page.waitFor(`${SHELL}.dataset.playing !== 'on' && ${IN.ready}`, 30000);
+    const f = join(root, 'game.js');
+    writeFileSync(f, readFileSync(f, 'utf8').replace('ship.position.x = m.ship.x;', 'ship.position.x = m.player.x;'));
+    await page.goto(srv.url);
+    await page.waitFor(IN.ready, 90000);
+    await page.eval(`document.querySelector('[data-part=play-more]').click()`);
+    await press(page, await until(() => j(page, box('[data-action=ctx-checkpoint-play]')), 3000, 'the row'));
+    const note = await until(() => page.eval(`(() => { const e = document.querySelector('[data-part=checkpoint-note]'); return e && !e.hidden ? e.textContent : ''; })()`), 60000, 'the line');
+    assert.match(note, ja ? /ゲームが変わって、このチェックポイントは開けません/ : /The game changed, so this checkpoint can’t open/);
+    await page.waitFor(IN.playing, 30000);
+    await until(async () => (await page.eval(`${M}.seconds()`)) > 0.5, 20000, 'the game from its start');
+    const fresh = await numbers();
+    assert.ok(fresh.score < kept.score - 200 && fresh.timeLeft > kept.timeLeft, `Play from the start ${JSON.stringify(fresh)}`);
+    await shot(tag, 'cant');
+    await press(page, await j(page, box('[data-part=checkpoint-fix]')));
+    await page.waitFor(IN.moment, 10000);
+    await sleep(400);
+    assert.equal(await page.eval(`document.querySelector('.ask-input').value`), ja ? 'チェックポイント「ボスの前」が開けるようにして' : 'Make the checkpoint “Before the boss” open again');
+    assert.match(await page.eval(`document.querySelector('.ask-chip')?.textContent || ''`), ja ? /⚑ ボスの前/ : /⚑ Before the boss/);
+    await page.eval(`(document.querySelector('.ask-input').focus(), true)`);
+    await keyIn(page, 'Enter', 'Enter', '\r');
+    const rec = await until(() => requests(root).find((r) => r.kind === 'play' && r.paused && r.intent === 'moment-load'), 10000, 'the paused request');
+    assert.equal(rec.checkpoint?.name, NAME);
+    assert.equal(rec.checkpoint?.id, ID);
+    assert.match(rec.checkpoint?.error || '', /reading 'x'|undefined/, `load's error goes with it (${rec.checkpoint?.error})`);
+    assert.ok(rec.checkpoint.logs?.some((l) => /^load\(m\) failed/.test(l.text)), 'the console\'s lines too');
+    console.log(`  ok: a changed game — Play from the start, the line, ✦ → intent moment-load (${rec.checkpoint.error})`);
+  } finally {
+    await agent.stop();
+    await g.close();
+  }
+  // 5. As it ships: no save / load — ⚑'s one line and ✦.
+  const h = await open('examples/three-neon-boss', LAYOUTS.pc, { theme });
+  const agent2 = startFakeAgent(h.root);
+  try {
+    const { page, root, shot } = h;
+    await sleep(1200);
+    await pauseP(page, [640, 120]);
+    await press(page, await j(page, box('[data-part=checkpoint]')));
+    const line = (await until(() => page.eval(`document.querySelector('[data-part=checkpoint-pop]:not([hidden]) [data-part=checkpoint-none]')?.textContent || ''`), 3000, 'the one line')).replace(/\u200b/g, '');
+    assert.equal(line, ja ? 'このゲームは、まだ途中から始められません。' : 'This game can’t start from the middle yet.');
+    await sleep(300);
+    const ask = await j(page, `(() => { const e = document.querySelector('[data-part=checkpoint-ask]'); if (!e) return null; const r = e.getBoundingClientRect(); return JSON.stringify({ x: r.left + r.width / 2, y: r.top + r.height / 2, text: e.textContent }); })()`);
+    assert.match(ask.text.replace(/\u200b/g, ''), ja ? /Claude\s*にこの瞬間から始められるようにしてもらう/ : /Have Claude let the game start from here/);
+    await shot(tag, 'none');
+    await press(page, ask);
+    await sleep(400);
+    assert.equal(await page.eval(`document.querySelector('.ask-input').value`), ja ? 'この瞬間から始められるようにして' : 'Let the game start from this moment');
+    assert.match(await page.eval(`document.querySelector('.ask-chip')?.textContent || ''`), ja ? /⚑ この瞬間/ : /⚑ This moment/);
+    await page.eval(`(document.querySelector('.ask-input').focus(), true)`);
+    await keyIn(page, 'Enter', 'Enter', '\r');
+    const rec = await until(() => requests(root).find((r) => r.kind === 'play' && r.paused), 10000, 'the paused request');
+    assert.equal(rec.intent, 'moment-save');
+    assert.equal(cpFiles(root).length, 0, 'nothing kept');
+    console.log('  ok: no hooks — ⚑\'s one line, ✦, the draft and chip, the request\'s intent moment-save');
+  } finally {
+    await agent2.stop();
+    await h.close();
+  }
+}
+
 try {
   if (BEFORE) await before();
   else {
@@ -1449,6 +1699,8 @@ try {
     if (on('lightcode')) await lightCode();
     if (on('values')) await values();
     if (on('valuesdark')) await values('dark');
+    if (on('checkpoint')) await checkpoint();
+    if (on('checkpointdark')) await checkpoint('dark');
   }
 } finally {
   if (browser) await browser.close();

@@ -87,6 +87,12 @@ export interface MomentKinds {
   /** Resume: what the person moved is theirs from now on (the next pause does not take it for the game's motion). */
   resumed(list: Item[], dim: '2d' | '3d'): void;
   why(key: string): MomentWhy;
+  /**
+   * A page opened from a checkpoint (pause-edit stage 3): `scene` = the keys of the scene's objects (the editor's Edit
+   * list). The page starts with the checkpoint's boss, drones and shots already there, so "not there when Play started"
+   * no longer finds them: anything not in the scene is made by the game. Empty = not known (as a Play from the start).
+   */
+  madeBefore(scene: string[]): void;
 }
 
 /**
@@ -101,6 +107,8 @@ export function createMomentKinds(startList: () => Item[], firstFrame: () => Pro
   let moving = new Set<string>();
   let atPause: Map<string, Pose> | null = null;
   let why = new Map<string, MomentKind>();
+  // madeBefore(): the scene's keys on a page opened from a checkpoint (null = a Play from the start: not needed).
+  let scene: Set<string> | null = null;
   // Which Play this is (▶ Play in the same page starts these again, restart()); a look still going from an earlier one stops.
   let run = 0;
   const findStart = (a: Promise<string[]>) => {
@@ -132,6 +140,7 @@ export function createMomentKinds(startList: () => Item[], firstFrame: () => Pro
       moving = new Set();
       atPause = null;
       why = new Map();
+      scene = null;
       findStart(a);
     },
     pause(list, dim) {
@@ -139,10 +148,15 @@ export function createMomentKinds(startList: () => Item[], firstFrame: () => Pro
       if (!start) start = new Map(atPause);
       why = new Map();
       for (const i of list) {
-        const w = momentWhy(i.key, i.pose, start, mine, moving, dim);
+        let w = momentWhy(i.key, i.pose, start, mine, moving, dim);
+        // Opened from a checkpoint: the game made what the scene does not have, wherever it stood at this page's start.
+        if (scene && w !== 'motion' && !scene.has(i.key) && !mine.has(i.key)) w = 'new';
         if (w) why.set(i.key, w);
       }
       return Object.fromEntries(why);
+    },
+    madeBefore(keys) {
+      scene = keys.length ? new Set(keys) : null;
     },
     resumed(list, dim) {
       if (atPause) {

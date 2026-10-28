@@ -26,6 +26,9 @@
 //     guide never shrinks (shell.css: the game's name gives way) — "0:01." was cut and 1× slid under ✦.
 //   - ✕15: a phone while paused says "▶ Resume" in words: ▶ alone sat beside ▶| and ▶ of the speed menu (three play
 //     signs in a row), and the room was there.
+//
+// pause-edit stage 3 (2026-10-28, checkpoints; the plan's find.png "⚑"): ⚑ right of Speed while paused — "Make this a
+// checkpoint". main.ts opens the name field under it (or, for a game that cannot start from the middle, its one line).
 import type { MomentKind } from '../contract.ts';
 import { h } from './dom.ts';
 import { icon, setButton } from './icons.ts';
@@ -110,6 +113,8 @@ export interface MomentBarDeps {
   resume(): void;
   step(on: boolean): void;
   speed(rate: number): void;
+  /** ⚑ Make this a checkpoint, pressed (paused only): main.ts opens the name field under `at`. */
+  checkpoint(at: HTMLElement): void;
   /**
    * The speeds' menu at the button (main.ts draws it with the context menu). `head` = its small title ("Speed": fix 1
    * ✕13 — "1× ✓ ½× ¼×" alone did not say what the numbers are).
@@ -134,9 +139,12 @@ export interface MomentBar {
   stepTip: HTMLElement;
   /** ▶| itself (main.ts hangs stepTip under it). */
   stepBtn: HTMLButtonElement;
+  /** ⚑ (stage 3): main.ts hangs the name field under it. */
+  flagBtn: HTMLButtonElement;
   /** At the game's foot for 2 s: "▶ Resumed from 0:42.3" (04-words.md; the dock with the toast is away while playing). */
   note: HTMLElement;
-  flash(text: string): void;
+  /** `mark`: the icon before the words ('play' = ▶ Resumed…, 'flag' = ⚑ a checkpoint kept / opened). */
+  flash(text: string, mark?: string): void;
   render(): void;
   /** A Next frame from elsewhere (the . key, ⌘K): the "Next frame ." line has done its work. */
   stepped(): void;
@@ -154,7 +162,13 @@ export function createMomentBar(d: MomentBarDeps): MomentBar {
   const where = h('span', { class: 'play-where', dataset: { part: 'play-where' } }, mark, word, time);
   const stepBtn = h('button', { type: 'button', class: 'play-step', dataset: { action: 'play-step', part: 'play-step' } }) as HTMLButtonElement;
   const speedBtn = h('button', { type: 'button', class: 'play-speed', dataset: { action: 'play-speed', part: 'play-speed' }, 'aria-haspopup': 'menu' }) as HTMLButtonElement;
-  const guide = h('span', { class: 'play-guide', hidden: true, dataset: { part: 'play-guide' } }, where, stepBtn, speedBtn);
+  // ⚑ (stage 3): after Speed, as the plan's bar draws it ("❚❚ Paused 0:42.3 ▶| ¼× ⌄ ⚑"). Paused only: a checkpoint is a
+  // paused moment kept, and while the game runs there is no one moment to keep.
+  const flagBtn = h('button', { type: 'button', class: 'play-flag', hidden: true, dataset: { action: 'checkpoint', part: 'checkpoint' }, 'aria-haspopup': 'dialog' }) as HTMLButtonElement;
+  flagBtn.addEventListener('click', () => {
+    if (d.paused()) d.checkpoint(flagBtn);
+  });
+  const guide = h('span', { class: 'play-guide', hidden: true, dataset: { part: 'play-guide' } }, where, stepBtn, speedBtn, flagBtn);
   const pauseBtn = h('button', { type: 'button', class: 'play-pause', hidden: true, dataset: { action: 'play-pause', part: 'play-pause' } }) as HTMLButtonElement;
   const tip = h('div', { class: 'play-tip', role: 'status', hidden: true, dataset: { part: 'play-tip' } });
   const stepTip = h('div', { class: 'play-tip step-tip', role: 'status', hidden: true, dataset: { part: 'step-tip' } });
@@ -242,6 +256,11 @@ export function createMomentBar(d: MomentBarDeps): MomentBar {
       return;
     }
     guide.dataset.state = paused ? 'paused' : 'playing';
+    // The flash ("▶ Resumed…", "⚑ Playing from …") is at the game's foot, where the moment's field is: away at a pause.
+    if (paused && !note.hidden) {
+      window.clearTimeout(noteTimer);
+      note.hidden = true;
+    }
     mark.replaceChildren(paused ? icon('pause') : h('span', { class: 'play-dot' }));
     word.textContent = paused ? d.t('play.paused') : d.t('status.playingShort');
     where.title = d.t('play.timeTip');
@@ -251,6 +270,8 @@ export function createMomentBar(d: MomentBarDeps): MomentBar {
     else if (!running && ticker) (window.clearInterval(ticker), (ticker = 0));
     stepBtn.hidden = !paused;
     setButton(stepBtn, 'stepFrame', d.t('play.step'), false, tipText(d.t('play.step'), '.'));
+    flagBtn.hidden = !paused;
+    setButton(flagBtn, 'flag', d.t('checkpoint.make'), false, d.t('checkpoint.makeTip'));
     const rate = d.clock()?.rate ?? 1;
     speedBtn.replaceChildren(h('span', { class: 'label', text: speedText(rate) }), icon('chevronDown'));
     speedBtn.title = d.t('play.speedTip');
@@ -279,9 +300,10 @@ export function createMomentBar(d: MomentBarDeps): MomentBar {
     tip,
     stepTip,
     stepBtn,
+    flagBtn,
     note,
-    flash(text) {
-      note.replaceChildren(icon('play'), h('span', { text }));
+    flash(text, mark = 'play') {
+      note.replaceChildren(icon(mark), h('span', { text }));
       note.hidden = false;
       window.clearTimeout(noteTimer);
       noteTimer = window.setTimeout(() => (note.hidden = true), 2000);

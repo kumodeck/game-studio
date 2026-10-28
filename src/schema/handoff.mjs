@@ -339,6 +339,32 @@ function playMoment(r, errors) {
     // no codeMoment to show. The AI names the game's numbers once (SKILL.md "This moment"); the moment itself (picture,
     // camera, console) comes with the first request of the pause as for any paused message.
     if (r.intent === 'moment-values') out.intent = 'moment-values';
+    // Pause-edit stage 3 (2026-10-28; CONTRACT.md §1.14 "Checkpoints"): ⚑'s ✦ Have Claude let the game start from here
+    // ('moment-save': no save() / load() yet, or save() failed) and the line's ✦ when a checkpoint would not open
+    // ('moment-load': load() threw, or is gone). `checkpoint` names it (its file id and name) with what went wrong: a hint
+    // like the rest, a bad part dropped.
+    if (r.intent === 'moment-save' || r.intent === 'moment-load') {
+      out.intent = r.intent;
+      const c = r.checkpoint && typeof r.checkpoint === 'object' ? r.checkpoint : null;
+      if (c) {
+        const cp = {};
+        if (typeof c.id === 'string' && /^[\p{L}\p{N}][\p{L}\p{N}\p{M}_-]{0,59}$/u.test(c.id)) cp.id = c.id;
+        const name = oneLine(c.name, HANDOFF_LIMITS.maxLabel);
+        if (name) cp.name = name;
+        const error = oneLine(c.error, HANDOFF_LIMITS.maxLog);
+        if (error) cp.error = error;
+        if (Array.isArray(c.logs)) {
+          const logs = [];
+          for (const l of c.logs.slice(-HANDOFF_LIMITS.maxLogs)) {
+            if (!l || typeof l !== 'object') continue;
+            const t = oneLine(l.text, HANDOFF_LIMITS.maxLog);
+            if (t) logs.push({ level: l.level === 'error' || l.level === 'warn' ? l.level : 'log', text: t });
+          }
+          if (logs.length) cp.logs = logs;
+        }
+        if (Object.keys(cp).length) out.checkpoint = cp;
+      }
+    }
   }
   return out;
 }

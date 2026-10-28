@@ -41,6 +41,10 @@ test('the ask box gets words only from ✦ buttons (focusAsk callers)', () => {
     // pause-edit stage 2 (2026-10-28): the moment's "This moment" with no codeMoment — ✦ Have Claude make this moment
     // editable puts the draft "Make this moment editable" and the chip "This moment" in the field (the person sends it).
     [/^focusAsk\(t\('moment\.valuesDraft'\)\);$/, 'the paused moment\'s ✦ Have Claude make this moment editable (a draft)'],
+    // pause-edit stage 3 (2026-10-28): ⚑'s ✦ Have Claude let the game start from here, and the line's ✦ Have Claude fix it
+    // when a checkpoint does not open — the drafts "Let the game start from this moment" / "Make the checkpoint … open
+    // again" and the chip "⚑ …" in the field (the person sends them).
+    [/^focusAsk\(intent === 'moment-load' \? t\('checkpoint\.loadDraft', \{ name: checkpoint\?\.name \?\? '' \}\) : t\('checkpoint\.saveDraft'\)\);$/, 'checkpoints: ⚑\'s ✦ / the line\'s ✦ (a draft)'],
   ];
   for (const l of lines) assert.ok(allowed.some(([re]) => re.test(l)), `a new caller writes in the ask box: ${l}`);
 });
