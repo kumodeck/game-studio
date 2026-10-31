@@ -6,7 +6,7 @@
 //   - every picture shots.json makes is used by a page in both languages, and every page's picture is in its media/
 //   - the Markdown is turned into HTML with < and & escaped (a page can't put its own HTML on the site)
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -16,7 +16,9 @@ import { render, slug } from '../scripts/docs-md.mjs';
 
 const root = mkdtempSync(join(tmpdir(), 'docs-site-'));
 // The front page's files the docs link to (the real ones come from build-web-demo.mjs).
-for (const f of ['index.html', 'favicon.ico', 'favicon.svg', 'apple-touch-icon.png']) writeFileSync(join(root, f), '');
+// ja/index.html: the Japanese front page, which the Japanese docs' header links to (2026-10-29).
+mkdirSync(join(root, 'ja'));
+for (const f of ['index.html', 'ja/index.html', 'favicon.ico', 'favicon.svg', 'apple-touch-icon.png']) writeFileSync(join(root, f), '');
 const built = buildDocs(join(root, 'docs'), { version: '0.0.0', repo: 'https://example.invalid/repo', home: true });
 test.after(() => rmSync(root, { recursive: true, force: true }));
 

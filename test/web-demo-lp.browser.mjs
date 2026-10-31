@@ -4,6 +4,8 @@
 //   node test/web-demo-lp.browser.mjs [--dir <built folder>] [--shots <dir>] [--lang en|ja]
 //
 // Without --dir it builds into a temporary folder first (scripts/build-web-demo.mjs).
+// The built folder (2026-10-29): no page asks search engines to skip it (no robots noindex, the editor and the samples
+// too), as on the published demo; the front page's title line is the product line in the HTML.
 // PC 1280×800 with a mouse:
 //   1. in a short window (1280×640) the page opens with no frame yet (the editor's stage is mostly below the fold);
 //      the install line is INSTALL.md's
@@ -17,16 +19,20 @@
 //   7. the other sample swaps the frame's page; "Open full size" opens the same editor without the frame, with the save
 // Phone 390×844 with touch:
 //   8. no iframe anywhere on the page (scrolled to the bottom too); each sample is a card that opens the editor
+// The Japanese page (ja/, 2026-10-29, the SEO pass), phone size:
+//   9. it stays Japanese in an English browser; its words were in the HTML already; through its <base href="../">
+//      games.json loads, the cards open the editor in Japanese, and Docs is docs/ja/
 // --shots: the page (whole, light and dark) and the editor being used, at both sizes.
 // Exit 1 on failure.
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { launch, newPage } from './adapters-2d/cdp.mjs';
 import { startHost } from './web-demo-host.mjs';
+import { readLpText } from '../scripts/web-demo-lp.mjs';
 
 const PKG = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const args = process.argv.slice(2);
@@ -63,7 +69,7 @@ console.log(`web demo front page at ${base}`);
 let failed = false;
 const browser = await launch();
 try {
-  for (const [name, fn] of [['pc', runPc], ['phone', runPhone]]) {
+  for (const [name, fn] of [['files', runFiles], ['pc', runPc], ['phone', runPhone], ['ja', runJa]]) {
     try {
       await fn();
     } catch (e) {
@@ -282,6 +288,54 @@ async function runPc() {
     step(`"Open full size" → the editor without the frame, with "${obj}" where it was saved in the frame`);
     const errors = page.logs.filter((l) => /^(error|exception)/.test(l) && !/placement\.json|404/.test(l));
     assert.deepEqual(errors, [], 'page errors');
+  } finally {
+    await page.close();
+  }
+}
+
+async function runFiles() {
+  const pages = readdirSync(DIR, { recursive: true }).filter((f) => /\.html?$/i.test(f));
+  const robots = pages.filter((f) => /<meta\s+name="robots"/i.test(readFileSync(join(DIR, f), 'utf8')));
+  assert.deepEqual(robots, [], 'pages with a robots meta tag');
+  for (const must of ['index.html', 'ja/index.html', 'studio/index.html']) assert.ok(pages.includes(must), `${must} was not built`);
+  assert.ok(pages.some((f) => f.startsWith('games/')), 'no sample page was built');
+  const T = readLpText(join(PKG, 'src/hosts/browser/strings.js'));
+  for (const [lang, file] of [['en', 'index.html'], ['ja', 'ja/index.html']]) {
+    assert.ok(readFileSync(join(DIR, file), 'utf8').includes(`<h1 id="title">${T[lang].title}</h1>`), `${file}: the title line`);
+  }
+  console.log(`  ✓ files: ${pages.length} pages, none with noindex (the editor and the samples too); the title line in both front pages`);
+}
+
+async function runJa() {
+  const page = await newPage(browser, { width: 390, height: 844, mobile: true });
+  const step = (s) => console.log(`  ✓ ja: ${s}`);
+  try {
+    // The words before any script: the built file itself.
+    const file = readFileSync(join(DIR, 'ja/index.html'), 'utf8');
+    assert.match(file, /<html lang="ja" data-lang="ja">/);
+    assert.match(file, /<h1 id="title">[^<]*無料のレベルエディタ[^<]*<\/h1>/, 'the Japanese title line is not in the HTML');
+    await page.goto(`${base}ja/`);
+    await page.waitFor(`document.querySelectorAll('a.sample').length === 2 && [...document.querySelectorAll('a.sample img')].every((i) => i.complete && i.naturalWidth > 0)`);
+    assert.equal(await page.eval(`navigator.language.slice(0, 2)`), 'en', 'this check needs an English browser');
+    assert.equal(await page.eval(`document.documentElement.lang`), 'ja');
+    assert.match(await page.eval(`document.getElementById('lead').textContent`), /Claude Code や Codex がコードに反映/);
+    const hrefs = JSON.parse(await page.eval(`JSON.stringify({ card: document.querySelector('a.sample').href, docs: document.getElementById('docs').href, brand: document.querySelector('a.brand').href, icon: document.querySelector('link[rel=icon]').href })`));
+    const site = new URL(base).href;
+    assert.equal(hrefs.docs, `${site}docs/ja/`);
+    assert.equal(hrefs.brand, `${site}ja/`);
+    assert.equal(hrefs.icon, `${site}favicon.ico`);
+    assert.ok(hrefs.card.startsWith(`${site}studio/?game=`) && hrefs.card.endsWith('&lang=ja'), hrefs.card);
+    await shot(page, 'ja-phone-light-1-top.png');
+    step('Japanese in an English browser; games.json, the cards, Docs and the icon all from the site’s root');
+    // The 2D sample (the 3D one takes a while on a phone, step 8).
+    const c = JSON.parse(await page.eval(`(() => { const a = document.querySelector('a.sample[data-game=firefly-ruins]'); a.scrollIntoView({ block: 'center' }); const r = a.getBoundingClientRect(); return JSON.stringify({ x: r.left + r.width / 2, y: r.top + r.height / 2 }); })()`));
+    await sleep(300);
+    await page.tap(c.x, c.y);
+    await page.waitFor(`location.pathname.endsWith('/studio/') && location.search.includes('game=firefly-ruins') && location.search.includes('lang=ja')`, 20000);
+    await page.waitFor(`document.querySelectorAll('.obj').length > 0 && document.documentElement.lang === 'ja'`, 90000);
+    await sleep(1000);
+    await shot(page, 'ja-phone-light-2-editor.png');
+    step('a card opens the editor in Japanese');
   } finally {
     await page.close();
   }

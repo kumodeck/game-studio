@@ -22,13 +22,18 @@
 //   same editor as the full-size one).
 // - ?frame=0 (2026-10-24): no frame at all on a wide screen either — the sample's picture with "Open the editor", which
 //   opens it on its own page (the phone's way, on a PC). For comparing the two ways; the default is the frame.
+// - One page per language (2026-10-29, the SEO pass): the build writes this page's words into the HTML
+//   (scripts/web-demo-lp.mjs) and makes ja/index.html for Japanese, marked <html data-lang="ja">: that page stays in
+//   Japanese whatever the browser's language, and opens the editor in Japanese. The English page keeps its old rule
+//   (?lang=, else the browser's language).
 // - Switching samples swaps the frame's page; saves are per sample and kept in this browser, shared with the full-size
 //   editor (same site), so "Open full size" shows the same work.
 (function () {
   var params = new URLSearchParams(location.search);
-  var q = params.get('lang');
+  var fixed = document.documentElement.getAttribute('data-lang');
+  var q = params.get('lang') || fixed;
   var noFrame = params.get('frame') === '0';
-  var ja = q ? q === 'ja' : /^ja/i.test(navigator.language || '');
+  var ja = fixed ? fixed === 'ja' : q ? q === 'ja' : /^ja/i.test(navigator.language || '');
   var T = window.DEMO_LIST_TEXT[ja ? 'ja' : 'en'];
   var langQ = q ? '&lang=' + encodeURIComponent(q) : '';
   var $ = function (id) { return document.getElementById(id); };
@@ -106,7 +111,10 @@
     document.querySelectorAll('a.sample').forEach(function (a) { a.setAttribute('aria-selected', String(a.dataset.game === g.id)); });
     $('full').href = editorUrl(g, false);
     $('open').href = editorUrl(g, false);
-    if (g.thumb) $('poster').src = g.thumb;
+    if (g.thumb) {
+      $('poster').src = g.thumb;
+      $('poster').alt = T.posterAlt.replace('{title}', g.title);
+    }
     if (changed && frame) {
       setActive(false);
       stage.classList.remove('ready');

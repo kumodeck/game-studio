@@ -31,8 +31,10 @@
     .top .links { display: flex; gap: 20px; }
 
     .hero { padding-top: 72px; padding-bottom: 56px; }
-    h1 { font-size: 52px; line-height: 1.06; letter-spacing: -.025em; font-weight: 650; margin: 0; max-width: 15em; text-wrap: balance; }
-    .lead { margin: 20px 0 0; max-width: 34em; font-size: 18px; color: var(--text-2); text-wrap: pretty; }
+    /* auto-phrase: the Japanese title line and lead break between phrases, not inside a word (on a phone the title broke
+       "web game" in two, 2026-10-29). Chrome and Edge do it for lang="ja"; elsewhere, and for English, it is the same as normal. */
+    h1 { font-size: 52px; line-height: 1.06; letter-spacing: -.025em; font-weight: 650; margin: 0; max-width: 15em; text-wrap: balance; word-break: auto-phrase; }
+    .lead { margin: 20px 0 0; max-width: 34em; font-size: 18px; color: var(--text-2); text-wrap: pretty; word-break: auto-phrase; }
     .install { margin-top: 36px; max-width: 1000px; } /* the whole line in one row at 1280 (it is ~110 characters) */
     .install-label { font-size: 13px; font-weight: 500; color: var(--text-2); margin-bottom: 8px; }
     .cmd { display: flex; align-items: stretch; border: 1px solid var(--line); border-radius: 12px; background: var(--card); overflow: hidden; }
@@ -142,7 +144,7 @@
   </header>
   <main>
     <section class="wrap hero">
-      <h1 id="title">Turn your Claude or Codex into a game studio.</h1>
+      <h1 id="title">A free level editor for the web games your AI makes.</h1>
       <p class="lead" id="lead"></p>
       <div class="install">
         <div class="install-label" id="installLabel"></div>

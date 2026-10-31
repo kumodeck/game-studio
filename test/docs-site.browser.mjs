@@ -9,7 +9,7 @@
 //   - nothing wider than the screen (no sideways scroll), the brand clear of the test chip
 //   - dark: the page's background is dark (the tokens follow prefers-color-scheme)
 //   - phone: the page list starts folded and opens with a tap
-// The front page: its "Docs" link opens docs/ (English) and docs/ja/ (?lang=ja).
+// The front page: its "Docs" link opens docs/ (English) and docs/ja/ (from the Japanese front page, ja/).
 // --shots: <lang>-<page>-<pc|phone>-<light|dark>.png, the top of each page (and editing's Save part, scrolled).
 // Exit 1 on failure.
 import assert from 'node:assert/strict';
@@ -20,13 +20,16 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { launch, newPage } from './adapters-2d/cdp.mjs';
 import { startHost } from './web-demo-host.mjs';
+import { readPages } from '../scripts/build-docs.mjs';
 
 const PKG = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const args = process.argv.slice(2);
 const opt = (name) => (args.includes(name) ? args[args.indexOf(name) + 1] : null);
 const SHOTS = opt('--shots') ? resolve(opt('--shots')) : null;
 if (SHOTS) mkdirSync(SHOTS, { recursive: true });
-const PAGES = (opt('--pages') || 'index,getting-started,editing,play,motion,levels,ui,make-with-ai,how-it-works,faq').split(',');
+// Every page by default, read from docs/site/ (2026-10-29: four pages were added; a list written here missed them).
+const ALL = readPages('en').map((p) => p.file.replace(/\.md$/, ''));
+const PAGES = (opt('--pages') || ALL.join(',')).split(',');
 // The pictures: these pages at every size; the rest are checked without one (keeps the folder small).
 const PICTURED = ['index', 'editing', 'play', 'how-it-works'];
 let DIR = opt('--dir') ? resolve(opt('--dir')) : null;
@@ -109,7 +112,7 @@ try {
         await page.tap(at[0], at[1]);
         await sleep(300);
         const n = await page.eval(`document.querySelector('.pages').open ? [...document.querySelectorAll('.pages li a')].filter((a) => a.offsetParent).length : 0`);
-        check(n === 10, `phone: a tap opens the page list (${n} pages)`);
+        check(n === ALL.length, `phone: a tap opens the page list (${n} pages)`);
         if (SHOTS && theme === 'light') writeFileSync(join(SHOTS, `${lang}-pages-open-phone-${theme}.png`), await page.screenshot());
       }
     } finally {
@@ -120,7 +123,8 @@ try {
   // The front page's one link to the docs, in both languages.
   for (const lang of ['en', 'ja']) {
     const page = await open(SIZES[0], 'light');
-    await page.goto(`${host.url}${lang === 'ja' ? '?lang=ja' : ''}`);
+    // The Japanese front page is ja/ (2026-10-29, the SEO pass; ?lang=ja on the English page still works).
+    await page.goto(`${host.url}${lang === 'ja' ? 'ja/' : ''}`);
     await page.waitFor(`document.getElementById('docs')?.textContent`);
     const link = JSON.parse(await page.eval(`JSON.stringify({ text: document.getElementById('docs').textContent, href: document.getElementById('docs').href })`));
     check(link.href === `${host.url}docs/${lang === 'ja' ? 'ja/' : ''}`, `front page (${lang}): “${link.text}” → ${link.href}`);
@@ -128,7 +132,7 @@ try {
     check((await page.eval(`document.documentElement.lang`)) === lang, `front page (${lang}): the link opens the ${lang} docs`);
     // And back: the docs' "Game Studio" opens the front page.
     const home = await page.eval(`document.querySelector('.brand').href`);
-    check(home === `${host.url}${lang === 'ja' ? '?lang=ja' : ''}`, `docs (${lang}): the brand goes back to the front page (${home})`);
+    check(home === `${host.url}${lang === 'ja' ? 'ja/' : ''}`, `docs (${lang}): the brand goes back to the front page (${home})`);
     await page.close();
   }
 } finally {

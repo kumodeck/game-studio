@@ -1,7 +1,12 @@
 #!/usr/bin/env node
 // Build the browser-only web demo of Game Studio into ONE static folder.
 //
-//   node scripts/build-web-demo.mjs --out <dir> [--cache <dir>] [--also <sample dir> …]
+//   node scripts/build-web-demo.mjs --out <dir> [--cache <dir>] [--also <sample dir> …] [--site-url <address>]
+//
+// --site-url (the SEO pass, 2026-10-29): the address the folder is published at, e.g. https://example.com/game-studio/
+// (or GAME_STUDIO_SITE_URL). With it, every page gets its full canonical address and hreflang, link previews get their
+// picture, and sitemap.xml lists the pages (scripts/seo.mjs). Without it the site is the same minus those (they need a
+// full address), and the build says so. Never a default: where the demo is published is decided outside this package.
 //
 // --also (UI stage 1, 2026-10-19): add a sample folder that has a starter.json (e.g. examples/three-hud, the
 // UI-layer sample; examples/three-neon-boss, the paused moment's sample with a boss the game makes — pause-edit fix 1)
@@ -18,7 +23,10 @@
 //
 // Output:
 //   index.html, lp.js,          the front page (src/hosts/browser/index.html): what Game Studio is, the install
-//   strings.js                  line, the editor itself in a frame with the two samples, and its words
+//   strings.js                  line, the editor itself in a frame with the two samples, and its words (written
+//   ja/index.html               into the HTML too, scripts/web-demo-lp.mjs); ja/ is the same page in Japanese
+//   social-en.jpg, social-ja.jpg  the link-preview picture of each language (docs/media/), 1200×630
+//   robots.txt, sitemap.xml     for search engines (sitemap.xml only with --site-url)
 //   favicon.ico, favicon.svg,   KUMODeck's icon (scripts/web-demo-icon/), linked from both pages
 //   apple-touch-icon.png
 //   thumbs/<id>.png             each starter's thumb.png, for the list
@@ -48,7 +56,9 @@ import { tmpdir } from 'node:os';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { bundle } from './bundle.mjs';
-import { buildDocs } from './build-docs.mjs';
+import { buildDocs, imageSize } from './build-docs.mjs';
+import { lpPage, readLpText } from './web-demo-lp.mjs';
+import { appLd, headTags, KUMODECK, robotsTxt, siteUrlFrom, sitemapXml } from './seo.mjs';
 import { injectEditScript } from '../src/server/files.mjs';
 import { listAssets } from '../src/server/assets.mjs';
 import { readStarters, starterFiles } from '../src/server/starters.mjs';
@@ -65,8 +75,8 @@ const REPO = JSON.parse(readFileSync(join(ROOT, '.claude-plugin/plugin.json'), '
 // so the front page never drifts from the install page.
 const INSTALL = (/```\n([^\n]+)\n```/.exec(readFileSync(join(ROOT, 'INSTALL.md'), 'utf8')) || [])[1] || null;
 if (!INSTALL) throw new Error('INSTALL.md has no one-line code block: update build-web-demo.mjs');
-// The front page's "Optional: KUMODeck" note links here (the same address as the README's "Sign in with KUMODeck").
-const KUMODECK = 'https://kumodeck.com';
+// The front page's "Optional: KUMODeck" note links to KUMODECK (scripts/seo.mjs; the README's "Sign in with KUMODeck").
+const SITE = siteUrlFrom();
 const BANNER = `/* KUMODeck Game Studio ${pkg.version} (web demo) — MIT License — built file, edit src/ instead */`;
 
 // The samples = the starters (starters/<id>/starter.json), 3D first, the same list and the same
@@ -172,8 +182,34 @@ const shellHtml = readFileSync(join(SRC, 'shell/index.html'), 'utf8')
   .replace('<link rel="stylesheet" href="shell.css" />', '<link rel="stylesheet" href="shell.css" />\n  <link rel="stylesheet" href="demo.css" />')
   .replace('<script src="studio-shell.js"></script>', '<script src="studio-web.js"></script>');
 if (!shellHtml.includes('studio-web.js') || !shellHtml.includes('demo.css')) throw new Error('src/shell/index.html changed: update build-web-demo.mjs');
+// No noindex here or on the samples (2026-10-29): every page of the demo can be found, as on the published demo
+// today. Whether the editor and the samples should be kept out of search is decided with the release, not in this
+// build (seo.mjs headTags still takes noindex for that day). The first SEO pass had them noindex; taken out again.
 write('studio/index.html', withIcon(shellHtml, '../', 'src/shell/index.html'));
-write('index.html', withIcon(readFileSync(join(SRC, 'hosts/browser/index.html'), 'utf8'), '', 'src/hosts/browser/index.html'));
+// The front page, English and Japanese (scripts/web-demo-lp.mjs), with its search tags (scripts/seo.mjs).
+const LP_TEXT = readLpText(join(SRC, 'hosts/browser/strings.js'));
+const LP_LANGS = [{ id: 'en', dir: '' }, { id: 'ja', dir: 'ja/' }];
+const SOCIAL = Object.fromEntries(LP_LANGS.map((l) => {
+  const file = join(ROOT, `docs/media/social-${l.id}.jpg`);
+  return [l.id, { file, path: `social-${l.id}.jpg`, ...imageSize(file), alt: LP_TEXT[l.id].socialAlt }];
+}));
+const lpAlternates = Object.fromEntries(LP_LANGS.map((l) => [l.id, l.dir]));
+const lpTemplate = readFileSync(join(SRC, 'hosts/browser/index.html'), 'utf8');
+const first = SAMPLES[0];
+for (const l of LP_LANGS) {
+  const T = LP_TEXT[l.id];
+  const head = headTags({
+    site: SITE, path: l.dir, lang: l.id, alternates: lpAlternates, title: T.pageTitle, description: T.description,
+    siteName: 'KUMODeck Game Studio', image: SOCIAL[l.id],
+    jsonLd: appLd({ site: SITE, path: l.dir, lang: l.id, name: 'KUMODeck Game Studio', description: T.description, version: pkg.version, repo: REPO, image: SOCIAL[l.id] }),
+  });
+  const html = lpPage(lpTemplate, {
+    lang: l.id, T, install: INSTALL, repo: REPO, kumodeck: KUMODECK, head, dir: l.dir,
+    first: { id: first.id, title: first.title, thumb: first.thumb ? `thumbs/${first.id}.png` : null },
+  });
+  write(`${l.dir}index.html`, withIcon(html, '', 'src/hosts/browser/index.html'));
+  cpSync(SOCIAL[l.id].file, join(OUT, SOCIAL[l.id].path));
+}
 write('favicon.ico', icoOf(readFileSync(join(ICON, 'favicon-32.png'))));
 write('favicon.svg', readFileSync(join(ICON, 'favicon.svg')));
 write('apple-touch-icon.png', readFileSync(join(ICON, 'apple-touch-icon.png')));
@@ -230,6 +266,7 @@ for (const s of SAMPLES) {
     const editTag = `<script src="${up}__studio/studio-edit.js" data-studio-edit></script>`;
     if (!html.includes(editTag)) throw new Error('injectEditScript changed: update build-web-demo.mjs');
     html = html.replace(editTag, `<script src="${up}__studio/game-placement.js" data-game="${s.id}"></script>` + editTag);
+    // No noindex on the sample's page (see studio/index.html above).
     writeFileSync(join(to, rel), html);
   }
   // Bare imports of the sample's own modules that go through a prefix entry ("three/addons/…").
@@ -282,9 +319,18 @@ while (queue.length) {
 }
 
 // ---- 4. the docs (/docs/ and /docs/ja/): the header's "Game Studio" and the tab icon point one folder up, here ----
-buildDocs(join(OUT, 'docs'), { version: pkg.version, repo: REPO, home: true });
+const docs = buildDocs(join(OUT, 'docs'), { version: pkg.version, repo: REPO, home: true, site: SITE, sitePath: 'docs/', social: SOCIAL });
 
-// ---- 5. a note for whoever opens the folder ----
+// ---- 5. for search engines: robots.txt, and sitemap.xml with every front page and docs page (scripts/seo.mjs) ----
+write('robots.txt', robotsTxt(SITE));
+if (SITE) {
+  const lpEntries = LP_LANGS.map((l) => ({ path: l.dir, alternates: lpAlternates }));
+  write('sitemap.xml', sitemapXml(SITE, [...lpEntries, ...docs.entries]));
+} else {
+  console.log('web demo: no --site-url, so no canonical / hreflang / link-preview picture / sitemap.xml (they need the full address)');
+}
+
+// ---- 6. a note for whoever opens the folder ----
 write('README.md', `# Game Studio — web demo (built folder)
 
 Built by \`oss/game-studio/scripts/build-web-demo.mjs\` (Game Studio ${pkg.version}). Do not edit: rebuild.
@@ -293,7 +339,8 @@ Static files only, relative paths, no CDN. Serve the folder as it is (KUMODeck h
 \`python3 -m http.server\`) and open \`index.html\`. The editor keeps everything in the
 visitor's browser (IndexedDB) and is not connected to an AI.
 
-- \`index.html\` — the front page
+- \`index.html\` — the front page (\`ja/index.html\`: the same in Japanese)
+- \`robots.txt\`${SITE ? ', `sitemap.xml`' : ''} — for search engines${SITE ? ` (built for ${SITE})` : ''}
 - \`docs/\` — the docs (English; Japanese in \`docs/ja/\`)
 - \`studio/\` — the editor (\`?game=<id>\`), \`games.json\` lists the samples
 - \`thumbs/\` — the pictures on the sample list

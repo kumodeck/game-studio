@@ -1,6 +1,6 @@
 {
   "name": "game-studio",
-  "description": "KUMODeck Game Studio: turn your Claude or Codex into a game studio. A free, local editor for your web game.",
+  "description": "KUMODeck Game Studio: a free level editor for the web games your AI makes. Runs on your computer.",
   "owner": {
     "name": "KUMODeck",
     "email": "support@kumodeck.com"

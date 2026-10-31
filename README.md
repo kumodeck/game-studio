@@ -2,8 +2,9 @@
 
 ![Game Studio: type “Add three lighthouses around the island,” your AI adds them and only they glow violet, then Undo AI change](docs/media/studio-loop.webp)
 
-**Turn your Claude or Codex into a game studio.** Game Studio is a free editor for web games that runs on your
-computer, right next to your AI: drag things around in your game, ask your AI for changes, and click **Save**.
+**A free level editor for the web games your AI makes.** Game Studio works with three.js, Phaser, PixiJS, canvas and
+Godot web exports, and runs on your computer, right next to Claude Code or Codex: drag things around in your game,
+ask your AI for changes, and click **Save**.
 Install it by pasting one line into your AI (below), then type `/arrange` in Claude Code or `$arrange` in
 Codex.
 
@@ -24,6 +25,8 @@ the right… no, less."
 > everything above works without an account.
 
 **Docs:** [how to use Game Studio](docs/site/lang/en/index.md), step by step with pictures (also [in Japanese](docs/site/lang/ja/index.md)).
+With your AI and your engine: [Claude Code](docs/site/lang/en/claude-code.md) · [Codex](docs/site/lang/en/codex.md) ·
+[three.js level editor](docs/site/lang/en/threejs-level-editor.md) · [Phaser, PixiJS, canvas and Godot](docs/site/lang/en/phaser-pixijs-godot.md).
 
 ## Install
 

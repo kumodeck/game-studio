@@ -8,8 +8,8 @@ One page for anyone who writes words for Game Studio: the editor's screens, the 
 Someone who makes web games with Claude Code or Codex. They may have never used a level editor. They want to move
 things in their game and get back to it. They don't read instructions.
 
-**The product in one line:** *Turn your Claude or Codex into a game studio.* Game Studio is free, runs on their
-computer, and needs no account. Signing in with KUMODeck adds AI images and 3D models, paid with credits.
+**The product in one line:** *A free level editor for the web games your AI makes.* Game Studio runs on their computer
+and needs no account. Signing in with KUMODeck adds AI images and 3D models, paid with credits.
 
 ## Six rules
 

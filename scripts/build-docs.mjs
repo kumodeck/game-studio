@@ -18,10 +18,15 @@
 // in a lang/ folder like the editor's other translations.
 //
 // Look: the demo's front page (src/hosts/browser/index.html): the same colors, type and light / dark rule.
+// Search (2026-10-29, scripts/seo.mjs): each page's <title> is "<title> · KUMODeck Game Studio" (the front matter's
+// optional `head-title` replaces the whole of it: the docs' first page, whose title already says "Game Studio docs"),
+// with its description, Open Graph tags and JSON-LD; with the site's address also canonical, hreflang (the page in the
+// other language) and a breadcrumb. buildDocs() returns the pages for sitemap.xml.
 import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, posix, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { render } from './docs-md.mjs';
+import { docLd, headTags } from './seo.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 export const SITE = join(ROOT, 'docs/site');
@@ -47,9 +52,19 @@ export function readPages(lang) {
 /** A page's output path inside the docs folder: en/editing.md → editing.html, ja/index.md → ja/index.html. */
 const outPath = (lang, file) => `${LANGS.find((l) => l.id === lang).dir}${file.replace(/\.md$/, '.html')}`;
 
-/** Width and height of a PNG, WebP or SVG (for <img width height>: no jump while pictures load). */
+/** Width and height of a PNG, WebP, JPEG or SVG (for <img width height>: no jump while pictures load; og:image's size). */
 export function imageSize(file) {
   const b = readFileSync(file);
+  // JPEG (the link-preview pictures, 2026-10-29): the first "start of frame" marker holds height then width.
+  if (b[0] === 0xff && b[1] === 0xd8) {
+    for (let i = 2; i + 9 < b.length; ) {
+      if (b[i] !== 0xff) return null;
+      const marker = b[i + 1];
+      if (marker >= 0xc0 && marker <= 0xcf && ![0xc4, 0xc8, 0xcc].includes(marker)) return { width: b.readUInt16BE(i + 7), height: b.readUInt16BE(i + 5) };
+      i += 2 + b.readUInt16BE(i + 2);
+    }
+    return null;
+  }
   if (file.endsWith('.svg')) {
     const m = /viewBox="[\d.-]+\s+[\d.-]+\s+([\d.]+)\s+([\d.]+)"/.exec(b.toString('utf8'));
     return m ? { width: Math.round(+m[1]), height: Math.round(+m[2]) } : null;
@@ -67,18 +82,25 @@ export function imageSize(file) {
   return null;
 }
 
+/** A page's address in the site without "index.html" (docs/ja/index.html → docs/ja/), as links and canonical say it. */
+const bare = (p) => p.replace(/(^|\/)index\.html$/, '$1');
+
 /**
  * Write the docs into `out` (emptied first).
  * opts.version: the Game Studio version (the footer). opts.repo: the public repository (links to files outside the
  * docs and "Edit this page"); null leaves them as plain text. opts.home: true when the demo's front page is one folder
  * up (the header's "Game Studio" and the tab icon point there); false for a docs-only build.
+ * opts.site: the site's address (scripts/seo.mjs) or null; opts.sitePath: where these docs are in that site ('docs/');
+ * opts.social: { en, ja } link-preview pictures ({ path, width, height, alt }, paths from the site's root) or null.
+ * Returns { pages: the count, entries: [{ path, alternates }] for sitemap.xml (paths from the site's root) }.
  */
-export function buildDocs(out, { version, repo = null, home = true } = {}) {
+export function buildDocs(out, { version, repo = null, home = true, site = null, sitePath = 'docs/', social = null } = {}) {
   rmSync(out, { recursive: true, force: true });
   mkdirSync(out, { recursive: true });
   writeFileSync(join(out, 'docs.css'), CSS);
   writeFileSync(join(out, 'docs.js'), JS);
   const pages = Object.fromEntries(LANGS.map((l) => [l.id, readPages(l.id)]));
+  const entries = [];
   for (const lang of LANGS) {
     const list = pages[lang.id];
     mkdirSync(join(out, lang.dir), { recursive: true });
@@ -106,33 +128,58 @@ export function buildDocs(out, { version, repo = null, home = true } = {}) {
         return { src, ...imageSize(file) };
       };
       const { meta, html, headings } = render(page.md, { link, image });
-      for (const k of ['title', 'nav', 'order', 'written-for']) if (!meta[k]) throw new Error(`${lang.id}/${page.file}: no "${k}" in its front matter`);
+      // description too (2026-10-29): it is the line under the page's name in search results.
+      for (const k of ['title', 'nav', 'order', 'written-for', 'description']) if (!meta[k]) throw new Error(`${lang.id}/${page.file}: no "${k}" in its front matter`);
       const other = LANGS.find((l) => l.id !== lang.id);
       const otherHas = pages[other.id].some((p) => p.file === page.file);
+      // The same page in each language, as addresses from the site's root (for hreflang and sitemap.xml).
+      const alternates = Object.fromEntries(LANGS.filter((l) => l.id === lang.id || otherHas).map((l) => [l.id, sitePath + bare(outPath(l.id, page.file))]));
+      const path = alternates[lang.id];
+      entries.push({ path, alternates });
       writeFileSync(join(out, here), pageHtml({
         lang, other, here, up, meta, html, headings, list, n, version, repo, home,
         otherHref: otherHas ? up(outPath(other.id, page.file)).replace(/(^|\/)index\.html$/, '$1') || './' : null,
         source: `docs/site/lang/${lang.id}/${page.file}`,
+        head: docHead({ lang, meta, list, n, site, sitePath, path, alternates, image: social?.[lang.id] || null, home }),
       }));
     });
   }
-  return { pages: LANGS.reduce((n, l) => n + pages[l.id].length, 0) };
+  return { pages: LANGS.reduce((n, l) => n + pages[l.id].length, 0), entries };
+}
+
+/** A docs page's <title> and the tags under it (scripts/seo.mjs). */
+function docHead({ lang, meta, list, n, site, sitePath, path, alternates, image, home }) {
+  const t = T[lang.id];
+  const title = meta['head-title'] || `${meta.title} · ${t.site}`;
+  // Game Studio › Docs › this page; the front page only when there is one (a docs-only build has none).
+  const docsHome = sitePath + bare(outPath(lang.id, list[0].file));
+  const crumbs = [
+    ...(home ? [{ name: t.home, path: lang.dir }] : []),
+    { name: t.docs, path: docsHome },
+    ...(n > 0 ? [{ name: meta.nav, path }] : []),
+  ];
+  const tags = headTags({
+    site, path, lang: lang.id, alternates, title: meta.title, description: meta.description, siteName: t.site, type: 'article', image,
+    jsonLd: docLd({ site, path, lang: lang.id, title: meta.title, description: meta.description, crumbs }),
+  });
+  return { title, tags };
 }
 
 const T = {
-  en: { docs: 'Docs', pages: 'Pages', onThisPage: 'On this page', prev: 'Previous', next: 'Next', writtenFor: 'Written for Game Studio {v}.',
+  en: { site: 'KUMODeck Game Studio', docs: 'Docs', pages: 'Pages', onThisPage: 'On this page', prev: 'Previous', next: 'Next', writtenFor: 'Written for Game Studio {v}.',
     edit: 'Edit this page on GitHub', home: 'Game Studio', copy: 'Copy', copied: 'Copied', skip: 'Skip to the page' },
-  ja: { docs: '使い方', pages: 'ページ', onThisPage: 'このページ', prev: '前へ', next: '次へ', writtenFor: 'ゲームスタジオ {v} に合わせて書いています。',
+  ja: { site: 'KUMODeck ゲームスタジオ', docs: '使い方', pages: 'ページ', onThisPage: 'このページ', prev: '前へ', next: '次へ', writtenFor: 'ゲームスタジオ {v} に合わせて書いています。',
     edit: 'GitHub でこのページを直す', home: 'ゲームスタジオ', copy: 'コピー', copied: 'コピーしました', skip: '本文へ' },
 };
 
-function pageHtml({ lang, other, up, meta, html, headings, list, n, version, repo, home, otherHref, source }) {
+function pageHtml({ lang, other, up, meta, html, headings, list, n, version, repo, home, otherHref, source, head }) {
   const t = T[lang.id];
   const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
   const href = (p) => up(outPath(lang.id, p.file)).replace(/(^|\/)index\.html$/, '$1') || './';
   // The front page is one folder above the docs; the Japanese docs open it in Japanese.
   const rootUp = lang.dir ? '../../' : '../';
-  const homeHref = `${rootUp}${lang.id === 'ja' ? '?lang=ja' : ''}`;
+  // The Japanese front page is its own page, ja/ (2026-10-29; before, ?lang=ja on the English one).
+  const homeHref = `${rootUp}${lang.dir}`;
   const nav = list.map((p, i) => `<li><a href="${href(p)}"${i === n ? ' aria-current="page"' : ''}>${esc(p.meta.nav)}</a></li>`).join('');
   const toc = headings.filter((h) => h.level === 2);
   const prev = list[n - 1];
@@ -148,8 +195,8 @@ function pageHtml({ lang, other, up, meta, html, headings, list, n, version, rep
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>${esc(meta.title)} · ${t.home} ${t.docs}</title>
-  <meta name="description" content="${esc(meta.description || meta.title)}" />
+  <title>${esc(head.title)}</title>
+${head.tags}
 ${icons}  <link rel="stylesheet" href="${asset('docs.css')}" />
   <!-- Built from ${source} by scripts/build-docs.mjs (Game Studio ${version}). Edit the Markdown, not this file. -->
 </head>

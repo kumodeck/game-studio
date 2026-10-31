@@ -1,14 +1,15 @@
 ---
 title: Game Studio docs
+head-title: KUMODeck Game Studio docs
 nav: Overview
 order: 0
 written-for: 0.1.18
-description: How to use KUMODeck Game Studio, the free editor for the web games your AI makes.
+description: How to use KUMODeck Game Studio, the free level editor for the web games your AI makes.
 ---
 
 # Game Studio docs
 
-Game Studio is a free editor for the web games you make with Claude Code or Codex. You move things around in your game by hand, ask your AI for changes in the same window, and click **Save**. Your AI puts what you did into the game’s code.
+Game Studio is a free level editor for the web games you make with Claude Code or Codex. You move things around in your game by hand, ask your AI for changes in the same window, and click **Save**. Your AI puts what you did into the game’s code.
 
 ![The editor on the Lantern Cove sample: the Scene list on the left, the game in the middle, the box for your AI at the bottom](media/open.webp)
 
@@ -26,6 +27,13 @@ It runs on your computer, needs no account, and sends nothing anywhere.
 - [Levels](levels.md): switch between your game’s levels, copy and rename them.
 - [UI editing](ui.md): move the title, score and buttons that sit over your game.
 - [Make with AI](make-with-ai.md): make images, 3D models and sounds (optional, with a KUMODeck account).
+
+## With your AI and your engine
+
+- [Make a game with Claude Code](claude-code.md): from an idea to a game you arrange by hand.
+- [Make a game with Codex](codex.md): the same editor, with `$arrange` and “look”.
+- [A level editor for three.js games](threejs-level-editor.md): what you can do in a three.js game.
+- [Phaser, PixiJS, canvas and Godot web games](phaser-pixijs-godot.md): 2D games, with a small adapter.
 
 ## Behind the scenes
 

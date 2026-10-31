@@ -3,15 +3,26 @@
 // (the editor's are in src/shell/i18n.ts and src/hosts/browser/text.ts).
 // `line` is the same words as the editor's top line (src/hosts/browser/text.ts, demo.banner).
 // "W A S D" is written with no-break spaces so a phone never splits the keys across two lines.
-// Voice: docs/VOICE.md (name the thing, no pitch, sentence case). The product line is the README's first sentence.
+// Voice: docs/VOICE.md (name the thing, no pitch, sentence case). The product line (title) is the README's first sentence.
+// It names what Game Studio is: a free level editor for the web games your AI makes (2026-10-29). The line before it
+// promised to make the person's AI a game studio instead of naming the tool; "level editor" is also what three.js,
+// Phaser and PixiJS makers search for.
+// pageTitle and description are also what search results and link previews show (scripts/web-demo-lp.mjs and
+// scripts/seo.mjs put them in the built page, 2026-10-29): the words people search for ("free", "level editor",
+// "Claude Code", "Codex", "three.js"), kept true. A title of about 60 characters and a description of about 150 show
+// whole in search results (Japanese: about 30 and 80).
 window.DEMO_LIST_TEXT = {
   en: {
-    pageTitle: 'KUMODeck Game Studio',
+    pageTitle: 'KUMODeck Game Studio: free level editor for Claude Code and Codex',
+    description: 'A free level editor for the web games your AI makes. Move things in your three.js, Phaser or PixiJS game, click Save, and Claude Code or Codex updates the code.',
+    // The link-preview picture (og:image): the editor on the 3D sample, as the README's picture.
+    socialAlt: 'The Game Studio editor on Lantern Cove, a 3D sample game, with the lighthouse selected',
+    posterAlt: '{title}, a sample game',
     brand: 'Game Studio',
     github: 'GitHub',
     docs: 'Docs',
-    title: 'Turn your Claude or Codex into a game studio.',
-    lead: 'A free editor for the web games your AI makes. Move things around in your game, click Save, and your AI updates the code.',
+    title: 'A free level editor for the web games your AI makes.',
+    lead: 'Move things around in your game by hand, click Save, and Claude Code or Codex updates the code.',
     installLabel: 'Paste this into Claude Code or Codex',
     copy: 'Copy',
     copied: 'Copied',
@@ -43,12 +54,15 @@ window.DEMO_LIST_TEXT = {
     // The samples' English lines come from each starter's starter.json ("blurb"), via studio/games.json.
   },
   ja: {
-    pageTitle: 'KUMODeck ゲームスタジオ',
+    pageTitle: 'KUMODeck ゲームスタジオ｜Claude Code・Codex で使える無料のレベルエディタ',
+    description: 'AI が作るウェブゲームのための無料のレベルエディタ。three.js・Phaser・PixiJS のゲームの物を手で動かして保存すると、Claude Code や Codex がコードに反映します。',
+    socialAlt: 'ゲームスタジオのエディタで、3D の見本のゲーム「Lantern Cove」の灯台を選んだところ',
+    posterAlt: '見本のゲーム「{title}」',
     brand: 'ゲームスタジオ',
     github: 'GitHub',
     docs: '使い方',
-    title: 'Claude や Codex を、ゲームスタジオに。',
-    lead: 'AI が作るウェブゲームのための、無料のエディタです。ゲームの中の物を手で動かして保存すると、AI がコードに反映します。',
+    title: 'AI が作るウェブゲームのための、無料のレベルエディタ。',
+    lead: 'ゲームの中の物を手で動かして保存すると、Claude Code や Codex がコードに反映します。',
     installLabel: 'Claude Code か Codex に、この 1 行を貼ってください',
     copy: 'コピー',
     copied: 'コピーしました',

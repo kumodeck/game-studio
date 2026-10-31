@@ -1,14 +1,15 @@
 ---
 title: ゲームスタジオの使い方
+head-title: KUMODeck ゲームスタジオの使い方
 nav: はじめに
 order: 0
 written-for: 0.1.18
-description: KUMODeck ゲームスタジオの使い方。AI が作るウェブゲームのための、無料のエディタです。
+description: KUMODeck ゲームスタジオの使い方。AI が作るウェブゲームのための、無料のレベルエディタです。
 ---
 
 # ゲームスタジオの使い方
 
-ゲームスタジオは、Claude Code や Codex で作るウェブゲームのための、無料のエディタです。ゲームの中の物を手で動かし、同じ画面で AI に頼み、**保存** を押す。あとは AI がゲームのコードに入れます。
+ゲームスタジオは、Claude Code や Codex で作るウェブゲームのための、無料のレベルエディタです。ゲームの中の物を手で動かし、同じ画面で AI に頼み、**保存** を押す。あとは AI がゲームのコードに入れます。
 
 ![見本「Lantern Cove」を開いたエディタ。左にシーンの一覧、真ん中にゲーム、下に AI に頼む欄](media/open.webp)
 
@@ -26,6 +27,13 @@ description: KUMODeck ゲームスタジオの使い方。AI が作るウェブ�
 - [レベル](levels.md): ゲームのレベルを切り替え、写して増やし、名前を変える。
 - [UI の編集](ui.md): ゲームの上のタイトル・スコア・ボタンを動かす。
 - [AI で作る](make-with-ai.md): 画像・3D モデル・音を作る（任意。KUMODeck のアカウントで）。
+
+## あなたの AI とエンジンで
+
+- [Claude Code でゲームを作る](claude-code.md): 思いつきから、手で直せるゲームまで。
+- [Codex でゲームを作る](codex.md): 同じエディタを `$arrange` と「見て」で。
+- [three.js のレベルエディタとして使う](threejs-level-editor.md): three.js のゲームでできること。
+- [Phaser・PixiJS・canvas・Godot のウェブゲーム](phaser-pixijs-godot.md): 2D のゲームは小さなつなぎを書いてから。
 
 ## しくみ
 

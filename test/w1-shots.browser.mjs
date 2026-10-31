@@ -5,7 +5,11 @@
 // and an "after" run can be laid side by side for review.
 //
 //   node test/w1-shots.browser.mjs --shots <dir> [--only pc,side,phone] [--theme light|dark|both] [--lang en|ja]
+//                                  [--agent claude|codex|none]
 //
+// --agent (2026-10-29, the docs' Codex page): the editor as Claude Code / Codex / another agent starts it, so the
+// screen names that AI ("Ask Codex…"). The editor reads it from the environment it was started in
+// (src/server/which-ai.mjs); without --agent it is this process's own, as before.
 // Lantern Cove (3D starter) at PC 1280×800 (mouse), the side window 400×900 and a phone 390×844 (touch, 2×).
 // Every step writes `<layout>-<theme>-<nn>-<step>.png` and a line in numbers.json: the edit camera
 // (`_debug.view()`), the lighthouse's box on screen, the tool strip's box, the game frame's box, the ask box's text.
@@ -28,6 +32,9 @@ const ONLY = take('--only', 'pc,side,phone').split(',');
 const THEME = take('--theme', 'both');
 const THEMES = THEME === 'both' ? ['light', 'dark'] : [THEME];
 const LANG = take('--lang', 'en');
+const AGENT_ENV = { claude: { CLAUDECODE: '1' }, codex: { CODEX_THREAD_ID: 'w1-shots' }, none: {} };
+const AGENT = take('--agent', null);
+if (AGENT && !AGENT_ENV[AGENT]) throw new Error(`--agent ${AGENT}: claude, codex or none`);
 mkdirSync(SHOTS, { recursive: true });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const LAYOUTS = {
@@ -69,7 +76,7 @@ async function run(layout, theme) {
   cpSync(join(PKG, 'starters/lantern-cove'), root, { recursive: true });
   mkdirSync(join(root, '.studio/ui'), { recursive: true });
   writeFileSync(join(root, '.studio/ui/prefs.json'), JSON.stringify({ version: 1, lang: LANG, theme }));
-  const srv = await startStudioServer({ root, uiDir: join(PKG, 'skills/arrange/bin/studio-ui'), log: () => {} });
+  const srv = await startStudioServer({ root, uiDir: join(PKG, 'skills/arrange/bin/studio-ui'), log: () => {}, ...(AGENT ? { env: AGENT_ENV[AGENT] } : {}) });
   const browser = await launch();
   const page = await newPage(browser, { ...size, cdnCache: process.env.STUDIO_CDN_CACHE });
   let n = 0;

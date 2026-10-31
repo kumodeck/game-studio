@@ -28,10 +28,19 @@ Purpose: the public docs of Game Studio, in English and Japanese. The demo site 
 
 ```
 ---
-title: Editing            the page's title
+title: Editing            the page's title (the browser tab and search results add " · KUMODeck Game Studio")
+head-title: …             optional: the whole tab / search title instead (the first page uses it)
 nav: Editing              its name in the side list
 order: 2                  its place in the side list
 written-for: 0.1.18       the version it was checked against
-description: …            one line for search results
+description: …            one line for search results and link previews (needed; about 150 characters at most)
 ---
 ```
+
+## Search
+
+Each page gets its description, Open Graph tags and JSON-LD (`scripts/seo.mjs`). Built with the site's address
+(`build-web-demo.mjs --site-url <address>`), it also gets its canonical address, the address of the same page in the
+other language (hreflang) and a breadcrumb, and the site gets `sitemap.xml`. Write a page's `title` and
+`description` with the words people search for (`three.js level editor`, `Claude Code`), as long as they say what the
+page is.
