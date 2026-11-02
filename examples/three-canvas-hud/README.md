@@ -1,7 +1,7 @@
 # three-canvas-hud
 
 Created: 2026-10-24 (studio-canvas-ui, stage 1)
-Purpose: sample three.js (r186) runner whose HUD is drawn **in a 2D canvas** over the world — a score, a health bar, a
+Purpose: sample three.js (r187) runner whose HUD is drawn **in a 2D canvas** over the world — a score, a health bar, a
 round JUMP button and a minimap, no HTML UI at all. For the editor's "UI drawn in the canvas" (CONTRACT.md §1.13,
 a request of 2026-10-24: "I want to edit the UI drawn inside the canvas, not only the HTML UI, as UI").
 

@@ -181,7 +181,7 @@ const THREE_HTML = `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Garden — three.js example</title>
 <style>html,body{margin:0;height:100%;overflow:hidden;background:#9fd4ff}canvas{display:block}</style>
-<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.186.1/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.186.1/examples/jsm/"}}</script>
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.187.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.187.0/examples/jsm/"}}</script>
 </head><body><script type="module" src="game.js"></script></body></html>
 `;
 const THREE_JS = `import * as THREE from 'three';

@@ -1,7 +1,7 @@
 // Optional offline CDN: answer https://cdn.jsdelivr.net/npm/three@<ver>/<path> from local copies of three.js, so the
 // headless tests run without network. The samples keep their real CDN URLs; only the test browser is redirected.
 //
-//   STUDIO_THREE_DIRS="0.186.1=/path/to/three-0.186.1,0.170.0=/path/to/three-0.170.0"
+//   STUDIO_THREE_DIRS="0.187.0=/path/to/three-0.187.0,0.170.0=/path/to/three-0.170.0"
 //
 // Each path is an unpacked `three` npm package (has build/ and examples/). A missing *.min.js falls back to the
 // unminified file of the same name. Without the variable the browser simply uses the network.

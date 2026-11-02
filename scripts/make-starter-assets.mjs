@@ -11,7 +11,7 @@
 // The files are committed; the games never run this. --check only compares and exits 1 when a file would change.
 //
 // Needs: a headless Chrome (test/adapters-2d/cdp.mjs finds one), ffmpeg with libmp3lame, and three.js
-// 0.186.1 from jsDelivr (taken from the web demo's cache when it is there).
+// 0.187.0 from jsDelivr (taken from the web demo's cache when it is there).
 import { createServer } from 'node:http';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -27,8 +27,8 @@ const CHECK = args.includes('--check');
 
 // The page the painters run in: the same three.js the starter uses (lantern-cove/index.html's import map).
 const PAGE = `<!doctype html><meta charset="utf-8"><script type="importmap">${JSON.stringify({ imports: {
-  three: 'https://cdn.jsdelivr.net/npm/three@0.186.1/build/three.module.min.js',
-  'three/addons/': 'https://cdn.jsdelivr.net/npm/three@0.186.1/examples/jsm/',
+  three: 'https://cdn.jsdelivr.net/npm/three@0.187.0/build/three.module.min.js',
+  'three/addons/': 'https://cdn.jsdelivr.net/npm/three@0.187.0/examples/jsm/',
 } })}</script><body></body>`;
 const TYPES = { '.js': 'text/javascript', '.mjs': 'text/javascript' };
 const server = createServer((req, res) => {

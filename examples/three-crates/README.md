@@ -1,7 +1,7 @@
 # three-crates
 
 Created: 2026-10-15
-Purpose: sample three.js (r186) toy for KUMODeck Game Studio — crates, barrels and a lamp loaded from .glb files.
+Purpose: sample three.js (r187) toy for KUMODeck Game Studio — crates, barrels and a lamp loaded from .glb files.
 Exercises GLTFLoader + clones, author marks (`userData.studioKey`, `userData.studioAsset`), an anonymous loaded model,
 an external texture and `studio.waitForReady()` / `studio.ready({ camera })`.
 

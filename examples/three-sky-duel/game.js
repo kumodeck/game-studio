@@ -2,7 +2,7 @@
  * Sky Duel 3D — two planes race through rings over the sea. You turn left / right; the rival is a simple bot.
  *
  * Sample for KUMODeck Game Studio, written to exercise:
- *   - three.js r170 (the other samples use r186)
+ *   - three.js r170 (the other samples use r187)
  *   - named objects and groups: "plane-you", "plane-rival" (groups of several meshes), "ring" ×5 (same name → ring,
  *     ring#2, …), "cloud" groups, "island"
  *   - a follow camera placed in scene.onBeforeRender — the editor must keep its own view even though this hook moves

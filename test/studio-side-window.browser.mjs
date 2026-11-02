@@ -45,7 +45,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // The runner, cut down from what an AI wrote for that try (a neon runner): groups of parts and loose meshes, no names.
 const RUNNER = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Neon Run</title><style>html,body{margin:0;height:100%;overflow:hidden;background:#0a0418}</style>
-<script type="importmap">{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.186.1/build/three.module.min.js" } }</script>
+<script type="importmap">{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.187.0/build/three.module.min.js" } }</script>
 </head><body><script type="module">
 import * as THREE from 'three';
 const scene = new THREE.Scene();

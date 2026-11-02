@@ -6,7 +6,7 @@ small, finished-looking scene that opens in a few seconds and that you can rearr
 
 | Folder | Engine | What it is |
 |---|---|---|
-| `lantern-cove/` | three.js 0.186.1 (CDN) | 3D. A quiet harbor at dusk: clear water with real reflections, a lighthouse, floating boats. Tap the water to sail. 15 objects. |
+| `lantern-cove/` | three.js 0.187.0 (CDN) | 3D. A quiet harbor at dusk: clear water with real reflections, a lighthouse, floating boats. Tap the water to sail. 15 objects. |
 | `firefly-ruins/` | PixiJS 8.21.0 (CDN) | 2D. An old stone gate by a still pond at sunset, fireflies, wind, a bell. Tap to send a breeze. 14 objects. |
 
 Each folder has the same three files the editor reads (the "starter" shape):

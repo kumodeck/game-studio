@@ -43,7 +43,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // 2026-10-19), cut down: the same objects in the same order, the same shapes and colours.
 const RUNNER = `<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Runner</title><style>html,body{margin:0;height:100%;overflow:hidden;background:#000}canvas{display:block}</style>
-<script type="importmap">{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.186.1/build/three.module.min.js" } }</script>
+<script type="importmap">{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.187.0/build/three.module.min.js" } }</script>
 </head><body><script type="module">
 import * as THREE from 'three';
 const renderer = new THREE.WebGLRenderer({ antialias: true });

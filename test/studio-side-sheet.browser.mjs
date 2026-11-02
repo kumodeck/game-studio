@@ -42,7 +42,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // "tile-r ×11", as in the screenshot of that try), a few orbs and the player.
 const GAME = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Neon Orb</title><style>html,body{margin:0;height:100%;overflow:hidden;background:#06041a}</style>
-<script type="importmap">{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.186.1/build/three.module.min.js" } }</script>
+<script type="importmap">{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.187.0/build/three.module.min.js" } }</script>
 </head><body><script type="module">
 import * as THREE from 'three';
 const scene = new THREE.Scene();

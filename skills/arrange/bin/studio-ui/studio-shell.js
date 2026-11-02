@@ -1,4 +1,4 @@
-/* KUMODeck Game Studio 0.1.75 — MIT License — built file, edit src/ instead */
+/* KUMODeck Game Studio 0.1.76 — MIT License — built file, edit src/ instead */
 (() => {
 const __defs = [];
 const __cache = [];
@@ -5902,7 +5902,7 @@ __defs[8] = function (__exports) {
 // 'three'; the CDN rewrites it to the matching core URL, so loader and core
 // are the same instance without an import map on the shell page.
 
-const THREE_VERSION = '0.186.1';
+const THREE_VERSION = '0.187.0';
 const THREE_CORE = `https://cdn.jsdelivr.net/npm/three@${THREE_VERSION}/+esm`;
 const THREE_GLTF = `https://cdn.jsdelivr.net/npm/three@${THREE_VERSION}/examples/jsm/loaders/GLTFLoader.js/+esm`;
 

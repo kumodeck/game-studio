@@ -1,7 +1,7 @@
 # three-neon-boss
 
 Created: 2026-10-28 (pause-edit, stage 1)
-Purpose: sample three.js (r186) runner for the **paused moment** (pause anytime, the moment becomes the editor;
+Purpose: sample three.js (r187) runner for the **paused moment** (pause anytime, the moment becomes the editor;
 CONTRACT.md §3.5.1). A few seconds in, the game **makes** a boss in the middle lane,
 two drones beside it and shots it fires — in plain code (`spawnBoss()` writes the position), as an AI usually writes it
 first.

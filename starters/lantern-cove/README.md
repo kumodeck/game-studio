@@ -4,7 +4,7 @@ Created: 2026-10-16
 Purpose: 3D starter (three.js). A quiet harbour at dusk: clear water, a lighthouse, boats that float. Tap the water
 (or use WASD / arrow keys) to sail the sailboat.
 
-- `index.html`: page, title, the one-line hint, import map (three 0.186.1 from jsDelivr)
+- `index.html`: page, title, the one-line hint, import map (three 0.187.0 from jsDelivr)
 - `starter.json`, `thumb.png`: what the starter picker shows
 - `studio-placement.js`: applies a saved `placement.json` at start (copy of the skill's loader)
 - `assets/`: the files the game loads — `sail.jpg` (both sails), `planks.jpg` (crate, pier, rowboat seats),

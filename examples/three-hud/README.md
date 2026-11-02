@@ -1,7 +1,7 @@
 # three-hud
 
 Created: 2026-10-19
-Purpose: sample three.js (r186) toy with an HTML UI over the 3D world — for the editor's UI layer (UI stage 1).
+Purpose: sample three.js (r187) toy with an HTML UI over the 3D world — for the editor's UI layer (UI stage 1).
 A garden at night: press Start, tap the five lanterns. The title card, the Start button and the score are HTML.
 
 - `index.html` — the UI, marked `data-studio-key="title-card" | "start-button" | "score"` (and, since UI stages 2–3,

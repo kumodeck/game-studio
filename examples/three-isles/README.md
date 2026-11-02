@@ -1,7 +1,7 @@
 # three-isles
 
 Created: 2026-10-22
-Purpose: sample three.js (r186) game with **three levels, three landforms** for KUMODeck Game Studio's level switch
+Purpose: sample three.js (r187) game with **three levels, three landforms** for KUMODeck Game Studio's level switch
 (`CONTRACT.md` §1.10). Roll the ball, pick up the gems, reach the flag: the next level is built in place.
 
 | Level | Landform | How it plays |

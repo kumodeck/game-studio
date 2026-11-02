@@ -29,7 +29,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // The farm, cut down: the same shapes of code an AI writes (a placed group of parts, loose fence posts, no names).
 const GAME = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Little Farm</title><style>html,body{margin:0;height:100%;overflow:hidden}</style>
-<script type="importmap">{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.186.1/build/three.module.min.js" } }</script>
+<script type="importmap">{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.187.0/build/three.module.min.js" } }</script>
 </head><body><script type="module">
 import * as THREE from 'three';
 const scene = new THREE.Scene();
