@@ -33,6 +33,15 @@ export interface PlayClock {
   advance(ms: number): void;
   /** A real timestamp (rAF, performance.now's timeline) as the game sees it: the paused time taken out. */
   at(t: number): number;
+  /**
+   * A game frame's timestamp (time.ts `stamp`): the same as at(t), and the frame is counted for `late`.
+   */
+  frame(t: number): number;
+  /**
+   * ms a game that cuts each frame's step at LATE_CUT_MS would be behind this clock by now (pause-ask fix △7,
+   * 2026-11-02): the sum of every frame's game time past LATE_CUT_MS. Counted only — nothing is changed for the game.
+   */
+  readonly late: number;
   /** The browser's own performance.now(), for the studio's own timers (a line's fade must not wait for the game). */
   realNow(): number;
   /** ms taken out so far (tests). */
@@ -50,6 +59,17 @@ export interface PlayClock {
  * stopped time on by one frame. (Before pause-edit, 2026-10-28, it was `t − skipped` with no speed; the same numbers
  * at 1×.)
  */
+/**
+ * `late`'s cut, ms of game time per frame (pause-ask fix △7, decided 2026-11-02). WHY: games cut a long frame's step so a
+ * hitch cannot throw things across the level — Neon Run at 0.05 s (`Math.min(dt, 0.05)`), three.js examples at
+ * 0.05–0.1. On a slow phone the frames right after loading are long, so the game's own clock falls behind this one: ▶ Try
+ * "same time, new run" paused at 0:05.40 by this clock while the game was at 0:03 (no boss yet; the first walk's △7).
+ * Counting it lets the editor say so ("the game may be 2.1 s behind here"). Tried first (same day): cutting every frame
+ * to 50 ms for the game itself, so both clocks agree — it slowed timer-driven games wherever frames are slow (a busy
+ * headless Chrome: the timers ran at a tenth), so it was taken out. 50 = the smallest cut we know of.
+ */
+export const LATE_CUT_MS = 50;
+
 export function makeClock(real: () => number) {
   const start = real();
   let g0 = start;
@@ -58,7 +78,23 @@ export function makeClock(real: () => number) {
   // While stopped: the game's time it stopped at (moved on by advance()); null = going.
   let held: number | null = null;
   const going = (t: number) => g0 + (t - r0) * rate;
+  // `late` (LATE_CUT_MS): the last frame's game time and the sum of what went past the cut.
+  let lastFrame: number | null = null;
+  let late = 0;
   return {
+    frame(t: number) {
+      if (held !== null) {
+        lastFrame = null;
+        return Math.min(going(t), held);
+      }
+      const now = going(t);
+      if (lastFrame !== null && now - lastFrame > LATE_CUT_MS) late += now - lastFrame - LATE_CUT_MS;
+      lastFrame = now;
+      return now;
+    },
+    get late() {
+      return late;
+    },
     stop() {
       if (held === null) held = going(real());
     },
@@ -151,6 +187,10 @@ export function installPlayClock(win: Window & typeof globalThis): PlayClock {
       return c.skipped;
     },
     at: c.at,
+    frame: c.frame,
+    get late() {
+      return c.late;
+    },
     realNow,
   };
 }

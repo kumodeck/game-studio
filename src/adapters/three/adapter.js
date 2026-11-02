@@ -21,6 +21,7 @@ import { assetsOf as assetsOfImpl } from './assets.js';
 import { focusSphere, sceneSphere } from './focus.js';
 import { castSurface, castSurfaceAll, solidBox, surfaceBelowHit, surfaceMeshes } from './surface.js';
 import { groundKeys } from './ground.js';
+import { codeFromObject } from './code-from.js';
 
 const DEG = Math.PI / 180;
 const S_MIN = 0.01;
@@ -1276,6 +1277,17 @@ export function createThreeAdapter({ scene, renderer, camera }) {
     assetsOf(key) {
       const o = objectOf(key);
       return o ? assetsOfImpl(o, boot, document.baseURI) : [];
+    },
+
+    /** pause-ask stage 2 (CONTRACT.md §1.14 `from`): the game's code line that first added this object, or null. */
+    fromOf(key) {
+      const o = objectOf(key);
+      if (!o || !boot.addedAt) return null;
+      try {
+        return codeFromObject(o, boot.addedAt, location.origin);
+      } catch {
+        return null;
+      }
     },
 
     /**

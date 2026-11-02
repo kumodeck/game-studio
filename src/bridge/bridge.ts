@@ -68,9 +68,10 @@ export function startBridge(opts: BridgeOptions): void {
   // before any game code, so the game's first performance.now() and every frame's timestamp already go through it.
   // In the edit page too since ▶ Play in the same page (fast switch, 2026-10-22; play-switch.ts): there it stops with
   // every hold of the game (time.ts `clock`), so the page that becomes Play steps one frame, not the minutes of Edit.
+  // A frame's timestamp goes through playClock.frame (= at; it also counts long frames: play-clock.ts `late`).
   const playClock = inFrame ? installPlayClock(win) : null;
   const core: Core = installCore({ freezeAfterFirstFrame: edit && !!inFrame, firstFrameTimeoutMs: 4000, win,
-    ...(playClock ? { stamp: playClock.at } : {}), ...(playClock && edit ? { clock: playClock } : {}) });
+    ...(playClock ? { stamp: playClock.frame } : {}), ...(playClock && edit ? { clock: playClock } : {}) });
 
   // Probes registered by the game folder (.studio/adapter.js) go first so an
   // AI-written adapter can override a built-in one.

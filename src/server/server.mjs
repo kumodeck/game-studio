@@ -33,6 +33,7 @@ import {
   readStudioFileInfo, writeNextStep, addAsset, httpError,
 } from './files.mjs';
 import { addChatTurn, chatIdOf } from './play-chat.mjs';
+import { ASK_MOMENT_MAX_FILE, getAskMoment, keepAskMoment } from './ask-moments.mjs';
 import { addCheckpoint, deleteCheckpoint, getCheckpoint, listCheckpoints, renameCheckpoint, CHECKPOINT_MAX_FILE } from './checkpoints.mjs';
 import { normalizeRequestInput, normalizeStatus, requestId, isRequestId, KUMODECK_STEP_IDS, FILE_STEP_IDS, HANDOFF_LIMITS } from '../schema/handoff.mjs';
 import { listAssets } from './assets.mjs';
@@ -297,7 +298,9 @@ async function handleApi(req, res, u, ctx) {
   // "look"); the line is a bonus that wakes an agent that happens to be watching the output.
   if (route === 'request' && m === 'POST') {
     // 64 KB of words and objects, plus a "play" request's picture (HANDOFF_LIMITS.maxShot, §3.5).
-    const body = await readBody(req, 64 * 1024 + HANDOFF_LIMITS.maxShot);
+    // pause-ask stage 2: a paused request can bring two (the frame and the frame with the marks drawn on: shotMarked).
+    // pause-ask stage 3: …and the moment it was asked from (`back`: the game's save() data, at most a checkpoint's).
+    const body = await readBody(req, 64 * 1024 + 2 * HANDOFF_LIMITS.maxShot + ASK_MOMENT_MAX_FILE);
     let raw;
     try {
       raw = JSON.parse(body.toString('utf8'));
@@ -327,6 +330,21 @@ async function handleApi(req, res, u, ctx) {
       fixedId = requestId(v.kind);
       v.shot = await keepPlayShot(ctx.rootReal, fixedId, v.shot);
       if (!v.shot) delete v.shot;
+    }
+    // pause-ask stage 2 (2026-11-02): the same frame with the person's marks drawn on it, beside it as <id>-marked.jpg.
+    if (v.kind === 'play' && v.shotMarked) {
+      fixedId ??= requestId(v.kind);
+      v.shotMarked = await keepPlayShot(ctx.rootReal, fixedId, v.shotMarked, '-marked');
+      if (!v.shotMarked) delete v.shotMarked;
+    }
+    // pause-ask stage 3 (2026-11-02; ask-moments.mjs): the moment a paused ask was asked from, kept invisibly as
+    // .studio/asks/<id>.json (never a checkpoint of ⚑'s list) and named by the request (`back`), so ▶ Try from 0:05.02
+    // and `--check-moment <back>` open the same moment with the new code. A moment that does not read as one is
+    // dropped, never the person's words.
+    if (v.kind === 'play' && v.paused === true && raw && typeof raw === 'object' && raw.back !== undefined) {
+      fixedId ??= requestId(v.kind);
+      const b = await keepAskMoment(ctx.rootReal, fixedId, raw.back).catch((e) => ({ error: e.message }));
+      if (b.path) v.back = b.path;
     }
     const rec = await recordRequest(ctx, v, fixedId);
     // Pause (2026-10-22): a message of the chat over a paused game; the talk is kept as one file (play-chat.mjs).
@@ -427,6 +445,12 @@ async function handleApi(req, res, u, ctx) {
     return sendJson(res, 200, { ok: true, path: p });
   }
 
+  // An ask's moment (pause-ask stage 3; ask-moments.mjs): what ▶ Try from 0:05.02 opens. The editor page's only.
+  const askRoute = /^asks\/([^/]+)$/.exec(route);
+  if (askRoute && m === 'GET') {
+    const a = await getAskMoment(ctx.rootReal, askRoute[1]);
+    return sendJson(res, a ? 200 : 404, a ? { value: a } : { value: null, error: 'no such moment (kept for the newest asks only)' });
+  }
   // Checkpoints (pause-edit stage 3, 2026-10-28; checkpoints.mjs): the paused moments the person kept with ⚑, in
   // .studio/checkpoints/ — the editor's, never the game's (the plan's Q2 answered (a)). No stdout line: nothing for the AI to do.
   if (route === 'checkpoints' && m === 'GET') return sendJson(res, 200, await listCheckpoints(ctx.rootReal));
@@ -587,19 +611,19 @@ const PLAY_SHOTS_KEPT = 24;
  * be written (the request is kept anyway: the words and the log still say what happened). Old pictures beyond
  * PLAY_SHOTS_KEPT are removed, newest kept (ids sort by time).
  */
-async function keepPlayShot(rootReal, id, dataUrl) {
+async function keepPlayShot(rootReal, id, dataUrl, tail = '') {
   const m = /^data:image\/(jpeg|png);base64,(.*)$/.exec(dataUrl);
   if (!m) return null;
   const ext = m[1] === 'png' ? 'png' : 'jpg';
   let p;
   try {
-    p = await writeStudioFile(rootReal, `play/${id}.${ext}`, Buffer.from(m[2], 'base64'));
+    p = await writeStudioFile(rootReal, `play/${id}${tail}.${ext}`, Buffer.from(m[2], 'base64'));
   } catch {
     return null;
   }
   try {
     const dir = path.join(rootReal, '.studio', 'play');
-    const names = (await fs.readdir(dir)).filter((n) => /^\d{8}-\d{6}-\d{3}-(play|ask)-[0-9a-f]{4}\.(jpg|png)$/.test(n)).sort();
+    const names = (await fs.readdir(dir)).filter((n) => /^\d{8}-\d{6}-\d{3}-(play|ask)-[0-9a-f]{4}(-marked)?\.(jpg|png)$/.test(n)).sort();
     for (const n of names.slice(0, Math.max(0, names.length - PLAY_SHOTS_KEPT))) await fs.rm(path.join(dir, n), { force: true });
   } catch {
     /* pruning is tidying only */

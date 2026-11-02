@@ -85,13 +85,22 @@ export interface PlacementPanelDeps {
    * returns them all and the ask box says "the 4 you picked".
    */
   selectedKeys(): string[];
-  /** Hand the person's words about these objects (and files) to the AI (host.request). Resolves true when kept. */
-  ask(keys: string[], text: string, files: string[]): Promise<boolean>;
+  /**
+   * Hand the person's words about these objects (and files) to the AI (host.request). Resolves true when kept.
+   * 'held' (pause-ask stage 1, 2026-11-02): nothing was sent and nothing failed — the web demo's paused field said in
+   * one line that it isn't connected (main.ts) — so the words stay in the field and no "sent" / "couldn't send" note.
+   */
+  ask(keys: string[], text: string, files: string[]): Promise<boolean | 'held'>;
   /**
    * The AI asked the person something and waits (2026-10-19): the field answers it ("Answer your AI…", no chip;
    * `ask` then sends an answer). Absent = never.
    */
   answering?(): boolean;
+  /**
+   * Esc in the ask field, before the field lets go (pause-ask fix △4, 2026-11-02): true = it closed something of the
+   * paused moment (the "what Claude gets" card, Before / After, ◎ marking), one per press — the field keeps the cursor.
+   */
+  askEscape?(): boolean;
   /** The whole-game placeholder, by whether the AI is there (main.ts, ai-presence.ts). Absent: "Ask your AI…". */
   askGame?(): string;
   /**
@@ -461,6 +470,7 @@ export function createPlacementPanel(d: PlacementPanelDeps): PlacementPanel {
     askSend.disabled = true;
     const ok = await d.ask(keys, text, files);
     askSend.disabled = false;
+    if (ok === 'held') return;
     if (ok) {
       askInput.value = '';
       askNote = d.t('ask.sent');
@@ -472,8 +482,15 @@ export function createPlacementPanel(d: PlacementPanelDeps): PlacementPanel {
   });
   // Enter sends from the field; with Escape the field lets go (so arrow keys
   // move the object again) without clearing what was typed.
+  // Paused (pause-ask fix △4): the open card first, then ◎, then the field — one Esc each, the nearest thing first.
   askInput.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') askInput.blur();
+    if (e.key !== 'Escape') return;
+    if (d.askEscape?.()) {
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
+    askInput.blur();
   });
 
   const renderAsk = () => {

@@ -272,3 +272,10 @@ The paused moment (pause-edit, 2026-10-28): `moment.ts` (the top bar's guide, �
 line, the line when a checkpoint can't open, this level's checkpoints newest first, the one "⚑ From …" beside Reload
 opens; `test/checkpoint.test.ts`). The host keeps checkpoints (`host-local.ts` → `/api/checkpoints`); ▶ Play ⌄ and ⌘K list
 them (`main.ts`), each row's ⋯ (`context-menu.ts` `more`) renames or deletes.
+Asking from the paused moment (pause-ask, 2026-11-02): `moment-ask.ts` (stage 1: the frame
+small in the field, the cursor, the demo's field; stage 2's fixes: P → P while the cursor came by itself, the short words
+on a narrow field), `moment-marks.ts` (stage 2: ◎ Mark — numbered points / areas on the frame, their chips, the marked
+picture for `shotMarked`) and `moment-gets.ts` (stage 2: "Claude gets this with your words", the four rows under the
+field's picture) and `moment-try.ts` (stage 3: after the AI's fix — the reply's ▶ Try from 0:05.02 · Before / After · ↶ Undo
+rules and the Before / After panel; the ask's moment is kept by the host, `back`). `test/moment-ask.test.ts`,
+`test/moment-marks.test.ts`, `test/moment-try.test.ts`.

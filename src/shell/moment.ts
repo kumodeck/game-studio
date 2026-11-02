@@ -153,7 +153,8 @@ export interface MomentBar {
   /** At the game's foot for 2 s: "▶ Resumed from 0:42.3" (04-words.md; the dock with the toast is away while playing). */
   note: HTMLElement;
   /** `mark`: the icon before the words ('play' = ▶ Resumed…, 'flag' = ⚑ a checkpoint kept / opened). */
-  flash(text: string, mark?: string): void;
+  /** `ms`: how long it stays (2 s; ▶ Try's line, a sentence to read, stays longer: pause-ask stage 3). */
+  flash(text: string, mark?: string, ms?: number): void;
   render(): void;
   /** A Next frame from elsewhere (the . key, ⌘K): the "Next frame ." line has done its work. */
   stepped(): void;
@@ -184,6 +185,9 @@ export function createMomentBar(d: MomentBarDeps): MomentBar {
   const stepTip = h('div', { class: 'play-tip step-tip', role: 'status', hidden: true, dataset: { part: 'step-tip' } });
   const note = h('div', { class: 'play-flash', role: 'status', hidden: true, dataset: { part: 'play-flash' } });
   let noteTimer = 0;
+  // A flash shown while paused (pause-ask stage 3: ▶ Try's "New code · same moment, 0:05.02") is about the pause itself:
+  // the pause does not put it away (render() below does for one from before the pause).
+  let noteOfPause = false;
 
   // Next frame: pressed = one frame, held = on at the speed (the game page steps; play/step on / off). A finger too.
   let held = false;
@@ -267,7 +271,7 @@ export function createMomentBar(d: MomentBarDeps): MomentBar {
     }
     guide.dataset.state = paused ? 'paused' : 'playing';
     // The flash ("▶ Resumed…", "⚑ Playing from …") is at the game's foot, where the moment's field is: away at a pause.
-    if (paused && !note.hidden) {
+    if (paused && !note.hidden && !noteOfPause) {
       window.clearTimeout(noteTimer);
       note.hidden = true;
     }
@@ -315,11 +319,12 @@ export function createMomentBar(d: MomentBarDeps): MomentBar {
     stepBtn,
     flagBtn,
     note,
-    flash(text, mark = 'play') {
+    flash(text, mark = 'play', ms = 2000) {
       note.replaceChildren(icon(mark), h('span', { text }));
       note.hidden = false;
+      noteOfPause = d.playing() && d.paused();
       window.clearTimeout(noteTimer);
-      noteTimer = window.setTimeout(() => (note.hidden = true), 2000);
+      noteTimer = window.setTimeout(() => (note.hidden = true), ms);
     },
     render,
     stepped: stepTipOff,

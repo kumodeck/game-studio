@@ -5,7 +5,7 @@
 // Run: node --experimental-strip-types --no-warnings --test test/pause.test.ts
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { makeClock } from '../src/core/play-clock.ts';
+import { makeClock, LATE_CUT_MS } from '../src/core/play-clock.ts';
 import { installTimerHold, makeTimerHold } from '../src/core/play-timers.ts';
 import { isPauseKey } from '../src/bridge/play-pause.ts';
 import { chatOnLine, historyOf, HISTORY_MAX, type ChatModel } from '../src/shell/moment-talk.ts';
@@ -39,6 +39,34 @@ test('the clock: a pause takes no time, before or after', () => {
   // A frame timestamp from before the pause that arrives during it never reads later than the pause.
   c.stop();
   assert.ok(c.at(real + 100) <= c.at(real));
+});
+
+test('late (pause-ask fix △7): long frames are counted past 50 ms, the game\'s time is never changed', () => {
+  let real = 0;
+  const c = makeClock(() => real);
+  assert.equal(c.frame(0), 0);
+  real = 16;
+  assert.equal(c.frame(16), 16);
+  assert.equal(c.late, 0, 'ordinary frames: nothing late');
+  real = 516; // a 500 ms hitch (loading the boss on a slow phone)
+  assert.equal(c.frame(516), 516, 'the game still sees the whole step: counted, not cut');
+  assert.equal(c.late, 500 - LATE_CUT_MS, 'a game that cuts at 50 ms is 450 ms behind now');
+  real = 532;
+  c.frame(532);
+  assert.equal(c.late, 450);
+  // Paused: no frames count, and the first frame after Resume is an ordinary one.
+  c.stop();
+  real = 60_000;
+  c.frame(60_000);
+  c.go();
+  real = 60_016;
+  c.frame(60_016);
+  assert.equal(c.late, 450, 'a pause is not a long frame');
+  // ½×: the game's time per frame is what counts.
+  c.setRate(0.5);
+  real = 60_216; // 200 ms real = 100 ms of game time
+  c.frame(60_216);
+  assert.equal(c.late, 450 + (100 - LATE_CUT_MS));
 });
 
 /**

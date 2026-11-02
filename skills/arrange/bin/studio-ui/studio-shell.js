@@ -1,4 +1,4 @@
-/* KUMODeck Game Studio 0.1.76 — MIT License — built file, edit src/ instead */
+/* KUMODeck Game Studio 0.1.77 — MIT License — built file, edit src/ instead */
 (() => {
 const __defs = [];
 const __cache = [];
@@ -548,6 +548,12 @@ const CONTRACT_VERSION = 1;
                                                                      
                                                                                       
                                                   
+     
+                                                                                                                       
+                                                                                                                       
+                                                             
+     
+                                        
 
                                              
      
@@ -1250,6 +1256,11 @@ const MSG_PREFIX = 'studio:';
                                                                                                                    
      
                                                                      
+     
+                                                                                                                         
+                                                                                                                    
+     
+                                                                                                               
                                                                                        
                                                               
                                                                                                    
@@ -1362,7 +1373,13 @@ const MSG_PREFIX = 'studio:';
                                                                                                                       
                                        
      
-                                               
+                                              
+         
+                                                                                                                      
+                                                                                                                       
+                                                                                                      
+         
+                   
      
                                                                                                                       
                                                                      
@@ -1631,6 +1648,12 @@ const MSG_PREFIX = 'studio:';
                                                                                                                                          
                                                                                  
                                                                       
+     
+                                                                                                                        
+                                                                                                                      
+                              
+     
+                                                                                                        
                                                                                            
                                                                   
                                                    
@@ -1658,7 +1681,14 @@ const MSG_PREFIX = 'studio:';
                                                                        
      
                                                                                                 
-                                                                                                        
+                                                                                                       
+                                                                                                              
+                                      
+         
+                                                                                                                            
+                                                                                                                
+         
+                     
      
                                                                                                                        
                                                                                                                         
@@ -1725,6 +1755,33 @@ const MSG_PREFIX = 'studio:';
  * 'motion' = a motion from the draft moves it. Anything else was placed: moving it is the same as in Edit.
  */
                                                    
+
+/** A place in the game's code (pause-ask stage 2): a path inside the game folder and a line, 1-based. */
+                           
+               
+               
+ 
+
+/**
+ * A mark the person put on the paused frame for the AI (pause-ask stage 2, 2026-11-02; README §2 `marks`). `n` = its
+ * number on the frame and in the field (①). `screen` = where in the picture, 0–1 of its width / height: a point [x, y]
+ * or an area [x0, y0, x1, y1]. `world` = the point on the ground (3D [x, y, z] on y 0; 2D the stage point) when the
+ * adapter could tell; `key` = the object under the point; `keys` = the objects inside an area.
+ */
+                             
+            
+                         
+                   
+                   
+               
+                  
+ 
+
+/**
+ * What an object of a paused moment is (pause-ask stage 2; the request's `objects[].kind`, from MomentKind): 'placed' =
+ * the person placed it (placement.json), 'moves' = the game or a motion moves it, 'made' = the game made it since Play.
+ */
+                                                           
 
 /** One turn of the chat over a paused game, as a request carries the talk so far (pause, 2026-10-22). */
                            
@@ -1801,6 +1858,10 @@ function isStudioMessage(x         )                     {
                                                                                                            
      
                    
+                                                                                                             
+                          
+                                                                                                                        
+                  
  
 
 /** What the shell hands to host.request(). */
@@ -1913,6 +1974,23 @@ function isStudioMessage(x         )                     {
                  
                                                                             
      
+                                                                                                                        
+                                                                                                                         
+                                                                                                                          
+                                                                                                    
+     
+                       
+                      
+                
+                 
+                                  
+     
+                                                                                                                          
+                                                                                                                       
+                                                                                                                
+     
+                 
+     
                                                                                                                       
                                                                                                                       
                                    
@@ -1997,6 +2075,14 @@ function isStudioMessage(x         )                     {
                    
                                                           
                 
+                                                                                                                      
+                   
+     
+                                                                                                                    
+                                                                                                                  
+                                                                               
+     
+                   
      
                                                                                                                  
                                                                                                                     
@@ -2131,6 +2217,11 @@ function isStudioMessage(x         )                     {
                                                                                                                         
      
                                         
+     
+                                                                                                                  
+                                                                                                                       
+     
+                                                           
  
 
 /** The longest saved moment kept (JSON characters): a game's state, not its assets — 1 MB is far past any we know. */
@@ -2155,6 +2246,24 @@ const CHECKPOINT_MAX_CHARS = 1_000_000;
                   
                                                                                 
                 
+ 
+
+/** What the editor sends as a paused ask's `back` (pause-ask stage 3): the moment the ask was asked from. */
+                          
+                                                                            
+               
+                        
+                                                                                        
+                   
+                                                                                                         
+                                             
+ 
+
+/** An ask's moment as the host gives it back (.studio/asks/<id>.json, src/server/ask-moments.mjs). */
+                                            
+             
+             
+                       
  
 
 /** A checkpoint as ▶ Play ⌄ lists it: its file id and the file without the moment. */
@@ -18327,6 +18436,104 @@ const en = {
   'moment.revert': 'Revert',
   'moment.revertTip': 'Back where it was when you paused',
   'moment.askPh': 'Ask {ai} about this moment…',
+  // pause-ask stage 1 (2026-11-02; moment-ask.ts): the paused frame's small picture first in the field — its tooltip
+  // and the words read aloud. The web demo has its own (src/hosts/browser/text.ts: no AI gets the frame there).
+  'moment.shotTip': 'Paused at {t}. {Ai} gets this frame with your words.',
+  // The web demo's paused field, on send (decided 2026-11-02: the field is shown there too; nothing is sent).
+  'moment.offlineAsk': 'This demo isn’t connected to an AI. Open your game with Claude Code or Codex to ask.',
+  // pause-ask stage 2 fix 2 (2026-11-02): the field's words on a narrow field (a phone): "Ask Claude about this mor…" was
+  // cut there. Short and whole (moment-ask.ts askPhShort).
+  'moment.askPhShort': 'Ask {ai}…',
+  // pause-ask stage 2 (moment-marks.ts): ◎ Mark in the moment's field (key N) — a click on the frame = a spot, a drag =
+  // an area; each is a numbered pin and a chip "① here" / "② area" in the field.
+  'mark.btn': 'Mark',
+  // {ai}, not {Ai}: mid-sentence ("Mark a spot for Your AI" in the web demo; pause-ask fix, 2026-11-02).
+  'mark.tip': 'Mark a spot for {ai} · N',
+  'mark.here': 'here',
+  'mark.area': 'area',
+  'mark.hint': 'Click to mark a spot · drag to circle an area',
+  'mark.hintTouch': 'Tap to mark a spot · drag to circle an area',
+  'mark.remove': 'Delete mark',
+  // pause-ask stage 2 (moment-gets.ts): the four lines under the moment's picture — what goes to the AI with the words.
+  'moment.shotOpen': 'See what {Ai} gets',
+  'gets.title': '{Ai} gets this with your words',
+  'gets.frame': 'This frame at {t}',
+  'gets.frameMarks': 'This frame at {t}, with your marks {marks}',
+  'gets.frameSub': 'As the player saw it',
+  'gets.frameSubMarks': 'As the player saw it, and a copy with your marks drawn on',
+  // pause-ask fix △1 (2026-11-02): "placed by you" showed on the road the game shipped with. Placed = in the scene; what
+  // the person moved (Save · N) is "moved by you".
+  'gets.kind.placed': 'in the scene',
+  'gets.kind.mine': 'moved by you',
+  'gets.kind.moves': 'moved by the game',
+  'gets.kind.made': 'made by the game',
+  'gets.more': '+{n} more',
+  // "From game.js:49" did not say from what (fix △8): the code line; for what the game made, where it makes it.
+  'gets.from': 'Code:',
+  'gets.fromMade': 'Made at',
+  'gets.where': 'Where it is now',
+  'gets.nothing': 'Nothing selected or marked',
+  'gets.nothingSub': 'Select something or mark a spot to point at it',
+  // fix △2 (2026-11-02): a mark with nothing under it is still a mark ("Nothing … marked" right after marking ①).
+  'gets.spotGround': '{n} a spot on the ground',
+  'gets.spot': '{n} a spot in the frame',
+  'gets.areaEmpty': '{n} an area of the frame',
+  'gets.spotSub': 'Where you marked it in the picture',
+  'gets.time': 'Game time {t}',
+  'gets.level': 'Level: {level}',
+  'gets.near': '{n:1 thing|# things} near the player',
+  'gets.view': 'Where the player is looking',
+  // pause-ask stage 3 (2026-11-02): the 4th row is the moment kept with the ask (`back`); the console's errors join row 3.
+  'gets.errors': '{n:1 error|# errors} in the console',
+  // fix △3 (2026-11-02): the title says what IS kept ("This moment, kept" over "The time only…" said both). "Mid-run" is
+  // how North American players say "from the middle".
+  'gets.kept': 'Kept to replay from {t}',
+  'gets.keptWhole': 'To try the fix from here, with the new code',
+  'gets.keptTimeTitle': 'Time only: {t}',
+  'gets.keptTime': 'This game can’t start mid-run yet. {Ai} adds that with its fix.',
+  'gets.keptNoneTitle': 'Not kept in the demo',
+  'gets.keptNone': 'With Claude Code or Codex, you can try the fix from here',
+  // The paused ask's reply (stage 3; README picture pc-3): one line + ▶ Try from 0:05.02 · Before / After · ↶ Undo. The
+  // editor never reloads by itself (the person may be in the middle of Save · N): Try is theirs to press.
+  'try.btn': 'Try from {t}',
+  'try.tip': 'Open this same moment with {ai}’s new code, paused',
+  'try.opened': 'New code · same moment, {t}',
+  // fix ✕2 (decided 2026-11-02, plan A): a saved moment brings back what was out as it was, so a fix to "where the boss
+  // comes in" does not show on a boss already out — Before / After looked the same ("the AI did nothing"). Said at once.
+  // {name}: the AI's `--already`, else the made object the ask was about. Written so any name fits ("the boss", "boss").
+  'try.openedOut': 'New code · same moment, {t}. Already out: {name}, so your change shows from the next one.',
+  'try.openedStay': 'New code · same moment, {t}. What was already out stays where it was.',
+  // A game without save / load (decided 2026-11-02: the AI adds them with its first fix from a pause): until then.
+  // The ask kept the time only: true of the game WHEN asked (the AI may have added save / load with this very fix).
+  // fix ✕3 (2026-11-02): shorter (a phone cut it at both ends); "when you asked" read as "when?".
+  'try.sameRun': 'Same time, new run · {t}. This game couldn’t start mid-run yet.',
+  // fix △7 (2026-11-02): a new run that loaded at another speed than the asking run — a game that cuts long frames is
+  // then behind (or ahead of) the editor's clock, and the boss may not be out yet at "the same time". {s}: seconds.
+  'try.sameRunBehind': 'Same time, new run · {t}. This run loaded slower: the game may be {s} s behind.',
+  'try.sameRunAhead': 'Same time, new run · {t}. This run loaded faster: the game may be {s} s ahead.',
+  'try.gone': 'This moment isn’t kept any more. Play from the start to try the fix.',
+  'try.failed': 'This moment didn’t open with the new code, so the game started from the beginning.',
+  'cmp.btn': 'Before / After',
+  'cmp.tip': 'The frame you asked from and the same moment with the new code, side by side',
+  'cmp.title': 'Before and after, at {t}',
+  'cmp.before': 'Before',
+  'cmp.after': 'After',
+  'cmp.beforeSub': 'when you asked · {t}',
+  'cmp.afterSub': 'new code · {t}',
+  'cmp.afterSameRun': 'new code · same time, new run · {t}',
+  'cmp.opening': 'Opening the same moment with the new code…',
+  // fix ✕2 plan A: under the After when it is the saved moment, with ▶ Resume to see it.
+  'cmp.out': 'Already out at this moment: {name}. It stays where it was; your change shows from the next one.',
+  'cmp.stay': 'What was already out stays where it was. Your change shows from what comes next.',
+  'cmp.resumeSee': 'Resume to see it',
+  'cmp.behind': 'This run loaded slower, so the game’s own clock may be {s} s behind {t}: what comes at {t} may not be out yet.',
+  'cmp.ahead': 'This run loaded faster, so the game’s own clock may be {s} s ahead of {t}.',
+  'cmp.undo': 'Undo {ai}’s change',
+  'cmp.keep': 'Keep · Resume',
+  'cmp.close': 'Close',
+  'moment.undo': 'Undo',
+  'moment.undoTip': 'Put the game’s files back to before {ai}’s change',
+  'moment.undone': 'Back to before {ai}’s change. Try it from {t} to see.',
   'moment.earlier': 'Earlier · {n}',
   'moment.earlierTip': 'What you and {ai} said earlier in this pause',
   'moment.you': 'You',
@@ -18663,6 +18870,9 @@ const en = {
   'keys.pauseEdit.note': 'While playing',
   'keys.step': 'Next frame',
   'keys.step.note': 'While paused · hold to go on',
+  // pause-ask stage 2: ◎ Mark (moment-marks.ts).
+  'keys.mark': 'Mark a spot for your AI',
+  'keys.mark.note': 'While paused · click a spot or drag an area',
   // UI stage 1 (2026-10-19): World | UI in the top bar, for games that mark their HTML UI with data-studio-key.
   'keys.layer': 'Switch between Scene and UI',
   'uiLayer.switch': 'What you edit',
@@ -19482,6 +19692,77 @@ const ja                               = {
   'moment.revert': '元の位置に戻す',
   'moment.revertTip': '止めた時の位置に戻す',
   'moment.askPh': 'この瞬間について {ai}に頼む…',
+  'moment.shotTip': '{t} で止めた 1 コマです。書いた言葉と一緒に {ai}に届きます。',
+  'moment.offlineAsk': '試し版では AI にはつながっていません。Claude Code や Codex でゲームを開くと頼めます。',
+  'moment.askPhShort': '{ai}に頼む…',
+  'mark.btn': '印',
+  'mark.tip': '絵に印を付けて {ai}に指す・N',
+  'mark.here': 'ここ',
+  'mark.area': '範囲',
+  'mark.hint': 'クリックで点・ドラッグで範囲を囲む',
+  'mark.hintTouch': 'タップで点・ドラッグで範囲を囲む',
+  'mark.remove': '印を消す',
+  'moment.shotOpen': '{ai}に届くものを見る',
+  'gets.title': '言葉と一緒に {ai}に届くもの',
+  'gets.frame': '{t} のこの 1 コマ',
+  'gets.frameMarks': '{t} のこの 1 コマと印 {marks}',
+  'gets.frameSub': 'プレイヤーが見たままの絵',
+  'gets.frameSubMarks': 'プレイヤーが見たままの絵と、印を描いた写し',
+  'gets.kind.placed': 'シーンにある物',
+  'gets.kind.mine': 'あなたが動かした物',
+  'gets.kind.moves': 'ゲームが動かしている物',
+  'gets.kind.made': 'ゲームが出した物',
+  'gets.more': 'ほか {n}',
+  'gets.from': 'コード:',
+  'gets.fromMade': '出している所',
+  'gets.where': '今の位置',
+  'gets.nothing': '選んだ物・印はありません',
+  'gets.nothingSub': '物を選ぶか、印を付けると指せます',
+  'gets.spotGround': '{n} 地面の 1 点',
+  'gets.spot': '{n} 絵の 1 点',
+  'gets.areaEmpty': '{n} 絵の範囲',
+  'gets.spotSub': '絵の中で印を付けた所',
+  'gets.time': 'ゲームの時刻 {t}',
+  'gets.level': 'レベル {level}',
+  'gets.near': 'プレイヤーの近くの物 {n}',
+  'gets.view': 'プレイヤーの見ている所',
+  'gets.errors': 'コンソールのエラー {n}',
+  'gets.kept': '{t} からやり直せるように残します',
+  'gets.keptWhole': '直した後に、ここから新しいコードで確かめるため',
+  'gets.keptTimeTitle': '時刻だけ: {t}',
+  'gets.keptTime': 'このゲームはまだ途中から始められません。{ai}が直すのと一緒に足します。',
+  'gets.keptNoneTitle': '試し版では残しません',
+  'gets.keptNone': 'Claude Code や Codex なら、ここから直しを確かめられます',
+  'try.btn': '{t} から試す',
+  'try.tip': '{ai}の新しいコードで同じ瞬間を開いて止める',
+  'try.opened': '新しいコード・同じ瞬間 {t}',
+  'try.openedOut': '新しいコード・同じ瞬間 {t}。{name}はもう出ていたので、直しは次から見えます。',
+  'try.openedStay': '新しいコード・同じ瞬間 {t}。もう出ていた物は前の位置のままです。',
+  'try.sameRun': '同じ時刻・新しい遊び {t}。このゲームはまだ途中から始められません。',
+  'try.sameRunBehind': '同じ時刻・新しい遊び {t}。今回は読み込みが遅く、ゲームは {s} 秒遅れているかもしれません。',
+  'try.sameRunAhead': '同じ時刻・新しい遊び {t}。今回は読み込みが速く、ゲームは {s} 秒進んでいるかもしれません。',
+  'try.gone': 'この瞬間はもう残っていません。最初から遊んで確かめてください。',
+  'try.failed': 'この瞬間が新しいコードで開けなかったので、最初から始めました。',
+  'cmp.btn': '前 / 後',
+  'cmp.tip': '頼んだ時の絵と、新しいコードの同じ瞬間を並べる',
+  'cmp.title': '{t} の前と後',
+  'cmp.before': '前',
+  'cmp.after': '後',
+  'cmp.beforeSub': '頼んだ時 · {t}',
+  'cmp.afterSub': '新しいコード · {t}',
+  'cmp.afterSameRun': '新しいコード・同じ時刻の新しい遊び · {t}',
+  'cmp.opening': '新しいコードで同じ瞬間を開いています…',
+  'cmp.out': 'この瞬間、{name}はもう出ていました。前の位置のままで、直しは次から見えます。',
+  'cmp.stay': 'もう出ていた物は前の位置のままです。直しはこの後に出てくる物から見えます。',
+  'cmp.resumeSee': '続けて見る',
+  'cmp.behind': '今回は読み込みが遅く、ゲームの時計は {t} より {s} 秒遅れているかもしれません。{t} に出る物がまだ出ていないことがあります。',
+  'cmp.ahead': '今回は読み込みが速く、ゲームの時計は {t} より {s} 秒進んでいるかもしれません。',
+  'cmp.undo': '{ai}の変更を戻す',
+  'cmp.keep': 'このまま · 続ける',
+  'cmp.close': '閉じる',
+  'moment.undo': '元に戻す',
+  'moment.undoTip': 'ゲームのファイルを{ai}が直す前に戻す',
+  'moment.undone': '{ai}が直す前に戻しました。{t} から試すと確かめられます。',
   'moment.earlier': '前の話 {n}',
   'moment.earlierTip': 'この止めた瞬間で {ai}と話したこと',
   'moment.you': 'あなた',
@@ -19773,6 +20054,8 @@ const ja                               = {
   'keys.pauseEdit.note': '遊んでいる間',
   'keys.step': '1 コマ進める',
   'keys.step.note': '止めている間 · 押し続けると進む',
+  'keys.mark': '絵に印を付けて AI に指す',
+  'keys.mark.note': '止めている間 · クリックで点・ドラッグで範囲',
   'keys.layer': 'シーンと UI を切り替える',
   'uiLayer.switch': '編集する物',
   'uiLayer.world': 'シーン',
@@ -20346,6 +20629,7 @@ const HANDOFF_LIMITS = Object.freeze({
   maxLog: 300, // one console line (a stack trace is cut: the first line says what broke)
   maxNear: 12, // things near the player: enough to name "this one", few enough to read
   maxHistory: 12, // pause (2026-10-22): the chat's earlier turns a message carries; the whole talk is in .studio/chat/
+  maxMarks: 9, // pause-ask stage 2: marks on a paused frame (① … ⑨): more than a few is a drawing, not "here"
   maxPoints: 256, // ✦ Turn into a rule: a motion's points (the timeline's own limit, MAX_KEYS)
 });
 
@@ -20456,6 +20740,13 @@ function normalizeRequestInput(input) {
         if (Array.isArray(o.files)) {
           const fs = [...new Set(o.files.filter(isFolderPath))].slice(0, HANDOFF_LIMITS.maxObjectFiles);
           if (fs.length) e.files = fs;
+        }
+        // pause-ask stage 2 (2026-11-02; "play" + paused): what it is in this moment and the code line that first added
+        // it. Hints: a bad one is dropped, never an error.
+        if (kind === 'play' && r.paused === true) {
+          if (o.kind === 'placed' || o.kind === 'moves' || o.kind === 'made') e.kind = o.kind;
+          const from = codeFrom(o.from);
+          if (from) e.from = from;
         }
         out.objects.push(e);
       }
@@ -20646,6 +20937,11 @@ function playMoment(r, errors) {
         out.here = here;
       }
     }
+    // pause-ask stage 2 (2026-11-02): what the person pointed at on the frame,
+    // the same picture with the marks drawn on it, and this moment's numbers — so the AI judges from the picture AND
+    // the code (decided 2026-11-02). Hints like the rest (a bad mark is dropped), except a marked picture that is not a
+    // picture (the host writes it to a file, as `shot`).
+    Object.assign(out, pausedMoment(r, errors));
     // Pause-edit stage 2 (2026-10-28; CONTRACT.md §1.14): ✦ Have Claude make this moment editable — the moment's list had
     // no codeMoment to show. The AI names the game's numbers once (SKILL.md "This moment"); the moment itself (picture,
     // camera, console) comes with the first request of the pause as for any paused message.
@@ -20678,6 +20974,51 @@ function playMoment(r, errors) {
         if (Object.keys(cp).length) out.checkpoint = cp;
       }
     }
+  }
+  return out;
+}
+
+/** A code place { file, line } (pause-ask stage 2): a path inside the game folder and a line ≥ 1; else undefined. */
+function codeFrom(f) {
+  if (!f || typeof f !== 'object' || !isFolderPath(f.file) || !Number.isInteger(f.line) || f.line < 1 || f.line > 1e7) return undefined;
+  return { file: f.file, line: f.line };
+}
+
+/**
+ * "play" + paused, pause-ask stage 2: `marks` (≤ HANDOFF_LIMITS.maxMarks; numbered as sent), `shotMarked`, `time`,
+ * `level`, `moment` (this moment's values by id, numbers only, ≤ 24).
+ */
+function pausedMoment(r, errors) {
+  const out = {};
+  const in01 = (v) => isFin(v) && v >= -0.05 && v <= 1.05;
+  const clamp01 = (v) => roundTo(Math.min(1, Math.max(0, v)), 1000);
+  if (Array.isArray(r.marks)) {
+    const marks = [];
+    for (const m of r.marks.slice(0, HANDOFF_LIMITS.maxMarks)) {
+      if (!m || typeof m !== 'object' || (m.kind !== 'point' && m.kind !== 'area') || !Array.isArray(m.screen)) continue;
+      const want = m.kind === 'point' ? 2 : 4;
+      if (m.screen.length !== want || !m.screen.every(in01)) continue;
+      const e = { n: Number.isInteger(m.n) && m.n > 0 && m.n < 100 ? m.n : marks.length + 1, kind: m.kind, screen: m.screen.map(clamp01) };
+      if (Array.isArray(m.world) && (m.world.length === 2 || m.world.length === 3) && m.world.every((v) => isFin(v) && Math.abs(v) < 1e7)) e.world = m.world.map((v) => roundTo(v, 100));
+      if (typeof m.key === 'string' && KEY_OK.test(m.key)) e.key = m.key;
+      if (Array.isArray(m.keys)) {
+        const ks = [...new Set(m.keys.filter((k) => typeof k === 'string' && KEY_OK.test(k)))].slice(0, 12);
+        if (ks.length) e.keys = ks;
+      }
+      marks.push(e);
+    }
+    if (marks.length) out.marks = marks;
+  }
+  if (r.shotMarked !== undefined) {
+    const ok = typeof r.shotMarked === 'string' && r.shotMarked.length <= HANDOFF_LIMITS.maxShot && /^data:image\/(jpeg|png);base64,[A-Za-z0-9+/]+=*$/.test(r.shotMarked);
+    if (!ok) errors.push(`"shotMarked" must be a JPEG or PNG data URL of at most ${HANDOFF_LIMITS.maxShot} characters`);
+    else out.shotMarked = r.shotMarked;
+  }
+  if (isFin(r.time) && r.time >= 0) out.time = roundTo(Math.min(r.time, 86400 * 7), 100);
+  if (typeof r.level === 'string' && /^[\p{L}\p{N}][\p{L}\p{N}\p{M}_.-]{0,59}$/u.test(r.level)) out.level = r.level;
+  if (r.moment && typeof r.moment === 'object' && !Array.isArray(r.moment)) {
+    const vals = Object.entries(r.moment).filter(([k, v]) => /^[A-Za-z_][A-Za-z0-9_.-]{0,39}$/.test(k) && isFin(v)).slice(0, 24);
+    if (vals.length) out.moment = Object.fromEntries(vals.map(([k, v]) => [k, roundTo(v, 1000)]));
   }
   return out;
 }
@@ -20715,6 +21056,19 @@ function normalizeStatus(raw) {
   if (Number.isInteger(raw.changed) && raw.changed >= 0) out.changed = Math.min(raw.changed, 100000);
   const note = oneLine(raw.note, HANDOFF_LIMITS.maxNote);
   if (note) out.note = note;
+  // pause-ask stage 3 (2026-11-02): the game's files the change touched (`--files src/boss.js`), shown small under the
+  // reply of a paused ask ("src/boss.js · More in Claude") — the one line says what, this says where. A hint: paths
+  // inside the game folder only, the first few.
+  if (Array.isArray(raw.files)) {
+    const fs = [...new Set(raw.files.filter(isFolderPath))].slice(0, 5);
+    if (fs.length) out.files = fs;
+  }
+  // pause-ask fix (decided 2026-11-02, ✕2 of the first walk): what was ALREADY on screen at the ask's moment and so
+  // stays where it was when ▶ Try opens that moment with the new code (`--already "the boss"`). A saved moment brings
+  // back what was out as it was; the fix shows from the next one. Without this line Before / After looked the same and
+  // read as "the AI did nothing". The editor says it under the After; a short name, one line.
+  const already = oneLine(raw.already, 60);
+  if (already) out.already = already;
   // `asking` only (2026-10-19): the answers the person can press in the editor, the objects the question is about
   // (lit in the scene) and what changes ("before" / "after", one short line each). All optional: a question with
   // none of them still shows, with the ask field to answer in.
@@ -21353,6 +21707,8 @@ const KEYMAP           = [
   // Next frame (pause-edit, 02-find.md): . while paused (the game gets no key then, so it never fights the game's own
   // keys); held, it goes on at the speed. Read in the game page and in the editor page (main.ts shortcut()).
   { id: 'step', group: 'play', keys: ['.'], note: 'keys.step.note' },
+  // ◎ Mark (pause-ask stage 2, 2026-11-02; moment-marks.ts): N while paused — M is Move's. Read in main.ts shortcut().
+  { id: 'mark', group: 'play', keys: ['N'], note: 'keys.mark.note' },
   // ` while playing (plan step 6, decided 2026-10-23): the corner showed only "❚❚ Pause and talk P", so asking
   // WITHOUT pausing (2026-10-20 "fix it without stopping the game") is this key only, and the sheet is where it is said.
   // Read in the game page (bridge/play-ask.ts), not by main.ts: it does nothing in Edit, hence the note "While playing".
@@ -21584,7 +21940,8 @@ function splitMoves                           (moves     , why                  
                                                                                                                           
                     
                                                                                                         
-                                           
+                                                                                                          
+                                                        
                  
                                                                                                 
                   
@@ -21615,6 +21972,9 @@ function createMomentBar(d               )            {
   const stepTip = h('div', { class: 'play-tip step-tip', role: 'status', hidden: true, dataset: { part: 'step-tip' } });
   const note = h('div', { class: 'play-flash', role: 'status', hidden: true, dataset: { part: 'play-flash' } });
   let noteTimer = 0;
+  // A flash shown while paused (pause-ask stage 3: ▶ Try's "New code · same moment, 0:05.02") is about the pause itself:
+  // the pause does not put it away (render() below does for one from before the pause).
+  let noteOfPause = false;
 
   // Next frame: pressed = one frame, held = on at the speed (the game page steps; play/step on / off). A finger too.
   let held = false;
@@ -21698,7 +22058,7 @@ function createMomentBar(d               )            {
     }
     guide.dataset.state = paused ? 'paused' : 'playing';
     // The flash ("▶ Resumed…", "⚑ Playing from …") is at the game's foot, where the moment's field is: away at a pause.
-    if (paused && !note.hidden) {
+    if (paused && !note.hidden && !noteOfPause) {
       window.clearTimeout(noteTimer);
       note.hidden = true;
     }
@@ -21746,11 +22106,12 @@ function createMomentBar(d               )            {
     stepBtn,
     flagBtn,
     note,
-    flash(text, mark = 'play') {
+    flash(text, mark = 'play', ms = 2000) {
       note.replaceChildren(icon(mark), h('span', { text }));
       note.hidden = false;
+      noteOfPause = d.playing() && d.paused();
       window.clearTimeout(noteTimer);
-      noteTimer = window.setTimeout(() => (note.hidden = true), 2000);
+      noteTimer = window.setTimeout(() => (note.hidden = true), ms);
     },
     render,
     stepped: stepTipOff,
@@ -21840,6 +22201,152 @@ __def(__exports, "historyOf", () => historyOf);
 __def(__exports, "chatOnLine", () => chatOnLine);
 };
 __defs[49] = function (__exports) {
+'use strict';
+// moment-ask.ts
+
+// The way in to "ask from the paused moment" (pause-ask stage 1, 2026-11-02). Reported in a hands-on try on 2026-11-02:
+// "there is no UI to tell the AI something from the stopped scene — stop the scene, tell the AI" — the field
+// WAS there (moment-talk.ts, "Ask Claude about this moment…"), but nothing on screen said that the frame the game
+// stopped on goes with the words, the cursor was not in it, and the web demo had no field at all. Stage 1 adds, on the
+// SAME one field (decision 7 of pause-edit: one place to talk to the AI, never a second field):
+//   1. left in the field, the paused frame small with its time ("0:05.02") — "this picture goes with what you type";
+//   2. the cursor in the field as the moment comes up (PC only, and only when nothing else has the keys: momentFocusOk);
+//   3. a thin violet line round the game while paused (shell.css .stage::after) — the AI's colour, "this frame is what
+//      the AI sees". Edit has no line round the game, so the two read apart;
+//   4. the web demo shows the field too (decided 2026-11-02) and sends nothing: one line says it isn't connected.
+// What goes to the AI is unchanged in this stage (the `play` request with `paused`, main.ts momentRequest); stage 2
+// adds marks and the code's places.
+//
+// Pure parts are tested in test/moment-ask.test.ts; the screen in test/studio-pause.browser.mjs (moment, momentdemo).
+const { h } = __require(16);
+const { clockText } = __require(47);
+
+/**
+ * Is the moment's field on screen? Always while paused (the demo too, Q1); outside a moment, only with an AI behind
+ * the host — the demo's Edit keeps its empty foot (2026-10-18: a box that did nothing was the loudest thing on screen,
+ * main.ts renderAll). The demo's paused field is different: there it shows WHAT can be done, and says plainly on send
+ * that the demo can't (momentAskOffline).
+ */
+function askFieldShown(s                                       )          {
+  return !s.offline || s.moment;
+}
+
+/** What a send from the field does: to the AI, or (the web demo, paused) nothing but the one line. */
+function momentAskOffline(s                                       )          {
+  return s.offline && s.moment;
+}
+
+/**
+ * Put the cursor in the field as the moment comes up? Only when it takes nothing from the person:
+ * - not on a phone / the side window (`touch`): a focused field brings up the keyboard over half of the frame that
+ *   was just stopped to be looked at (and iOS ignores a focus that no tap asked for anyway);
+ * - not while something else has the keys: another field (a rename, a number on the card, ⌘K's search, ⚑'s name), or
+ *   an open sheet / menu (`overlay`). Then the person was in the middle of something.
+ * The game frame or a button having the focus is fine: that is where the P / ❚❚ that paused came from.
+ * WHY the cursor at all (README §1): the first second after a pause should say "you can say something about THIS".
+ * The cost: P / N / M typed while the cursor is in it are letters (a message may start with "p"); a click on the game
+ * or Esc leaves the field, and P resumes again (test/studio-pause.browser.mjs glow: "P in the field is a letter").
+ */
+function momentFocusOk(s                                                                                                              )          {
+  if (s.touch || s.overlay) return false;
+  const a = s.active;
+  if (!a) return true;
+  if (a.askField) return true;
+  if (a.editable) return false;
+  return !/^(INPUT|TEXTAREA|SELECT)$/.test(a.tag);
+}
+
+/**
+ * The paused frame's time for the field's picture. The game page says play/paused first and its play/time (the held
+ * clock, exact) just after; until then the editor's estimate of the running clock stands in. A Next frame afterwards
+ * moves the top bar's clock but NOT this one: the picture is the one taken at the pause (bridge/play-ask.ts pauseNow),
+ * so its time stays the pause's — the picture and its time never disagree.
+ */
+function shotTimeOnClock(shot                                         , clock                                 )                                          {
+  if (!shot || shot.exact || clock.running) return shot;
+  return { time: clock.t, exact: true };
+}
+
+                             
+                                                                                                                
+                  
+                                                                                                                      
+                                                                 
+               
+ 
+
+function createMomentShot()             {
+  const img = h('img', { class: 'moment-shot-img', alt: '', draggable: 'false' })                    ;
+  const time = h('span', { class: 'moment-shot-time mono' });
+  // role=img + aria-label: read aloud as one thing ("Paused at 0:05.02 …"); not a button in this stage (pressing it to
+  // see "what Claude gets" is the README's picture 2, a later stage).
+  const el = h('span', { class: 'moment-shot', role: 'img', dataset: { part: 'moment-shot' }, hidden: true }, img, time);
+  let src = '';
+  return {
+    el,
+    show(s, t, tip) {
+      // No picture (the game page could not take one: a tainted canvas, say): the time alone still says "this moment".
+      const next = s ?? '';
+      if (next !== src) {
+        src = next;
+        if (next) img.src = next;
+        else img.removeAttribute('src');
+      }
+      img.hidden = !next;
+      time.textContent = clockText(t, 2);
+      el.title = tip;
+      el.setAttribute('aria-label', tip);
+      el.hidden = false;
+    },
+    hide() {
+      el.hidden = true;
+      // Let the big data: URL go (a pause's picture is the game's whole frame as a JPEG).
+      if (src) {
+        src = '';
+        img.removeAttribute('src');
+      }
+    },
+  };
+}
+
+/**
+ * pause-ask stage 2, fix 1 (2026-11-02; the leader's call after trying stage 1): P → P must go on playing. Stage 1 put
+ * the cursor in the field as the moment came up, so the second P typed a "p" and the game stayed stopped — the most
+ * common thing a person does after a pause (look, then go on) broke. Now: while the cursor got there BY ITSELF (`auto`:
+ * nobody clicked the field) and the field is still empty, the game's and the editor's keys work as before — P resumes,
+ * . steps, Esc leaves, N marks, ? shows the keys. The first letter the editor does not take is typed (and from then on
+ * everything is a letter: `auto` ends at the first `input`), and a click in the field ends it at once.
+ * Not passed even then: keys that would act on the scene where an empty field means "nothing" — Backspace / Delete
+ * (they delete the selection in the editor), Enter (send), Tab (move on), Space (look around: a message may start
+ * with a space no more than with a "p", but Space held is a drag mode and must never start from a field).
+ * With ⌘ / Ctrl the field already passes what it does not use (main.ts keydown), so those are not this function's.
+ */
+function momentKeyPasses(s                                                              )          {
+  if (!s.auto || !s.empty || s.mod) return false;
+  if (s.key.length === 1) return s.key !== ' ';
+  return /^(Escape|Arrow(Up|Down|Left|Right)|PageUp|PageDown|End|F2)$/.test(s.key);
+}
+
+/**
+ * pause-ask stage 2, fix 2: the placeholder on a narrow field. "Ask Claude about this moment…" was cut to "Ask Claude
+ * about this mor…" on a phone (390 px: the picture, the ◎ and the send button leave ~170 px for words). A cut word reads
+ * as a mistake; a short whole one does not. Short when the phone / side-window layout is on, or when the field is
+ * measured narrower than the long words need (`room` px vs `need` px; 0 = not measured yet → the layout decides).
+ */
+function askPhShort(s                                                )          {
+  if (s.phone) return true;
+  return s.room > 0 && s.need > s.room;
+}
+
+__def(__exports, "askFieldShown", () => askFieldShown);
+__def(__exports, "momentAskOffline", () => momentAskOffline);
+__def(__exports, "momentFocusOk", () => momentFocusOk);
+__def(__exports, "shotTimeOnClock", () => shotTimeOnClock);
+__def(__exports, "createMomentShot", () => createMomentShot);
+__def(__exports, "momentKeyPasses", () => momentKeyPasses);
+__def(__exports, "askPhShort", () => askPhShort);
+};
+__defs[50] = function (__exports) {
 'use strict';
 // moment-values.ts
 
@@ -22068,7 +22575,682 @@ __def(__exports, "momentOf", () => momentOf);
 __def(__exports, "createMomentValues", () => createMomentValues);
 __def(__exports, "unitText", () => unitText);
 };
-__defs[50] = function (__exports) {
+__defs[51] = function (__exports) {
+'use strict';
+// moment-marks.ts
+
+// ◎ Mark — pointing at the paused frame for the AI (pause-ask stage 2, 2026-11-02). The goal (decided 2026-11-02): "stop
+// the scene, tell the AI; the AI is best when it can judge what is going on both from the code and from the picture on
+// screen, and fix it". "Here" and "this area" could only be said by selecting an object
+// (= where an object is); an empty spot ("bring it in from here") could not be said at all.
+//
+// How it works:
+//   - ◎ Mark in the moment's field (key N — M is the Move tool's, keymap.ts) turns marking on. While on, a layer over
+//     the game takes the pointer: a click / tap = a point ①, a drag = an area ②. WHY a button and not "always": a drag
+//     on the paused frame already looks around (placement.help), so marking has to be asked for.
+//   - Each mark is a numbered pin on the frame and a chip in the field ("① here", "② area") with ×; ⌘Z takes the last
+//     one away (main.ts shortcut). Numbers close up after a delete (① ② ③ − ② = ① ②): the AI reads the numbers in the
+//     words the person types next, and those are typed against what is on screen.
+//   - Each mark asks the game page what is under it (studio:moment/mark-at → mark-is: the object, the ground point,
+//     the objects inside an area). The request carries the marks (MomentMark) and the frame with them drawn on it
+//     (`shotMarked`, drawMarks below) — the AI sees "here" with its own eyes and has the numbers for the code.
+//   - Marks are on the FRAME, not in the world: they stay where they were put on screen. The camera can be turned while
+//     paused (a drag looks around); then the pins no longer sit on what they marked — the picture the AI gets is the
+//     paused one, which they DO match. Kept simple on purpose (stage 2); a pin that follows the world would need the
+//     game page to project every frame.
+// Pure parts: test/moment-marks.test.ts. The screen: test/studio-pause.browser.mjs (moment, momentphone).
+                                                 
+const { h } = __require(16);
+
+/** More than a few marks is a drawing, not "here" (HANDOFF_LIMITS.maxMarks). */
+const MARKS_MAX = 9;
+/** A press that moves less than this (px) is a point, not an area (a hand on a trackpad wobbles a few px). */
+const MARK_DRAG_PX = 8;
+
+/** ① … ⑨ (the field's chips and the pins say the same number). */
+function markNumber(n        )         {
+  return n >= 1 && n <= 20 ? String.fromCodePoint(0x2460 + n - 1) : String(n);
+}
+
+/**
+ * A press from (x0, y0) to (x1, y1) on a frame w × h px → a mark's kind and its place in the picture, 0–1. A short
+ * move = a point where it was PRESSED (the person aimed there; the wobble comes after). An area is ordered (top-left
+ * first) and kept inside the frame.
+ */
+function markFromPress(x0        , y0        , x1        , y1        , w        , h        )                                             {
+  if (!(w > 0 && h > 0)) return null;
+  const c = (v        , s        ) => Math.round(Math.min(1, Math.max(0, v / s)) * 1000) / 1000;
+  if (Math.hypot(x1 - x0, y1 - y0) < MARK_DRAG_PX) return { kind: 'point', screen: [c(x0, w), c(y0, h)] };
+  return { kind: 'area', screen: [c(Math.min(x0, x1), w), c(Math.min(y0, y1), h), c(Math.max(x0, x1), w), c(Math.max(y0, y1), h)] };
+}
+
+/** Numbers 1, 2, 3… in order (after a delete the rest close up). */
+function renumber(marks              )               {
+  return marks.map((m, i) => (m.n === i + 1 ? m : { ...m, n: i + 1 }));
+}
+
+/** The chip's words: "① here" for a point, "② area" for an area (`here` / `area` from i18n). */
+function markChip(m            , words                                )         {
+  return `${markNumber(m.n)} ${m.kind === 'point' ? words.here : words.area}`;
+}
+
+/** Where a pin / an area sits on the frame, in % of it (the layer is the game frame's size: they follow a resize). */
+function markBox(m            )                                                                 {
+  const p = (v        ) => Math.round(v * 10000) / 100;
+  const [a = 0, b = 0, c = 0, d = 0] = m.screen;
+  return m.kind === 'point' ? { left: p(a), top: p(b) } : { left: p(a), top: p(b), width: p(c - a), height: p(d - b) };
+}
+
+/** The marks' colour on the frame and in the marked picture: the pick's orange (the mock's pins; README pc-1). */
+const MARK_COLOR = '#ff6a1a';
+
+/**
+ * Draw the marks on a 2D canvas of the frame (w × h): an area as a rounded dashed box, a point as a pin whose tip is
+ * on the spot, each with its number. Used for `shotMarked` (the AI's copy) — the same look as the pins on screen.
+ */
+function drawMarks(ctx                          , w        , h        , marks              )       {
+  const s = Math.max(1, Math.min(w, h) / 500);
+  ctx.save();
+  ctx.lineWidth = 3 * s;
+  for (const m of marks) {
+    let px        , py        ;
+    if (m.kind === 'area') {
+      const [x0 = 0, y0 = 0, x1 = 0, y1 = 0] = m.screen;
+      ctx.strokeStyle = MARK_COLOR;
+      ctx.setLineDash([8 * s, 5 * s]);
+      ctx.strokeRect(x0 * w, y0 * h, (x1 - x0) * w, (y1 - y0) * h);
+      ctx.setLineDash([]);
+      px = x0 * w;
+      py = y0 * h;
+    } else {
+      px = (m.screen[0] ?? 0) * w;
+      py = (m.screen[1] ?? 0) * h;
+      ctx.fillStyle = MARK_COLOR;
+      ctx.beginPath();
+      ctx.arc(px, py, 4 * s, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    // The number in a disc just above-left of the spot (the area's corner), white on orange with a dark ring.
+    const r = 11 * s;
+    const cx = px;
+    const cy = py - (m.kind === 'area' ? 0 : r + 6 * s);
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.fillStyle = MARK_COLOR;
+    ctx.fill();
+    ctx.lineWidth = 2 * s;
+    ctx.strokeStyle = 'rgba(0,0,0,.55)';
+    ctx.stroke();
+    ctx.fillStyle = '#fff';
+    ctx.font = `600 ${Math.round(13 * s)}px system-ui, sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(String(m.n), cx, cy + 0.5 * s);
+    ctx.lineWidth = 3 * s;
+  }
+  ctx.restore();
+}
+
+/** The frame (a data: URL) with the marks drawn on, as a JPEG data URL; null when it can't be made. Browser only. */
+async function markedShot(shot                    , marks              )                         {
+  if (!shot || !marks.length) return null;
+  try {
+    const img = new Image();
+    img.src = shot;
+    await img.decode();
+    const c = document.createElement('canvas');
+    c.width = img.naturalWidth;
+    c.height = img.naturalHeight;
+    const ctx = c.getContext('2d');
+    if (!ctx || !c.width || !c.height) return null;
+    ctx.drawImage(img, 0, 0);
+    drawMarks(ctx, c.width, c.height, marks);
+    return c.toDataURL('image/jpeg', 0.85);
+  } catch {
+    return null;
+  }
+}
+
+                            
+                     
+                   
+                  
+ 
+
+                                  
+                                                                                                                    
+                                                                                                 
+                                                                  
+                  
+                                                                 
+ 
+
+                              
+                                                                                     
+                     
+                               
+                            
+                                                                 
+                     
+                
+                         
+                       
+                                                               
+                  
+                          
+                                     
+                
+     
+                                                                                                                          
+                                                                                                                   
+     
+                                    
+                                                                               
+                 
+ 
+
+function createMomentMarks(d                 )              {
+  let marks               = [];
+  let on = false;
+  const hint = h('div', { class: 'mark-hint', dataset: { part: 'mark-hint' }, hidden: true });
+  const pins = h('div', { class: 'mark-pins' });
+  // While a drag is drawn: the area as it grows.
+  const live = h('div', { class: 'mark-area live', hidden: true });
+  const layer = h('div', { class: 'mark-layer', dataset: { part: 'mark-layer' }, hidden: true }, pins, live, hint);
+  const button = h('button', { type: 'button', class: 'ask-mark', dataset: { action: 'moment-mark' }, 'aria-pressed': 'false' })                     ;
+  const chips = h('span', { class: 'mark-chips', dataset: { part: 'mark-chips' }, hidden: true });
+  button.addEventListener('click', () => api.set(!on));
+  // A press on the button must not take the cursor out of the field the words go in.
+  button.addEventListener('pointerdown', (e) => e.preventDefault());
+
+  let press                                              = null;
+  const local = (e              ) => {
+    const r = layer.getBoundingClientRect();
+    return { x: e.clientX - r.left, y: e.clientY - r.top, w: r.width, h: r.height };
+  };
+  layer.addEventListener('pointerdown', (e) => {
+    if (!on || e.button > 0) return;
+    e.preventDefault();
+    const p = local(e);
+    press = { x: p.x, y: p.y, id: e.pointerId };
+    try {
+      layer.setPointerCapture(e.pointerId);
+    } catch {
+      /* fine */
+    }
+  });
+  layer.addEventListener('pointermove', (e) => {
+    if (!press || e.pointerId !== press.id) return;
+    const p = local(e);
+    const m = markFromPress(press.x, press.y, p.x, p.y, p.w, p.h);
+    live.hidden = !m || m.kind !== 'area';
+    if (m && m.kind === 'area') Object.assign(live.style, pct(markBox({ n: 0, ...m })));
+  });
+  const end = (e              , keep         ) => {
+    if (!press || e.pointerId !== press.id) return;
+    const p = local(e);
+    const from = press;
+    press = null;
+    live.hidden = true;
+    if (!keep) return;
+    const m = markFromPress(from.x, from.y, p.x, p.y, p.w, p.h);
+    if (m) add(m, p.w, p.h);
+  };
+  layer.addEventListener('pointerup', (e) => end(e, true));
+  layer.addEventListener('pointercancel', (e) => end(e, false));
+
+  function add(m                                     , w        , hgt        ) {
+    if (marks.length >= MARKS_MAX) return;
+    const mark             = { n: marks.length + 1, ...m };
+    marks = [...marks, mark];
+    render();
+    d.changed();
+    // What is under it: asked once, filled in when it comes (the request waits for nothing: a mark without it is fine).
+    const s = m.screen;
+    const x = (s[0] ?? 0) * w;
+    const y = (s[1] ?? 0) * hgt;
+    const box = m.kind === 'area' ? ([x, y, (s[2] ?? 0) * w, (s[3] ?? 0) * hgt]                                    ) : undefined;
+    const cx = box ? (box[0] + box[2]) / 2 : x;
+    const cy = box ? (box[1] + box[3]) / 2 : y;
+    void d.probe(cx, cy, box).then((r) => {
+      if (!r || !marks.includes(mark)) return;
+      const i = marks.indexOf(mark);
+      const next             = { ...marks[i]  };
+      if (r.key && m.kind === 'point') next.key = r.key;
+      if (r.world && m.kind === 'point') next.world = r.world;
+      if (r.keys?.length) next.keys = r.keys;
+      marks = marks.map((x2, j) => (j === i ? next : x2));
+    });
+  }
+
+  const pct = (b                                                                ) => ({
+    left: `${b.left}%`, top: `${b.top}%`, width: b.width === undefined ? '' : `${b.width}%`, height: b.height === undefined ? '' : `${b.height}%`,
+  });
+  const words = () => ({ here: d.t('mark.here'), area: d.t('mark.area') });
+
+  function render() {
+    // The layer shows while there are pins or marking is on; it takes the pointer only while marking (shell.css).
+    layer.hidden = !on && !marks.length;
+    layer.dataset.marking = on ? 'on' : 'off';
+    hint.hidden = !on;
+    hint.textContent = d.t(matchMedia?.('(pointer: coarse)').matches ? 'mark.hintTouch' : 'mark.hint');
+    pins.replaceChildren(...marks.map((m) => {
+      const el = h('div', { class: m.kind === 'area' ? 'mark-area' : 'mark-pin', dataset: { n: String(m.n) } }, h('b', { class: 'mark-n', text: String(m.n) }));
+      Object.assign(el.style, pct(markBox(m)));
+      return el;
+    }));
+    button.setAttribute('aria-pressed', String(on));
+    button.title = d.t('mark.tip');
+    button.setAttribute('aria-label', d.t('mark.tip'));
+    button.replaceChildren(h('span', { class: 'ask-mark-ring', 'aria-hidden': 'true' }), h('span', { class: 'ask-mark-word', text: d.t('mark.btn') }));
+    chips.hidden = !marks.length;
+    chips.replaceChildren(...marks.map((m) => h('span', { class: 'mark-chip', dataset: { part: 'mark-chip', n: String(m.n) } },
+      h('span', { class: 'mark-chip-n', text: markNumber(m.n) }), h('span', { text: ` ${m.kind === 'point' ? words().here : words().area}` }),
+      h('button', { type: 'button', class: 'mark-chip-x', dataset: { action: 'mark-remove' }, title: d.t('mark.remove'), 'aria-label': `${d.t('mark.remove')} ${markChip(m, words())}`,
+        onpointerdown: (e       ) => e.preventDefault(), onclick: () => api.remove(m.n) }, '×'))));
+  }
+
+  const api              = {
+    layer, button, chips,
+    on: () => on,
+    set(v) {
+      if (v === on) return;
+      on = v;
+      render();
+      d.changed();
+    },
+    list: () => marks.slice(),
+    undo() {
+      if (!marks.length) return false;
+      marks = marks.slice(0, -1);
+      render();
+      d.changed();
+      return true;
+    },
+    remove(n) {
+      const next = renumber(marks.filter((m) => m.n !== n));
+      if (next.length === marks.length) return;
+      marks = next;
+      render();
+      d.changed();
+    },
+    restore(list) {
+      marks = renumber(list.slice(0, MARKS_MAX).map((m) => ({ ...m })));
+      render();
+      d.changed();
+    },
+    clear() {
+      if (!marks.length && !on) return;
+      marks = [];
+      on = false;
+      press = null;
+      live.hidden = true;
+      render();
+      d.changed();
+    },
+    render,
+  };
+  render();
+  return api;
+}
+
+__def(__exports, "MARKS_MAX", () => MARKS_MAX);
+__def(__exports, "MARK_DRAG_PX", () => MARK_DRAG_PX);
+__def(__exports, "markNumber", () => markNumber);
+__def(__exports, "markFromPress", () => markFromPress);
+__def(__exports, "renumber", () => renumber);
+__def(__exports, "markChip", () => markChip);
+__def(__exports, "markBox", () => markBox);
+__def(__exports, "drawMarks", () => drawMarks);
+__def(__exports, "markedShot", () => markedShot);
+__def(__exports, "createMomentMarks", () => createMomentMarks);
+};
+__defs[52] = function (__exports) {
+'use strict';
+// moment-gets.ts
+
+// "What Claude gets" — the four lines under the moment's small picture (pause-ask stage 2, 2026-11-02; README picture
+// pc-2-what-claude-gets.png). Pressing the picture in the field opens them: what goes to the AI with the words, so the
+// person can trust "Claude sees this" instead of guessing (decided 2026-11-02: the AI should judge from the picture AND the
+// code — this is where the person sees that both go).
+//   1. ▣ the frame (at 0:05.02), and the copy with the marks drawn on;
+//   2. ◆ what the words are about — the selected / marked objects, what each is in this moment (placed / moved by the
+//      game / made by the game) and the code line that first added it ("From src/boss.js:42");
+//   3. # this moment's numbers (codeMoment: Score 13,097 · Time left 24.86 s), the level, what is near the player;
+//   4. ⚑ this moment, kept ("Kept to replay from 0:05.02" / "Time only: 0:05.02" / "Not kept in the demo" since the
+//      fix of 2026-11-02) (pause-ask stage 3, 2026-11-02: `back`) — so ▶ Try from 0:05.02 opens it again with the
+//      AI's new code. "Whole" when the game has codeMoment save / load; else "the time only" (the AI is asked to add
+//      them with the fix: decided 2026-11-02), and nothing in the web demo.
+// Until stage 3 the console took the 4th row; it is still part of what goes, so its errors now say so under row 3
+// ("1 error" there is often the reason for asking).
+// The rows are pure (test/moment-gets.test.ts); the popover is a small card over the field (shell.css .moment-gets).
+                                                                             
+const { h } = __require(16);
+const { markNumber } = __require(51);
+
+                            
+                                                                      
+             
+                      
+     
+                                                                                                                        
+                                                                                                                         
+     
+                                                                                             
+                                                                                                              
+                   
+                 
+               
+                 
+               
+     
+                                                                                                                        
+                                                                                                                      
+                                 
+     
+                                   
+ 
+
+                          
+               
+                
+              
+                                                                  
+                
+ 
+
+                                                                         
+
+/** A kind's place in the 2nd row's order: what the game made first, then what it moves, then what stands in the scene. */
+const KIND_RANK                                   = { made: 0, moves: 1, placed: 2 };
+
+/**
+ * The marked objects in the order the 2nd row (and the request's `objects`) names them (pause-ask fix △1, decided
+ * 2026-11-02): what the game made first, then what it moves, then what was placed — each kind in the order the game
+ * page gave (an area's objects nearest its middle first: bridge editor.ts mark-at). WHY: a circle round the boss came
+ * back as "road · placed by you +5 more": the road (under everything, first in the scene's list) hid the boss the
+ * person circled, and the AI read the same order. The selected objects stay first (picked by hand: the clearest point).
+ */
+function orderMarked(selected          , marked          , kindOf                                               )           {
+  const rest = marked.filter((k, i) => !selected.includes(k) && marked.indexOf(k) === i);
+  const rank = (k        ) => KIND_RANK[kindOf(k) ?? 'placed'];
+  // Array.prototype.sort is stable: same kind = the page's order.
+  return [...selected, ...rest.sort((a, b) => rank(a) - rank(b))];
+}
+
+/** A number for the spot's sub line: one decimal, a real minus sign (VOICE.md). */
+const coord = (v        ) => (Math.round(v * 10) / 10).toFixed(1).replace(/^-/, '\u2212').replace(/^\u22120\.0$/, '0.0');
+
+/** The 2nd row when no object is under the marks (fix △2): the first mark itself, and where it is in the world. */
+function markRow(marks              , t   )          {
+  const m = marks[0] ;
+  const n = markNumber(m.n);
+  const w = m.world;
+  // 3D: a point on the ground plane (toGround: y 0) → x and z; 2D: the stage point → x and y.
+  const ground = m.kind === 'point' && w?.length === 3;
+  const title = m.kind === 'area' ? t('gets.areaEmpty', { n }) : t(ground ? 'gets.spotGround' : 'gets.spot', { n });
+  const more = marks.length > 1 ? ` ${t('gets.more', { n: marks.length - 1 })}` : '';
+  const sub = m.kind === 'point' && w && w.length >= 2
+    ? (w.length === 3 ? `x ${coord(w[0] )}, z ${coord(w[2] )}` : `x ${coord(w[0] )}, y ${coord(w[1] )}`)
+    : t('gets.spotSub');
+  return { icon: '◆', title: title + more, sub };
+}
+
+/** The four rows. Never fewer: a row with nothing to say says what WOULD go (so the card always reads the same). */
+function getsRows(g           , t   )            {
+  const rows            = [];
+  const nums = g.marks.map((m) => markNumber(m.n)).join(' ');
+  rows.push({ icon: '▣', title: g.marks.length ? t('gets.frameMarks', { t: g.at, marks: nums }) : t('gets.frame', { t: g.at }),
+    sub: t(g.marks.length ? 'gets.frameSubMarks' : 'gets.frameSub') });
+  const first = g.objects[0];
+  if (first) {
+    const kindWord = first.kind ? t(first.kind === 'placed' && first.mine ? 'gets.kind.mine' : `gets.kind.${first.kind}`) : '';
+    const more = g.objects.length > 1 ? ` ${t('gets.more', { n: g.objects.length - 1 })}` : '';
+    const code = first.from ? `${first.from.file}:${first.from.line}` : undefined;
+    // "Made at game.js:121" for what the game made (the line that makes it), "Code: game.js:49" otherwise (fix △8).
+    rows.push({ icon: '◆', title: `${first.name}${kindWord ? ` · ${kindWord}` : ''}${more}`, sub: code ? t(first.kind === 'made' ? 'gets.fromMade' : 'gets.from') : t('gets.where'), ...(code ? { code } : {}) });
+  } else if (g.marks.length) {
+    rows.push(markRow(g.marks, t));
+  } else {
+    rows.push({ icon: '◆', title: t('gets.nothing'), sub: t('gets.nothingSub') });
+  }
+  const third = [g.level ? t('gets.level', { level: g.level }) : '', g.near ? t('gets.near', { n: g.near }) : '', g.errors ? t('gets.errors', { n: g.errors }) : ''].filter(Boolean).join(' · ');
+  rows.push({ icon: '#', title: g.values.length ? g.values.slice(0, 4).join(' · ') : t('gets.time', { t: g.at }), sub: third || t('gets.view') });
+  // fix △3 (2026-11-02): the title says what is kept, so it never contradicts its own sub line ("This moment, kept" over
+  // "The time only…" / "Not kept in this demo").
+  const kept = g.kept ?? 'whole';
+  const [kt, ks] = kept === 'whole' ? ['gets.kept', 'gets.keptWhole'] : kept === 'time' ? ['gets.keptTimeTitle', 'gets.keptTime'] : ['gets.keptNoneTitle', 'gets.keptNone'];
+  rows.push({ icon: '⚑', title: t(kt, { t: g.at }), sub: t(ks, { t: g.at }) });
+  return rows;
+}
+
+                             
+                  
+                                             
+                
+                    
+ 
+
+function createMomentGets()             {
+  const el = h('div', { class: 'moment-gets', role: 'dialog', dataset: { part: 'moment-gets' }, hidden: true });
+  const api             = {
+    el,
+    open(rows, title) {
+      el.replaceChildren(h('div', { class: 'moment-gets-title', text: title }), ...rows.map((r) => h('div', { class: 'moment-gets-row' },
+        h('span', { class: 'moment-gets-icon', 'aria-hidden': 'true', text: r.icon }),
+        h('span', { class: 'moment-gets-words' }, h('b', { text: r.title }),
+          h('small', {}, r.sub, r.code ? ' ' : null, r.code ? h('code', { text: r.code }) : null)))));
+      el.setAttribute('aria-label', title);
+      el.hidden = false;
+    },
+    close() {
+      el.hidden = true;
+    },
+    isOpen: () => !el.hidden,
+  };
+  return api;
+}
+
+__def(__exports, "orderMarked", () => orderMarked);
+__def(__exports, "getsRows", () => getsRows);
+__def(__exports, "createMomentGets", () => createMomentGets);
+};
+__defs[53] = function (__exports) {
+'use strict';
+// moment-try.ts
+
+// After the AI fixed something asked from a paused moment: try it from the SAME moment (pause-ask stage 3, 2026-11-02;
+// README pictures pc-3-fixed-try.png and pc-4-before-after.png; CONTRACT.md §3.5.1 `back`).
+//
+// WHY: the request was "pause the scene, ask the AI, and the AI fixes it from both the code and the picture". Asking
+// was stages 1–2. Seeing the fix still meant Reload = leave the moment and play the whole way back to it (40 s for a boss
+// later in the level), and the second run is never the same run. So the reply of a paused ask is:
+//   - one line (what the AI did; small under it, the files it touched — `--files`) and three buttons:
+//   - ▶ Try from 0:05.02: the game again with the NEW code, opened at the ask's moment (`back`: load(moment) before its
+//     first frame) and held there, paused — the field, the talk and the marks stay. A game without codeMoment save /
+//     load: a new run held at the same second, and the flash says so ("Same time, new run");
+//   - Before / After: the frame the person asked from (with its marks) beside the same moment with the new code (the
+//     frame Try paused on; Try runs first when it has not yet);
+//   - ↶ Undo: the game's files back to before the AI's change, right here (no reload: the moment stays as it is; Try
+//     shows the old code then).
+// The editor never reloads by itself after the AI's change (the person may be in the middle of Save · N): Try is
+// theirs to press.
+// This file holds the pure rules (test/moment-try.test.ts) and the Before / After panel; main.ts wires them.
+const { h } = __require(16);
+const { icon } = __require(21);
+
+                                                                
+
+                             
+                                                                                         
+                  
+                                                                                   
+                
+                                                                                           
+                   
+                                                                           
+                   
+ 
+
+/**
+ * The buttons on a paused ask's finished reply, in order (pure). With the moment kept: Try, Before / After, Undo. A host
+ * that keeps no moment (an older host): the old Reload (leave the moment, play again from the start). Nothing changed
+ * in the code: nothing to try (the reply was an answer).
+ */
+function replyActions(s            )                {
+  if (!s.paused || !s.changed) return [];
+  const out                = s.back ? ['try', 'compare'] : ['reload'];
+  if (s.canUndo) out.push('undo');
+  return out;
+}
+
+/**
+ * The reply's small second row: the files the AI touched (≤ 2 named, then "+N"), else what the row said before.
+ * Paths are shown as the AI gave them (inside the game folder).
+ */
+function filesRow(files                      , fallback        )         {
+  if (!files?.length) return fallback;
+  const shown = files.slice(0, 2).join(' · ');
+  return files.length > 2 ? `${shown} +${files.length - 2}` : shown;
+}
+
+/**
+ * Is this pause the Try's? The page was opened for a Try and paused within a frame or so of the ask's second (a person
+ * who pressed P earlier, before a new run got there, made their own pause: not the Try's picture).
+ */
+function isTryPause(at        , wanted        )          {
+  return Number.isFinite(at) && Number.isFinite(wanted) && Math.abs(at - wanted) <= 0.25;
+}
+
+                           
+                                       
+                                                                                                       
+                                                                                                  
+                                                             
+                                                           
+                
+                                                                                 
+             
+ 
+
+/** A new run whose game clock may be this far (s) from the ask's is said (fix △7): under it, a frame or two's wobble. */
+const DRIFT_SAY_S = 0.3;
+
+/**
+ * What the Try says about what was already out (pause-ask fix ✕2, decided 2026-11-02: plan A of the first walk — say it
+ * there, with ▶ Resume to see it). WHY: a saved moment (`exact`) brings back what was on screen AS IT WAS; a fix to
+ * "where the boss comes in" shows from the next boss, so Before / After were the same picture and read as "the AI did
+ * nothing" or "Try is broken". A new run (no save / load) makes everything again with the new code: nothing to say.
+ * The name: the AI's own `--already` ("the boss") first — it knows what its change is about — else the object the game
+ * made that the ask was about (`made`); neither = the general sentence.
+ */
+function tryWords(exact         , already         , made         , drift = 0)           {
+  // A new run (fix △7, decided 2026-11-02): the clocks are the editor's; a game that cuts long frames counts less when a
+  // run loads slowly (a phone, right after the reload). `drift` = how much later the Try's run is than the ask's run by
+  // that count (PlayClock.late); said when it is more than a frame or two, because then the boss may not be out yet.
+  if (!exact) {
+    if (Math.abs(drift) < DRIFT_SAY_S) return { flash: 'try.sameRun' };
+    const s = (Math.round(Math.abs(drift) * 10) / 10).toFixed(1);
+    return drift > 0 ? { flash: 'try.sameRunBehind', note: 'cmp.behind', s } : { flash: 'try.sameRunAhead', note: 'cmp.ahead', s };
+  }
+  const name = already?.trim() || made?.trim() || '';
+  return name ? { flash: 'try.openedOut', note: 'cmp.out', name } : { flash: 'try.openedStay', note: 'cmp.stay' };
+}
+
+                              
+                                                                                
+                     
+                
+              
+ 
+
+                              
+                
+                      
+                     
+                                                                 
+                
+                                             
+                  
+                                                                                                      
+                                                                   
+                                        
+                                       
+                
+ 
+
+                                
+                  
+                             
+                                                                                  
+                                         
+                
+                    
+ 
+
+/** The Before / After panel over the game (README picture pc-4): two frames side by side, the words, Undo / Keep · Resume. */
+function createMomentCompare()                {
+  const el = h('div', { class: 'moment-compare', role: 'dialog', hidden: true, dataset: { part: 'moment-compare' } });
+  let afterBox                     = null;
+  let afterSub                     = null;
+  const side = (s             , which                    , opening        ) => {
+    const sub = h('span', { class: 'moment-compare-sub', text: s.sub });
+    const pic = h('div', { class: 'moment-compare-pic', dataset: { part: `compare-${which}` } },
+      s.src ? h('img', { src: s.src, alt: `${s.label} · ${s.sub}` }) : h('span', { class: 'moment-compare-wait', text: opening }));
+    if (which === 'after') {
+      afterBox = pic;
+      afterSub = sub;
+    }
+    const fig = h('figure', { class: `moment-compare-side ${which}` }, h('figcaption', {}, h('b', { text: s.label }), sub), pic);
+    const n = which === 'after' ? note : undefined;
+    if (n) {
+      const r = n.resume;
+      fig.append(h('div', { class: 'moment-compare-note', dataset: { part: 'compare-note' } }, h('span', { text: n.text }),
+        r ? h('button', { type: 'button', class: 'btn', dataset: { action: 'compare-resume' }, onclick: () => r.run() }, icon('play'), h('span', { text: r.label })) : null));
+    }
+    return fig;
+  };
+  let note                     ;
+  const api                = {
+    el,
+    open(o) {
+      note = o.note;
+      const foot = h('div', { class: 'moment-compare-foot' }, h('q', { class: 'moment-compare-asked', text: o.asked }));
+      if (o.undo) {
+        const u = o.undo;
+        foot.append(h('button', { type: 'button', class: 'btn', dataset: { action: 'compare-undo' }, onclick: () => u.run() }, icon('undo'), h('span', { text: u.label })));
+      }
+      foot.append(h('button', { type: 'button', class: 'btn primary', dataset: { action: 'compare-keep' }, onclick: () => o.keep.run() }, h('span', { text: o.keep.label })));
+      el.replaceChildren(
+        h('div', { class: 'moment-compare-head' }, h('span', { text: o.title }),
+          h('button', { type: 'button', class: 'icon-btn', dataset: { action: 'compare-close' }, title: o.close, 'aria-label': o.close, onclick: () => api.close() }, icon('close'))),
+        h('div', { class: 'moment-compare-pair' }, side(o.before, 'before', o.opening), side(o.after, 'after', o.opening)),
+        foot);
+      el.setAttribute('aria-label', o.title);
+      el.hidden = false;
+    },
+    after(src, sub) {
+      if (!afterBox || el.hidden) return;
+      afterBox.replaceChildren(h('img', { src, alt: sub ?? '' }));
+      if (sub && afterSub) afterSub.textContent = sub;
+    },
+    close() {
+      el.hidden = true;
+      afterBox = afterSub = null;
+    },
+    isOpen: () => !el.hidden,
+  };
+  return api;
+}
+
+__def(__exports, "replyActions", () => replyActions);
+__def(__exports, "filesRow", () => filesRow);
+__def(__exports, "isTryPause", () => isTryPause);
+__def(__exports, "DRIFT_SAY_S", () => DRIFT_SAY_S);
+__def(__exports, "tryWords", () => tryWords);
+__def(__exports, "createMomentCompare", () => createMomentCompare);
+};
+__defs[54] = function (__exports) {
 'use strict';
 // checkpoints.ts
 
@@ -22331,7 +23513,7 @@ __def(__exports, "smallShot", () => smallShot);
 __def(__exports, "createCheckpointPop", () => createCheckpointPop);
 __def(__exports, "createCheckpointNote", () => createCheckpointNote);
 };
-__defs[51] = function (__exports) {
+__defs[55] = function (__exports) {
 'use strict';
 // line-fade.ts
 
@@ -22394,7 +23576,7 @@ __def(__exports, "lineFades", () => lineFades);
 __def(__exports, "lineStayMs", () => lineStayMs);
 __def(__exports, "lineKey", () => lineKey);
 };
-__defs[52] = function (__exports) {
+__defs[56] = function (__exports) {
 'use strict';
 // ui-prefs.ts
 
@@ -22482,7 +23664,7 @@ __def(__exports, "UI_LIMITS", () => UI_LIMITS);
 __def(__exports, "normalizeUi", () => normalizeUi);
 __def(__exports, "effectiveTheme", () => effectiveTheme);
 };
-__defs[53] = function (__exports) {
+__defs[57] = function (__exports) {
 'use strict';
 // settings-page.ts
 
@@ -22492,7 +23674,7 @@ __defs[53] = function (__exports) {
                                                     
 const { h } = __require(16);
 const { icon } = __require(21);
-const { DEFAULT_UI, UI_LIMITS } = __require(52);
+const { DEFAULT_UI, UI_LIMITS } = __require(56);
 
                                
                          
@@ -22575,7 +23757,7 @@ function renderSettings(el             , d              )       {
 
 __def(__exports, "renderSettings", () => renderSettings);
 };
-__defs[54] = function (__exports) {
+__defs[58] = function (__exports) {
 'use strict';
 // edit-ops.ts
 
@@ -22679,7 +23861,7 @@ __def(__exports, "groupLayerMoves", () => groupLayerMoves);
 __def(__exports, "groupLayerPossible", () => groupLayerPossible);
 __def(__exports, "sameKind", () => sameKind);
 };
-__defs[55] = function (__exports) {
+__defs[59] = function (__exports) {
 'use strict';
 // placement-panel.ts
 
@@ -22712,7 +23894,7 @@ __defs[55] = function (__exports) {
                                                       
 const { h, safeImageSrc } = __require(16);
 const { hasLayer, layerBlocks, layerTarget, siblingsOf } = __require(32);
-const { groupLayerPossible, sameKind } = __require(54);
+const { groupLayerPossible, sameKind } = __require(58);
 const { icon, setButton } = __require(21);
 const { afterKnob, knobHeld } = __require(25);
 const { tipText } = __require(46);
@@ -22770,11 +23952,20 @@ const { toneThumb } = __require(17);
                                                               
      
                            
-                                                                                                                   
-                                                                       
+     
+                                                                                                               
+                                                                                                                      
+                                                                                                                      
+     
+                                                                                
      
                                                                                                                 
                                                  
+     
+                        
+     
+                                                                                                                     
+                                                                                                                        
      
                         
                                                                                                                   
@@ -23146,6 +24337,7 @@ function createPlacementPanel(d                    )                 {
     askSend.disabled = true;
     const ok = await d.ask(keys, text, files);
     askSend.disabled = false;
+    if (ok === 'held') return;
     if (ok) {
       askInput.value = '';
       askNote = d.t('ask.sent');
@@ -23157,8 +24349,15 @@ function createPlacementPanel(d                    )                 {
   });
   // Enter sends from the field; with Escape the field lets go (so arrow keys
   // move the object again) without clearing what was typed.
+  // Paused (pause-ask fix △4): the open card first, then ◎, then the field — one Esc each, the nearest thing first.
   askInput.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') askInput.blur();
+    if (e.key !== 'Escape') return;
+    if (d.askEscape?.()) {
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
+    askInput.blur();
   });
 
   const renderAsk = () => {
@@ -24124,7 +25323,7 @@ __def(__exports, "shortName", () => shortName);
 __def(__exports, "createPlacementPanel", () => createPlacementPanel);
 __def(__exports, "heldGameText", () => heldGameText);
 };
-__defs[56] = function (__exports) {
+__defs[60] = function (__exports) {
 'use strict';
 // rule-motion.ts
 
@@ -24194,7 +25393,7 @@ __def(__exports, "knobSaid", () => knobSaid);
 __def(__exports, "ruleWords", () => ruleWords);
 __def(__exports, "ruleKnobsAfter", () => ruleKnobsAfter);
 };
-__defs[57] = function (__exports) {
+__defs[61] = function (__exports) {
 'use strict';
 // to-rule.ts
 
@@ -24400,7 +25599,7 @@ __def(__exports, "gapText", () => gapText);
 __def(__exports, "timeText", () => timeText);
 __def(__exports, "RuleCompare", () => RuleCompare);
 };
-__defs[58] = function (__exports) {
+__defs[62] = function (__exports) {
 'use strict';
 // path-edit.ts
 
@@ -24528,7 +25727,7 @@ __def(__exports, "setKind", () => setKind);
 __def(__exports, "toggleCorner", () => toggleCorner);
 __def(__exports, "insertAt", () => insertAt);
 };
-__defs[59] = function (__exports) {
+__defs[63] = function (__exports) {
 'use strict';
 // scene-motion.ts
 
@@ -24648,7 +25847,7 @@ __def(__exports, "withTrack", () => withTrack);
 __def(__exports, "withoutTrack", () => withoutTrack);
 __def(__exports, "withOrder", () => withOrder);
 };
-__defs[60] = function (__exports) {
+__defs[64] = function (__exports) {
 'use strict';
 // motion-card.ts
 
@@ -24810,7 +26009,7 @@ function motionMenu(d                , c            , at                        
 __def(__exports, "motionCardRow", () => motionCardRow);
 __def(__exports, "motionMenu", () => motionMenu);
 };
-__defs[61] = function (__exports) {
+__defs[65] = function (__exports) {
 'use strict';
 // timeline-wire.ts
 
@@ -24831,13 +26030,13 @@ __defs[61] = function (__exports) {
 // WHY its own file: main.ts is 3,900 lines and other members change it the same week; main.ts only routes moves,
 // the card's numbers, undo and the bridge's messages through here.
                                                                                                                                                                                                                       
-const { ruleKnobsAfter, ruleOf, ruleWords } = __require(56);
-const { handPath } = __require(57);
+const { ruleKnobsAfter, ruleOf, ruleWords } = __require(60);
+const { handPath } = __require(61);
 const { motionRunner, whenOf, whensOf } = __require(19);
-const { bend, insertAt, pointKind, setKind, toggleCorner } = __require(58);
-const { asOrdinary, asScene, joinClip, likeScene, sceneMembers, trackOrder: sceneOrder, withOrder, withTrack, withoutTrack } = __require(59);
+const { bend, insertAt, pointKind, setKind, toggleCorner } = __require(62);
+const { asOrdinary, asScene, joinClip, likeScene, sceneMembers, trackOrder: sceneOrder, withOrder, withTrack, withoutTrack } = __require(63);
 const { libOf } = __require(35);
-const { motionCardRow } = __require(60);
+const { motionCardRow } = __require(64);
                                                    
                                                      
 const { sameMotion: sameFile } = __require(36);
@@ -26831,7 +28030,7 @@ function createTimeline(d              , makePanel                             =
 
 __def(__exports, "createTimeline", () => createTimeline);
 };
-__defs[62] = function (__exports) {
+__defs[66] = function (__exports) {
 'use strict';
 // motion-note.ts
 
@@ -26959,7 +28158,7 @@ function createMotionNote(d                ) {
 __def(__exports, "noteOf", () => noteOf);
 __def(__exports, "createMotionNote", () => createMotionNote);
 };
-__defs[63] = function (__exports) {
+__defs[67] = function (__exports) {
 'use strict';
 // motion-ask.ts
 
@@ -27011,7 +28210,7 @@ function createMotionAsk(d               ) {
 
 __def(__exports, "createMotionAsk", () => createMotionAsk);
 };
-__defs[64] = function (__exports) {
+__defs[68] = function (__exports) {
 'use strict';
 // save-receipt.ts
 
@@ -27123,7 +28322,7 @@ __def(__exports, "RECEIPT_NAMES", () => RECEIPT_NAMES);
 __def(__exports, "savedList", () => savedList);
 __def(__exports, "receipt", () => receipt);
 };
-__defs[65] = function (__exports) {
+__defs[69] = function (__exports) {
 'use strict';
 // offset-model.ts
 
@@ -27286,7 +28485,7 @@ __def(__exports, "snapAmount", () => snapAmount);
 __def(__exports, "noAmount", () => noAmount);
 __def(__exports, "rowAt", () => rowAt);
 };
-__defs[66] = function (__exports) {
+__defs[70] = function (__exports) {
 'use strict';
 // offset-choices.ts
 
@@ -27309,7 +28508,7 @@ __defs[66] = function (__exports) {
                                                                                                                   
 const { h } = __require(16);
 const { knobEl } = __require(25);
-const { addOffset } = __require(65);
+const { addOffset } = __require(69);
 
                                                                          
                                                        
@@ -27620,7 +28819,7 @@ __def(__exports, "createOffsetChoices", () => createOffsetChoices);
 __def(__exports, "offsetRowWords", () => offsetRowWords);
 __def(__exports, "offsetRowsEl", () => offsetRowsEl);
 };
-__defs[67] = function (__exports) {
+__defs[71] = function (__exports) {
 'use strict';
 // code-place-wire.ts
 
@@ -27670,10 +28869,10 @@ __defs[67] = function (__exports) {
 const { h } = __require(16);
 const { knobEl, knobNumber } = __require(25);
 const { turnKnobs } = __require(34);
-const { amountWords, createOffsetChoices, offsetRowWords, offsetRowsEl } = __require(66);
-const { addOffset, dragAmount, jitterRow, lastOf, movesRank, noAmount, MAX_OFFSETS } = __require(65);
+const { amountWords, createOffsetChoices, offsetRowWords, offsetRowsEl } = __require(70);
+const { addOffset, dragAmount, jitterRow, lastOf, movesRank, noAmount, MAX_OFFSETS } = __require(69);
 const { roundPose } = __require(31);
-const { gapText, placeGaps } = __require(57);
+const { gapText, placeGaps } = __require(61);
 
                                                                          
 
@@ -28437,7 +29636,7 @@ function createCodePlaceWire(d                   )                {
 
 __def(__exports, "createCodePlaceWire", () => createCodePlaceWire);
 };
-__defs[68] = function (__exports) {
+__defs[72] = function (__exports) {
 'use strict';
 // keep-out-model.ts
 
@@ -28646,7 +29845,7 @@ __def(__exports, "changedRows", () => changedRows);
 __def(__exports, "rowKey", () => rowKey);
 __def(__exports, "inBox", () => inBox);
 };
-__defs[69] = function (__exports) {
+__defs[73] = function (__exports) {
 'use strict';
 // keep-out-wire.ts
 
@@ -28677,7 +29876,7 @@ const { h } = __require(16);
 const { icon } = __require(21);
 const { knobEl } = __require(25);
                                                    
-const { MAX_AVOID, addBox, canRemove, changedRows, copyRowTo, knobRow, knobsNow, nextBoxName, removeRow, rowKey, rowsOf, setBox, switchRow } = __require(68);
+const { MAX_AVOID, addBox, canRemove, changedRows, copyRowTo, knobRow, knobsNow, nextBoxName, removeRow, rowKey, rowsOf, setBox, switchRow } = __require(72);
 
                                                                          
                                    
@@ -28971,7 +30170,7 @@ function createKeepOutWire(d                 )              {
 
 __def(__exports, "createKeepOutWire", () => createKeepOutWire);
 };
-__defs[70] = function (__exports) {
+__defs[74] = function (__exports) {
 'use strict';
 // palette.ts
 
@@ -29282,7 +30481,7 @@ __def(__exports, "SUGGEST_MIN", () => SUGGEST_MIN);
 __def(__exports, "suggests", () => suggests);
 __def(__exports, "createPalette", () => createPalette);
 };
-__defs[71] = function (__exports) {
+__defs[75] = function (__exports) {
 'use strict';
 // thumb-fit.ts
 
@@ -29383,7 +30582,7 @@ function fitPicture(src        , out = OUT)                  {
 __def(__exports, "FIT_MARGIN", () => FIT_MARGIN);
 __def(__exports, "fitPicture", () => fitPicture);
 };
-__defs[72] = function (__exports) {
+__defs[76] = function (__exports) {
 'use strict';
 // undo.ts
 
@@ -29630,7 +30829,7 @@ __def(__exports, "poseChange", () => poseChange);
 __def(__exports, "UndoStack", () => UndoStack);
 __def(__exports, "sharedMotion", () => sharedMotion);
 };
-__defs[73] = function (__exports) {
+__defs[77] = function (__exports) {
 'use strict';
 // write-back.ts
 
@@ -29723,7 +30922,7 @@ __def(__exports, "FOLD_TOL", () => FOLD_TOL);
 __def(__exports, "foldGaps", () => foldGaps);
 __def(__exports, "foldSaid", () => foldSaid);
 };
-__defs[74] = function (__exports) {
+__defs[78] = function (__exports) {
 'use strict';
 // ai-hands.ts
 
@@ -29746,9 +30945,9 @@ const { uiBoxAt } = __require(19);
 const { HANDS_MAKE_WHEN, handsAvoid, handsClip, handsMotion, handsPose, handsSaid, handsUiIds, readHandsInput } = __require(33);
 const { roundKnob, turnKnobs } = __require(34);
 const { CODE_LEN } = __require(35);
-const { MOTION_SAMPLES, gapText, motionGap, placeGaps, timeText } = __require(57);
-const { foldGaps, foldSaid } = __require(73);
-const { momentNumber } = __require(49);
+const { MOTION_SAMPLES, gapText, motionGap, placeGaps, timeText } = __require(61);
+const { foldGaps, foldSaid } = __require(77);
+const { momentNumber } = __require(50);
 
                            
              
@@ -30648,7 +31847,7 @@ function createAiHands(d           ) {
 
 __def(__exports, "createAiHands", () => createAiHands);
 };
-__defs[75] = function (__exports) {
+__defs[79] = function (__exports) {
 'use strict';
 // tooltip.ts
 
@@ -30768,7 +31967,7 @@ function installTooltips(root             )                                    {
 
 __def(__exports, "installTooltips", () => installTooltips);
 };
-__defs[76] = function (__exports) {
+__defs[80] = function (__exports) {
 'use strict';
 // shortcuts.ts
 
@@ -30858,7 +32057,7 @@ function createShortcutSheet(d                   ) {
 
 __def(__exports, "createShortcutSheet", () => createShortcutSheet);
 };
-__defs[77] = function (__exports) {
+__defs[81] = function (__exports) {
 'use strict';
 // context-menu.ts
 
@@ -31158,7 +32357,7 @@ function createContextMenu(d                 ) {
 __def(__exports, "placeMenu", () => placeMenu);
 __def(__exports, "createContextMenu", () => createContextMenu);
 };
-__defs[78] = function (__exports) {
+__defs[82] = function (__exports) {
 'use strict';
 // levels.ts
 
@@ -31578,7 +32777,7 @@ __def(__exports, "slugOf", () => slugOf);
 __def(__exports, "levelIdOf", () => levelIdOf);
 __def(__exports, "Levels", () => Levels);
 };
-__defs[79] = function (__exports) {
+__defs[83] = function (__exports) {
 'use strict';
 // check-note.ts
 
@@ -31617,7 +32816,7 @@ function checkNoteId(check                        , items                       
 
 __def(__exports, "checkNoteId", () => checkNoteId);
 };
-__defs[80] = function (__exports) {
+__defs[84] = function (__exports) {
 'use strict';
 // level-switch.ts
 
@@ -31791,7 +32990,7 @@ function createLevelSwitch(d                 ) {
 __def(__exports, "makeRows", () => makeRows);
 __def(__exports, "createLevelSwitch", () => createLevelSwitch);
 };
-__defs[81] = function (__exports) {
+__defs[85] = function (__exports) {
 'use strict';
 // context-rows.ts
 
@@ -31989,7 +33188,7 @@ function contextRows(place          , f          )           {
 
 __def(__exports, "contextRows", () => contextRows);
 };
-__defs[82] = function (__exports) {
+__defs[86] = function (__exports) {
 'use strict';
 // safe-save.ts
 
@@ -32100,7 +33299,7 @@ function createSafeSave(deps                              ) {
 __def(__exports, "bigChanges", () => bigChanges);
 __def(__exports, "createSafeSave", () => createSafeSave);
 };
-__defs[83] = function (__exports) {
+__defs[87] = function (__exports) {
 'use strict';
 // unsaved-guard.ts
 
@@ -32257,7 +33456,7 @@ __def(__exports, "lostBy", () => lostBy);
 __def(__exports, "playAsks", () => playAsks);
 __def(__exports, "createUnsavedGuard", () => createUnsavedGuard);
 };
-__defs[84] = function (__exports) {
+__defs[88] = function (__exports) {
 'use strict';
 // layer-switch.ts
 
@@ -32327,7 +33526,7 @@ function createLayerSwitch(choose                        , togglePeek           
 
 __def(__exports, "createLayerSwitch", () => createLayerSwitch);
 };
-__defs[85] = function (__exports) {
+__defs[89] = function (__exports) {
 'use strict';
 // ui-layer.ts
 
@@ -32430,7 +33629,7 @@ __def(__exports, "uiEntries", () => uiEntries);
 __def(__exports, "withLooks", () => withLooks);
 __def(__exports, "withUi", () => withUi);
 };
-__defs[86] = function (__exports) {
+__defs[90] = function (__exports) {
 'use strict';
 // ui-card.ts
 
@@ -32600,7 +33799,7 @@ function createUiCard(d            ) {
 
 __def(__exports, "createUiCard", () => createUiCard);
 };
-__defs[87] = function (__exports) {
+__defs[91] = function (__exports) {
 'use strict';
 // ui-screens.ts
 
@@ -32663,7 +33862,7 @@ function createUiScreens(d               ) {
 
 __def(__exports, "createUiScreens", () => createUiScreens);
 };
-__defs[88] = function (__exports) {
+__defs[92] = function (__exports) {
 'use strict';
 // ui-style-model.ts
 
@@ -32898,7 +34097,7 @@ __def(__exports, "validLook", () => validLook);
 __def(__exports, "validTheme", () => validTheme);
 __def(__exports, "UiStyleModel", () => UiStyleModel);
 };
-__defs[89] = function (__exports) {
+__defs[93] = function (__exports) {
 'use strict';
 // ui-theme.ts
 
@@ -33013,7 +34212,7 @@ function createUiTheme(d             ) {
 
 __def(__exports, "createUiTheme", () => createUiTheme);
 };
-__defs[90] = function (__exports) {
+__defs[94] = function (__exports) {
 'use strict';
 // ui-wire.ts
 
@@ -33029,11 +34228,11 @@ __defs[90] = function (__exports) {
 //     end of editing) and here only to draw the card — never saved. A new game page starts without them.
                                                                                                                                                                             
                                                    
-const { createUiCard } = __require(86);
-const { withLooks } = __require(85);
-const { createUiScreens } = __require(87);
-const { UiStyleModel, validLook, validTheme } = __require(88);
-const { createUiTheme } = __require(89);
+const { createUiCard } = __require(90);
+const { withLooks } = __require(89);
+const { createUiScreens } = __require(91);
+const { UiStyleModel, validLook, validTheme } = __require(92);
+const { createUiTheme } = __require(93);
                                                    
 
                              
@@ -33300,7 +34499,7 @@ function createUiWire(d            ) {
 
 __def(__exports, "createUiWire", () => createUiWire);
 };
-__defs[91] = function (__exports) {
+__defs[95] = function (__exports) {
 'use strict';
 // ui-missing.ts
 
@@ -33418,7 +34617,7 @@ function createUiMissing(d               ) {
 
 __def(__exports, "createUiMissing", () => createUiMissing);
 };
-__defs[92] = function (__exports) {
+__defs[96] = function (__exports) {
 'use strict';
 // sheet-fold.ts
 
@@ -33495,7 +34694,7 @@ __def(__exports, "barPress", () => barPress);
 __def(__exports, "FOLD_DRAG", () => FOLD_DRAG);
 __def(__exports, "gripEnd", () => gripEnd);
 };
-__defs[93] = function (__exports) {
+__defs[97] = function (__exports) {
 'use strict';
 // main.ts
 
@@ -33536,46 +34735,50 @@ const { askView: questionView } = __require(44);
 const { playLine, playWords } = __require(45);
 const { clockNow, clockText, createMomentBar, madeRows, speedText, splitMoves } = __require(47);
 const { chatOnLine, historyOf } = __require(48);
-const { createMomentValues } = __require(49);
-const { CHECKPOINTS_LISTED, checkpointsOf, createCheckpointNote, createCheckpointPop, defaultCheckpointName, reloadCheckpoint, smallShot } = __require(50);
-const { LINE_FADE_MS, LINE_GRACE_MS, lineFades, lineKey, lineStayMs } = __require(51);
-const { renderSettings } = __require(53);
-const { DEFAULT_UI, effectiveTheme, normalizeUi } = __require(52);
+const { askFieldShown, askPhShort, createMomentShot, momentAskOffline, momentFocusOk, momentKeyPasses, shotTimeOnClock } = __require(49);
+const { createMomentValues, momentNumber, unitText } = __require(50);
+const { createMomentMarks, markedShot } = __require(51);
+const { createMomentGets, getsRows, orderMarked } = __require(52);
+const { createMomentCompare, filesRow, isTryPause, replyActions, tryWords } = __require(53);
+const { CHECKPOINTS_LISTED, checkpointsOf, createCheckpointNote, createCheckpointPop, defaultCheckpointName, reloadCheckpoint, smallShot } = __require(54);
+const { LINE_FADE_MS, LINE_GRACE_MS, lineFades, lineKey, lineStayMs } = __require(55);
+const { renderSettings } = __require(57);
+const { DEFAULT_UI, effectiveTheme, normalizeUi } = __require(56);
 const { dropTarget, hasLayer, layerTarget } = __require(32);
-const { createPlacementPanel } = __require(55);
-const { createTimeline } = __require(61);
-const { createMotionNote, noteOf } = __require(62);
+const { createPlacementPanel, shortName } = __require(59);
+const { createTimeline } = __require(65);
+const { createMotionNote, noteOf } = __require(66);
 const { libCounted } = __require(24);
-const { createMotionAsk } = __require(63);
+const { createMotionAsk } = __require(67);
 const { CODE_LEN, motionLibrary } = __require(35);
 const { attachWorld, roundLib } = __require(36);
 const { icon, setButton } = __require(21);
-const { receipt } = __require(64);
-const { createCodePlaceWire } = __require(67);
-const { createKeepOutWire } = __require(69);
-const { createPalette } = __require(70);
-const { fitPicture } = __require(71);
+const { receipt } = __require(68);
+const { createCodePlaceWire } = __require(71);
+const { createKeepOutWire } = __require(73);
+const { createPalette } = __require(74);
+const { fitPicture } = __require(75);
 const { PlacementModel } = __require(37);
-const { UndoStack, poseChange, sharedMotion } = __require(72);
-const { createAiHands } = __require(74);
-const { MOTION_SAMPLES, RuleCompare, gapText, motionGap, timeText } = __require(57);
-const { copyKey, groupLayerMoves, groupLayerPossible, sameKind } = __require(54);
+const { UndoStack, poseChange, sharedMotion } = __require(76);
+const { createAiHands } = __require(78);
+const { MOTION_SAMPLES, RuleCompare, gapText, motionGap, timeText } = __require(61);
+const { copyKey, groupLayerMoves, groupLayerPossible, sameKind } = __require(58);
 const { displayName, forgetNames, noteItems, useGivenNames, useNameLang } = __require(14);
 const { keyOf, tipText } = __require(46);
-const { installTooltips } = __require(75);
-const { createShortcutSheet } = __require(76);
-const { createContextMenu } = __require(77);
-const { Levels, worldOf } = __require(78);
-const { checkNoteId } = __require(79);
-const { createLevelSwitch, makeRows } = __require(80);
-const { contextRows } = __require(81);
-const { bigChanges, createSafeSave } = __require(82);
-const { createUnsavedGuard, lostBy, playAsks } = __require(83);
-const { createLayerSwitch } = __require(84);
-const { uiAsPlacement, uiEntries, withUi } = __require(85);
-const { createUiWire } = __require(90);
-const { createUiMissing } = __require(91);
-const { barPress, FOLD_DRAG, gripEnd, readFold, writeFold } = __require(92);
+const { installTooltips } = __require(79);
+const { createShortcutSheet } = __require(80);
+const { createContextMenu } = __require(81);
+const { Levels, worldOf } = __require(82);
+const { checkNoteId } = __require(83);
+const { createLevelSwitch, makeRows } = __require(84);
+const { contextRows } = __require(85);
+const { bigChanges, createSafeSave } = __require(86);
+const { createUnsavedGuard, lostBy, playAsks } = __require(87);
+const { createLayerSwitch } = __require(88);
+const { uiAsPlacement, uiEntries, withUi } = __require(89);
+const { createUiWire } = __require(94);
+const { createUiMissing } = __require(95);
+const { barPress, FOLD_DRAG, gripEnd, readFold, writeFold } = __require(96);
 
                                                                         
 
@@ -33938,6 +35141,8 @@ function start(host            ) {
   const INTRO_SEEN = 'open-line';
   // The first ▶ Play's one line under ❚❚ Pause to edit (pause-edit 02-find.md): once per person on this device.
   const PAUSE_TIP_SEEN = 'pause-tip';
+  // pause-ask fix △10: a phone's ◎ shows its word ("Mark") until the person has pressed it once (on this device).
+  const MARK_WORD_SEEN = 'mark-word';
   const STEP_TIP_SEEN = 'step-tip';
   let prefsLoaded = false;
   function hintSeen(id        )          {
@@ -34017,6 +35222,13 @@ function start(host            ) {
   // snapshot of the AI's version, made by the host when undoing). `aiAfter`:
   // the line says "back to before" / "your AI's change is back".
   let changeFrom                = null;
+  // The asks (paused, `play`) the host took a snapshot for, by request id: ↶ Undo on a paused reply goes back to its
+  // own ask's (pause-ask fix △6).
+  const askSnaps = new Set        ();
+  // The reply (status `at`) "what Claude gets" was last closed for (fix △4: once per reply).
+  let getsShutFor                    ;
+  // This pause's PlayClock.late (s; fix △7): kept with each ask of the pause (askBacks `late`).
+  let momentLate = 0;
   let lastChange                                                                 = null;
   // studio-writeback (2026-10-24, "the code is the truth"): what left the file because the AI wrote it into the code
   // since the last request (its place.code --fold, and knobs the code caught up with). "Undo AI change" puts the code
@@ -35118,6 +36330,13 @@ function start(host            ) {
     // While the AI waits for an answer, the field answers it (hands-on test 2026-10-19).
     ask: (keys, text, files) => {
       if (answering()) return answerAi(text);
+      // The web demo's paused field (pause-ask stage 1, decided 2026-11-02 = show it): nothing is sent — not even kept in
+      // the browser as other demo requests are (no AI will ever read a moment's picture there). One line says why and
+      // where it works; the words stay in the field ('held').
+      if (momentAskOffline({ offline: !!host.offline, moment })) {
+        showToast(t('moment.offlineAsk'), 6000);
+        return Promise.resolve('held'         );
+      }
       // The paused moment: the "play" request of the pause (its picture with the first one, the talk after).
       if (moment) return momentRequest(text, keys);
       // ✦ Turn into a rule (studio-code-torule): the words were for the hand's shape on screen — the AI swaps a rule in.
@@ -35132,9 +36351,12 @@ function start(host            ) {
       return askAi({ kind: 'ask', text, objects: requestObjects(keys), ...(files.length ? { assets: files } : {}), ...requestMotions(toRule === 'motion'), ...(toRule ? { intent: 'to-code'          } : requestPlaces()) });
     },
     answering: () => answering(),
+    askEscape: () => momentEscape(),
     // The field's one placeholder (studio-words-plan, 2026-10-23): "Ask Claude…" whether or not Claude is there — the
     // presence words beside the field say that (it was "Write a note for Claude…" when unsure, a second wording).
-    askGame: () => (moment ? t('moment.askPh', aiVars()) : t('ask.game', host.offline ? {} : aiVars())),
+    // pause-ask stage 2 fix 2: a narrow field (a phone) gets the short words whole, not the long ones cut
+    // (moment-ask.ts askPhShort).
+    askGame: () => (moment ? momentPh() : t('ask.game', host.offline ? {} : aiVars())),
     askName: (keys) => askAi({ kind: 'name', text: '', objects: requestObjects(keys) }),
     nameDraft: host.offline ? undefined : (keys) => nameDraft(keys),
     // Only while the Library is on screen: back in the Scene the words are about what is picked there.
@@ -35550,6 +36772,73 @@ function start(host            ) {
 
   // ----- the ⌘K list (palette.ts) -----
   const askInput = placementPanel.askEl.querySelector('input')                    ;
+  // pause-ask stage 2 fix 1 (moment-ask.ts momentKeyPasses): true while the cursor is in the moment's field only
+  // because the pause put it there. Typing, a click in the field, or the field losing the cursor ends it.
+  let askAuto = false;
+  askInput.addEventListener('input', () => (askAuto = false));
+  askInput.addEventListener('pointerdown', () => (askAuto = false));
+  askInput.addEventListener('blur', () => (askAuto = false));
+  /** Does this key press in the field go to the editor's / game's keys instead of becoming a letter? */
+  const askPasses = (e               ) => e.target === askInput && !e.isComposing
+    && momentKeyPasses({ auto: askAuto && moment, empty: !askInput.value, key: e.key, mod: e.ctrlKey || e.metaKey || e.altKey });
+  /** The moment's placeholder: whole, or short when the field is narrow (moment-ask.ts askPhShort). */
+  function momentPh()         {
+    const vars = host.offline ? {} : aiVars();
+    const long = t('moment.askPh', vars);
+    // ~7 px a character at the field's 13 px (a guess on the safe side: a cut word is worse than a short whole one).
+    return askPhShort({ phone: phone(), room: askInput.clientWidth, need: long.length * 7 }) ? t('moment.askPhShort', vars) : long;
+  }
+  // pause-ask stage 1 (2026-11-02; moment-ask.ts): the paused frame small with its time, first in the field — "this
+  // picture goes with your words". Before the chips (README pc-1: [picture] [① here] [boss] words…).
+  const momentShot = createMomentShot();
+  placementPanel.askEl.insertBefore(momentShot.el, placementPanel.askEl.querySelector('.ask-chip'));
+  // pause-ask stage 2 (2026-11-02; moment-marks.ts): ◎ Mark and its chips ("① here ×") right after the picture —
+  // README pc-1: [picture] [① here] [boss] words… [◎]. The layer with the pins goes over the game (the stage).
+  let markAskN = 0;
+  const markWaits = new Map                                                                                       ();
+  const momentMarks = createMomentMarks({
+    probe: (x, y, box) => new Promise((done) => {
+      const id = ++markAskN;
+      markWaits.set(id, done);
+      send({ type: 'studio:moment/mark-at', id, x, y, ...(box ? { box } : {}) });
+      // No answer (an old game page, a page changing): the mark stays, without what is under it.
+      window.setTimeout(() => {
+        if (markWaits.delete(id)) done(null);
+      }, 1500);
+    }),
+    changed: () => {
+      app.dataset.marking = momentMarks.on() ? 'on' : 'off';
+      // Pressed once: the word goes from the next pause on (not now — the button would shrink under the finger).
+      if (momentMarks.on() && prefsLoaded && !uiPrefs.seen?.includes(MARK_WORD_SEEN)) changeUi({ ...uiPrefs, seen: [...(uiPrefs.seen ?? []), MARK_WORD_SEEN] });
+      momentGets.close();
+      // The chips take room from the words: the placeholder may need its short form now (askPhShort measures).
+      placementPanel.renderAsk();
+      placeNews();
+    },
+    t,
+  });
+  placementPanel.askEl.insertBefore(momentMarks.chips, momentShot.el.nextSibling);
+  // Over the game frame (the stage is the game page's size, so the marks' 0–1 are the picture's), under the dock.
+  stage.append(momentMarks.layer);
+  placementPanel.askEl.insertBefore(momentMarks.button, placementPanel.askEl.querySelector('.ask-kbd'));
+  // The picture opens "what Claude gets" (moment-gets.ts; README pc-2): a button now (stage 1 had it as a plain picture).
+  const momentGets = createMomentGets();
+  stage.append(momentGets.el);
+  // pause-ask stage 3: Before / After over the game (moment-try.ts; README pc-4).
+  const momentCompare = createMomentCompare();
+  stage.append(momentCompare.el);
+  momentShot.el.setAttribute('role', 'button');
+  momentShot.el.tabIndex = 0;
+  momentShot.el.dataset.action = 'moment-gets';
+  momentShot.el.addEventListener('pointerdown', (e) => e.preventDefault());
+  momentShot.el.addEventListener('click', () => toggleGets());
+  momentShot.el.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') (e.preventDefault(), toggleGets());
+  });
+  // A press anywhere else closes it (as a menu does); Esc too (shortcut()).
+  document.addEventListener('pointerdown', (e) => {
+    if (momentGets.isOpen() && !momentGets.el.contains(e.target        ) && !momentShot.el.contains(e.target        )) momentGets.close();
+  }, true);
   // A short notice shown in the field's place (showToast). Typing (or a click into the field) ends it at once.
   const askNews = h('span', { class: 'ask-news', role: 'status', 'aria-live': 'polite', hidden: true });
   askInput.addEventListener('input', hideNews);
@@ -36577,6 +37866,8 @@ function start(host            ) {
     if (aiWatching) lastWatching = Date.now();
     if (info?.seen) aiSeen = info.seen;
     if (id && info?.undo && !changeFrom) changeFrom = id;
+    // A paused ask's own snapshot (fix △6: ↶ Undo one ask at a time; momentUndo).
+    if (id && info?.undo && kind === 'play') askSnaps.add(id);
     if (aiMarks.size) {
       aiMarks = new Map();
       placementPanel.markRows();
@@ -36702,17 +37993,33 @@ function start(host            ) {
       // after them read as "Done" twice ("Made the change · Done"): the AI's words are the done, the row is only
       // "More in Claude". A change in code that Undo AI change cannot take back (no count) leaves what changed to
       // "More in Claude" — the AI's chat says it in full.
-      two(s.note || count, s.note && (ph === 'failed' || (n > 0 && !madeReply)) ? count : '');
+      // pause-ask stage 3: a paused ask's reply says, small, which files the AI touched (`--files`) — what + where.
+      const pausedReply = playing && playPaused && !!pending?.id && momentAsks.has(pending.id);
+      const second = s.note && (ph === 'failed' || (n > 0 && !madeReply)) ? count : '';
+      two(s.note || count, pausedReply && ph === 'done' ? filesRow(s.files, second) : second);
       // The paused moment's reply when the game's code changed (`--changed` > 0, or the files say so; fix 1 ✕6): Reload
       // right here. It was only on the line over the game after ▶ Resume, and the docs said "press Reload on the reply".
       // Reload leaves the moment for a new page of the game from its new code, still in Play (as the line over the game's
       // Reload: play/reload); Save · N stays (the editor keeps the draft).
       const codeNow = code === undefined || loadedCode === undefined ? undefined : code !== loadedCode;
-      if (ph === 'done' && playing && playPaused && !!pending?.id && momentAsks.has(pending.id) && (n > 0 || codeNow === true)) {
-        link('moment-reload', 'toolRotate', t('play.reload'), () => loadGame(), t('play.reloadMomentTip'));
-        // …and from a checkpoint (stage 3, the brief's 5): the one this Play opened from, else this level's newest.
-        const rc = reloadCheckpoint(checkpointList, cpLevel(), cpPlayed?.id ?? null);
-        if (rc) link('moment-reload-from', 'flag', t('checkpoint.fromReload', { name: rc.name }), () => void playCheckpoint(rc), t('checkpoint.fromReloadTip', { name: rc.name }));
+      // pause-ask stage 3 (moment-try.ts; README pc-3): ▶ Try from 0:05.02 · Before / After · ↶ Undo — the same moment
+      // with the new code, never a reload by itself. A host that kept no moment for the ask: the old Reload.
+      const ab = pending?.id ? askBacks.get(pending.id) : undefined;
+      const acts = ph === 'done' && pausedReply ? replyActions({ paused: true, back: !!ab && !!host.askMoment, changed: n > 0 || codeNow === true,
+        canUndo: momentCanUndo(pending?.id ?? '') }) : [];
+      const reqId = pending?.id ?? '';
+      for (const a of acts) {
+        if (a === 'try' && ab) {
+          aiLine.append(h('button', { type: 'button', class: 'link try', dataset: { action: 'moment-try' }, title: t('try.tip', aiVars()), disabled: undoBusy,
+            onclick: () => void tryMoment(reqId) }, icon('play'), h('span', { text: t('try.btn', { t: clockText(ab.time, 2) }) })));
+        } else if (a === 'compare') link('moment-compare', 'eye', t('cmp.btn'), () => openCompare(reqId), t('cmp.tip'));
+        else if (a === 'undo') link('moment-undo', 'undo', t('moment.undo'), () => void momentUndo(reqId), t('moment.undoTip', aiVars()));
+        else if (a === 'reload') {
+          link('moment-reload', 'toolRotate', t('play.reload'), () => loadGame(), t('play.reloadMomentTip'));
+          // …and from a checkpoint (stage 3, the brief's 5): the one this Play opened from, else this level's newest.
+          const rc = reloadCheckpoint(checkpointList, cpLevel(), cpPlayed?.id ?? null);
+          if (rc) link('moment-reload-from', 'flag', t('checkpoint.fromReload', { name: rc.name }), () => void playCheckpoint(rc), t('checkpoint.fromReloadTip', { name: rc.name }));
+        }
       }
       const aiReloaded = aiReloadFor !== null && aiStatus?.at === aiReloadFor;
       if (ph === 'done' && !playing && aiReloaded) {
@@ -36736,11 +38043,30 @@ function start(host            ) {
           void softReload('ai');
         }));
       }
+    } else if (ph === 'undone' && playing && playPaused && !!pending?.id && askBacks.has(pending.id)) {
+      // ↶ Undo on a paused ask's reply (pause-ask stage 3): the moment stays; ▶ Try shows the code as it is now (before).
+      const ab = askBacks.get(pending.id) ;
+      const reqId = pending.id;
+      two(t('moment.undone', { ...aiVars(), t: clockText(ab.time, 2) }), t('ai.undoneSub', aiVars()));
+      aiLine.append(h('button', { type: 'button', class: 'link try', dataset: { action: 'moment-try' }, title: t('try.tip', aiVars()), disabled: undoBusy,
+        onclick: () => void tryMoment(reqId) }, icon('play'), h('span', { text: t('try.btn', { t: clockText(ab.time, 2) }) })));
     } else if (ph === 'undone' || ph === 'redone') {
       two(t(ph === 'undone' ? 'ai.undone' : 'ai.redone'), ph === 'undone' ? t('ai.undoneSub') : '');
       if (lastChange && host.undoAi && !playing) {
         if (ph === 'undone' && lastChange.redo) link('ai-redo', 'redo', t('ai.redo'), () => void undoAiChange(true));
         else if (ph === 'redone') link('ai-undo', 'undo', t('ai.undo'), () => void undoAiChange(false));
+      }
+    }
+    // A paused ask's reply with ▶ Try (pause-ask fix ✕1, decided 2026-11-02): the AI's words on a row of their own (two
+    // lines at most), the three buttons on the row under them. On one row the buttons left ~170 px and "The boss now comes
+    // in at X -2.0, more to the left." read "The boss now comes in at…" on PC and a phone — the one line that says what
+    // the AI did (shell.css .ai-line.moment-reply).
+    if (aiLine.querySelector('[data-action=moment-try]')) {
+      aiLine.classList.add('moment-reply');
+      // The reply came (fix △4): "what Claude gets" closes once, so it never sits over ▶ Try (it opens again by hand).
+      if (ph === 'done' && aiStatus?.at !== getsShutFor) {
+        getsShutFor = aiStatus?.at;
+        momentGets.close();
       }
     }
     aiLine.hidden = !aiLine.childNodes.length;
@@ -36764,7 +38090,9 @@ function start(host            ) {
    * fades and stays gone across polls (lineGone). Every other phase shows as long as it is true (line-fade.ts).
    */
   function fadeLine(ph         ) {
-    if (!lineFades(ph) || aiLine.hidden) {
+    // pause-ask stage 3: a paused ask's reply with ▶ Try from … stays until the moment ends — the way to see the fix
+    // must not fade away before the person presses it (found on a phone, 2026-11-02: the line faded in a few seconds).
+    if (!lineFades(ph) || aiLine.hidden || !!aiLine.querySelector('[data-action=moment-try]')) {
       clearTimeout(lineTimer);
       lineShown = '';
       lineFading = false;
@@ -36952,12 +38280,40 @@ function start(host            ) {
   /** play/paused on: the game is held. Its editor's core/ready and list come just before this (bridge play-ask.ts). */
   function momentStart(m                                                        ) {
     momentWhy = new Map(Object.entries(m.why ?? {})                               );
+    momentLate = m.late ?? 0;
     momentAsk = m.ask ?? null;
+    // pause-ask stage 2: each object's code place (the game page read them at the pause; a hint for the request).
+    momentFrom = new Map(Object.entries(m.from ?? {}));
+    momentMarks.clear();
     momentChat = '';
     momentTalk = { turns: [], awaiting: false, live: null };
     momentHere = null;
+    momentShotAt = { time: clockNow(playHeard, performance.now()), exact: false };
     momentEarlierOpen = false;
+    // fix △10 (shell.css [data-mark-word]): a phone's bare ◎ ring and the green dot beside it said nothing; "◎ Mark" with
+    // its word until it was used once.
+    app.dataset.markWord = prefsLoaded && !uiPrefs.seen?.includes(MARK_WORD_SEEN) ? 'on' : 'off';
     renderMomentEarlier();
+    // ▶ Try's pause (pause-ask stage 3): the same moment with the new code. The talk, the marks and the asks' ids go on
+    // (the field is the same conversation: "no, more to the left"); the flash says which moment this is; Before / After
+    // gets its After.
+    if (tryRun && tryKeep && isTryPause(momentShotAt.time, tryRun.time)) {
+      const k = tryKeep;
+      momentChat = k.chat;
+      momentTalk = k.talk;
+      for (const id of k.asks) momentAsks.add(id);
+      if (k.marks.length) momentMarks.restore(k.marks);
+      tried = { id: tryRun.id, time: tryRun.time, exact: tryRun.exact, ...(m.ask?.shot ? { after: m.ask.shot } : {}) };
+      const at = clockText(tryRun.time, 2);
+      // fix ✕2 (plan A): a saved moment says what was already out stays where it was; longer words, a little longer.
+      const w = tryWordsOf(tryRun.id, tryRun.exact, m.late ?? 0);
+      tried.late = m.late ?? 0;
+      momentBar.flash(t(w.flash, { t: at, ...(w.name ? { name: w.name } : {}), ...(w.s ? { s: w.s } : {}) }), 'play', w.note ? 9000 : 6000);
+      tryKeep = null;
+      tryRun = null;
+      renderMomentEarlier();
+      if (k.compare) window.setTimeout(() => openCompare(tried .id), 0);
+    }
     // This moment's values: asked at once (the head shows until they come; the game page answers in a frame).
     momentVals = undefined;
     momentConnectAsk = false;
@@ -36976,6 +38332,10 @@ function start(host            ) {
     renderAll(true);
     // Words typed in the ✦ field over the game when it paused: the field at the foot now (the person was about to ask).
     if (m.draft && !host.offline) focusAsk(m.draft);
+    // pause-ask stage 1 (README §1): else the cursor goes in the field by itself — the first second after a pause says
+    // "say something about THIS frame". Only when it takes nothing from the person (moment-ask.ts momentFocusOk: not on
+    // a phone, not over another field or an open sheet). The web demo too: its field is there to try (Q1).
+    else if (moment && momentFocusOk({ touch: phone(), overlay: overlayOpen(), active: activeInfo() })) focusMomentField();
     // The line's ✦ "Have Claude fix it" (stage 3) paused the game for its draft: in the field now.
     if (cpAskSoon) {
       const a = cpAskSoon;
@@ -36993,6 +38353,13 @@ function start(host            ) {
     momentPose.clear();
     momentList = null;
     momentHere = null;
+    momentShotAt = null;
+    momentShot.hide();
+    // pause-ask stage 2: the marks were on this frame; the next pause is another frame.
+    momentMarks.clear();
+    momentGets.close();
+    momentCompare.close();
+    momentFrom = new Map();
     momentEarlierOpen = false;
     renderMomentEarlier();
     momentVals = undefined;
@@ -37013,6 +38380,34 @@ function start(host            ) {
     group = [];
     // While playing (Resume): Edit's tools step away again (editInPage sets `editing` back for Edit itself).
     if (playing) editing = false;
+  }
+  /** pause-ask stage 1: the picture + time in the field while paused (moment-ask.ts); gone otherwise. */
+  function renderMomentShot() {
+    // ◎ Mark only while paused (a mark is on THIS frame); its words in the language of the moment.
+    momentMarks.button.hidden = !moment;
+    if (moment) momentMarks.render();
+    if (!moment || !momentShotAt) return momentShot.hide();
+    const at = clockText(momentShotAt.time, 2);
+    // The demo's words say only where it stopped (text.ts overrides moment.shotTip): no AI gets the frame there.
+    momentShot.show(momentAsk?.shot, momentShotAt.time, t('moment.shotTip', { ...aiVars(), t: at }));
+  }
+  /** Something open that has the keys (⌘K, the keys sheet, ⚑'s name field): the moment's field leaves the cursor alone. */
+  const overlayOpen = () => app.dataset.palette === 'open' || app.dataset.palette === 'suggest' || app.dataset.keys === 'open' || app.dataset.checkpoint === 'open';
+  function activeInfo() {
+    const a = document.activeElement                      ;
+    if (!a || a === document.body) return null;
+    return { tag: a.tagName, editable: a.isContentEditable, askField: a === askInput };
+  }
+  /** The cursor in the moment's field, nothing typed in it (focusAsk without its "no AI" stop: the demo's field is real). */
+  function focusMomentField() {
+    placementPanel.renderAsk();
+    renderPresence();
+    askInput.focus({ preventScroll: true });
+    // pause-ask stage 2 fix 1: the cursor came by itself — until a letter is typed or the field is clicked, P / . / Esc /
+    // N stay the game's and the editor's keys (moment-ask.ts momentKeyPasses: P → P goes on playing).
+    askAuto = true;
+    const end = askInput.value.length;
+    askInput.setSelectionRange?.(end, end);
   }
   /** The moment's list (placement/items while playing): what the game made too, where everything stands now. */
   function useMomentList() {
@@ -37295,6 +38690,17 @@ function start(host            ) {
    * console's lines go with it).
    */
   function checkpointLoaded(m                                                          ) {
+    // A Try's moment that did not open with the new code (pause-ask stage 3): the AI's change broke load(), or the
+    // moment's data no longer fits it. Said in one line; the page plays from the start and still holds at the second.
+    if (playing && tryRun && !m.ok) {
+      tryRun = { ...tryRun, exact: false };
+      showToast(t('try.failed'), 6000);
+      if (m.why === 'threw') {
+        tryOpening = { id: tryRun.id, time: tryRun.time };
+        loadGame();
+      }
+      return;
+    }
     const from = cpPlayed;
     if (!playing || !from) return;
     if (m.ok) {
@@ -37354,23 +38760,211 @@ function start(host            ) {
     const first = !momentChat;
     const history = historyOf(momentTalk.turns);
     const here = momentHere && momentHere.key ? momentHere : null;
-    const ok = await askAi({ kind: 'play', text, paused: true, ...(first && momentAsk ? momentAsk : {}), ...(momentChat ? { chat: momentChat } : {}),
-      ...(history.length ? { history } : {}), ...(keys.length ? { objects: requestObjects(keys) } : {}),
+    // pause-ask stage 2 (README §2): the marks, the frame with them drawn on, what each object is in this moment and
+    // where in the code it came from, the game's time, the level and this moment's numbers — with EVERY message of the
+    // pause, not only the first (the person may mark, ask, then mark again: "no, here ②").
+    const marks = momentMarks.list();
+    const marked = marks.length ? await markedShot(momentAsk?.shot, marks) : null;
+    const objKeys = momentObjectKeys(keys, marks);
+    // pause-ask stage 3 (README §2 `back`): this moment, kept invisibly by the host (.studio/asks/<id>.json) so ▶ Try from
+    // 0:05.02 can open it with the AI's new code. The whole moment when the game has save / load (its save() now — what
+    // the person moved in this pause is in it, as in a checkpoint), else the time and camera only.
+    const back = await momentBackNow();
+    const ok = await askAi({ kind: 'play', text, paused: true, ...(back ? { back } : {}), ...(first && momentAsk ? momentAsk : {}), ...(momentChat ? { chat: momentChat } : {}),
+      ...(history.length ? { history } : {}), ...(objKeys.length ? { objects: requestObjects(objKeys).map((o) => ({ ...o, ...momentObjectInfo(o.key) })) } : {}),
+      ...(marks.length ? { marks } : {}), ...(marked ? { shotMarked: marked } : {}), ...momentNumbers(),
       ...(here ? { made: true, here: { key: here.key, label: here.label, at: here.at, to: here.to, time: here.time } } : {}),
       ...(momentConnectAsk ? { intent: 'moment-connect'          } : {}),
       ...(cpAsk ? { intent: cpAsk.intent, ...(cpAsk.checkpoint ? { checkpoint: cpAsk.checkpoint } : {}) } : {}) });
     if (!ok) return false;
     momentConnectAsk = false;
     cpAsk = null;
+    // Sent (fix △4): ◎ marking goes off (the marks stay: "no, here ②" next), and the card closes — it covered the reply's
+    // ▶ Try when left open while waiting.
+    momentMarks.set(false);
+    momentGets.close();
     if (first && pending?.id) momentChat = pending.id;
     if (pending?.id) {
       momentAsks.add(pending.id);
       if (here) momentMadeAsks.add(pending.id);
+      // What the game made that this ask is about (fix ✕2: "Already out: boss"); a follow-up ("a bit more to the left")
+      // with no object of its own is about the same one as the ask before it in this pause.
+      const madeKey = objKeys.find((k) => momentObjectInfo(k).kind === 'made');
+      const madeIt = madeKey ? items.find((i) => i.key === madeKey) : undefined;
+      const out = madeIt ? shortName(displayName(madeIt, t)) : [...momentAsks].reverse().map((id) => askBacks.get(id)?.out).find(Boolean);
+      if (back) askBacks.set(pending.id, { time: back.time, exact: back.moment !== undefined, asked: text, ...((marked ?? momentAsk?.shot) ? { before: (marked ?? momentAsk?.shot)  } : {}), ...(out ? { out } : {}), late: momentLate });
     }
     momentTalk = { turns: [...momentTalk.turns, { who: 'you', text }], awaiting: true, live: null };
     momentHere = null;
     renderMomentEarlier();
     return true;
+  }
+  /** A paused ask's `back` (pause-ask stage 3): the game's time, the level, save() when it has one, the camera. */
+  async function momentBackNow()                               {
+    if (host.offline || !host.askMoment || !momentShotAt) return undefined;
+    const out          = { time: Math.round(momentShotAt.time * 1000) / 1000, level: cpLevel() };
+    if (momentCanCheckpoint) {
+      const r = await momentSaveNow();
+      if (r.ok && r.moment !== undefined) out.moment = r.moment;
+    }
+    const v = momentAsk?.view;
+    if (v) out.view = { eye: v.eye.slice(), target: v.target.slice() };
+    return out;
+  }
+  /**
+   * ▶ Try from 0:05.02 (pause-ask stage 3; moment-try.ts): the game again with the code as it is now, opened at the ask's
+   * moment and held there. The talk, the marks and the asks of this pause carry over the reload (tryKeep).
+   * `compare`: Before / After was pressed first — it opens with the new picture.
+   */
+  async function tryMoment(id        , compare = false) {
+    if (!host.askMoment || !playing) return;
+    const a = await host.askMoment(id);
+    if (!a) {
+      momentCompare.close();
+      showToast(t('try.gone'), 6000);
+      return;
+    }
+    tryKeep = { chat: momentChat, talk: momentTalk, marks: momentMarks.list(), asks: [...momentAsks], compare };
+    tryOpening = { id, time: a.time, ...(a.moment !== undefined ? { moment: a.moment } : {}) };
+    tried = null;
+    loadGame();
+  }
+  /**
+   * What the Try of ask `id` says about what was already out (moment-try.ts tryWords; fix ✕2): the AI's `--already` when
+   * its reply is this ask's, else the made object this ask (or an earlier ask of the same pause) was about.
+   */
+  function tryWordsOf(id        , exact         , late         ) {
+    const already = aiStatus?.request === id ? aiStatus.already : undefined;
+    const ab = askBacks.get(id);
+    return tryWords(exact, already, ab?.out, late === undefined ? 0 : late - (ab?.late ?? 0));
+  }
+  /** Before / After (moment-try.ts; README pc-4): the asked frame and the same moment with the new code. */
+  function openCompare(id        ) {
+    const ab = askBacks.get(id);
+    if (!ab) return;
+    momentGets.close();
+    const at = clockText(ab.time, 2);
+    const have = tried && tried.id === id && tried.after && playPaused ? tried : null;
+    const canUndo = momentCanUndo(id);
+    const resume = () => {
+      momentCompare.close();
+      postGame({ type: 'studio:play/pause', on: false });
+    };
+    // fix ✕2 (plan A): the saved moment's After says what was already out, with ▶ Resume to see it.
+    const w = have ? tryWordsOf(id, have.exact, have.late) : null;
+    // ▶ Resume to see it only where resuming shows the change (what was already out); a late run's line is words only.
+    const see = w?.note === 'cmp.out' || w?.note === 'cmp.stay';
+    momentCompare.open({ title: t('cmp.title', { t: at }), asked: ab.asked, opening: t('cmp.opening'), close: t('cmp.close'),
+      ...(w?.note ? { note: { text: t(w.note, { ...(w.name ? { name: w.name } : {}), ...(w.s ? { s: w.s } : {}), t: at }), ...(see ? { resume: { label: t('cmp.resumeSee'), run: resume } } : {}) } } : {}),
+      before: { src: ab.before ?? null, label: t('cmp.before'), sub: t('cmp.beforeSub', { t: at }) },
+      after: { src: have?.after ?? null, label: t('cmp.after'), sub: t(have && !have.exact ? 'cmp.afterSameRun' : 'cmp.afterSub', { t: at }) },
+      ...(canUndo ? { undo: { label: t('cmp.undo', aiVars()), run: () => (momentCompare.close(), void momentUndo(id)) } } : {}),
+      keep: { label: t('cmp.keep'), run: resume } });
+    // Not tried yet (or the picture is of another moment): Try first; the panel gets its After when the Try pauses.
+    if (!have) void tryMoment(id, true);
+  }
+  /**
+   * ↶ Undo on a paused ask's reply (pause-ask stage 3): the game's files back to before the AI's change, at once and
+   * without leaving the moment (Edit's Undo AI change reloads the game; here the moment stays, and ▶ Try shows the old
+   * code).
+   * One ask at a time (pause-ask fix △6, decided 2026-11-02): the snapshot the host took right before THIS ask (`id`),
+   * so after "a bit more to the left" Undo goes back to the first fix (X −2, with its save / load), not to the game as
+   * shipped. It was the first ask's since the last change shown (changeFrom, as Edit's): two fixes and the save / load
+   * gone with one press labelled "Undo Claude’s change". A host with no snapshot for this ask: the old way.
+   */
+  async function momentUndo(id        ) {
+    const to = askSnaps.has(id) ? id : lastChange?.from ?? changeFrom;
+    if (!host.undoAi || !to || undoBusy) return;
+    undoBusy = true;
+    renderAiLine();
+    const res = await host.undoAi(to, { redo: false }).catch((e) => ({ ok: false, error: (e         ).message, redo: null }));
+    undoBusy = false;
+    if (!res.ok) {
+      showToast(t('ai.undoFail', aiVars()));
+      renderAiLine();
+      return;
+    }
+    lastChange = { from: to, redo: res.redo ?? null };
+    // The earlier asks' changes are still in the files when this was a later ask: Edit's Undo AI change still reaches
+    // them (changeFrom stays the first). Undoing the first one leaves nothing earlier.
+    if (changeFrom === to) changeFrom = null;
+    askSnaps.delete(to);
+    aiAfter = 'undone';
+    aiAfterTurn++;
+    const st = await host.status().catch(() => null);
+    if (st?.code) {
+      code = st.code;
+      codeSince = Date.now();
+    }
+    renderAiLine();
+  }
+  /** Can ↶ Undo put back ask `id`'s change (its own snapshot, else the one since the last change shown)? */
+  function momentCanUndo(id        )          {
+    return !!host.undoAi && (askSnaps.has(id) || !!(lastChange?.from ?? changeFrom));
+  }
+  /** The objects a paused request is about: the selected ones, then what the marks point at (each once, ≤ 50). */
+  function momentObjectKeys(keys          , marks              )           {
+    const marked           = [];
+    for (const m of marks) for (const k of [m.key, ...(m.keys ?? [])]) if (k && !marked.includes(k) && items.some((i) => i.key === k)) marked.push(k);
+    // pause-ask fix △1: what the game made first (the boss in the circle, not the road under it) — the card and the AI.
+    return orderMarked(keys, marked, (k) => momentObjectInfo(k).kind).slice(0, 50);
+  }
+  /** What an object is in this moment (placed / moves / made) and its code place: the request's `objects[]` extras. */
+  function momentObjectInfo(key        )                                              {
+    const w = momentWhy.get(key);
+    const kind                   = w === 'new' ? 'made' : w === 'game' || w === 'motion' ? 'moves' : 'placed';
+    const from = momentFrom.get(key);
+    return { kind, ...(from ? { from } : {}) };
+  }
+  /** The game's time at the pause, the level, this moment's numbers by id (codeMoment). */
+  function momentNumbers()                                                                     {
+    const out                                                                     = {};
+    if (momentShotAt) out.time = Math.round(momentShotAt.time * 100) / 100;
+    const lv = cpLevel();
+    if (lv) out.level = lv;
+    const vals = (momentVals ?? []).filter((v) => typeof v.v === 'number' && Number.isFinite(v.v));
+    if (vals.length) out.moment = Object.fromEntries(vals.map((v) => [v.id, v.v          ]));
+    return out;
+  }
+  /**
+   * One Esc of the paused moment (pause-ask fix △4, decided 2026-11-02): the open card ("what Claude gets", Before /
+   * After) first, then ◎ marking, then nothing (the field lets go / the page's own Esc). The same from the field and
+   * from the page. WHY: from the field, Esc used to leave the field with the card still open over the reply's buttons
+   * (▶ Try could not be pressed), and ◎ stayed on through two Escs.
+   */
+  function momentEscape()          {
+    if (momentGets.isOpen()) {
+      momentGets.close();
+      return true;
+    }
+    if (momentCompare.isOpen()) {
+      momentCompare.close();
+      return true;
+    }
+    if (momentMarks.on()) {
+      momentMarks.set(false);
+      return true;
+    }
+    return false;
+  }
+  /** Open / close "what Claude gets" (moment-gets.ts) from the field's picture. */
+  function toggleGets() {
+    if (momentGets.isOpen()) return momentGets.close();
+    if (!moment || !momentShotAt) return;
+    const marks = momentMarks.list();
+    const keys = momentObjectKeys(group.length > 1 ? group.slice() : selected ? [selected] : [], marks);
+    // "moved by you" only for what the person moved (Save · N counts it): fix △1.
+    const mine = worldModel.changedKeys();
+    const objects = keys.map((k) => {
+      const it = items.find((i) => i.key === k);
+      return { name: it ? shortName(displayName(it, t)) : k, ...momentObjectInfo(k), ...(mine.has(k) ? { mine: true } : {}) };
+    });
+    const values = (momentVals ?? []).filter((v) => typeof v.v === 'number').map((v) => `${v.name} ${momentNumber(v.v          , v)}${v.unit ? unitText(t, v.unit) : ''}`);
+    const logs = momentAsk?.logs ?? [];
+    const rows = getsRows({ at: clockText(momentShotAt.time, 2), marks, objects, values, level: cpLevel() ?? undefined, near: momentAsk?.near?.length ?? 0,
+      errors: logs.filter((l) => l.level === 'error').length, logs: logs.length, kept: host.offline || !host.askMoment ? 'none' : momentCanCheckpoint ? 'whole' : 'time' },
+      (k, v) => t(k, { ...aiVars(), ...(v ?? {}) }));
+    momentGets.open(rows, t('gets.title', aiVars()));
   }
   /** "▴ Earlier · N" over the field: the talk of this pause before the reply shown on the line. */
   function renderMomentEarlier() {
@@ -37668,6 +39262,11 @@ function start(host            ) {
   function onBridge(m               ) {
     if (timeline.onMessage(m)) return;
     if (m.type === 'studio:placement/at-is') return motionDrag.answer(m.id, m.key);
+    if (m.type === 'studio:moment/mark-is') {
+      const w = markWaits.get(m.id);
+      if (w) (markWaits.delete(m.id), w({ key: m.key, ...(m.world ? { world: m.world } : {}), ...(m.keys ? { keys: m.keys } : {}) }));
+      return;
+    }
     // UI stages 2–3: the screens, an element's look, the theme (ui-wire.ts).
     if (uiWire.handle(m)) return;
     // studio-canvas-ui stage 2: the UI seen but not selectable yet — the frames' places, a press beside every UI box.
@@ -37784,6 +39383,13 @@ function start(host            ) {
           postGame({ type: 'studio:moment/load', moment: cpOpening.moment, name: cpOpening.name, time: cpOpening.time, scene: worldItems.map((i) => i.key) });
           cpOpening = null;
         }
+        // ▶ Try from 0:05.02 (pause-ask stage 3): the ask's moment before the first frame (when kept whole), and the
+        // page holds itself at that second — at once (its clock starts there), or when a new run gets there.
+        if (playing && tryOpening) {
+          if (tryOpening.moment !== undefined) postGame({ type: 'studio:moment/load', moment: tryOpening.moment, name: '', time: tryOpening.time, scene: worldItems.map((i) => i.key) });
+          postGame({ type: 'studio:play/pause', at: tryOpening.time });
+          tryOpening = null;
+        }
         if (playing) {
           playAskOn = true;
           playMark = !phone();
@@ -37830,6 +39436,11 @@ function start(host            ) {
         // one heard while it ran: that is not a step).
         if (playPaused && playHeard && !playHeard.running && !m.running && m.t > playHeard.t + 1e-4) momentBar.stepped();
         playHeard = { t: m.t, rate: m.rate, running: m.running, at: performance.now() };
+        // pause-ask stage 1: the held clock's first word is the picture's exact time (later steps leave it).
+        if (playPaused) {
+          const at = shotTimeOnClock(momentShotAt, m);
+          if (at !== momentShotAt) (momentShotAt = at, renderMomentShot());
+        }
         momentBar.render();
         // A Next frame moved the game on: this moment's values may have changed (pause-edit stage 2).
         if (playPaused) postGame({ type: 'studio:moment/ask' });
@@ -38605,6 +40216,11 @@ function start(host            ) {
   let momentChat = '';
   let momentTalk            = { turns: [], awaiting: false, live: null };
   let momentHere                                                                          = null;
+  // pause-ask stage 1: the time of the picture in the field (moment-ask.ts shotTimeOnClock: estimated at play/paused,
+  // exact at the held clock's first play/time; a Next frame does not move it — the picture is the pause's).
+  let momentShotAt                                          = null;
+  // pause-ask stage 2: the code line that first added each object (play/paused `from`; three.js only for now).
+  let momentFrom = new Map                  ();
   let momentEarlierOpen = false;
   let momentList                = null;
   // This moment's values (pause-edit stage 2; moment-values.ts): as last heard (undefined = not yet, null = the game has
@@ -38623,6 +40239,20 @@ function start(host            ) {
   let momentCanCheckpoint = false;
   let cpOpening                                                                     = null;
   let cpPlayed                                      = null;
+  // pause-ask stage 3 (2026-11-02; moment-try.ts): each paused ask's moment as the editor knows it (request id → the
+  // ask's second, whether the whole moment was kept (save / load) and the frame it was asked from, marks drawn on — the
+  // Before of Before / After); the Try being opened (sent at the new page's hello); the Try page's run (its first pause
+  // is the Try's); what to carry over the reload (the talk, the marks, whether Before / After waits for the picture);
+  // and the last Try's picture (the After).
+  // `out`: what the game made that the ask was about (fix ✕2; tryWordsOf). `from`: the AI-undo snapshot taken for this
+  // ask (fix △6: ↶ Undo puts back THIS ask's change, one at a time).
+  // `late` (fix △7): the asking run's PlayClock.late at the pause (s), to compare with the Try's new run.
+  const askBacks = new Map                                                                                                       ();
+  let tryOpening                                                        = null;
+  let tryRun                                                      = null;
+  let tryKeep                                                                                                  = null;
+  // `late` (fix △7): the Try page's PlayClock.late at its pause, s.
+  let tried                                                                                     = null;
   let cpFailed                                                                      = null;
                                                                                                                                         
   let cpAsk               = null;
@@ -39029,6 +40659,8 @@ function start(host            ) {
     if (gameOrigin !== location.origin) u.searchParams.set(LOCAL_PATHS.parentParam, location.origin);
     // A Play page opened from a checkpoint (stage 3): it holds its first frame for the moment (bridge/moment-load.ts).
     if (playing && cpOpening) u.searchParams.set(LOCAL_PATHS.momentParam, '1');
+    // …and a Try from an ask's moment (pause-ask stage 3) that kept the whole moment (save / load).
+    if (playing && tryOpening && tryOpening.moment !== undefined) u.searchParams.set(LOCAL_PATHS.momentParam, '1');
     // A game with levels opens on the level shown (edit and Play alike; bridge/levels.ts reads these).
     if (levels.active && levels.current) {
       u.searchParams.set(LOCAL_PATHS.levelParam, levels.current);
@@ -39043,6 +40675,10 @@ function start(host            ) {
     // Checkpoints (stage 3): this page opens from one (cpOpening, sent at its hello), or from the start (none).
     if (!playing) cpOpening = null;
     cpPlayed = playing && cpOpening ? { id: cpOpening.id, name: cpOpening.name } : null;
+    // pause-ask stage 3: a Try is this page's run only (another Reload / Play is not a Try).
+    if (!playing) tryOpening = tryKeep = null;
+    tryRun = playing && tryOpening ? { id: tryOpening.id, time: tryOpening.time, exact: tryOpening.moment !== undefined } : null;
+    if (!tryRun) tryKeep = null;
     bridgeAlive = false;
     timeline.reset();
     // A new game page asks again (play/hello), and starts unpaused (and at 1×: a new page's clock).
@@ -39119,6 +40755,15 @@ function start(host            ) {
       uiMissing.hide(true);
       return true;
     }
+    // pause-ask stage 2 (moment-marks.ts, moment-gets.ts): while paused, N turns ◎ Mark on / off (M is Move); Esc puts
+    // marking down and closes "what Claude gets" first; ⌘Z takes the last mark away before it undoes a move (the mark
+    // is the newest thing the person did on this frame — marking, then ⌘Z, should never move the boss back).
+    if (moment && !mod && !e.shift && k === 'n') {
+      momentMarks.set(!momentMarks.on());
+      return true;
+    }
+    if (!mod && k === 'escape' && momentEscape()) return true;
+    if (moment && mod && k === 'z' && !e.shift && momentMarks.undo()) return true;
     // The timeline's keys (K sets a key; Delete / ⌘C / ⌘V / Space / ← → when the plate was the last thing pressed).
     if (timeline.onKey(e)) return true;
     if (mod && k === 'z') {
@@ -39333,7 +40978,7 @@ function start(host            ) {
   const stepKey = (e               ) => (e.key === '.' || e.code === 'Period') && !e.ctrlKey && !e.metaKey && !e.altKey && !e.isComposing;
   const typingIn = (e               ) => /^(INPUT|TEXTAREA|SELECT)$/.test((e.target                      )?.tagName || '') || !!(e.target                      )?.isContentEditable;
   window.addEventListener('keydown', (e) => {
-    if (!playing || !playPaused || !stepKey(e) || typingIn(e)) return;
+    if (!playing || !playPaused || !stepKey(e) || (typingIn(e) && !askPasses(e))) return;
     e.preventDefault();
     if (!e.repeat) postGame({ type: 'studio:play/step', on: true });
   }, true);
@@ -39359,7 +41004,8 @@ function start(host            ) {
 
   window.addEventListener('keydown', (e) => {
     const tag = (e.target                      )?.tagName;
-    const typing = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
+    // The moment's field with the cursor put there by the pause and nothing typed: not typing yet (stage 2 fix 1).
+    const typing = (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') && !askPasses(e);
     // "This UI can't be selected yet" (studio-canvas-ui stage 2) goes with Esc wherever the focus is: a press in the game
     // leaves the focus where it was (the ask box after a request, the editor's own pointer handling keeps it), and the
     // line said Esc would take it away. The field's own Esc (it lets go of the focus) still happens.
@@ -39736,7 +41382,13 @@ function start(host            ) {
     // line there, "In Claude Code, your AI makes the changes you type here. Get Game Studio →"; it was taken out after a try
     // on 2026-10-18 ("what is this for? I'm already using Game Studio — get what?"). The demo's top line alone says it
     // isn't connected to an AI (src/hosts/browser/text.ts). Don't put a pitch or a link back down here without asking.
-    if (!host.offline && placementPanel.askEl.parentElement !== askSlot) askSlot.append(placementPanel.askEl);
+    // …except while paused (pause-ask stage 1, decided 2026-11-02 = show it): the paused moment's field IS the feature to try
+    // ("stop the scene, tell the AI"), so the demo shows it there; a send says in one line that the demo isn't connected
+    // (the `ask` dep above). Its Edit keeps the empty foot.
+    const askHere = askFieldShown({ offline: !!host.offline, moment });
+    askSlot.hidden = !askHere;
+    if (askHere && placementPanel.askEl.parentElement !== askSlot) askSlot.append(placementPanel.askEl);
+    renderMomentShot();
     // The AI's reply (and the news card's other lines): over the game's top on a phone / the side window (plan step 7:
     // it was the top block of the stack at the foot, over the card), in the dock over the field on PC. It still fades
     // by itself (line-fade.ts) and focusing the field brings it back.
@@ -40267,7 +41919,7 @@ function start(host            ) {
 
 __def(__exports, "start", () => start);
 };
-__defs[94] = function (__exports) {
+__defs[98] = function (__exports) {
 'use strict';
 // host-local.ts
 
@@ -40352,6 +42004,8 @@ function createLocalHost(base         = LOCAL_PATHS.api)             {
   return {
     kumo: createKumoHost(base),
     checkpoints: createCheckpointHost(call),
+    // pause-ask stage 3: a paused ask's moment (src/server/ask-moments.mjs), for ▶ Try from 0:05.02.
+    askMoment: (id        ) => call                             ('GET', `asks/${encodeURIComponent(id)}`).then((r) => r.value ?? null, () => null),
     async open() {
       const r = await call                                                     ('GET', 'open');
       return { gameUrl: r.gameUrl, origin: r.origin, title: r.title };
@@ -40483,19 +42137,19 @@ function createLocalHost(base         = LOCAL_PATHS.api)             {
 
 __def(__exports, "createLocalHost", () => createLocalHost);
 };
-__defs[95] = function (__exports) {
+__defs[99] = function (__exports) {
 'use strict';
 // local.ts
 
 // Entry of studio-shell.js: the shell page served by the local server
 // (skills/arrange/bin/studio.mjs), talking to it through createLocalHost().
 // The browser-only web demo has its own entry (src/hosts/browser/main.ts).
-const { start } = __require(93);
-const { createLocalHost } = __require(94);
+const { start } = __require(97);
+const { createLocalHost } = __require(98);
 
 start(createLocalHost());
 
 
 };
-__require(95);
+__require(99);
 })();

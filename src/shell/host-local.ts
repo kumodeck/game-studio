@@ -9,6 +9,7 @@ import {
   type AssetFile,
   type Checkpoint,
   type CheckpointHost,
+  type AskMoment,
   type CheckpointInfo,
   type AssetType,
   type GameConfig,
@@ -99,6 +100,8 @@ export function createLocalHost(base: string = LOCAL_PATHS.api): StudioHost {
   return {
     kumo: createKumoHost(base),
     checkpoints: createCheckpointHost(call),
+    // pause-ask stage 3: a paused ask's moment (src/server/ask-moments.mjs), for ▶ Try from 0:05.02.
+    askMoment: (id: string) => call<{ value: AskMoment | null }>('GET', `asks/${encodeURIComponent(id)}`).then((r) => r.value ?? null, () => null),
     async open() {
       const r = await call<{ gameUrl: string; origin: string; title?: string }>('GET', 'open');
       return { gameUrl: r.gameUrl, origin: r.origin, title: r.title };

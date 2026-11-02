@@ -577,6 +577,60 @@ test('request: "play" (asked while playing, §3.5) keeps its picture as .studio/
   assert.equal((await listRequests(s.root)).length, 1);
 });
 
+test('request: a paused "play" with marks (pause-ask stage 2) keeps the marked picture beside the frame and names both', async (t) => {
+  const s = await start();
+  t.after(() => s.srv.close());
+  const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3, 4]);
+  const marked = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 9, 9, 9, 9]);
+  const body = JSON.stringify({ kind: 'play', text: 'Bring the boss in from here', lang: 'en', dim: '3d', paused: true,
+    shot: 'data:image/jpeg;base64,' + jpeg.toString('base64'), shotMarked: 'data:image/jpeg;base64,' + marked.toString('base64'),
+    marks: [{ n: 1, kind: 'point', screen: [0.36, 0.42], world: [-8.1, 0, -21.5] }, { n: 2, kind: 'area', screen: [0.3, 0.3, 0.5, 0.6], keys: ['gate'] }],
+    objects: [{ key: 'boss', kind: 'made', from: { file: 'src/boss.js', line: 42 } }], time: 5.02, level: 'level-1', moment: { score: 13097, timeLeft: 24.86 } });
+  const r = await s.req('POST', '/__studio/api/request', { body });
+  assert.equal(r.status, 200, r.text);
+  const v = JSON.parse(r.text);
+  const rec = JSON.parse(await fs.readFile(path.join(s.root, '.studio/requests', `${v.id}.json`), 'utf8'));
+  assert.equal(rec.shot, `.studio/play/${v.id}.jpg`);
+  assert.equal(rec.shotMarked, `.studio/play/${v.id}-marked.jpg`, 'the marked copy beside the frame, the same id');
+  assert.deepEqual(await fs.readFile(path.join(s.root, rec.shotMarked)), marked);
+  assert.deepEqual(rec.marks[0], { n: 1, kind: 'point', screen: [0.36, 0.42], world: [-8.1, 0, -21.5] });
+  assert.deepEqual(rec.objects, [{ key: 'boss', kind: 'made', from: { file: 'src/boss.js', line: 42 } }]);
+  assert.equal(rec.time, 5.02);
+  assert.equal(rec.level, 'level-1');
+  assert.deepEqual(rec.moment, { score: 13097, timeLeft: 24.86 });
+  assert.match(s.lines[0], new RegExp(`2 marks, marked picture \\.studio/play/${v.id}-marked\\.jpg`));
+});
+
+test('request: a paused "play" keeps the moment it was asked from (pause-ask stage 3: back) and names it; the editor reads it back', async (t) => {
+  const s = await start();
+  t.after(() => s.srv.close());
+  const moment = { v: 1, score: 13097, boss: { x: -2, z: -18 } };
+  const body = JSON.stringify({ kind: 'play', text: 'Bring the boss in from here', lang: 'en', dim: '3d', paused: true, time: 5.02,
+    back: { time: 5.02, level: null, moment, view: { eye: [0, 3, 6], target: [0, 0, -10] } } });
+  const r = await s.req('POST', '/__studio/api/request', { body });
+  assert.equal(r.status, 200, r.text);
+  const v = JSON.parse(r.text);
+  const rec = JSON.parse(await fs.readFile(path.join(s.root, '.studio/requests', `${v.id}.json`), 'utf8'));
+  assert.equal(rec.back, `.studio/asks/${v.id}.json`, 'the request names the moment by its own id');
+  const kept = JSON.parse(await fs.readFile(path.join(s.root, rec.back), 'utf8'));
+  assert.deepEqual(kept.moment, moment);
+  assert.equal(kept.time, 5.02);
+  assert.match(s.lines[0], new RegExp(`moment \\.studio/asks/${v.id}\\.json \\(--check-moment`));
+  // ▶ Try reads it (the editor page's route); never served as a file to the game page.
+  const g = await s.req('GET', `/__studio/api/asks/${v.id}`);
+  assert.equal(g.status, 200);
+  assert.deepEqual(JSON.parse(g.text).value.moment, moment);
+  assert.equal((await s.req('GET', '/__studio/api/asks/20261102-120000-000-play-ffff')).status, 404);
+  assert.notEqual((await s.req('GET', `/.studio/asks/${v.id}.json`)).status, 200);
+  // A moment that is not one: the person's words are kept anyway, without `back`. Not paused: no moment.
+  const bad = await s.req('POST', '/__studio/api/request', { body: JSON.stringify({ kind: 'play', text: 'again', paused: true, back: { time: 'soon' } }) });
+  assert.equal(bad.status, 200, bad.text);
+  const badRec = JSON.parse(await fs.readFile(path.join(s.root, '.studio/requests', `${JSON.parse(bad.text).id}.json`), 'utf8'));
+  assert.equal('back' in badRec, false);
+  const live = await s.req('POST', '/__studio/api/request', { body: JSON.stringify({ kind: 'play', text: 'while playing', back: { time: 3 } }) });
+  assert.equal('back' in JSON.parse(await fs.readFile(path.join(s.root, '.studio/requests', `${JSON.parse(live.text).id}.json`), 'utf8')), false);
+});
+
 test('request: next steps — KUMODeck ones keep next-step.md and their line, AI ones get a request line', async (t) => {
   const s = await start();
   t.after(() => s.srv.close());

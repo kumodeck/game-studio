@@ -38,6 +38,7 @@ The hold for the editor's first look happens once per page (`heldOnce` in boot.j
 - `focus.js` — what the edit camera frames: the object and its neighbours when picked from the list, the play area for frameAll (pure maths)
 - `capture.js` — one-object thumbnails that bypass the game's render hooks
 - `assets.js` — object → files it uses
+- `code-from.js` — object → the game's code line that first added it (boot.js keeps an Error at the first `add`; pause-ask stage 2, the request's `objects[].from`)
 - `math.js` — vector / matrix helpers (we do not import three; see the file)
 - `dev/` — test harness standing in for the input bridge
 - `test/` — unit tests and the headless real-input browser test

@@ -143,7 +143,13 @@ export function handoffLine(rec, relPath) {
       ? `let the game start from this moment: codeMoment save / load, SKILL.md "Checkpoints"${cp && cp.error ? ` (save() failed: ${cp.error})` : ''}` : '';
     const load = v.paused === true && v.intent === 'moment-load'
       ? `checkpoint ${JSON.stringify(cp && cp.name ? cp.name : '?')}${cpFile ? ` ${cpFile}` : ''} does not open${cp && cp.error ? `: ${cp.error}` : ''} — make load() read it, SKILL.md "Checkpoints"` : '';
-    const bits = [chatId ? `paused, chat .studio/chat/${chatId}.json` : 'while playing', made, values, connect, save, load, v.shot ? `picture ${v.shot}` : '', errs ? `${errs} error${errs === 1 ? '' : 's'}` : ''].filter(Boolean);
+    // pause-ask stage 2 (2026-11-02): the person's marks on the frame and the picture with them drawn on — the line
+    // says to open THAT picture (SKILL.md "Paused": the picture and the code both, before deciding).
+    const nMarks = v.paused === true && Array.isArray(v.marks) ? v.marks.length : 0;
+    const marked = nMarks ? `${nMarks} mark${nMarks === 1 ? '' : 's'}${v.shotMarked ? `, marked picture ${v.shotMarked}` : ''}` : '';
+    // pause-ask stage 3 (2026-11-02): the moment it was asked from — the line says how to open it before replying.
+    const back = v.paused === true && typeof v.back === 'string' ? `moment ${v.back} (--check-moment ${v.back} before you reply)` : '';
+    const bits = [chatId ? `paused, chat .studio/chat/${chatId}.json` : 'while playing', made, values, connect, save, load, v.shot ? `picture ${v.shot}` : '', marked, back, errs ? `${errs} error${errs === 1 ? '' : 's'}` : ''].filter(Boolean);
     return `studio: request play ${relPath} ${JSON.stringify((v.text || '').length > 120 ? v.text.slice(0, 119) + '…' : v.text || '')} (${bits.join(', ')})`;
   }
   // ✦ Ask … to make this UI editable (studio-canvas-ui stage 2, 2026-10-24): the line says what it is for and where the

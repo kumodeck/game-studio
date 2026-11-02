@@ -532,6 +532,12 @@ export interface StudioAdapter {
   toGround?(x: number, y: number, groundY?: number): number[] | null;
   /** Scene point → screen point (viewport CSS px), or null when behind the camera. */
   toScreen?(p: number[]): [number, number] | null;
+  /**
+   * Optional (pause-ask stage 2, 2026-11-02): where in the game's code this object was first added — a path inside the
+   * game folder and a line ("src/boss.js", 42), read from the stack when the game added it (three.js: boot.js). A hint
+   * for the AI's request (`objects[].from`); null = unknown.
+   */
+  fromOf?(key: string): CodeFrom | null;
 
   // --- the selection outline (optional) ---
   /**
@@ -1234,6 +1240,11 @@ export type ShellToBridge =
    * page (its own px)? Answered by placement/at-is with the same `id` (the same test as a tap; nothing is picked).
    */
   | { type: 'studio:placement/at'; id: number; x: number; y: number }
+  /**
+   * pause-ask stage 2 (2026-11-02; shell moment-marks.ts): a mark put on the paused frame at (x, y), game page px; `box`
+   * = a dragged area [x0, y0, x1, y1]. Answered by moment/mark-is with the same `id`. Nothing is picked or changed.
+   */
+  | { type: 'studio:moment/mark-at'; id: number; x: number; y: number; box?: [number, number, number, number] }
   /** 3D: the axis the strip's turn button uses (`next` = the R key: y → x → z → y). */
   | { type: 'studio:placement/axis'; axis: TurnAxis | 'next' }
   /** Choose the strip's tool (the M / H / T / S keys and ⌘K when the shell has focus), or none. */
@@ -1346,7 +1357,13 @@ export type ShellToBridge =
    * full-screen corner's ❚❚. `on` (pause-edit, 2026-10-28): true = pause / stay paused, false = resume (the top bar's
    * ▶ Resume); absent = the other one.
    */
-  | { type: 'studio:play/pause'; on?: boolean }
+  | { type: 'studio:play/pause'; on?: boolean;
+      /**
+       * pause-ask stage 3 (2026-11-02; ▶ Try from 0:05.02): pause by itself when the game's time since ▶ Play reaches
+       * `at` seconds (the top bar's clock) — at once for a page opened at an ask's moment (its clock starts there), at
+       * that second of a new run for a game without save / load. With `at`, nothing else happens now.
+       */
+      at?: number }
   /**
    * Speed (pause-edit, 2026-10-28; the top bar's 1× ⌄): the game's clock and frames at `rate` (1, 0.5, 0.25; anything
    * else = 1), the sound quiet below 1×. Back to 1 with each ▶ Play.
@@ -1615,6 +1632,12 @@ export type BridgeToShell =
   | { type: 'studio:placement/motion-press'; key: string; x: number; y: number; w: number; h: number; touch: boolean; keyboard: boolean }
   /** Answer to placement/at: the object at that point (null = nothing there). */
   | { type: 'studio:placement/at-is'; id: number; key: string | null }
+  /**
+   * The answer to moment/mark-at: the object under the point (`key`, the tap's test), the point on the ground (`world`:
+   * 3D [x, y, z] on y 0, 2D the stage point; absent = the sky / unknown) and, for an area, the objects whose pivot is
+   * inside it (`keys`, ≤ 12).
+   */
+  | { type: 'studio:moment/mark-is'; id: number; key: string | null; world?: number[]; keys?: string[] }
   | { type: 'studio:library/assets'; loads: LoadEntry[]; uses: Record<string, AssetRef[]> }
   | { type: 'studio:library/previewed'; url: string; ok: boolean }
   /** Game tools registered by .studio/tools.js. */
@@ -1642,7 +1665,14 @@ export type BridgeToShell =
    * the console), `draft` = words typed in the ✦ field when it paused.
    */
   | { type: 'studio:play/paused'; on: boolean; edit?: boolean; why?: Record<string, MomentKind>;
-      ask?: Omit<Extract<BridgeToShell, { type: 'studio:play/ask' }>, 'type' | 'text'>; draft?: string }
+      ask?: Omit<Extract<BridgeToShell, { type: 'studio:play/ask' }>, 'type' | 'text'>; draft?: string;
+      /** pause-ask stage 2: each object's code place, as far as the adapter knows (Adapter.fromOf; ≤ 200). */
+      from?: Record<string, CodeFrom>;
+      /**
+       * pause-ask fix △7 (2026-11-02): seconds a game that cuts each frame at 50 ms would be behind the clock by this pause
+       * (PlayClock.late since this Play's first frame). The editor compares the ask's run with ▶ Try's new run.
+       */
+      late?: number }
   /**
    * The game's clock for the top bar (pause-edit, 2026-10-28): `t` = seconds of the game's time since ▶ Play, `rate` =
    * the speed, `running` = not paused. Sent when any of them changes (Play, pause, resume, a speed, a step); the editor
@@ -1709,6 +1739,33 @@ export interface MomentValue {
  * 'motion' = a motion from the draft moves it. Anything else was placed: moving it is the same as in Edit.
  */
 export type MomentKind = 'game' | 'new' | 'motion';
+
+/** A place in the game's code (pause-ask stage 2): a path inside the game folder and a line, 1-based. */
+export interface CodeFrom {
+  file: string;
+  line: number;
+}
+
+/**
+ * A mark the person put on the paused frame for the AI (pause-ask stage 2, 2026-11-02; README §2 `marks`). `n` = its
+ * number on the frame and in the field (①). `screen` = where in the picture, 0–1 of its width / height: a point [x, y]
+ * or an area [x0, y0, x1, y1]. `world` = the point on the ground (3D [x, y, z] on y 0; 2D the stage point) when the
+ * adapter could tell; `key` = the object under the point; `keys` = the objects inside an area.
+ */
+export interface MomentMark {
+  n: number;
+  kind: 'point' | 'area';
+  screen: number[];
+  world?: number[];
+  key?: string;
+  keys?: string[];
+}
+
+/**
+ * What an object of a paused moment is (pause-ask stage 2; the request's `objects[].kind`, from MomentKind): 'placed' =
+ * the person placed it (placement.json), 'moves' = the game or a motion moves it, 'made' = the game made it since Play.
+ */
+export type MomentObjectKind = 'placed' | 'moves' | 'made';
 
 /** One turn of the chat over a paused game, as a request carries the talk so far (pause, 2026-10-22). */
 export interface ChatLine {
@@ -1785,6 +1842,10 @@ export interface RequestObject {
    * ("use the Library", 2026-10-18): "make this enemy the boss" then tells the AI which model the boss is.
    */
   files?: string[];
+  /** "play" + `paused` only (pause-ask stage 2): placed / moves / made in this moment (MomentObjectKind). */
+  kind?: MomentObjectKind;
+  /** "play" + `paused` only (pause-ask stage 2): the game's code line that first added it, as far as known (a hint). */
+  from?: CodeFrom;
 }
 
 /** What the shell hands to host.request(). */
@@ -1897,6 +1958,23 @@ export interface StudioRequestInput {
   made?: boolean;
   here?: { key: string; label?: string; at: Pose; to: Pose; time?: number };
   /**
+   * "play" + `paused` only (pause-ask stage 2, 2026-11-02; README §2, SKILL.md "Paused"): what the person pointed at on
+   * the frame (MomentMark, ≤ 9) and the same picture with the marks drawn on it (`shotMarked`, a data URL the host keeps
+   * as `.studio/play/<id>-marked.jpg`). `time` = the game's time at the pause (seconds since ▶ Play), `level` = the level
+   * playing, `moment` = this moment's values by id (codeMoment: { score: 13097, timeLeft: 24.86 }).
+   */
+  marks?: MomentMark[];
+  shotMarked?: string;
+  time?: number;
+  level?: string;
+  moment?: Record<string, number>;
+  /**
+   * "play" + `paused` only (pause-ask stage 3, 2026-11-02; README §2 `back`): the moment this ask is from, which the host
+   * keeps invisibly as `.studio/asks/<id>.json` (never in ⚑'s list, never in the game) and the request then names as a
+   * path. `moment` = the game's save() at the pause (absent: the game has no save / load yet — the time alone).
+   */
+  back?: AskBack;
+  /**
    * "play" + `paused` with `intent: 'moment-save' | 'moment-load'` (pause-edit stage 3): the checkpoint it is about —
    * its file id (`.studio/checkpoints/<id>.json`), its name, and what went wrong (save() / load() threw: `error`, the
    * console's lines then: `logs`).
@@ -1981,6 +2059,14 @@ export interface StudioStatus {
   changed?: number;
   /** One short line for the person, in their language. */
   note?: string;
+  /** pause-ask stage 3 (2026-11-02): the game's files the change touched (`--files`), shown small under the reply. */
+  files?: string[];
+  /**
+   * pause-ask fix (decided 2026-11-02): what was already out at the ask's moment and keeps its old place when ▶ Try
+   * opens that moment (`--already "the boss"`; ≤ 60 characters). The editor says "the boss was already out … your
+   * change shows from the next one" with Try and under Before / After's After.
+   */
+  already?: string;
   /**
    * `asking` only (2026-10-19): up to 4 short answers the editor shows as buttons under the question ("Undo it",
    * "Keep it"); pressing one sends it back as an `answer` request. The ask field answers in the person's own words.
@@ -2115,6 +2201,11 @@ export interface StudioHost {
    * `.studio/checkpoints/<id>.json`, never in the game. Left out (the web demo) = ⚑ says the one line, nothing is kept.
    */
   readonly checkpoints?: CheckpointHost;
+  /**
+   * pause-ask stage 3 (2026-11-02): the moment a paused ask was asked from, by the request's id (`back`), or null
+   * (pruned, or the host kept none). ▶ Try from 0:05.02 opens it. Absent = the host keeps no asks' moments (the demo).
+   */
+  askMoment?(requestId: string): Promise<AskMoment | null>;
 }
 
 /** The longest saved moment kept (JSON characters): a game's state, not its assets — 1 MB is far past any we know. */
@@ -2139,6 +2230,24 @@ export interface Checkpoint {
   moment: unknown;
   /** The moment's small picture (a JPEG data URL, ≤ 240 px wide), or absent. */
   shot?: string;
+}
+
+/** What the editor sends as a paused ask's `back` (pause-ask stage 3): the moment the ask was asked from. */
+export interface AskBack {
+  /** The game's seconds since ▶ Play at the pause (the top bar's clock). */
+  time: number;
+  level?: string | null;
+  /** save()'s data at the pause; absent when the game has no codeMoment save / load. */
+  moment?: unknown;
+  /** The player's camera at the pause (a hint: a game without save / load opens with its own camera). */
+  view?: { eye: number[]; target: number[] };
+}
+
+/** An ask's moment as the host gives it back (.studio/asks/<id>.json, src/server/ask-moments.mjs). */
+export interface AskMoment extends AskBack {
+  version: 1;
+  at: string;
+  level: string | null;
 }
 
 /** A checkpoint as ▶ Play ⌄ lists it: its file id and the file without the moment. */

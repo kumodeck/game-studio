@@ -28,6 +28,12 @@ export const DEMO_TEXT: Record<Lang, Record<string, string>> = {
     // Save in the demo keeps the layout in this browser; no AI puts it in a game (2026-10-21: the editor's tooltip
     // promises that, so the demo says what its Save does).
     'save.unsavedTip': 'Save, and your changes are kept in this browser',
+    // pause-ask stage 1 (2026-11-02): the paused field's small picture. The shell's tip says the AI gets the frame; in
+    // the demo nothing gets it (moment.offlineAsk says so on send), so only where it stopped.
+    'moment.shotTip': 'Paused at {t}',
+    // pause-ask stage 2: the four lines say what WOULD go — the demo sends nothing (moment.offlineAsk).
+    'gets.title': 'In Claude Code or Codex, your AI gets this with your words',
+    'moment.shotOpen': 'See what your AI would get',
   },
   ja: {
     'demo.banner': '試し版・AI にはつながっていません・保存はこのブラウザの中だけ',
@@ -42,5 +48,8 @@ export const DEMO_TEXT: Record<Lang, Record<string, string>> = {
     'ask.nameSent': '試し版では AI にはつながっていません。手元の Claude Code や Codex では、AI が名前を付けます。',
     'next.sent': '試し版では AI にはつながっていません。手元の Claude Code や Codex では、この頼みが AI に届きます。「頼む文をコピー」で写せます。',
     'save.unsavedTip': '保存すると、変更がこのブラウザの中に残ります',
+    'moment.shotTip': '{t} で止めた 1 コマ',
+    'gets.title': 'Claude Code や Codex では、言葉と一緒にこれが AI に届きます',
+    'moment.shotOpen': 'AI に届くものを見る',
   },
 };

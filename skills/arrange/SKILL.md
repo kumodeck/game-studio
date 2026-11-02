@@ -468,21 +468,65 @@ a conversation, not a bug report:
   note is the reply they read over the field (up to 300 characters, plain words, their language; no Markdown). Answer
   what they asked ("why did I fall here?" → the cause, from the code and the picture), and say what you could change.
 - **Change code only when they ask for a change** ("make the jump higher", "fix it"); then as above (steps 3–5): the
-  reply sits next to **Reload**. A question is answered, not acted on. Don't reload their game or tell them to: they
-  are on a moment of their run (Resume goes on from it); Reload is theirs.
+  reply sits next to **▶ Try from 0:05.02** (the editor opens the same moment with your new code, paused), **Before /
+  After** and **↶ Undo**. A question is answered, not acted on. Don't reload their game or tell them to: they are on a
+  moment of their run (Resume goes on from it); trying it is theirs.
 - **The talk so far**: `history` in the request (oldest first; `ai` turns are your earlier replies), and the whole talk
   in `.studio/chat/<chat>.json` (both sides, plus the moment from the first message: `shot`, `view`, `near`, `logs`).
   "This", "here" and "it" mean the paused moment. `objects` = what they had picked.
+- **Look at the picture AND the code before you change anything.** A paused request brings both halves of the moment:
+  - the picture: `shot` (as the player saw it) and, when they marked spots, `shotMarked` (the same frame with their
+    numbered marks drawn on — open THIS one first: it is where they are pointing);
+  - `marks`: `{ n, kind: "point" | "area", screen, world?, key?, keys? }` — `screen` is where on the frame (0–1; an
+    area is `[x0, y0, x1, y1]`), `world` the point on the ground (3D `[x, y, z]` on y 0; 2D the stage point), `key`
+    the object under a point, `keys` the objects inside an area. "Here", "this", "①" = mark 1;
+  - `objects[]`: each with `kind` (`placed` = in their scene file, `moves` = the game or a motion moves it, `made` =
+    the game made it since Play) and `from` (`{ file, line }`: the game's code line that first added it — a hint,
+    it may be a helper; open it and look, search by the key when it is absent or wrong);
+  - `time` (seconds since ▶ Play), `level`, `moment` (this moment's values by id, from codeMoment), with `view`,
+    `near`, `logs` as before.
+  First find out **what is at the marks** (the object under it, or the ground point and what is near it in the code), then
+  read the code that makes / moves it (`from`), then decide. Not from the picture alone (a picture can't tell which
+  spawn made the boss) and not from the code alone (the code can't tell what overlapped on the player's screen). With `world`,
+  use it as the number ("bring it in from here" = that x, z). Without it, judge from `screen` and `view` and say
+  "about" in your note.
+- **The moment it was asked from: `back`** (`".studio/asks/<id>.json"`; the line says `moment … (--check-moment …
+  before you reply)`). The editor kept that moment for this ask: `time`, `level`, `view` and — when the game has
+  `codeMoment()` `save` / `load` — `moment` (what `save()` returned then). The person's ▶ Try from 0:05.02 opens it with
+  your new code. Never edit or delete it.
+- **No `save` / `load` in the game yet** (`back` has no `moment`; the editor's "what Claude gets" said "the time only"):
+  with your **first change** asked from a paused moment, write the game's moment hooks **as well** — the values and
+  `save` / `load` (moment-connect: "This moment" and "Checkpoints", §4) — together with the fix, one reply. Until then
+  the person's ▶ Try can only play a new run to the same second ("Same time, new run"), and a boss mid-fight or a
+  score is never the same twice. Then `--check-moment <back>` (next point) must say the moment opened; it opens the
+  same second of a new run for this ask (its `back` has no `moment`), so check `save` / `load` with `--check-moment`
+  (no argument) too. The next ask from a pause keeps the whole moment.
+- **Check from the same moment before you reply** (always, after a change): `node <skill>/bin/studio.mjs <game
+  folder> --check-moment <back>` opens the ask's moment with your code as it is now in a private headless Chrome and
+  shoots it: `.studio/shot/moment-back.png`. **Open that picture** and compare it with `shotMarked` (or `shot`): is
+  what they asked for there, at their marks? Not there → fix again before you reply. `failed` = your change broke
+  `load()` (or the moment no longer fits it): fix that first. Without `back` (an older editor): `--shot`.
+- **Reply in one line: what you did** ("The boss now comes in at the left of the gate."), with `--files <the game files
+  you changed>` (`--files src/boss.js`; shown small under your line). Never "Reload", "reload to check", "play again",
+  "pause again", "press Try": the editor shows the way to try it next to your line itself (§3.6: no how-to handed
+  back).
+- **Already out at that moment?** The ask's moment opens as it was saved: what was already on screen (the boss
+  mid-fight) keeps its old place, and a change to where or how the game makes it shows from the **next** one. When your
+  change is about something already out in `back`'s moment, say what with `--already "<its name, short>"` (`--already
+  "the boss"`): the editor then says "Already out: the boss, so your change shows from the next one" with ▶ Try and
+  under Before / After — else the two pictures look the same and read as "nothing changed". Your `--note` stays what
+  you did ("The boss now comes in at X -4."); `--check-moment <back>` shows the same: check the code, not that picture,
+  for such a change.
 - **"Make it appear here" (`made: true`, with `here`).** They dragged something **the game made** (a boss, an enemy, a
   pickup — not there when Play started) to where it should appear, and pressed ✦. `here` = `{ key, label, at, to,
   time }`: the object, where it was when they paused (`at`), where they put it (`to`), and the game's time then
   (`time`, seconds since ▶ Play). Change **where the game makes it**, in the game's code (the spawn: `boss.position.set(0,
   2.6, -26)` → the `to` position; a lane, a spawn point, a random range — whatever the code uses, so it appears there
-  from now on), keep everything else of how it moves. Then `--status done --changed <n> --note "<one line in their
-  words: what changed>"` ("The boss now comes in on the left lane."): the editor puts **Reload** next to your line
-  itself, and the next run makes it there. Your reply (the note and your own window) says only what changed — **not**
-  "press Reload", "reload to check", "play again": the editor already offers it, and a how-to handed back is the worst
-  experience (§3.6). Not `--do object.move`: what the game makes is not in the scene file; moving it in the editor was
+  from now on), keep everything else of how it moves. Then `--check-moment <back>` as above, and `--status done
+  --changed <n> --files <file> --note "<one line in their words: what changed>"` ("The boss now comes in on the left
+  lane."): the editor puts **▶ Try from …** next to your line itself. Your reply (the note and your own window) says
+  only what changed — **not** "press Reload", "reload to check", "play again": the editor already offers it, and a
+  how-to handed back is the worst experience (§3.6). Not `--do object.move`: what the game makes is not in the scene file; moving it in the editor was
   "just for this moment".
 - What the game moves or made moved in a paused moment is "just for this moment" (their next start does not have it);
   what they **placed** and moved there is in their scene as in Edit (Save · N): handle it as any saved move.
@@ -1020,7 +1064,8 @@ name them **once**, in the game's code, with the loader's `codeMoment()` — and
 and starting from here, aren't ready for this game yet. ✦ Have Claude connect this moment to the game" until you do.
 
 **When**: only when asked — a paused `play` request with `intent: "moment-connect"` (that ✦; an older editor's
-`"moment-values"`), or their words ("show the score when I pause", "let me change the time left"). Not on your own:
+`"moment-values"`), their words ("show the score when I pause", "let me change the time left"), or your first change
+asked from a paused moment in a game without them (§3.1.1 "Paused": with `save` / `load`). Not on your own:
 unlike the canvas UI, nothing is missing on screen without it. **Whichever of the two was asked — the numbers or the
 checkpoints — deliver both** (the values here and `save` / `load`, "Checkpoints" below) in the same change, and check
 them with `--check-moment`: the person sees one ✦ for "this moment", and a second ask, wait and Reload for the other half
@@ -1116,8 +1161,10 @@ can't start from the middle yet. ✦ Have Claude connect this moment to the game
 
 **When**: only when asked — a paused `play` request with `intent: "moment-connect"` (that ✦), `"moment-save"` (a
 `save()` that threw: `checkpoint.error`; or an older editor's ✦), or their words ("let me start from the boss", "save
-this moment"). `save` / `load` reach deep into the game: never on your own. **Whichever was asked, deliver the values
-too** ("This moment" above) when the game has none: one ask connects the whole moment.
+this moment"). `save` / `load` reach deep into the game: never on your own — **except** with your first change asked
+from a paused moment (a paused `play` whose `back` has no `moment`, §3.1.1 "Paused"): then write them together with the
+fix, so the person's ▶ Try from … opens that very moment from then on. **Whichever was asked, deliver the values too**
+("This moment" above) when the game has none: one ask connects the whole moment.
 
 1. **`save()` — everything the next frame needs, as plain data** (JSON: numbers, words, lists, objects; no class
    instances, no functions, no DOM, no three.js objects — their numbers instead: `boss.position.toArray()`):

@@ -16,6 +16,7 @@ import {
   isStudioMessage,
   type BridgeToShell,
   type CheckpointInfo,
+  type AskBack,
   type Dim,
   type EditLayer,
   type FlyKey,
@@ -52,6 +53,9 @@ import {
   type StudioShellApi,
   type ToolId,
   type UiPrefs,
+  type CodeFrom,
+  type MomentMark,
+  type MomentObjectKind,
 } from '../contract.ts';
 import { keyStep } from '../core/keys.ts';
 import { validateLibrary, validatePlacement } from '../schema/index.ts';
@@ -77,13 +81,17 @@ import { askView as questionView } from './ai-ask.ts';
 import { playLine, playWords } from './play-ask.ts';
 import { clockNow, clockText, createMomentBar, madeRows, speedText, splitMoves, type HeardClock } from './moment.ts';
 import { chatOnLine, historyOf, type ChatModel } from './moment-talk.ts';
-import { createMomentValues } from './moment-values.ts';
+import { askFieldShown, askPhShort, createMomentShot, momentAskOffline, momentFocusOk, momentKeyPasses, shotTimeOnClock } from './moment-ask.ts';
+import { createMomentValues, momentNumber, unitText } from './moment-values.ts';
+import { createMomentMarks, markedShot } from './moment-marks.ts';
+import { createMomentGets, getsRows, orderMarked } from './moment-gets.ts';
+import { createMomentCompare, filesRow, isTryPause, replyActions, tryWords } from './moment-try.ts';
 import { CHECKPOINTS_LISTED, checkpointsOf, createCheckpointNote, createCheckpointPop, defaultCheckpointName, reloadCheckpoint, smallShot } from './checkpoints.ts';
 import { LINE_FADE_MS, LINE_GRACE_MS, lineFades, lineKey, lineStayMs } from './line-fade.ts';
 import { renderSettings } from './settings-page.ts';
 import { DEFAULT_UI, effectiveTheme, normalizeUi } from './ui-prefs.ts';
 import { dropTarget, hasLayer, layerTarget, type LayerOp } from './layers.ts';
-import { createPlacementPanel } from './placement-panel.ts';
+import { createPlacementPanel, shortName } from './placement-panel.ts';
 import { createTimeline } from './timeline-wire.ts';
 import { createMotionNote, noteOf } from './motion-note.ts';
 import { libCounted } from './timeline-model.ts';
@@ -479,6 +487,8 @@ export function start(host: StudioHost) {
   const INTRO_SEEN = 'open-line';
   // The first ▶ Play's one line under ❚❚ Pause to edit (pause-edit 02-find.md): once per person on this device.
   const PAUSE_TIP_SEEN = 'pause-tip';
+  // pause-ask fix △10: a phone's ◎ shows its word ("Mark") until the person has pressed it once (on this device).
+  const MARK_WORD_SEEN = 'mark-word';
   const STEP_TIP_SEEN = 'step-tip';
   let prefsLoaded = false;
   function hintSeen(id: string): boolean {
@@ -558,6 +568,13 @@ export function start(host: StudioHost) {
   // snapshot of the AI's version, made by the host when undoing). `aiAfter`:
   // the line says "back to before" / "your AI's change is back".
   let changeFrom: string | null = null;
+  // The asks (paused, `play`) the host took a snapshot for, by request id: ↶ Undo on a paused reply goes back to its
+  // own ask's (pause-ask fix △6).
+  const askSnaps = new Set<string>();
+  // The reply (status `at`) "what Claude gets" was last closed for (fix △4: once per reply).
+  let getsShutFor: string | undefined;
+  // This pause's PlayClock.late (s; fix △7): kept with each ask of the pause (askBacks `late`).
+  let momentLate = 0;
   let lastChange: { from: string; redo: string | null; folds?: AiFold[] } | null = null;
   // studio-writeback (2026-10-24, "the code is the truth"): what left the file because the AI wrote it into the code
   // since the last request (its place.code --fold, and knobs the code caught up with). "Undo AI change" puts the code
@@ -1659,6 +1676,13 @@ export function start(host: StudioHost) {
     // While the AI waits for an answer, the field answers it (hands-on test 2026-10-19).
     ask: (keys, text, files) => {
       if (answering()) return answerAi(text);
+      // The web demo's paused field (pause-ask stage 1, decided 2026-11-02 = show it): nothing is sent — not even kept in
+      // the browser as other demo requests are (no AI will ever read a moment's picture there). One line says why and
+      // where it works; the words stay in the field ('held').
+      if (momentAskOffline({ offline: !!host.offline, moment })) {
+        showToast(t('moment.offlineAsk'), 6000);
+        return Promise.resolve('held' as const);
+      }
       // The paused moment: the "play" request of the pause (its picture with the first one, the talk after).
       if (moment) return momentRequest(text, keys);
       // ✦ Turn into a rule (studio-code-torule): the words were for the hand's shape on screen — the AI swaps a rule in.
@@ -1673,9 +1697,12 @@ export function start(host: StudioHost) {
       return askAi({ kind: 'ask', text, objects: requestObjects(keys), ...(files.length ? { assets: files } : {}), ...requestMotions(toRule === 'motion'), ...(toRule ? { intent: 'to-code' as const } : requestPlaces()) });
     },
     answering: () => answering(),
+    askEscape: () => momentEscape(),
     // The field's one placeholder (studio-words-plan, 2026-10-23): "Ask Claude…" whether or not Claude is there — the
     // presence words beside the field say that (it was "Write a note for Claude…" when unsure, a second wording).
-    askGame: () => (moment ? t('moment.askPh', aiVars()) : t('ask.game', host.offline ? {} : aiVars())),
+    // pause-ask stage 2 fix 2: a narrow field (a phone) gets the short words whole, not the long ones cut
+    // (moment-ask.ts askPhShort).
+    askGame: () => (moment ? momentPh() : t('ask.game', host.offline ? {} : aiVars())),
     askName: (keys) => askAi({ kind: 'name', text: '', objects: requestObjects(keys) }),
     nameDraft: host.offline ? undefined : (keys) => nameDraft(keys),
     // Only while the Library is on screen: back in the Scene the words are about what is picked there.
@@ -2091,6 +2118,73 @@ export function start(host: StudioHost) {
 
   // ----- the ⌘K list (palette.ts) -----
   const askInput = placementPanel.askEl.querySelector('input') as HTMLInputElement;
+  // pause-ask stage 2 fix 1 (moment-ask.ts momentKeyPasses): true while the cursor is in the moment's field only
+  // because the pause put it there. Typing, a click in the field, or the field losing the cursor ends it.
+  let askAuto = false;
+  askInput.addEventListener('input', () => (askAuto = false));
+  askInput.addEventListener('pointerdown', () => (askAuto = false));
+  askInput.addEventListener('blur', () => (askAuto = false));
+  /** Does this key press in the field go to the editor's / game's keys instead of becoming a letter? */
+  const askPasses = (e: KeyboardEvent) => e.target === askInput && !e.isComposing
+    && momentKeyPasses({ auto: askAuto && moment, empty: !askInput.value, key: e.key, mod: e.ctrlKey || e.metaKey || e.altKey });
+  /** The moment's placeholder: whole, or short when the field is narrow (moment-ask.ts askPhShort). */
+  function momentPh(): string {
+    const vars = host.offline ? {} : aiVars();
+    const long = t('moment.askPh', vars);
+    // ~7 px a character at the field's 13 px (a guess on the safe side: a cut word is worse than a short whole one).
+    return askPhShort({ phone: phone(), room: askInput.clientWidth, need: long.length * 7 }) ? t('moment.askPhShort', vars) : long;
+  }
+  // pause-ask stage 1 (2026-11-02; moment-ask.ts): the paused frame small with its time, first in the field — "this
+  // picture goes with your words". Before the chips (README pc-1: [picture] [① here] [boss] words…).
+  const momentShot = createMomentShot();
+  placementPanel.askEl.insertBefore(momentShot.el, placementPanel.askEl.querySelector('.ask-chip'));
+  // pause-ask stage 2 (2026-11-02; moment-marks.ts): ◎ Mark and its chips ("① here ×") right after the picture —
+  // README pc-1: [picture] [① here] [boss] words… [◎]. The layer with the pins goes over the game (the stage).
+  let markAskN = 0;
+  const markWaits = new Map<number, (r: { key: string | null; world?: number[]; keys?: string[] } | null) => void>();
+  const momentMarks = createMomentMarks({
+    probe: (x, y, box) => new Promise((done) => {
+      const id = ++markAskN;
+      markWaits.set(id, done);
+      send({ type: 'studio:moment/mark-at', id, x, y, ...(box ? { box } : {}) });
+      // No answer (an old game page, a page changing): the mark stays, without what is under it.
+      window.setTimeout(() => {
+        if (markWaits.delete(id)) done(null);
+      }, 1500);
+    }),
+    changed: () => {
+      app.dataset.marking = momentMarks.on() ? 'on' : 'off';
+      // Pressed once: the word goes from the next pause on (not now — the button would shrink under the finger).
+      if (momentMarks.on() && prefsLoaded && !uiPrefs.seen?.includes(MARK_WORD_SEEN)) changeUi({ ...uiPrefs, seen: [...(uiPrefs.seen ?? []), MARK_WORD_SEEN] });
+      momentGets.close();
+      // The chips take room from the words: the placeholder may need its short form now (askPhShort measures).
+      placementPanel.renderAsk();
+      placeNews();
+    },
+    t,
+  });
+  placementPanel.askEl.insertBefore(momentMarks.chips, momentShot.el.nextSibling);
+  // Over the game frame (the stage is the game page's size, so the marks' 0–1 are the picture's), under the dock.
+  stage.append(momentMarks.layer);
+  placementPanel.askEl.insertBefore(momentMarks.button, placementPanel.askEl.querySelector('.ask-kbd'));
+  // The picture opens "what Claude gets" (moment-gets.ts; README pc-2): a button now (stage 1 had it as a plain picture).
+  const momentGets = createMomentGets();
+  stage.append(momentGets.el);
+  // pause-ask stage 3: Before / After over the game (moment-try.ts; README pc-4).
+  const momentCompare = createMomentCompare();
+  stage.append(momentCompare.el);
+  momentShot.el.setAttribute('role', 'button');
+  momentShot.el.tabIndex = 0;
+  momentShot.el.dataset.action = 'moment-gets';
+  momentShot.el.addEventListener('pointerdown', (e) => e.preventDefault());
+  momentShot.el.addEventListener('click', () => toggleGets());
+  momentShot.el.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') (e.preventDefault(), toggleGets());
+  });
+  // A press anywhere else closes it (as a menu does); Esc too (shortcut()).
+  document.addEventListener('pointerdown', (e) => {
+    if (momentGets.isOpen() && !momentGets.el.contains(e.target as Node) && !momentShot.el.contains(e.target as Node)) momentGets.close();
+  }, true);
   // A short notice shown in the field's place (showToast). Typing (or a click into the field) ends it at once.
   const askNews = h('span', { class: 'ask-news', role: 'status', 'aria-live': 'polite', hidden: true });
   askInput.addEventListener('input', hideNews);
@@ -3118,6 +3212,8 @@ export function start(host: StudioHost) {
     if (aiWatching) lastWatching = Date.now();
     if (info?.seen) aiSeen = info.seen;
     if (id && info?.undo && !changeFrom) changeFrom = id;
+    // A paused ask's own snapshot (fix △6: ↶ Undo one ask at a time; momentUndo).
+    if (id && info?.undo && kind === 'play') askSnaps.add(id);
     if (aiMarks.size) {
       aiMarks = new Map();
       placementPanel.markRows();
@@ -3243,17 +3339,33 @@ export function start(host: StudioHost) {
       // after them read as "Done" twice ("Made the change · Done"): the AI's words are the done, the row is only
       // "More in Claude". A change in code that Undo AI change cannot take back (no count) leaves what changed to
       // "More in Claude" — the AI's chat says it in full.
-      two(s.note || count, s.note && (ph === 'failed' || (n > 0 && !madeReply)) ? count : '');
+      // pause-ask stage 3: a paused ask's reply says, small, which files the AI touched (`--files`) — what + where.
+      const pausedReply = playing && playPaused && !!pending?.id && momentAsks.has(pending.id);
+      const second = s.note && (ph === 'failed' || (n > 0 && !madeReply)) ? count : '';
+      two(s.note || count, pausedReply && ph === 'done' ? filesRow(s.files, second) : second);
       // The paused moment's reply when the game's code changed (`--changed` > 0, or the files say so; fix 1 ✕6): Reload
       // right here. It was only on the line over the game after ▶ Resume, and the docs said "press Reload on the reply".
       // Reload leaves the moment for a new page of the game from its new code, still in Play (as the line over the game's
       // Reload: play/reload); Save · N stays (the editor keeps the draft).
       const codeNow = code === undefined || loadedCode === undefined ? undefined : code !== loadedCode;
-      if (ph === 'done' && playing && playPaused && !!pending?.id && momentAsks.has(pending.id) && (n > 0 || codeNow === true)) {
-        link('moment-reload', 'toolRotate', t('play.reload'), () => loadGame(), t('play.reloadMomentTip'));
-        // …and from a checkpoint (stage 3, the brief's 5): the one this Play opened from, else this level's newest.
-        const rc = reloadCheckpoint(checkpointList, cpLevel(), cpPlayed?.id ?? null);
-        if (rc) link('moment-reload-from', 'flag', t('checkpoint.fromReload', { name: rc.name }), () => void playCheckpoint(rc), t('checkpoint.fromReloadTip', { name: rc.name }));
+      // pause-ask stage 3 (moment-try.ts; README pc-3): ▶ Try from 0:05.02 · Before / After · ↶ Undo — the same moment
+      // with the new code, never a reload by itself. A host that kept no moment for the ask: the old Reload.
+      const ab = pending?.id ? askBacks.get(pending.id) : undefined;
+      const acts = ph === 'done' && pausedReply ? replyActions({ paused: true, back: !!ab && !!host.askMoment, changed: n > 0 || codeNow === true,
+        canUndo: momentCanUndo(pending?.id ?? '') }) : [];
+      const reqId = pending?.id ?? '';
+      for (const a of acts) {
+        if (a === 'try' && ab) {
+          aiLine.append(h('button', { type: 'button', class: 'link try', dataset: { action: 'moment-try' }, title: t('try.tip', aiVars()), disabled: undoBusy,
+            onclick: () => void tryMoment(reqId) }, icon('play'), h('span', { text: t('try.btn', { t: clockText(ab.time, 2) }) })));
+        } else if (a === 'compare') link('moment-compare', 'eye', t('cmp.btn'), () => openCompare(reqId), t('cmp.tip'));
+        else if (a === 'undo') link('moment-undo', 'undo', t('moment.undo'), () => void momentUndo(reqId), t('moment.undoTip', aiVars()));
+        else if (a === 'reload') {
+          link('moment-reload', 'toolRotate', t('play.reload'), () => loadGame(), t('play.reloadMomentTip'));
+          // …and from a checkpoint (stage 3, the brief's 5): the one this Play opened from, else this level's newest.
+          const rc = reloadCheckpoint(checkpointList, cpLevel(), cpPlayed?.id ?? null);
+          if (rc) link('moment-reload-from', 'flag', t('checkpoint.fromReload', { name: rc.name }), () => void playCheckpoint(rc), t('checkpoint.fromReloadTip', { name: rc.name }));
+        }
       }
       const aiReloaded = aiReloadFor !== null && aiStatus?.at === aiReloadFor;
       if (ph === 'done' && !playing && aiReloaded) {
@@ -3277,11 +3389,30 @@ export function start(host: StudioHost) {
           void softReload('ai');
         }));
       }
+    } else if (ph === 'undone' && playing && playPaused && !!pending?.id && askBacks.has(pending.id)) {
+      // ↶ Undo on a paused ask's reply (pause-ask stage 3): the moment stays; ▶ Try shows the code as it is now (before).
+      const ab = askBacks.get(pending.id)!;
+      const reqId = pending.id;
+      two(t('moment.undone', { ...aiVars(), t: clockText(ab.time, 2) }), t('ai.undoneSub', aiVars()));
+      aiLine.append(h('button', { type: 'button', class: 'link try', dataset: { action: 'moment-try' }, title: t('try.tip', aiVars()), disabled: undoBusy,
+        onclick: () => void tryMoment(reqId) }, icon('play'), h('span', { text: t('try.btn', { t: clockText(ab.time, 2) }) })));
     } else if (ph === 'undone' || ph === 'redone') {
       two(t(ph === 'undone' ? 'ai.undone' : 'ai.redone'), ph === 'undone' ? t('ai.undoneSub') : '');
       if (lastChange && host.undoAi && !playing) {
         if (ph === 'undone' && lastChange.redo) link('ai-redo', 'redo', t('ai.redo'), () => void undoAiChange(true));
         else if (ph === 'redone') link('ai-undo', 'undo', t('ai.undo'), () => void undoAiChange(false));
+      }
+    }
+    // A paused ask's reply with ▶ Try (pause-ask fix ✕1, decided 2026-11-02): the AI's words on a row of their own (two
+    // lines at most), the three buttons on the row under them. On one row the buttons left ~170 px and "The boss now comes
+    // in at X -2.0, more to the left." read "The boss now comes in at…" on PC and a phone — the one line that says what
+    // the AI did (shell.css .ai-line.moment-reply).
+    if (aiLine.querySelector('[data-action=moment-try]')) {
+      aiLine.classList.add('moment-reply');
+      // The reply came (fix △4): "what Claude gets" closes once, so it never sits over ▶ Try (it opens again by hand).
+      if (ph === 'done' && aiStatus?.at !== getsShutFor) {
+        getsShutFor = aiStatus?.at;
+        momentGets.close();
       }
     }
     aiLine.hidden = !aiLine.childNodes.length;
@@ -3305,7 +3436,9 @@ export function start(host: StudioHost) {
    * fades and stays gone across polls (lineGone). Every other phase shows as long as it is true (line-fade.ts).
    */
   function fadeLine(ph: AiPhase) {
-    if (!lineFades(ph) || aiLine.hidden) {
+    // pause-ask stage 3: a paused ask's reply with ▶ Try from … stays until the moment ends — the way to see the fix
+    // must not fade away before the person presses it (found on a phone, 2026-11-02: the line faded in a few seconds).
+    if (!lineFades(ph) || aiLine.hidden || !!aiLine.querySelector('[data-action=moment-try]')) {
       clearTimeout(lineTimer);
       lineShown = '';
       lineFading = false;
@@ -3493,12 +3626,40 @@ export function start(host: StudioHost) {
   /** play/paused on: the game is held. Its editor's core/ready and list come just before this (bridge play-ask.ts). */
   function momentStart(m: Extract<BridgeToShell, { type: 'studio:play/paused' }>) {
     momentWhy = new Map(Object.entries(m.why ?? {}) as Array<[string, MomentKind]>);
+    momentLate = m.late ?? 0;
     momentAsk = m.ask ?? null;
+    // pause-ask stage 2: each object's code place (the game page read them at the pause; a hint for the request).
+    momentFrom = new Map(Object.entries(m.from ?? {}));
+    momentMarks.clear();
     momentChat = '';
     momentTalk = { turns: [], awaiting: false, live: null };
     momentHere = null;
+    momentShotAt = { time: clockNow(playHeard, performance.now()), exact: false };
     momentEarlierOpen = false;
+    // fix △10 (shell.css [data-mark-word]): a phone's bare ◎ ring and the green dot beside it said nothing; "◎ Mark" with
+    // its word until it was used once.
+    app.dataset.markWord = prefsLoaded && !uiPrefs.seen?.includes(MARK_WORD_SEEN) ? 'on' : 'off';
     renderMomentEarlier();
+    // ▶ Try's pause (pause-ask stage 3): the same moment with the new code. The talk, the marks and the asks' ids go on
+    // (the field is the same conversation: "no, more to the left"); the flash says which moment this is; Before / After
+    // gets its After.
+    if (tryRun && tryKeep && isTryPause(momentShotAt.time, tryRun.time)) {
+      const k = tryKeep;
+      momentChat = k.chat;
+      momentTalk = k.talk;
+      for (const id of k.asks) momentAsks.add(id);
+      if (k.marks.length) momentMarks.restore(k.marks);
+      tried = { id: tryRun.id, time: tryRun.time, exact: tryRun.exact, ...(m.ask?.shot ? { after: m.ask.shot } : {}) };
+      const at = clockText(tryRun.time, 2);
+      // fix ✕2 (plan A): a saved moment says what was already out stays where it was; longer words, a little longer.
+      const w = tryWordsOf(tryRun.id, tryRun.exact, m.late ?? 0);
+      tried.late = m.late ?? 0;
+      momentBar.flash(t(w.flash, { t: at, ...(w.name ? { name: w.name } : {}), ...(w.s ? { s: w.s } : {}) }), 'play', w.note ? 9000 : 6000);
+      tryKeep = null;
+      tryRun = null;
+      renderMomentEarlier();
+      if (k.compare) window.setTimeout(() => openCompare(tried!.id), 0);
+    }
     // This moment's values: asked at once (the head shows until they come; the game page answers in a frame).
     momentVals = undefined;
     momentConnectAsk = false;
@@ -3517,6 +3678,10 @@ export function start(host: StudioHost) {
     renderAll(true);
     // Words typed in the ✦ field over the game when it paused: the field at the foot now (the person was about to ask).
     if (m.draft && !host.offline) focusAsk(m.draft);
+    // pause-ask stage 1 (README §1): else the cursor goes in the field by itself — the first second after a pause says
+    // "say something about THIS frame". Only when it takes nothing from the person (moment-ask.ts momentFocusOk: not on
+    // a phone, not over another field or an open sheet). The web demo too: its field is there to try (Q1).
+    else if (moment && momentFocusOk({ touch: phone(), overlay: overlayOpen(), active: activeInfo() })) focusMomentField();
     // The line's ✦ "Have Claude fix it" (stage 3) paused the game for its draft: in the field now.
     if (cpAskSoon) {
       const a = cpAskSoon;
@@ -3534,6 +3699,13 @@ export function start(host: StudioHost) {
     momentPose.clear();
     momentList = null;
     momentHere = null;
+    momentShotAt = null;
+    momentShot.hide();
+    // pause-ask stage 2: the marks were on this frame; the next pause is another frame.
+    momentMarks.clear();
+    momentGets.close();
+    momentCompare.close();
+    momentFrom = new Map();
     momentEarlierOpen = false;
     renderMomentEarlier();
     momentVals = undefined;
@@ -3554,6 +3726,34 @@ export function start(host: StudioHost) {
     group = [];
     // While playing (Resume): Edit's tools step away again (editInPage sets `editing` back for Edit itself).
     if (playing) editing = false;
+  }
+  /** pause-ask stage 1: the picture + time in the field while paused (moment-ask.ts); gone otherwise. */
+  function renderMomentShot() {
+    // ◎ Mark only while paused (a mark is on THIS frame); its words in the language of the moment.
+    momentMarks.button.hidden = !moment;
+    if (moment) momentMarks.render();
+    if (!moment || !momentShotAt) return momentShot.hide();
+    const at = clockText(momentShotAt.time, 2);
+    // The demo's words say only where it stopped (text.ts overrides moment.shotTip): no AI gets the frame there.
+    momentShot.show(momentAsk?.shot, momentShotAt.time, t('moment.shotTip', { ...aiVars(), t: at }));
+  }
+  /** Something open that has the keys (⌘K, the keys sheet, ⚑'s name field): the moment's field leaves the cursor alone. */
+  const overlayOpen = () => app.dataset.palette === 'open' || app.dataset.palette === 'suggest' || app.dataset.keys === 'open' || app.dataset.checkpoint === 'open';
+  function activeInfo() {
+    const a = document.activeElement as HTMLElement | null;
+    if (!a || a === document.body) return null;
+    return { tag: a.tagName, editable: a.isContentEditable, askField: a === askInput };
+  }
+  /** The cursor in the moment's field, nothing typed in it (focusAsk without its "no AI" stop: the demo's field is real). */
+  function focusMomentField() {
+    placementPanel.renderAsk();
+    renderPresence();
+    askInput.focus({ preventScroll: true });
+    // pause-ask stage 2 fix 1: the cursor came by itself — until a letter is typed or the field is clicked, P / . / Esc /
+    // N stay the game's and the editor's keys (moment-ask.ts momentKeyPasses: P → P goes on playing).
+    askAuto = true;
+    const end = askInput.value.length;
+    askInput.setSelectionRange?.(end, end);
   }
   /** The moment's list (placement/items while playing): what the game made too, where everything stands now. */
   function useMomentList() {
@@ -3836,6 +4036,17 @@ export function start(host: StudioHost) {
    * console's lines go with it).
    */
   function checkpointLoaded(m: Extract<BridgeToShell, { type: 'studio:moment/loaded' }>) {
+    // A Try's moment that did not open with the new code (pause-ask stage 3): the AI's change broke load(), or the
+    // moment's data no longer fits it. Said in one line; the page plays from the start and still holds at the second.
+    if (playing && tryRun && !m.ok) {
+      tryRun = { ...tryRun, exact: false };
+      showToast(t('try.failed'), 6000);
+      if (m.why === 'threw') {
+        tryOpening = { id: tryRun.id, time: tryRun.time };
+        loadGame();
+      }
+      return;
+    }
     const from = cpPlayed;
     if (!playing || !from) return;
     if (m.ok) {
@@ -3895,23 +4106,211 @@ export function start(host: StudioHost) {
     const first = !momentChat;
     const history = historyOf(momentTalk.turns);
     const here = momentHere && momentHere.key ? momentHere : null;
-    const ok = await askAi({ kind: 'play', text, paused: true, ...(first && momentAsk ? momentAsk : {}), ...(momentChat ? { chat: momentChat } : {}),
-      ...(history.length ? { history } : {}), ...(keys.length ? { objects: requestObjects(keys) } : {}),
+    // pause-ask stage 2 (README §2): the marks, the frame with them drawn on, what each object is in this moment and
+    // where in the code it came from, the game's time, the level and this moment's numbers — with EVERY message of the
+    // pause, not only the first (the person may mark, ask, then mark again: "no, here ②").
+    const marks = momentMarks.list();
+    const marked = marks.length ? await markedShot(momentAsk?.shot, marks) : null;
+    const objKeys = momentObjectKeys(keys, marks);
+    // pause-ask stage 3 (README §2 `back`): this moment, kept invisibly by the host (.studio/asks/<id>.json) so ▶ Try from
+    // 0:05.02 can open it with the AI's new code. The whole moment when the game has save / load (its save() now — what
+    // the person moved in this pause is in it, as in a checkpoint), else the time and camera only.
+    const back = await momentBackNow();
+    const ok = await askAi({ kind: 'play', text, paused: true, ...(back ? { back } : {}), ...(first && momentAsk ? momentAsk : {}), ...(momentChat ? { chat: momentChat } : {}),
+      ...(history.length ? { history } : {}), ...(objKeys.length ? { objects: requestObjects(objKeys).map((o) => ({ ...o, ...momentObjectInfo(o.key) })) } : {}),
+      ...(marks.length ? { marks } : {}), ...(marked ? { shotMarked: marked } : {}), ...momentNumbers(),
       ...(here ? { made: true, here: { key: here.key, label: here.label, at: here.at, to: here.to, time: here.time } } : {}),
       ...(momentConnectAsk ? { intent: 'moment-connect' as const } : {}),
       ...(cpAsk ? { intent: cpAsk.intent, ...(cpAsk.checkpoint ? { checkpoint: cpAsk.checkpoint } : {}) } : {}) });
     if (!ok) return false;
     momentConnectAsk = false;
     cpAsk = null;
+    // Sent (fix △4): ◎ marking goes off (the marks stay: "no, here ②" next), and the card closes — it covered the reply's
+    // ▶ Try when left open while waiting.
+    momentMarks.set(false);
+    momentGets.close();
     if (first && pending?.id) momentChat = pending.id;
     if (pending?.id) {
       momentAsks.add(pending.id);
       if (here) momentMadeAsks.add(pending.id);
+      // What the game made that this ask is about (fix ✕2: "Already out: boss"); a follow-up ("a bit more to the left")
+      // with no object of its own is about the same one as the ask before it in this pause.
+      const madeKey = objKeys.find((k) => momentObjectInfo(k).kind === 'made');
+      const madeIt = madeKey ? items.find((i) => i.key === madeKey) : undefined;
+      const out = madeIt ? shortName(displayName(madeIt, t)) : [...momentAsks].reverse().map((id) => askBacks.get(id)?.out).find(Boolean);
+      if (back) askBacks.set(pending.id, { time: back.time, exact: back.moment !== undefined, asked: text, ...((marked ?? momentAsk?.shot) ? { before: (marked ?? momentAsk?.shot)! } : {}), ...(out ? { out } : {}), late: momentLate });
     }
     momentTalk = { turns: [...momentTalk.turns, { who: 'you', text }], awaiting: true, live: null };
     momentHere = null;
     renderMomentEarlier();
     return true;
+  }
+  /** A paused ask's `back` (pause-ask stage 3): the game's time, the level, save() when it has one, the camera. */
+  async function momentBackNow(): Promise<AskBack | undefined> {
+    if (host.offline || !host.askMoment || !momentShotAt) return undefined;
+    const out: AskBack = { time: Math.round(momentShotAt.time * 1000) / 1000, level: cpLevel() };
+    if (momentCanCheckpoint) {
+      const r = await momentSaveNow();
+      if (r.ok && r.moment !== undefined) out.moment = r.moment;
+    }
+    const v = momentAsk?.view;
+    if (v) out.view = { eye: v.eye.slice(), target: v.target.slice() };
+    return out;
+  }
+  /**
+   * ▶ Try from 0:05.02 (pause-ask stage 3; moment-try.ts): the game again with the code as it is now, opened at the ask's
+   * moment and held there. The talk, the marks and the asks of this pause carry over the reload (tryKeep).
+   * `compare`: Before / After was pressed first — it opens with the new picture.
+   */
+  async function tryMoment(id: string, compare = false) {
+    if (!host.askMoment || !playing) return;
+    const a = await host.askMoment(id);
+    if (!a) {
+      momentCompare.close();
+      showToast(t('try.gone'), 6000);
+      return;
+    }
+    tryKeep = { chat: momentChat, talk: momentTalk, marks: momentMarks.list(), asks: [...momentAsks], compare };
+    tryOpening = { id, time: a.time, ...(a.moment !== undefined ? { moment: a.moment } : {}) };
+    tried = null;
+    loadGame();
+  }
+  /**
+   * What the Try of ask `id` says about what was already out (moment-try.ts tryWords; fix ✕2): the AI's `--already` when
+   * its reply is this ask's, else the made object this ask (or an earlier ask of the same pause) was about.
+   */
+  function tryWordsOf(id: string, exact: boolean, late?: number) {
+    const already = aiStatus?.request === id ? aiStatus.already : undefined;
+    const ab = askBacks.get(id);
+    return tryWords(exact, already, ab?.out, late === undefined ? 0 : late - (ab?.late ?? 0));
+  }
+  /** Before / After (moment-try.ts; README pc-4): the asked frame and the same moment with the new code. */
+  function openCompare(id: string) {
+    const ab = askBacks.get(id);
+    if (!ab) return;
+    momentGets.close();
+    const at = clockText(ab.time, 2);
+    const have = tried && tried.id === id && tried.after && playPaused ? tried : null;
+    const canUndo = momentCanUndo(id);
+    const resume = () => {
+      momentCompare.close();
+      postGame({ type: 'studio:play/pause', on: false });
+    };
+    // fix ✕2 (plan A): the saved moment's After says what was already out, with ▶ Resume to see it.
+    const w = have ? tryWordsOf(id, have.exact, have.late) : null;
+    // ▶ Resume to see it only where resuming shows the change (what was already out); a late run's line is words only.
+    const see = w?.note === 'cmp.out' || w?.note === 'cmp.stay';
+    momentCompare.open({ title: t('cmp.title', { t: at }), asked: ab.asked, opening: t('cmp.opening'), close: t('cmp.close'),
+      ...(w?.note ? { note: { text: t(w.note, { ...(w.name ? { name: w.name } : {}), ...(w.s ? { s: w.s } : {}), t: at }), ...(see ? { resume: { label: t('cmp.resumeSee'), run: resume } } : {}) } } : {}),
+      before: { src: ab.before ?? null, label: t('cmp.before'), sub: t('cmp.beforeSub', { t: at }) },
+      after: { src: have?.after ?? null, label: t('cmp.after'), sub: t(have && !have.exact ? 'cmp.afterSameRun' : 'cmp.afterSub', { t: at }) },
+      ...(canUndo ? { undo: { label: t('cmp.undo', aiVars()), run: () => (momentCompare.close(), void momentUndo(id)) } } : {}),
+      keep: { label: t('cmp.keep'), run: resume } });
+    // Not tried yet (or the picture is of another moment): Try first; the panel gets its After when the Try pauses.
+    if (!have) void tryMoment(id, true);
+  }
+  /**
+   * ↶ Undo on a paused ask's reply (pause-ask stage 3): the game's files back to before the AI's change, at once and
+   * without leaving the moment (Edit's Undo AI change reloads the game; here the moment stays, and ▶ Try shows the old
+   * code).
+   * One ask at a time (pause-ask fix △6, decided 2026-11-02): the snapshot the host took right before THIS ask (`id`),
+   * so after "a bit more to the left" Undo goes back to the first fix (X −2, with its save / load), not to the game as
+   * shipped. It was the first ask's since the last change shown (changeFrom, as Edit's): two fixes and the save / load
+   * gone with one press labelled "Undo Claude’s change". A host with no snapshot for this ask: the old way.
+   */
+  async function momentUndo(id: string) {
+    const to = askSnaps.has(id) ? id : lastChange?.from ?? changeFrom;
+    if (!host.undoAi || !to || undoBusy) return;
+    undoBusy = true;
+    renderAiLine();
+    const res = await host.undoAi(to, { redo: false }).catch((e) => ({ ok: false, error: (e as Error).message, redo: null }));
+    undoBusy = false;
+    if (!res.ok) {
+      showToast(t('ai.undoFail', aiVars()));
+      renderAiLine();
+      return;
+    }
+    lastChange = { from: to, redo: res.redo ?? null };
+    // The earlier asks' changes are still in the files when this was a later ask: Edit's Undo AI change still reaches
+    // them (changeFrom stays the first). Undoing the first one leaves nothing earlier.
+    if (changeFrom === to) changeFrom = null;
+    askSnaps.delete(to);
+    aiAfter = 'undone';
+    aiAfterTurn++;
+    const st = await host.status().catch(() => null);
+    if (st?.code) {
+      code = st.code;
+      codeSince = Date.now();
+    }
+    renderAiLine();
+  }
+  /** Can ↶ Undo put back ask `id`'s change (its own snapshot, else the one since the last change shown)? */
+  function momentCanUndo(id: string): boolean {
+    return !!host.undoAi && (askSnaps.has(id) || !!(lastChange?.from ?? changeFrom));
+  }
+  /** The objects a paused request is about: the selected ones, then what the marks point at (each once, ≤ 50). */
+  function momentObjectKeys(keys: string[], marks: MomentMark[]): string[] {
+    const marked: string[] = [];
+    for (const m of marks) for (const k of [m.key, ...(m.keys ?? [])]) if (k && !marked.includes(k) && items.some((i) => i.key === k)) marked.push(k);
+    // pause-ask fix △1: what the game made first (the boss in the circle, not the road under it) — the card and the AI.
+    return orderMarked(keys, marked, (k) => momentObjectInfo(k).kind).slice(0, 50);
+  }
+  /** What an object is in this moment (placed / moves / made) and its code place: the request's `objects[]` extras. */
+  function momentObjectInfo(key: string): { kind: MomentObjectKind; from?: CodeFrom } {
+    const w = momentWhy.get(key);
+    const kind: MomentObjectKind = w === 'new' ? 'made' : w === 'game' || w === 'motion' ? 'moves' : 'placed';
+    const from = momentFrom.get(key);
+    return { kind, ...(from ? { from } : {}) };
+  }
+  /** The game's time at the pause, the level, this moment's numbers by id (codeMoment). */
+  function momentNumbers(): { time?: number; level?: string; moment?: Record<string, number> } {
+    const out: { time?: number; level?: string; moment?: Record<string, number> } = {};
+    if (momentShotAt) out.time = Math.round(momentShotAt.time * 100) / 100;
+    const lv = cpLevel();
+    if (lv) out.level = lv;
+    const vals = (momentVals ?? []).filter((v) => typeof v.v === 'number' && Number.isFinite(v.v));
+    if (vals.length) out.moment = Object.fromEntries(vals.map((v) => [v.id, v.v as number]));
+    return out;
+  }
+  /**
+   * One Esc of the paused moment (pause-ask fix △4, decided 2026-11-02): the open card ("what Claude gets", Before /
+   * After) first, then ◎ marking, then nothing (the field lets go / the page's own Esc). The same from the field and
+   * from the page. WHY: from the field, Esc used to leave the field with the card still open over the reply's buttons
+   * (▶ Try could not be pressed), and ◎ stayed on through two Escs.
+   */
+  function momentEscape(): boolean {
+    if (momentGets.isOpen()) {
+      momentGets.close();
+      return true;
+    }
+    if (momentCompare.isOpen()) {
+      momentCompare.close();
+      return true;
+    }
+    if (momentMarks.on()) {
+      momentMarks.set(false);
+      return true;
+    }
+    return false;
+  }
+  /** Open / close "what Claude gets" (moment-gets.ts) from the field's picture. */
+  function toggleGets() {
+    if (momentGets.isOpen()) return momentGets.close();
+    if (!moment || !momentShotAt) return;
+    const marks = momentMarks.list();
+    const keys = momentObjectKeys(group.length > 1 ? group.slice() : selected ? [selected] : [], marks);
+    // "moved by you" only for what the person moved (Save · N counts it): fix △1.
+    const mine = worldModel.changedKeys();
+    const objects = keys.map((k) => {
+      const it = items.find((i) => i.key === k);
+      return { name: it ? shortName(displayName(it, t)) : k, ...momentObjectInfo(k), ...(mine.has(k) ? { mine: true } : {}) };
+    });
+    const values = (momentVals ?? []).filter((v) => typeof v.v === 'number').map((v) => `${v.name} ${momentNumber(v.v as number, v)}${v.unit ? unitText(t, v.unit) : ''}`);
+    const logs = momentAsk?.logs ?? [];
+    const rows = getsRows({ at: clockText(momentShotAt.time, 2), marks, objects, values, level: cpLevel() ?? undefined, near: momentAsk?.near?.length ?? 0,
+      errors: logs.filter((l) => l.level === 'error').length, logs: logs.length, kept: host.offline || !host.askMoment ? 'none' : momentCanCheckpoint ? 'whole' : 'time' },
+      (k, v) => t(k, { ...aiVars(), ...(v ?? {}) }));
+    momentGets.open(rows, t('gets.title', aiVars()));
   }
   /** "▴ Earlier · N" over the field: the talk of this pause before the reply shown on the line. */
   function renderMomentEarlier() {
@@ -4209,6 +4608,11 @@ export function start(host: StudioHost) {
   function onBridge(m: BridgeToShell) {
     if (timeline.onMessage(m)) return;
     if (m.type === 'studio:placement/at-is') return motionDrag.answer(m.id, m.key);
+    if (m.type === 'studio:moment/mark-is') {
+      const w = markWaits.get(m.id);
+      if (w) (markWaits.delete(m.id), w({ key: m.key, ...(m.world ? { world: m.world } : {}), ...(m.keys ? { keys: m.keys } : {}) }));
+      return;
+    }
     // UI stages 2–3: the screens, an element's look, the theme (ui-wire.ts).
     if (uiWire.handle(m)) return;
     // studio-canvas-ui stage 2: the UI seen but not selectable yet — the frames' places, a press beside every UI box.
@@ -4325,6 +4729,13 @@ export function start(host: StudioHost) {
           postGame({ type: 'studio:moment/load', moment: cpOpening.moment, name: cpOpening.name, time: cpOpening.time, scene: worldItems.map((i) => i.key) });
           cpOpening = null;
         }
+        // ▶ Try from 0:05.02 (pause-ask stage 3): the ask's moment before the first frame (when kept whole), and the
+        // page holds itself at that second — at once (its clock starts there), or when a new run gets there.
+        if (playing && tryOpening) {
+          if (tryOpening.moment !== undefined) postGame({ type: 'studio:moment/load', moment: tryOpening.moment, name: '', time: tryOpening.time, scene: worldItems.map((i) => i.key) });
+          postGame({ type: 'studio:play/pause', at: tryOpening.time });
+          tryOpening = null;
+        }
         if (playing) {
           playAskOn = true;
           playMark = !phone();
@@ -4371,6 +4782,11 @@ export function start(host: StudioHost) {
         // one heard while it ran: that is not a step).
         if (playPaused && playHeard && !playHeard.running && !m.running && m.t > playHeard.t + 1e-4) momentBar.stepped();
         playHeard = { t: m.t, rate: m.rate, running: m.running, at: performance.now() };
+        // pause-ask stage 1: the held clock's first word is the picture's exact time (later steps leave it).
+        if (playPaused) {
+          const at = shotTimeOnClock(momentShotAt, m);
+          if (at !== momentShotAt) (momentShotAt = at, renderMomentShot());
+        }
         momentBar.render();
         // A Next frame moved the game on: this moment's values may have changed (pause-edit stage 2).
         if (playPaused) postGame({ type: 'studio:moment/ask' });
@@ -5146,6 +5562,11 @@ export function start(host: StudioHost) {
   let momentChat = '';
   let momentTalk: ChatModel = { turns: [], awaiting: false, live: null };
   let momentHere: { key: string; label: string; at: Pose; to: Pose; time: number } | null = null;
+  // pause-ask stage 1: the time of the picture in the field (moment-ask.ts shotTimeOnClock: estimated at play/paused,
+  // exact at the held clock's first play/time; a Next frame does not move it — the picture is the pause's).
+  let momentShotAt: { time: number; exact: boolean } | null = null;
+  // pause-ask stage 2: the code line that first added each object (play/paused `from`; three.js only for now).
+  let momentFrom = new Map<string, CodeFrom>();
   let momentEarlierOpen = false;
   let momentList: Item[] | null = null;
   // This moment's values (pause-edit stage 2; moment-values.ts): as last heard (undefined = not yet, null = the game has
@@ -5164,6 +5585,20 @@ export function start(host: StudioHost) {
   let momentCanCheckpoint = false;
   let cpOpening: { id: string; name: string; moment: unknown; time: number } | null = null;
   let cpPlayed: { id: string; name: string } | null = null;
+  // pause-ask stage 3 (2026-11-02; moment-try.ts): each paused ask's moment as the editor knows it (request id → the
+  // ask's second, whether the whole moment was kept (save / load) and the frame it was asked from, marks drawn on — the
+  // Before of Before / After); the Try being opened (sent at the new page's hello); the Try page's run (its first pause
+  // is the Try's); what to carry over the reload (the talk, the marks, whether Before / After waits for the picture);
+  // and the last Try's picture (the After).
+  // `out`: what the game made that the ask was about (fix ✕2; tryWordsOf). `from`: the AI-undo snapshot taken for this
+  // ask (fix △6: ↶ Undo puts back THIS ask's change, one at a time).
+  // `late` (fix △7): the asking run's PlayClock.late at the pause (s), to compare with the Try's new run.
+  const askBacks = new Map<string, { time: number; exact: boolean; before?: string; asked: string; out?: string; late?: number }>();
+  let tryOpening: { id: string; time: number; moment?: unknown } | null = null;
+  let tryRun: { id: string; time: number; exact: boolean } | null = null;
+  let tryKeep: { chat: string; talk: ChatModel; marks: MomentMark[]; asks: string[]; compare: boolean } | null = null;
+  // `late` (fix △7): the Try page's PlayClock.late at its pause, s.
+  let tried: { id: string; time: number; exact: boolean; after?: string; late?: number } | null = null;
   let cpFailed: { id: string; name: string; error: string; logs: PlayLog[] } | null = null;
   type CpAsk = { intent: 'moment-save' | 'moment-load'; checkpoint?: { id?: string; name?: string; error?: string; logs?: PlayLog[] } };
   let cpAsk: CpAsk | null = null;
@@ -5570,6 +6005,8 @@ export function start(host: StudioHost) {
     if (gameOrigin !== location.origin) u.searchParams.set(LOCAL_PATHS.parentParam, location.origin);
     // A Play page opened from a checkpoint (stage 3): it holds its first frame for the moment (bridge/moment-load.ts).
     if (playing && cpOpening) u.searchParams.set(LOCAL_PATHS.momentParam, '1');
+    // …and a Try from an ask's moment (pause-ask stage 3) that kept the whole moment (save / load).
+    if (playing && tryOpening && tryOpening.moment !== undefined) u.searchParams.set(LOCAL_PATHS.momentParam, '1');
     // A game with levels opens on the level shown (edit and Play alike; bridge/levels.ts reads these).
     if (levels.active && levels.current) {
       u.searchParams.set(LOCAL_PATHS.levelParam, levels.current);
@@ -5584,6 +6021,10 @@ export function start(host: StudioHost) {
     // Checkpoints (stage 3): this page opens from one (cpOpening, sent at its hello), or from the start (none).
     if (!playing) cpOpening = null;
     cpPlayed = playing && cpOpening ? { id: cpOpening.id, name: cpOpening.name } : null;
+    // pause-ask stage 3: a Try is this page's run only (another Reload / Play is not a Try).
+    if (!playing) tryOpening = tryKeep = null;
+    tryRun = playing && tryOpening ? { id: tryOpening.id, time: tryOpening.time, exact: tryOpening.moment !== undefined } : null;
+    if (!tryRun) tryKeep = null;
     bridgeAlive = false;
     timeline.reset();
     // A new game page asks again (play/hello), and starts unpaused (and at 1×: a new page's clock).
@@ -5660,6 +6101,15 @@ export function start(host: StudioHost) {
       uiMissing.hide(true);
       return true;
     }
+    // pause-ask stage 2 (moment-marks.ts, moment-gets.ts): while paused, N turns ◎ Mark on / off (M is Move); Esc puts
+    // marking down and closes "what Claude gets" first; ⌘Z takes the last mark away before it undoes a move (the mark
+    // is the newest thing the person did on this frame — marking, then ⌘Z, should never move the boss back).
+    if (moment && !mod && !e.shift && k === 'n') {
+      momentMarks.set(!momentMarks.on());
+      return true;
+    }
+    if (!mod && k === 'escape' && momentEscape()) return true;
+    if (moment && mod && k === 'z' && !e.shift && momentMarks.undo()) return true;
     // The timeline's keys (K sets a key; Delete / ⌘C / ⌘V / Space / ← → when the plate was the last thing pressed).
     if (timeline.onKey(e)) return true;
     if (mod && k === 'z') {
@@ -5874,7 +6324,7 @@ export function start(host: StudioHost) {
   const stepKey = (e: KeyboardEvent) => (e.key === '.' || e.code === 'Period') && !e.ctrlKey && !e.metaKey && !e.altKey && !e.isComposing;
   const typingIn = (e: KeyboardEvent) => /^(INPUT|TEXTAREA|SELECT)$/.test((e.target as HTMLElement | null)?.tagName || '') || !!(e.target as HTMLElement | null)?.isContentEditable;
   window.addEventListener('keydown', (e) => {
-    if (!playing || !playPaused || !stepKey(e) || typingIn(e)) return;
+    if (!playing || !playPaused || !stepKey(e) || (typingIn(e) && !askPasses(e))) return;
     e.preventDefault();
     if (!e.repeat) postGame({ type: 'studio:play/step', on: true });
   }, true);
@@ -5900,7 +6350,8 @@ export function start(host: StudioHost) {
 
   window.addEventListener('keydown', (e) => {
     const tag = (e.target as HTMLElement | null)?.tagName;
-    const typing = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
+    // The moment's field with the cursor put there by the pause and nothing typed: not typing yet (stage 2 fix 1).
+    const typing = (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') && !askPasses(e);
     // "This UI can't be selected yet" (studio-canvas-ui stage 2) goes with Esc wherever the focus is: a press in the game
     // leaves the focus where it was (the ask box after a request, the editor's own pointer handling keeps it), and the
     // line said Esc would take it away. The field's own Esc (it lets go of the focus) still happens.
@@ -6277,7 +6728,13 @@ export function start(host: StudioHost) {
     // line there, "In Claude Code, your AI makes the changes you type here. Get Game Studio →"; it was taken out after a try
     // on 2026-10-18 ("what is this for? I'm already using Game Studio — get what?"). The demo's top line alone says it
     // isn't connected to an AI (src/hosts/browser/text.ts). Don't put a pitch or a link back down here without asking.
-    if (!host.offline && placementPanel.askEl.parentElement !== askSlot) askSlot.append(placementPanel.askEl);
+    // …except while paused (pause-ask stage 1, decided 2026-11-02 = show it): the paused moment's field IS the feature to try
+    // ("stop the scene, tell the AI"), so the demo shows it there; a send says in one line that the demo isn't connected
+    // (the `ask` dep above). Its Edit keeps the empty foot.
+    const askHere = askFieldShown({ offline: !!host.offline, moment });
+    askSlot.hidden = !askHere;
+    if (askHere && placementPanel.askEl.parentElement !== askSlot) askSlot.append(placementPanel.askEl);
+    renderMomentShot();
     // The AI's reply (and the news card's other lines): over the game's top on a phone / the side window (plan step 7:
     // it was the top block of the stack at the foot, over the card), in the dock over the field on PC. It still fades
     // by itself (line-fade.ts) and focusing the field brings it back.

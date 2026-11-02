@@ -1,4 +1,4 @@
-/* KUMODeck Game Studio 0.1.76 — MIT License — built file, edit src/ instead */
+/* KUMODeck Game Studio 0.1.77 — MIT License — built file, edit src/ instead */
 (() => {
 const __defs = [];
 const __cache = [];
@@ -130,6 +130,7 @@ __defs[1] = function (__exports) {
     holdAfterRender: false,
     holdAfterCamera: null, // ready({ camera }) before that camera drew: hold after its first render (see ready())
     placed: false,         // true from that render until the hold: the rest of that frame is not drawn (see wrapRender)
+    addedAt: new WeakMap(), // Object3D → the Error made when the game first added it (pause-ask stage 2: its code place)
     screen: null,          // who drew the picture the canvas holds: { by: 'game' | 'studio', w, h } (§5 noteDraw, pause-light)
     setTimeout: nativeTimeout // the browser's own (see above)
   };
@@ -169,6 +170,14 @@ __defs[1] = function (__exports) {
     proto.add = function () {
       for (var i = 0; i < arguments.length; i++) {
         try { guessModel(arguments[i]); } catch (e) { /* best effort */ }
+        // pause-ask stage 2 (2026-11-02; adapter.js fromOf): where in the game's code this object was first added — an
+        // Error kept, not its text: V8 formats the stack only when it is read (at a pause, for the objects asked
+        // about), so a game adding bullets every frame pays for a small object, not a string. First add only (a
+        // re-add after a remove is the same object from the same code). A hint for the AI ("from src/boss.js:42").
+        try {
+          var c = arguments[i];
+          if (c && typeof c === 'object' && !state.addedAt.has(c)) state.addedAt.set(c, new Error('studio:add'));
+        } catch (e) { /* best effort */ }
       }
       return origAdd.apply(this, arguments);
     };
@@ -2241,6 +2250,74 @@ __def(__exports, "groundKeys", () => groundKeys);
 };
 __defs[11] = function (__exports) {
 'use strict';
+// ../adapters/three/code-from.js
+
+// Where in the game's code an object came from (pause-ask stage 2, 2026-11-02; the `from` hint of the handoff). Decided
+// 2026-11-02: the AI should judge "from the code AND from the picture" what is going on in the paused
+// moment. The picture it already gets; this is the code's half: boot.js keeps an Error from the moment the game first
+// added each object (Object3D.prototype.add), and this reads its stack for the first line that is the GAME's — not
+// Game Studio's own scripts (/__studio/), not three.js, not a package (node_modules, a bundler's deps), not another
+// origin (a CDN). That line is "the code that put this object in the scene": a boss spawned in src/boss.js:42.
+//
+// A HINT, never a fact the editor acts on: the add may be in a helper ("addToScene(o)" in src/util.js), a bundled game
+// has one big file, a minified one has line 1. The request says "from" and the AI opens it and looks; wrong is harmless,
+// absent is fine (the AI searches by the object's key, as before). Plain JS, no imports: test/code-from.test.mjs.
+
+/** Library / tooling files that are never "the game's line". */
+const NOT_GAME = /(^|\/)(__studio|node_modules|@vite|@fs|@id)\/|(^|\/)three(\.module|\.core|\.webgpu|\.cjs)?(\.min)?\.js$|(^|\/)(OrbitControls|GLTFLoader|BufferGeometryUtils)\.js$/;
+
+/**
+ * The game's first frame in `stack` (an Error's stack text, Chrome / Safari / Firefox forms), as a path inside the game
+ * folder and a line: { file: 'src/boss.js', line: 42 }, or null.
+ * @param {string} stack
+ * @param {string} origin  the page's origin ("http://localhost:5173"): only its files are the game's
+ */
+function codeFromStack(stack, origin) {
+  if (typeof stack !== 'string' || !stack) return null;
+  const lines = stack.split('\n');
+  for (const l of lines) {
+    const m = /((?:https?|file):\/\/[^\s()@]+?):(\d+)(?::(\d+))?\)?\s*$/.exec(l.trim());
+    if (!m) continue;
+    let u;
+    try {
+      u = new URL(m[1]);
+    } catch {
+      continue;
+    }
+    if (origin && u.origin !== origin) continue;
+    let file;
+    try {
+      file = decodeURIComponent(u.pathname).replace(/^\/+/, '');
+    } catch {
+      continue;
+    }
+    if (!file || NOT_GAME.test(file) || file.split('/').some((seg) => seg.startsWith('.') || seg === '..')) continue;
+    const line = Number(m[2]);
+    if (!Number.isInteger(line) || line < 1) continue;
+    return { file: file.slice(0, 200), line };
+  }
+  return null;
+}
+
+/**
+ * The code place of `obj` or the nearest of its parents that the game added itself (the key may be a mesh inside the
+ * group the game added). `addedAt` = boot.js's WeakMap of Errors.
+ */
+function codeFromObject(obj, addedAt, origin) {
+  for (let o = obj, i = 0; o && i < 8; o = o.parent, i++) {
+    const err = addedAt && addedAt.get(o);
+    if (!err) continue;
+    const at = codeFromStack(err.stack, origin);
+    if (at) return at;
+  }
+  return null;
+}
+
+__def(__exports, "codeFromStack", () => codeFromStack);
+__def(__exports, "codeFromObject", () => codeFromObject);
+};
+__defs[12] = function (__exports) {
+'use strict';
 // ../adapters/three/adapter.js
 
 /**
@@ -2266,6 +2343,7 @@ const { assetsOf: assetsOfImpl } = __require(7);
 const { focusSphere, sceneSphere } = __require(8);
 const { castSurface, castSurfaceAll, solidBox, surfaceBelowHit, surfaceMeshes } = __require(9);
 const { groundKeys } = __require(10);
+const { codeFromObject } = __require(11);
 
 const DEG = Math.PI / 180;
 const S_MIN = 0.01;
@@ -3523,6 +3601,17 @@ function createThreeAdapter({ scene, renderer, camera }) {
       return o ? assetsOfImpl(o, boot, document.baseURI) : [];
     },
 
+    /** pause-ask stage 2 (CONTRACT.md §1.14 `from`): the game's code line that first added this object, or null. */
+    fromOf(key) {
+      const o = objectOf(key);
+      if (!o || !boot.addedAt) return null;
+      try {
+        return codeFromObject(o, boot.addedAt, location.origin);
+      } catch {
+        return null;
+      }
+    },
+
     /**
      * Copy (CONTRACT.md §1.8): a clone of the object (meshes share geometry and materials) added to the same parent,
      * at the same pose, listed under `newKey` through userData.studioKey. Marks inside the clone are dropped so its
@@ -3748,7 +3837,7 @@ function createThreeAdapter({ scene, renderer, camera }) {
 __def(__exports, "whenThreeReady", () => whenThreeReady);
 __def(__exports, "createThreeAdapter", () => createThreeAdapter);
 };
-__defs[12] = function (__exports) {
+__defs[13] = function (__exports) {
 'use strict';
 // ../adapters/three/index.ts
 
@@ -3767,7 +3856,7 @@ __defs[12] = function (__exports) {
 // adapter knows the canvas rectangle. Converting here keeps adapter.js and its
 // own tests unchanged; folding the conversion into adapter.js later is fine.
                                                                      
-const { createThreeAdapter } = __require(11);
+const { createThreeAdapter } = __require(12);
 const { project, rayFromCamera, rayPlaneY, viewProjOf } = __require(3);
 
                      
@@ -3840,6 +3929,8 @@ function fitThreeAdapter(raw     , canvas                   )                {
     remove: (key) => raw.remove(key),
     putBack: (key) => raw.putBack(key),
     assetsOf: (key) => raw.assetsOf(key),
+    // pause-ask stage 2 (2026-11-02; code-from.js): the game's code line that first added it — the request's `from`.
+    fromOf: (key) => raw.fromOf?.(key) ?? null,
     player: () => raw.player(),
     // For game tools: the edit camera's ray onto a horizontal plane, and the
     // way back. Only while editing (the edit camera exists then).
@@ -3921,7 +4012,7 @@ const threeProbe               = {
 __def(__exports, "fitThreeAdapter", () => fitThreeAdapter);
 __def(__exports, "threeProbe", () => threeProbe);
 };
-__defs[13] = function (__exports) {
+__defs[14] = function (__exports) {
 'use strict';
 // ../contract.ts
 
@@ -4459,6 +4550,12 @@ const CONTRACT_VERSION = 1;
                                                                      
                                                                                       
                                                   
+     
+                                                                                                                       
+                                                                                                                       
+                                                             
+     
+                                        
 
                                              
      
@@ -5161,6 +5258,11 @@ const MSG_PREFIX = 'studio:';
                                                                                                                    
      
                                                                      
+     
+                                                                                                                         
+                                                                                                                    
+     
+                                                                                                               
                                                                                        
                                                               
                                                                                                    
@@ -5273,7 +5375,13 @@ const MSG_PREFIX = 'studio:';
                                                                                                                       
                                        
      
-                                               
+                                              
+         
+                                                                                                                      
+                                                                                                                       
+                                                                                                      
+         
+                   
      
                                                                                                                       
                                                                      
@@ -5542,6 +5650,12 @@ const MSG_PREFIX = 'studio:';
                                                                                                                                          
                                                                                  
                                                                       
+     
+                                                                                                                        
+                                                                                                                      
+                              
+     
+                                                                                                        
                                                                                            
                                                                   
                                                    
@@ -5569,7 +5683,14 @@ const MSG_PREFIX = 'studio:';
                                                                        
      
                                                                                                 
-                                                                                                        
+                                                                                                       
+                                                                                                              
+                                      
+         
+                                                                                                                            
+                                                                                                                
+         
+                     
      
                                                                                                                        
                                                                                                                         
@@ -5636,6 +5757,33 @@ const MSG_PREFIX = 'studio:';
  * 'motion' = a motion from the draft moves it. Anything else was placed: moving it is the same as in Edit.
  */
                                                    
+
+/** A place in the game's code (pause-ask stage 2): a path inside the game folder and a line, 1-based. */
+                           
+               
+               
+ 
+
+/**
+ * A mark the person put on the paused frame for the AI (pause-ask stage 2, 2026-11-02; README §2 `marks`). `n` = its
+ * number on the frame and in the field (①). `screen` = where in the picture, 0–1 of its width / height: a point [x, y]
+ * or an area [x0, y0, x1, y1]. `world` = the point on the ground (3D [x, y, z] on y 0; 2D the stage point) when the
+ * adapter could tell; `key` = the object under the point; `keys` = the objects inside an area.
+ */
+                             
+            
+                         
+                   
+                   
+               
+                  
+ 
+
+/**
+ * What an object of a paused moment is (pause-ask stage 2; the request's `objects[].kind`, from MomentKind): 'placed' =
+ * the person placed it (placement.json), 'moves' = the game or a motion moves it, 'made' = the game made it since Play.
+ */
+                                                           
 
 /** One turn of the chat over a paused game, as a request carries the talk so far (pause, 2026-10-22). */
                            
@@ -5712,6 +5860,10 @@ function isStudioMessage(x         )                     {
                                                                                                            
      
                    
+                                                                                                             
+                          
+                                                                                                                        
+                  
  
 
 /** What the shell hands to host.request(). */
@@ -5824,6 +5976,23 @@ function isStudioMessage(x         )                     {
                  
                                                                             
      
+                                                                                                                        
+                                                                                                                         
+                                                                                                                          
+                                                                                                    
+     
+                       
+                      
+                
+                 
+                                  
+     
+                                                                                                                          
+                                                                                                                       
+                                                                                                                
+     
+                 
+     
                                                                                                                       
                                                                                                                       
                                    
@@ -5908,6 +6077,14 @@ function isStudioMessage(x         )                     {
                    
                                                           
                 
+                                                                                                                      
+                   
+     
+                                                                                                                    
+                                                                                                                  
+                                                                               
+     
+                   
      
                                                                                                                  
                                                                                                                     
@@ -6042,6 +6219,11 @@ function isStudioMessage(x         )                     {
                                                                                                                         
      
                                         
+     
+                                                                                                                  
+                                                                                                                       
+     
+                                                           
  
 
 /** The longest saved moment kept (JSON characters): a game's state, not its assets — 1 MB is far past any we know. */
@@ -6066,6 +6248,24 @@ const CHECKPOINT_MAX_CHARS = 1_000_000;
                   
                                                                                 
                 
+ 
+
+/** What the editor sends as a paused ask's `back` (pause-ask stage 3): the moment the ask was asked from. */
+                          
+                                                                            
+               
+                        
+                                                                                        
+                   
+                                                                                                         
+                                             
+ 
+
+/** An ask's moment as the host gives it back (.studio/asks/<id>.json, src/server/ask-moments.mjs). */
+                                            
+             
+             
+                       
  
 
 /** A checkpoint as ▶ Play ⌄ lists it: its file id and the file without the moment. */
@@ -7035,7 +7235,7 @@ __def(__exports, "IGNORED_DIRS", () => IGNORED_DIRS);
 __def(__exports, "UI", () => UI);
 __def(__exports, "LOCAL_PATHS", () => LOCAL_PATHS);
 };
-__defs[14] = function (__exports) {
+__defs[15] = function (__exports) {
 'use strict';
 // ../core/loads.ts
 
@@ -7168,7 +7368,7 @@ function installLoads(win                             = window)          {
 
 __def(__exports, "installLoads", () => installLoads);
 };
-__defs[15] = function (__exports) {
+__defs[16] = function (__exports) {
 'use strict';
 // ../core/time.ts
 
@@ -7437,15 +7637,15 @@ function installTime(opts             )                  {
 __def(__exports, "frameGate", () => frameGate);
 __def(__exports, "installTime", () => installTime);
 };
-__defs[16] = function (__exports) {
+__defs[17] = function (__exports) {
 'use strict';
 // ../core/index.ts
 
 // src/core: shared services inside the game page (time control, load log).
 // Installed by the edit script before any game code runs.
                                                   
-const { installLoads } = __require(14);
-const { installTime } = __require(15);
+const { installLoads } = __require(15);
+const { installTime } = __require(16);
 
                                            
                         
@@ -7457,7 +7657,7 @@ function installCore(opts             )       {
 
 __def(__exports, "installCore", () => installCore);
 };
-__defs[17] = function (__exports) {
+__defs[18] = function (__exports) {
 'use strict';
 // ../core/play-timers.ts
 
@@ -7696,7 +7896,7 @@ function installTimerHold(win                            , real                 
 __def(__exports, "makeTimerHold", () => makeTimerHold);
 __def(__exports, "installTimerHold", () => installTimerHold);
 };
-__defs[18] = function (__exports) {
+__defs[19] = function (__exports) {
 'use strict';
 // ../core/play-clock.ts
 
@@ -7718,7 +7918,7 @@ __defs[18] = function (__exports) {
 // lists what a pause still does not stop.
 
 const { nativeClearTimeout, nativeDateNow, nativeSetTimeout } = __require(0);
-const { installTimerHold } = __require(17);
+const { installTimerHold } = __require(18);
 
                             
                                                                         
@@ -7734,6 +7934,15 @@ const { installTimerHold } = __require(17);
                                                                                                                  
                             
                                                                                                            
+                        
+     
+                                                                                                        
+     
+                           
+     
+                                                                                                              
+                                                                                                                      
+     
                         
                                                                                                                      
                     
@@ -7752,6 +7961,17 @@ const { installTimerHold } = __require(17);
  * stopped time on by one frame. (Before pause-edit, 2026-10-28, it was `t − skipped` with no speed; the same numbers
  * at 1×.)
  */
+/**
+ * `late`'s cut, ms of game time per frame (pause-ask fix △7, decided 2026-11-02). WHY: games cut a long frame's step so a
+ * hitch cannot throw things across the level — Neon Run at 0.05 s (`Math.min(dt, 0.05)`), three.js examples at
+ * 0.05–0.1. On a slow phone the frames right after loading are long, so the game's own clock falls behind this one: ▶ Try
+ * "same time, new run" paused at 0:05.40 by this clock while the game was at 0:03 (no boss yet; the first walk's △7).
+ * Counting it lets the editor say so ("the game may be 2.1 s behind here"). Tried first (same day): cutting every frame
+ * to 50 ms for the game itself, so both clocks agree — it slowed timer-driven games wherever frames are slow (a busy
+ * headless Chrome: the timers ran at a tenth), so it was taken out. 50 = the smallest cut we know of.
+ */
+const LATE_CUT_MS = 50;
+
 function makeClock(real              ) {
   const start = real();
   let g0 = start;
@@ -7760,7 +7980,23 @@ function makeClock(real              ) {
   // While stopped: the game's time it stopped at (moved on by advance()); null = going.
   let held                = null;
   const going = (t        ) => g0 + (t - r0) * rate;
+  // `late` (LATE_CUT_MS): the last frame's game time and the sum of what went past the cut.
+  let lastFrame                = null;
+  let late = 0;
   return {
+    frame(t        ) {
+      if (held !== null) {
+        lastFrame = null;
+        return Math.min(going(t), held);
+      }
+      const now = going(t);
+      if (lastFrame !== null && now - lastFrame > LATE_CUT_MS) late += now - lastFrame - LATE_CUT_MS;
+      lastFrame = now;
+      return now;
+    },
+    get late() {
+      return late;
+    },
     stop() {
       if (held === null) held = going(real());
     },
@@ -7853,14 +8089,19 @@ function installPlayClock(win                            )            {
       return c.skipped;
     },
     at: c.at,
+    frame: c.frame,
+    get late() {
+      return c.late;
+    },
     realNow,
   };
 }
 
+__def(__exports, "LATE_CUT_MS", () => LATE_CUT_MS);
 __def(__exports, "makeClock", () => makeClock);
 __def(__exports, "installPlayClock", () => installPlayClock);
 };
-__defs[19] = function (__exports) {
+__defs[20] = function (__exports) {
 'use strict';
 // ../core/port2d.ts
 
@@ -7874,7 +8115,7 @@ __defs[19] = function (__exports) {
 // direct engine calls (read/write x, y, rotation, scale; report a screen
 // rectangle), which an AI can write correctly from one example and which the
 // self-check can verify.
-const { LIMITS } = __require(13);
+const { LIMITS } = __require(14);
                                        
 
                                                             
@@ -8355,7 +8596,7 @@ __def(__exports, "BACKDROP_NAME", () => BACKDROP_NAME);
 __def(__exports, "backdropRun", () => backdropRun);
 __def(__exports, "adapterFromPort2D", () => adapterFromPort2D);
 };
-__defs[20] = function (__exports) {
+__defs[21] = function (__exports) {
 'use strict';
 // ../loader/studio-placement.js
 
@@ -10693,7 +10934,7 @@ __def(__exports, "placeUi", () => placeUi);
 __def(__exports, "uiOffset", () => uiOffset);
 __def(__exports, "findByKey", () => findByKey);
 };
-__defs[21] = function (__exports) {
+__defs[22] = function (__exports) {
 'use strict';
 // ../adapters/ui/adapter.js
 
@@ -10714,7 +10955,7 @@ __defs[21] = function (__exports) {
 // UI in stage 1: rotatable false). parentToScreen maps that offset space to the screen: origin = where the middle
 // of the element would be at offset 0, one offset px = k screen px (k = the zoom of the parent, e.g. a HUD scaled to
 // fit the window).
-const { placeUi, uiOffset } = __require(20);
+const { placeUi, uiOffset } = __require(21);
 
 const KEY = /^[A-Za-z0-9_:#.\-\/]{1,80}$/;
 /** Scale bounds of a UI element: the same as placement.json `ui` (src/schema LIMITS.minUiScale / maxUiScale). */
@@ -10835,7 +11076,7 @@ function createUiPort(win, opts = {}) {
 
 __def(__exports, "createUiPort", () => createUiPort);
 };
-__defs[22] = function (__exports) {
+__defs[23] = function (__exports) {
 'use strict';
 // ../adapters/ui/index.ts
 
@@ -10849,8 +11090,8 @@ __defs[22] = function (__exports) {
 // The UI seat (CONTRACT.md §1.1): the bridge asks the game's own studio.registerUI() ports first, then this one.
                                                                
                                                 
-const { adapterFromPort2D } = __require(19);
-const { createUiPort } = __require(21);
+const { adapterFromPort2D } = __require(20);
+const { createUiPort } = __require(22);
 
 /** A UI-seat adapter from any Port2D (the built-in DOM one, or a game's registerUI port). */
 function uiAdapterFromPort(port        , core      , win        )                {
@@ -10880,7 +11121,7 @@ __def(__exports, "uiAdapterFromPort", () => uiAdapterFromPort);
 __def(__exports, "findDomUi", () => findDomUi);
 __def(__exports, "findDomUiPort", () => findDomUiPort);
 };
-__defs[23] = function (__exports) {
+__defs[24] = function (__exports) {
 'use strict';
 // ui-edge.ts
 
@@ -10899,7 +11140,7 @@ __defs[23] = function (__exports) {
 //     `from` / `at` (SKILL.md), so the element keeps to that edge on every window size.
 // The HTML UI's screen is the game page's window (the iframe): its CSS px, top-left 0, 0.
                                                                 
-const { uiAtOf, uiNearest } = __require(20);
+const { uiAtOf, uiNearest } = __require(21);
 
                       
             
@@ -11050,7 +11291,7 @@ __def(__exports, "paintEdgeLine", () => paintEdgeLine);
 __def(__exports, "edgeOf", () => edgeOf);
 __def(__exports, "createUiEdges", () => createUiEdges);
 };
-__defs[24] = function (__exports) {
+__defs[25] = function (__exports) {
 'use strict';
 // code-ui.ts
 
@@ -11077,7 +11318,7 @@ __defs[24] = function (__exports) {
 // keeps them until the AI writes them into the code on Save.
                                                                                                                                          
                                              
-const { paintEdgeLine } = __require(23);
+const { paintEdgeLine } = __require(24);
 
 /** A codeUi entry as the loader keeps it (src/loader/studio-placement.js codeUi). The methods are the game's copy's. */
                  
@@ -11785,12 +12026,12 @@ function mergeUiPorts(dom               , code        )         {
   };
 }
 
-__def(__exports, "placeWords", () => __require(23).placeWords);
+__def(__exports, "placeWords", () => __require(24).placeWords);
 __def(__exports, "codeUiEntries", () => codeUiEntries);
 __def(__exports, "createCodeUi", () => createCodeUi);
 __def(__exports, "mergeUiPorts", () => mergeUiPorts);
 };
-__defs[25] = function (__exports) {
+__defs[26] = function (__exports) {
 'use strict';
 // play-shot.ts
 
@@ -12008,7 +12249,7 @@ function shootPage(win     , skip                          , area               
 __def(__exports, "SHOT_W", () => SHOT_W);
 __def(__exports, "shootPage", () => shootPage);
 };
-__defs[26] = function (__exports) {
+__defs[27] = function (__exports) {
 'use strict';
 // ui-found.ts
 
@@ -12035,7 +12276,7 @@ __defs[26] = function (__exports) {
 // All of it is the editor's own drawing in the game page (a shadow root marked data-studio-ui, so the game's CSS cannot
 // reach it and play-shot.ts's painter leaves it out), gone when editing ends.
                                                              
-const { shootPage } = __require(25);
+const { shootPage } = __require(26);
 
                        
             
@@ -12464,7 +12705,7 @@ __def(__exports, "markHudCanvases", () => markHudCanvases);
 __def(__exports, "findUi", () => findUi);
 __def(__exports, "createUiFound", () => createUiFound);
 };
-__defs[27] = function (__exports) {
+__defs[28] = function (__exports) {
 'use strict';
 // selfcheck.ts
 
@@ -12476,7 +12717,7 @@ __defs[27] = function (__exports) {
 // after an adapter is found the bridge runs a few cheap tests on one object,
 // puts it back exactly, and reports which promise is broken. The shell shows
 // the result; the host hands it to the AI (local: .studio/check.md).
-const { KEY_RE } = __require(13);
+const { KEY_RE } = __require(14);
                                              
 
                                                
@@ -12724,7 +12965,7 @@ __def(__exports, "SECOND_LOOK_MS", () => SECOND_LOOK_MS);
 __def(__exports, "worthASecondLook", () => worthASecondLook);
 __def(__exports, "runSelfCheck", () => runSelfCheck);
 };
-__defs[28] = function (__exports) {
+__defs[29] = function (__exports) {
 'use strict';
 // ../core/rules.ts
 
@@ -12978,7 +13219,7 @@ __def(__exports, "rulesFor", () => rulesFor);
 __def(__exports, "placeOnGrid", () => placeOnGrid);
 __def(__exports, "withRules", () => withRules);
 };
-__defs[29] = function (__exports) {
+__defs[30] = function (__exports) {
 'use strict';
 // ../core/edits.ts
 
@@ -13293,7 +13534,7 @@ function withEdits(inner               )               {
 
 __def(__exports, "withEdits", () => withEdits);
 };
-__defs[30] = function (__exports) {
+__defs[31] = function (__exports) {
 'use strict';
 // hold.ts
 
@@ -13455,7 +13696,7 @@ __def(__exports, "createHoldState", () => createHoldState);
 __def(__exports, "holdItem", () => holdItem);
 __def(__exports, "withHold", () => withHold);
 };
-__defs[31] = function (__exports) {
+__defs[32] = function (__exports) {
 'use strict';
 // group.ts
 
@@ -13483,7 +13724,7 @@ __defs[31] = function (__exports) {
 //   handle and the others get the same move in metres. Turning goes around the
 //   middle of the group on the ground (vertical axis), as a turntable would.
                                                                                                   
-const { canLift } = __require(30);
+const { canLift } = __require(31);
 
                                
                  
@@ -13857,7 +14098,7 @@ __def(__exports, "groupScale", () => groupScale);
 __def(__exports, "groupLift", () => groupLift);
 __def(__exports, "groupPoses", () => groupPoses);
 };
-__defs[32] = function (__exports) {
+__defs[33] = function (__exports) {
 'use strict';
 // game-tools.ts
 
@@ -13869,7 +14110,7 @@ __defs[32] = function (__exports) {
 // points and back, draw on an overlay canvas, and say "my data changed".
 // While a tool is on, pointer presses go to it first (after the handles);
 // whatever it does not use still looks around / selects as usual.
-const { TOOL_ID_RE } = __require(13);
+const { TOOL_ID_RE } = __require(14);
                                              
 
                                
@@ -14079,7 +14320,7 @@ function createToolHost(d              )           {
 
 __def(__exports, "createToolHost", () => createToolHost);
 };
-__defs[33] = function (__exports) {
+__defs[34] = function (__exports) {
 'use strict';
 // ../core/keys.ts
 
@@ -14132,7 +14373,7 @@ function keyStep(key        , shift         , dim             )                {
 
 __def(__exports, "keyStep", () => keyStep);
 };
-__defs[34] = function (__exports) {
+__defs[35] = function (__exports) {
 'use strict';
 // handles.ts
 
@@ -14171,7 +14412,7 @@ __defs[34] = function (__exports) {
 // a box: a box is wider than the object and overlaps its neighbours, so "which
 // one is picked?" was answered by guessing. Adapters that cannot draw objects
 // alone get a rounded box (6 px corners, the radius of every control).
-const { UI } = __require(13);
+const { UI } = __require(14);
 
                                    
 
@@ -15332,7 +15573,7 @@ __def(__exports, "unholdFromEvent", () => unholdFromEvent);
 __def(__exports, "choiceFromEvent", () => choiceFromEvent);
 __def(__exports, "handleFromEvent", () => handleFromEvent);
 };
-__defs[35] = function (__exports) {
+__defs[36] = function (__exports) {
 'use strict';
 // rise.ts
 
@@ -15356,7 +15597,7 @@ __defs[35] = function (__exports) {
 // keys; and two fingers already pan and pinch, so a two-finger "up" would take panning forward away.
 // WHY its own small shadow root (not in handles.ts with the strip): the strip follows the picked object and is
 // gone with nothing picked; these stay in one corner, always. Same glass, same sizes, same theme as the strip.
-const { UI } = __require(13);
+const { UI } = __require(14);
 
                                     
 
@@ -15490,7 +15731,7 @@ function createRiseButtons(doc          )              {
 __def(__exports, "RISE_LABELS", () => RISE_LABELS);
 __def(__exports, "createRiseButtons", () => createRiseButtons);
 };
-__defs[36] = function (__exports) {
+__defs[37] = function (__exports) {
 'use strict';
 // snap.ts
 
@@ -15591,7 +15832,7 @@ __def(__exports, "stepDetent", () => stepDetent);
 __def(__exports, "freeHeld", () => freeHeld);
 __def(__exports, "firstToTouch", () => firstToTouch);
 };
-__defs[37] = function (__exports) {
+__defs[38] = function (__exports) {
 'use strict';
 // outline-slide.ts
 
@@ -15624,7 +15865,7 @@ function slideOf(was                                                       , now
 
 __def(__exports, "slideOf", () => slideOf);
 };
-__defs[38] = function (__exports) {
+__defs[39] = function (__exports) {
 'use strict';
 // ../shell/offset-model.ts
 
@@ -15787,7 +16028,7 @@ __def(__exports, "snapAmount", () => snapAmount);
 __def(__exports, "noAmount", () => noAmount);
 __def(__exports, "rowAt", () => rowAt);
 };
-__defs[39] = function (__exports) {
+__defs[40] = function (__exports) {
 'use strict';
 // code-lists.ts
 
@@ -15950,7 +16191,7 @@ __def(__exports, "kindOf", () => kindOf);
 __def(__exports, "codeAvoidsOf", () => codeAvoidsOf);
 __def(__exports, "namedByLayout", () => namedByLayout);
 };
-__defs[40] = function (__exports) {
+__defs[41] = function (__exports) {
 'use strict';
 // code-place.ts
 
@@ -16009,10 +16250,10 @@ __defs[40] = function (__exports) {
 // lamps, a ring — and the editor only knows the rule by running it.
 // WHY SVG in a shadow root, as timeline-path.ts: the same look in every engine, out of reach of the game's CSS.
                                                                                                                                                                               
-const { codePose, knobValues, relayCodePlace } = __require(20);
+const { codePose, knobValues, relayCodePlace } = __require(21);
 const { nativeSetTimeout } = __require(0);
-const { addOffset, dragAmount, lastOf, movesRank, noAmount, offsetsFull, snapAmount } = __require(38);
-const { kindOf } = __require(39);
+const { addOffset, dragAmount, lastOf, movesRank, noAmount, offsetsFull, snapAmount } = __require(39);
+const { kindOf } = __require(40);
 
 const VIOLET = '#a78bfa';
 const YOU = '#ff6b1a';
@@ -17014,7 +17255,7 @@ __def(__exports, "ruleLags", () => ruleLags);
 __def(__exports, "moveWay", () => moveWay);
 __def(__exports, "createCodePlaceView", () => createCodePlaceView);
 };
-__defs[41] = function (__exports) {
+__defs[42] = function (__exports) {
 'use strict';
 // input.ts
 
@@ -17104,20 +17345,20 @@ __defs[41] = function (__exports) {
 //   the adapter snaps (setSnap on; off when the gesture ends). The height drag stops on the first surface below
 //   (liftDetent); Ctrl or ⌥ held during the drag frees it, and pressing / letting go of them re-reads the drag at
 //   once (no need to move the pointer).
-const { UI } = __require(13);
+const { UI } = __require(14);
                                              
 const { nativeClearTimeout, nativeNow, nativeSetTimeout } = __require(0);
-const { keyStep } = __require(33);
+const { keyStep } = __require(34);
                                              
                                                 
-const { HANDLE_LABELS, LOCK_NOTE, MANY_LABEL, OFF_LINES, gameNote, unholdFromEvent, READOUT_WORDS, TOOL_HINT, choiceFromEvent, createHandles, handleFromEvent, isMotionKey, moreFromEvent, motionFromEvent, toolFromKey } = __require(34);
+const { HANDLE_LABELS, LOCK_NOTE, MANY_LABEL, OFF_LINES, gameNote, unholdFromEvent, READOUT_WORDS, TOOL_HINT, choiceFromEvent, createHandles, handleFromEvent, isMotionKey, moreFromEvent, motionFromEvent, toolFromKey } = __require(35);
                                                      
-const { createRiseButtons } = __require(35);
-const { BREAK_PX, BREAK_PX_TOUCH, firstToTouch, freeHeld, liftDetent } = __require(36);
-const { canLift, offWhy } = __require(30);
-const { beginGroup, groupAnchor, groupLift, groupMove, groupPoses, groupRotate, groupScale } = __require(31);
-const { slideOf } = __require(37);
-const { TOOL_WAY } = __require(40);
+const { createRiseButtons } = __require(36);
+const { BREAK_PX, BREAK_PX_TOUCH, firstToTouch, freeHeld, liftDetent } = __require(37);
+const { canLift, offWhy } = __require(31);
+const { beginGroup, groupAnchor, groupLift, groupMove, groupPoses, groupRotate, groupScale } = __require(32);
+const { slideOf } = __require(38);
+const { TOOL_WAY } = __require(41);
 // What a drag of a rule layout's object does (moveHandle's data.code; studio-to-coords): turn the layout's knobs, stay
 // still (no knob for that way), or move just this one (⌥). 0 = an ordinary move (not a rule's object).
 const CODE_KNOB = 1;
@@ -18822,7 +19063,7 @@ __def(__exports, "screenShareOf", () => screenShareOf);
 __def(__exports, "tappableAt", () => tappableAt);
 __def(__exports, "attachInput", () => attachInput);
 };
-__defs[42] = function (__exports) {
+__defs[43] = function (__exports) {
 'use strict';
 // observe.ts
 
@@ -18880,7 +19121,7 @@ function drivenBetween(before        , after        , dim     )                 
 __def(__exports, "WATCH_MS", () => WATCH_MS);
 __def(__exports, "drivenBetween", () => drivenBetween);
 };
-__defs[43] = function (__exports) {
+__defs[44] = function (__exports) {
 'use strict';
 // timeline-path.ts
 
@@ -18917,7 +19158,7 @@ __defs[43] = function (__exports) {
 // for objects at the top of the scene (every starter's); an object inside a moved group draws its path off by the
 // group's offset (stage 2).
                                                                                                                      
-const { handlesOf, trackAt } = __require(20);
+const { handlesOf, trackAt } = __require(21);
 
 const YOU = '#ff6b1a';
 // "Key" → "Point" in both languages (studio-words-plan, 2026-10-23; the word list, checked with Gemini): the same mark as
@@ -19562,7 +19803,7 @@ function createTimelineView(d                  )               {
 
 __def(__exports, "createTimelineView", () => createTimelineView);
 };
-__defs[44] = function (__exports) {
+__defs[45] = function (__exports) {
 'use strict';
 // code-theme.ts
 
@@ -19654,7 +19895,7 @@ __def(__exports, "codeThemeEntries", () => codeThemeEntries);
 __def(__exports, "createCodeTheme", () => createCodeTheme);
 __def(__exports, "mergeThemeVars", () => mergeThemeVars);
 };
-__defs[45] = function (__exports) {
+__defs[46] = function (__exports) {
 'use strict';
 // ui-extras.ts
 
@@ -19685,8 +19926,8 @@ __defs[45] = function (__exports) {
 // element too (inline); the colour of an element that is its own text (a button) and the fill in the sheet, inline only
 // when the game's own normal rule is more specific than one attribute (the same test as the loader's).
                                                                                                                                        
-const { uiTextNode, uiTextPart } = __require(20);
-const { mergeThemeVars } = __require(44);
+const { uiTextNode, uiTextPart } = __require(21);
+const { mergeThemeVars } = __require(45);
 
                                
               
@@ -20186,7 +20427,7 @@ function createUiExtras(deps              )           {
 __def(__exports, "hexColor", () => hexColor);
 __def(__exports, "createUiExtras", () => createUiExtras);
 };
-__defs[46] = function (__exports) {
+__defs[47] = function (__exports) {
 'use strict';
 // ../shell/layers.ts
 
@@ -20325,14 +20566,14 @@ __def(__exports, "dropTarget", () => dropTarget);
 __def(__exports, "orderOfLayer", () => orderOfLayer);
 __def(__exports, "layerBlocks", () => layerBlocks);
 };
-__defs[47] = function (__exports) {
+__defs[48] = function (__exports) {
 'use strict';
 // ../shell/pose-compare.ts
 
 // Pose rounding and comparison: the file's precision (1 mm or 0.1 px, 1e-4 rad) and "the same pose".
 // Split out of placement-model.ts (2026-10-21) so the game page's ▶ Play code (bridge/play-arrange.ts) compares
 // poses exactly as the editor does without bundling the whole model into studio-edit.js (it added 37 KB).
-const { LIMITS } = __require(13);
+const { LIMITS } = __require(14);
 
 function roundTo(v        , step        )         {
   return Math.round(v / step) * step;
@@ -20378,7 +20619,7 @@ function samePose(a                  , b                  , dim     )          {
 __def(__exports, "roundPose", () => roundPose);
 __def(__exports, "samePose", () => samePose);
 };
-__defs[48] = function (__exports) {
+__defs[49] = function (__exports) {
 'use strict';
 // ../shell/timeline-model.ts
 
@@ -20393,7 +20634,7 @@ __defs[48] = function (__exports) {
 // WHY every change returns a new clip / motion: the undo stack keeps whole motions (`{ kind: 'motion', from, to }`,
 // the change motion-gui added), so one edit = one snapshot, and nothing here mutates what the store holds.
                                                                                                                         
-const { clipAt, motionAt } = __require(20);
+const { clipAt, motionAt } = __require(21);
 
 const CHANNELS                  = ['p', 'r', 's'];
 /** Two keys closer than this (seconds) are the same moment: a new key there replaces the old one. */
@@ -20749,7 +20990,7 @@ __def(__exports, "legacyOffsets", () => legacyOffsets);
 __def(__exports, "libCounted", () => libCounted);
 __def(__exports, "stretchClip", () => stretchClip);
 };
-__defs[49] = function (__exports) {
+__defs[50] = function (__exports) {
 'use strict';
 // play-arrange.ts
 
@@ -20774,10 +21015,10 @@ __defs[49] = function (__exports) {
 // The UI (`ui`) goes through the loader's own placeUi() (shared with the editor's UI layer), which sets the same
 // offset again rather than adding to it.
                                                                                    
-const { hasLayer, orderOfLayer } = __require(46);
-const { samePose } = __require(47);
-const { compose, legacyOffsets } = __require(48);
-const { motionRunner, resolveClip } = __require(20);
+const { hasLayer, orderOfLayer } = __require(47);
+const { samePose } = __require(48);
+const { compose, legacyOffsets } = __require(49);
+const { motionRunner, resolveClip } = __require(21);
 
                                                                                                                                   
                                                                                                    
@@ -20965,7 +21206,7 @@ function moveInPlay(a               , file                 , win                
 __def(__exports, "arrangeInPlay", () => arrangeInPlay);
 __def(__exports, "moveInPlay", () => moveInPlay);
 };
-__defs[50] = function (__exports) {
+__defs[51] = function (__exports) {
 'use strict';
 // play-switch.ts
 
@@ -21019,7 +21260,7 @@ __defs[50] = function (__exports) {
                                                           
                                              
                                           
-const { moveInPlay } = __require(49);
+const { moveInPlay } = __require(50);
                                                    
                                                  
 
@@ -21199,7 +21440,7 @@ function createPlaySwitch(d                )             {
 __def(__exports, "loaderPlay", () => loaderPlay);
 __def(__exports, "createPlaySwitch", () => createPlaySwitch);
 };
-__defs[51] = function (__exports) {
+__defs[52] = function (__exports) {
 'use strict';
 // ../shell/keep-out-model.ts
 
@@ -21408,7 +21649,7 @@ __def(__exports, "changedRows", () => changedRows);
 __def(__exports, "rowKey", () => rowKey);
 __def(__exports, "inBox", () => inBox);
 };
-__defs[52] = function (__exports) {
+__defs[53] = function (__exports) {
 'use strict';
 // keep-out-paint.ts
 
@@ -21623,7 +21864,7 @@ __def(__exports, "nearestOn", () => nearestOn);
 __def(__exports, "boundsOf", () => boundsOf);
 __def(__exports, "clipBounds", () => clipBounds);
 };
-__defs[53] = function (__exports) {
+__defs[54] = function (__exports) {
 'use strict';
 // keep-out.ts
 
@@ -21651,10 +21892,10 @@ __defs[53] = function (__exports) {
 // Space: the layout's root is taken to be the scene (as timeline-path.ts takes an object's parent): a layout inside a
 // moved group draws its areas off by the group's offset.
                                                                                                         
-const { codeSpot, findByKey, knobValues } = __require(20);
-const { addBox, inBox, nextBoxName, rowsOf, setBox } = __require(51);
-const { findKnob, knobRange, knobText, unitText } = __require(40);
-const { B, boundsOf, boxCorners, clipBounds, edgesOf, nearestOn, outlineOf, runsOf, sampleGrid, shapeOf } = __require(52);
+const { codeSpot, findByKey, knobValues } = __require(21);
+const { addBox, inBox, nextBoxName, rowsOf, setBox } = __require(52);
+const { findKnob, knobRange, knobText, unitText } = __require(41);
+const { B, boundsOf, boxCorners, clipBounds, edgesOf, nearestOn, outlineOf, runsOf, sampleGrid, shapeOf } = __require(53);
 
 const YOU = '#ff6b1a';
 const VIOLET = '#a78bfa';
@@ -22414,7 +22655,7 @@ function createKeepOutView(d                 )              {
 
 __def(__exports, "createKeepOutView", () => createKeepOutView);
 };
-__defs[54] = function (__exports) {
+__defs[55] = function (__exports) {
 'use strict';
 // code-motion.ts
 
@@ -22442,7 +22683,7 @@ __defs[54] = function (__exports) {
 // WHY its own listeners, added before input.ts (editor.ts makes this before attaching input): a press on the ◇ must not
 // pick or drag what is under it — the same reason as timeline-path.ts.
                                                                                                                  
-const { findKnob, knobRange, knobText, unitText } = __require(40);
+const { findKnob, knobRange, knobText, unitText } = __require(41);
 
 const VIOLET = '#8b7cff';
 const YOU = '#ff6b1a';
@@ -22791,7 +23032,7 @@ __def(__exports, "ruleAt", () => ruleAt);
 __def(__exports, "withRuleMotions", () => withRuleMotions);
 __def(__exports, "createCodeMotionView", () => createCodeMotionView);
 };
-__defs[55] = function (__exports) {
+__defs[56] = function (__exports) {
 'use strict';
 // seen.ts
 
@@ -22875,38 +23116,38 @@ __def(__exports, "seenEnough", () => seenEnough);
 __def(__exports, "minPickPx", () => minPickPx);
 __def(__exports, "tooSmall", () => tooSmall);
 };
-__defs[56] = function (__exports) {
+__defs[57] = function (__exports) {
 'use strict';
 // editor.ts
 
 // Edit session inside the game page: applies shell messages to the adapter,
 // runs the studio's own draw loop while the game is frozen, and reports
 // changes back. Pointer gestures and handles are attached by input.ts.
-const { UI } = __require(13);
+const { UI } = __require(14);
                                              
 const { nativeClearTimeout, nativeNow, nativeSetTimeout } = __require(0);
-const { withRules } = __require(28);
-const { withEdits } = __require(29);
-const { beginGroup, groupAnchor, groupLift, groupMove, groupPoses, groupRotate, groupScale, groupShift } = __require(31);
-const { createToolHost } = __require(32);
-const { attachInput, tappableAt } = __require(41);
+const { withRules } = __require(29);
+const { withEdits } = __require(30);
+const { beginGroup, groupAnchor, groupLift, groupMove, groupPoses, groupRotate, groupScale, groupShift } = __require(32);
+const { createToolHost } = __require(33);
+const { attachInput, tappableAt } = __require(42);
                                                   
-const { firstToTouch, stepDetent } = __require(36);
-const { createHoldState, withHold } = __require(30);
-const { drivenBetween, WATCH_MS } = __require(42);
-const { runSelfCheck, SECOND_LOOK_MS, worthASecondLook } = __require(27);
-const { createTimelineView } = __require(43);
-const { createUiExtras, hexColor } = __require(45);
-const { createCodeTheme } = __require(44);
-const { createUiEdges } = __require(23);
-const { codeUiEntries } = __require(24);
-const { createUiFound } = __require(26);
-const { loaderPlay } = __require(50);
-const { codeAvoidsOf, codeMotionsOf, codePlacesOf, namedByLayout } = __require(39);
-const { createCodePlaceView } = __require(40);
-const { createKeepOutView } = __require(53);
-const { createCodeMotionView, withRuleMotions } = __require(54);
-const { seenEnough, tooSmall } = __require(55);
+const { firstToTouch, stepDetent } = __require(37);
+const { createHoldState, withHold } = __require(31);
+const { drivenBetween, WATCH_MS } = __require(43);
+const { runSelfCheck, SECOND_LOOK_MS, worthASecondLook } = __require(28);
+const { createTimelineView } = __require(44);
+const { createUiExtras, hexColor } = __require(46);
+const { createCodeTheme } = __require(45);
+const { createUiEdges } = __require(24);
+const { codeUiEntries } = __require(25);
+const { createUiFound } = __require(27);
+const { loaderPlay } = __require(51);
+const { codeAvoidsOf, codeMotionsOf, codePlacesOf, namedByLayout } = __require(40);
+const { createCodePlaceView } = __require(41);
+const { createKeepOutView } = __require(54);
+const { createCodeMotionView, withRuleMotions } = __require(55);
+const { seenEnough, tooSmall } = __require(56);
 
                              
                                                                                                                      
@@ -24306,6 +24547,52 @@ function createEditor(deps            )         {
           // studio-motion-flow: a Library motion held over the game — which object is under it (answered at once).
           if (typeof msg.x === 'number' && typeof msg.y === 'number') post({ type: 'studio:placement/at-is', id: Number(msg.id) || 0, key: input?.keyAt(msg.x, msg.y) ?? null });
           break;
+        case 'studio:moment/mark-at': {
+          // pause-ask stage 2 (2026-11-02; shell moment-marks.ts): a mark the person put on the paused frame — what is
+          // under the point (the same test as a tap), where that is on the ground (3D: the ground plane y 0, toGround;
+          // 2D: the stage point), and for an area what stands inside it (each object's pivot on screen). All
+          // hints for the AI's request: none of it changes anything here, and "unknown" is a fine answer.
+          if (typeof msg.x !== 'number' || typeof msg.y !== 'number') break;
+          const key = input?.keyAt(msg.x, msg.y) ?? null;
+          let world                  = null;
+          try {
+            world = adapter.toGround?.(msg.x, msg.y) ?? null;
+          } catch {
+            world = null;
+          }
+          let keys                      ;
+          const b = Array.isArray(msg.box) && msg.box.length === 4 && msg.box.every((v) => typeof v === 'number') ? msg.box : null;
+          if (b) {
+            // What fills the area most first, then the first 12 (pause-ask fix △1, decided 2026-11-02): the scene's order
+            // put the road (first in the list, under everything) before the boss the person circled. Nearest the middle
+            // alone was tried the same day: a small drone by the middle came before the boss whose pivot sat on the
+            // circle's edge. So: the object's screen box inside the area (px², `rect`, else a square of `size`), ties by
+            // the distance to the middle. The editor then puts what the game made first (shell moment-gets.ts orderMarked).
+            const mx = (b[0] + b[2]) / 2;
+            const my = (b[1] + b[3]) / 2;
+            const inside                                               = [];
+            for (const it of state.items) {
+              let a                                    = null;
+              try {
+                a = adapter.anchor(it.key);
+              } catch {
+                a = null;
+              }
+              if (!a || !a.visible) continue;
+              const [cx, cy] = a.center;
+              if (!(cx >= b[0] && cx <= b[2] && cy >= b[1] && cy <= b[3])) continue;
+              const half = Math.max(1, a.size || 0) / 2;
+              const r = a.rect ?? { x: cx - half, y: cy - half, w: half * 2, h: half * 2 };
+              const ow = Math.max(0, Math.min(r.x + r.w, b[2]) - Math.max(r.x, b[0]));
+              const oh = Math.max(0, Math.min(r.y + r.h, b[3]) - Math.max(r.y, b[1]));
+              inside.push({ key: it.key, o: ow * oh, d: Math.hypot(cx - mx, cy - my) });
+              if (inside.length >= 200) break;
+            }
+            keys = inside.sort((p, q) => q.o - p.o || p.d - q.d).slice(0, 12).map((x) => x.key);
+          }
+          post({ type: 'studio:moment/mark-is', id: Number(msg.id) || 0, key, ...(world && world.every((v) => Number.isFinite(v)) ? { world } : {}), ...(keys ? { keys } : {}) });
+          break;
+        }
         case 'studio:placement/hover':
           input?.setHover(Array.isArray(msg.keys) ? msg.keys.filter((k) => typeof k === 'string').slice(0, 500) : []);
           dirtyFrame = true;
@@ -24558,7 +24845,7 @@ function createEditor(deps            )         {
 
 __def(__exports, "createEditor", () => createEditor);
 };
-__defs[57] = function (__exports) {
+__defs[58] = function (__exports) {
 'use strict';
 // ../shell/line-fade.ts
 
@@ -24621,7 +24908,7 @@ __def(__exports, "lineFades", () => lineFades);
 __def(__exports, "lineStayMs", () => lineStayMs);
 __def(__exports, "lineKey", () => lineKey);
 };
-__defs[58] = function (__exports) {
+__defs[59] = function (__exports) {
 'use strict';
 // ../shell/icons.ts
 
@@ -24810,7 +25097,7 @@ function setButton(b                   , name               , label        , sho
 __def(__exports, "icon", () => icon);
 __def(__exports, "setButton", () => setButton);
 };
-__defs[59] = function (__exports) {
+__defs[60] = function (__exports) {
 'use strict';
 // play-pause.ts
 
@@ -24843,7 +25130,7 @@ __defs[59] = function (__exports) {
 
                              
                                                                                           
-                                                                                                        
+                                                                                                                                           
  
 
 /** One step of "Next frame": a 60-frames-a-second frame of the game's time (decision 10). */
@@ -25015,7 +25302,7 @@ __def(__exports, "SPEEDS", () => SPEEDS);
 __def(__exports, "isPauseKey", () => isPauseKey);
 __def(__exports, "createPauseHold", () => createPauseHold);
 };
-__defs[60] = function (__exports) {
+__defs[61] = function (__exports) {
 'use strict';
 // play-move.ts
 
@@ -25045,11 +25332,11 @@ __defs[60] = function (__exports) {
 // left it in an earlier pause of this play): anything that moved by itself in between, anything the game made since
 // (not there at the start), and anything the draft's motions move.
                                                                                                                             
-const { UI } = __require(13);
+const { UI } = __require(14);
                                              
                                                     
-const { createEditor } = __require(56);
-const { drivenBetween } = __require(42);
+const { createEditor } = __require(57);
+const { drivenBetween } = __require(43);
 const { nativeSetTimeout } = __require(0);
 
 /** One pose as observe.ts compares them (it reads only key and pose). */
@@ -25268,7 +25555,7 @@ __def(__exports, "createMomentKinds", () => createMomentKinds);
 __def(__exports, "createMomentEditor", () => createMomentEditor);
 __def(__exports, "defaultHandlePx", () => defaultHandlePx);
 };
-__defs[61] = function (__exports) {
+__defs[62] = function (__exports) {
 'use strict';
 // play-ask.ts
 
@@ -25303,12 +25590,12 @@ __defs[61] = function (__exports) {
 // moment — the list, the card, the field, Save, ⌘Z — is the editor page's. Stage 1–2's chat panel over the paused
 // game, "✥ Move / Talk" and M are gone (decision 2).
                                                                                                                                                
-const { isStudioMessage } = __require(13);
-const { LINE_FADE_MS, LINE_GRACE_MS, lineStayMs } = __require(57);
-const { icon } = __require(58);
-const { shootPage } = __require(25);
-const { createPauseHold, isPauseKey, STEP_MS } = __require(59);
-const { createMomentEditor, createMomentKinds, defaultHandlePx } = __require(60);
+const { isStudioMessage } = __require(14);
+const { LINE_FADE_MS, LINE_GRACE_MS, lineStayMs } = __require(58);
+const { icon } = __require(59);
+const { shootPage } = __require(26);
+const { createPauseHold, isPauseKey, STEP_MS } = __require(60);
+const { createMomentEditor, createMomentKinds, defaultHandlePx } = __require(61);
                                              
                                                     
 const { nativeSetTimeout, nativeClearTimeout } = __require(0);
@@ -25704,9 +25991,19 @@ function startPlayAsk(o                )                {
   let before = 0;
   // A page opened from a checkpoint (stage 3, startFrom): its first frame is the checkpoint's second, not 0:00.
   let from = 0;
+  // `clockOn`: the clock above means something (a Play page's first frame ran, or an edit page woke into Play); before
+  // that playSeconds() is not this Play's time and a pause at a time (pauseAt) must not fire on it.
+  let clockOn = false;
+  // How late a game that cuts long frames would be since this Play's first frame (play-clock.ts `late`, s), told with
+  // each pause (pause-ask fix △7): the editor compares the ask's run with ▶ Try's new run and says so when they differ.
+  let late0 = 0;
+  const lateNow = () => Math.max(0, ((o.pause?.clock.late ?? 0) - late0) / 1000);
   if (hold && !o.standby) void firstFrame().then(() => {
     t0 = hold.now() - from * 1000;
+    late0 = o.pause?.clock.late ?? 0;
+    clockOn = true;
     tellTime();
+    watchPauseAt();
   });
   const playSeconds = () => (hold ? Math.max(0, (hold.now() - t0) / 1000) : 0);
   function tellTime() {
@@ -25920,10 +26217,53 @@ function startPlayAsk(o                )                {
     }
   }
 
+  /** Each listed object's code place (Adapter.fromOf), or undefined when the adapter can't tell any. */
+  function codeFromAll(w                          )                                                             {
+    if (!w || typeof w.fromOf !== 'function') return undefined;
+    const out                                                 = {};
+    let n = 0;
+    for (const it of listOf(w).slice(0, 200)) {
+      try {
+        const f = w.fromOf(it.key);
+        if (f) (out[it.key] = f), n++;
+      } catch {
+        /* a hint only */
+      }
+    }
+    return n ? out : undefined;
+  }
+
+  // ----- pause at a time (pause-ask stage 3, 2026-11-02; play/pause `at`): ▶ Try from 0:05.02 -----
+  // The editor opens the game again with the AI's new code and wants it held at the ask's second: at once for a page
+  // opened at the ask's moment (its clock starts at that second: startFrom), or when a new run reaches it (a game without
+  // save / load: "same time, new run"). Watched with the page's own timers (not the game's frames: those are the
+  // game's, and held by the pause itself), finer as the second comes near, so the pause lands within a frame of it.
+  let pauseAt                = null;
+  let pauseAtTimer = 0;
+  function watchPauseAt() {
+    nativeClearTimeout(pauseAtTimer);
+    if (pauseAt === null || !hold) return;
+    if (clockOn && awake && host && !hold.paused) {
+      const left = pauseAt - playSeconds();
+      if (left <= 0.004) {
+        // pauseNow() clears pauseAt when it pauses; a page busy right now (a moment still loading) is tried again.
+        void pauseNow();
+        pauseAtTimer = nativeSetTimeout(watchPauseAt, 16);
+        return;
+      }
+      pauseAtTimer = nativeSetTimeout(watchPauseAt, Math.max(1, Math.min(50, (left * 1000) / Math.max(0.05, hold.rate) - 8)));
+      return;
+    }
+    pauseAtTimer = nativeSetTimeout(watchPauseAt, 16);
+  }
+
   // ----- the paused moment (play-pause.ts holds the game; play-move.ts wakes the editor over it) -----
   let pausing = false;
   async function pauseNow() {
     if (!hold || hold.paused || pausing || o.busy?.()) return;
+    // Paused by hand (or by the time itself): a pause at a time is done with.
+    pauseAt = null;
+    nativeClearTimeout(pauseAtTimer);
     pausing = true;
     try {
       // Words already typed in the ✦ field go to the editor page's field (the person was about to ask; now they can).
@@ -25948,7 +26288,11 @@ function startPlayAsk(o                )                {
       const why = kinds && w0 ? kinds.pause(listOf(w0), w0.dim) : {};
       momentUp = !!momentHost?.wake();
       const { type: _t, text: _x, ...rest } = ask                                                       ;
-      post({ type: 'studio:play/paused', on: true, edit: momentUp, why, ask: rest, ...(draft ? { draft } : {}) });
+      // pause-ask stage 2 (2026-11-02): where in the game's code each object was first added (Adapter.fromOf, three.js;
+      // a hint for the AI's request `objects[].from`). Read now, once, for what is listed (≤ 200).
+      const from = codeFromAll(w0);
+      const late = Math.round(lateNow() * 100) / 100;
+      post({ type: 'studio:play/paused', on: true, edit: momentUp, why, ask: rest, ...(draft ? { draft } : {}), ...(from ? { from } : {}), ...(late > 0 ? { late } : {}) });
       tellTime();
       render();
     } finally {
@@ -26227,6 +26571,10 @@ function startPlayAsk(o                )                {
     } else if (m.type === 'studio:play/open') {
       // The editor's ✦ (phone): the same as ` or the corner mark. Paused: the editor page's own field is the way.
       if (host && !barOpen && !hold?.paused) openBar();
+    } else if (m.type === 'studio:play/pause' && typeof m.at === 'number' && Number.isFinite(m.at)) {
+      // pause-ask stage 3: hold at that second of this Play (▶ Try from 0:05.02), not now.
+      pauseAt = Math.max(0, m.at);
+      watchPauseAt();
     } else if (m.type === 'studio:play/pause') {
       // The editor's ❚❚ Pause to edit / ▶ Resume (and P while its page has the keys): the same as P here.
       const want = m.on ?? !hold?.paused;
@@ -26298,6 +26646,7 @@ function startPlayAsk(o                )                {
       kinds?.restart(next);
       // The game's time from this Play (the edit page's clock went on through earlier Plays), on from the last Play's.
       if (hold) t0 = hold.now() - before * 1000;
+      clockOn = true;
       post({ type: 'studio:play/hello' });
     },
     sleep() {
@@ -26351,7 +26700,7 @@ __def(__exports, "near2D", () => near2D);
 __def(__exports, "isStepKey", () => isStepKey);
 __def(__exports, "startPlayAsk", () => startPlayAsk);
 };
-__defs[62] = function (__exports) {
+__defs[63] = function (__exports) {
 'use strict';
 // moment-load.ts
 
@@ -26379,7 +26728,7 @@ __defs[62] = function (__exports) {
 // (the loader before the first frame, play-arrange after it), so a gate moved since the checkpoint stands where the
 // scene has it now.
                                                                             
-const { CHECKPOINT_MAX_CHARS, LOCAL_PATHS, isStudioMessage } = __require(13);
+const { CHECKPOINT_MAX_CHARS, LOCAL_PATHS, isStudioMessage } = __require(14);
 const { nativeClearTimeout, nativeNow, nativeSetTimeout } = __require(0);
 
                                       
@@ -26642,7 +26991,7 @@ __def(__exports, "MOMENT_WAIT_MS", () => MOMENT_WAIT_MS);
 __def(__exports, "LOAD_PROMISE_MS", () => LOAD_PROMISE_MS);
 __def(__exports, "startCheckpointHold", () => startCheckpointHold);
 };
-__defs[63] = function (__exports) {
+__defs[64] = function (__exports) {
 'use strict';
 // moment-values.ts
 
@@ -26664,8 +27013,8 @@ __defs[63] = function (__exports) {
 // Message driven and on its own listener, so it answers in an edit page (Edit, ▶ Play in the same page) and in a page
 // opened for Play alike — the moment's editor may be either (play-move.ts) and `--do list` asks in Edit too.
                                                                                 
-const { isStudioMessage } = __require(13);
-const { momentHooks } = __require(62);
+const { isStudioMessage } = __require(14);
+const { momentHooks } = __require(63);
 
 /** One value as the loader keeps it (codeMoment, src/loader/studio-placement.js). */
                  
@@ -26820,7 +27169,7 @@ __def(__exports, "fitValue", () => fitValue);
 __def(__exports, "setValue", () => setValue);
 __def(__exports, "startMomentValues", () => startMomentValues);
 };
-__defs[64] = function (__exports) {
+__defs[65] = function (__exports) {
 'use strict';
 // levels.ts
 
@@ -26835,7 +27184,7 @@ __defs[64] = function (__exports) {
 // and a page opened again (a reload, ▶ Play, the AI's change) must come back on the same level by itself.
 // WHY null outside the editor's frame: in the shipped game (or the game opened on its own) the game's own progress
 // picks the level; the studio must not.
-const { KEY_RE, LOCAL_PATHS } = __require(13);
+const { KEY_RE, LOCAL_PATHS } = __require(14);
 
 /** The game's list, cleaned: ids that fit a key (KEY_RE), each once, labels as text (≤ 120 characters). */
 function cleanLevels(list         )              {
@@ -26875,7 +27224,7 @@ function pickLevel(list         , href        , inFrame         )               
 __def(__exports, "cleanLevels", () => cleanLevels);
 __def(__exports, "pickLevel", () => pickLevel);
 };
-__defs[65] = function (__exports) {
+__defs[66] = function (__exports) {
 'use strict';
 // early-press.ts
 
@@ -26895,7 +27244,7 @@ __defs[65] = function (__exports) {
 // right-click drops it, and a later tap replaces it (the last one is what the person meant). The listeners sit on the game
 // window in the capture phase, never block anything (the game still runs and gets its input until the editor begins),
 // and go away once the editor has taken the tap.
-const { UI } = __require(13);
+const { UI } = __require(14);
 
                            
             
@@ -26957,7 +27306,7 @@ function watchEarlyTaps(win        )            {
 
 __def(__exports, "watchEarlyTaps", () => watchEarlyTaps);
 };
-__defs[66] = function (__exports) {
+__defs[67] = function (__exports) {
 'use strict';
 // bridge.ts
 
@@ -26967,23 +27316,23 @@ __defs[66] = function (__exports) {
 // adapter self-check, and translates between the shell's messages and the
 // adapter. Pointer input and handles live in input.ts / handles.ts; this file
 // only wires them up.
-const { CONTRACT_VERSION, LOCAL_PATHS, isStudioMessage } = __require(13);
-const { installCore } = __require(16);
-const { installPlayClock } = __require(18);
-const { adapterFromPort2D } = __require(19);
-const { findDomUiPort, uiAdapterFromPort } = __require(22);
-const { codeUiEntries, createCodeUi, mergeUiPorts } = __require(24);
-const { findUi: findUiNow, markHudCanvases } = __require(26);
-const { runSelfCheck } = __require(27);
-const { createEditor } = __require(56);
-const { startPlayAsk } = __require(61);
-const { startMomentValues } = __require(63);
-const { fromCheckpoint, startCheckpointHold, startMomentSave } = __require(62);
-const { createPlaySwitch } = __require(50);
-const { arrangeInPlay, moveInPlay } = __require(49);
-const { applyPlacement, placementForLevel } = __require(20);
-const { pickLevel } = __require(64);
-const { watchEarlyTaps } = __require(65);
+const { CONTRACT_VERSION, LOCAL_PATHS, isStudioMessage } = __require(14);
+const { installCore } = __require(17);
+const { installPlayClock } = __require(19);
+const { adapterFromPort2D } = __require(20);
+const { findDomUiPort, uiAdapterFromPort } = __require(23);
+const { codeUiEntries, createCodeUi, mergeUiPorts } = __require(25);
+const { findUi: findUiNow, markHudCanvases } = __require(27);
+const { runSelfCheck } = __require(28);
+const { createEditor } = __require(57);
+const { startPlayAsk } = __require(62);
+const { startMomentValues } = __require(64);
+const { fromCheckpoint, startCheckpointHold, startMomentSave } = __require(63);
+const { createPlaySwitch } = __require(51);
+const { arrangeInPlay, moveInPlay } = __require(50);
+const { applyPlacement, placementForLevel } = __require(21);
+const { pickLevel } = __require(65);
+const { watchEarlyTaps } = __require(66);
                                                     
 const { nativeSetTimeout } = __require(0);
 
@@ -27019,9 +27368,10 @@ function startBridge(opts               )       {
   // before any game code, so the game's first performance.now() and every frame's timestamp already go through it.
   // In the edit page too since ▶ Play in the same page (fast switch, 2026-10-22; play-switch.ts): there it stops with
   // every hold of the game (time.ts `clock`), so the page that becomes Play steps one frame, not the minutes of Edit.
+  // A frame's timestamp goes through playClock.frame (= at; it also counts long frames: play-clock.ts `late`).
   const playClock = inFrame ? installPlayClock(win) : null;
   const core       = installCore({ freezeAfterFirstFrame: edit && !!inFrame, firstFrameTimeoutMs: 4000, win,
-    ...(playClock ? { stamp: playClock.at } : {}), ...(playClock && edit ? { clock: playClock } : {}) });
+    ...(playClock ? { stamp: playClock.frame } : {}), ...(playClock && edit ? { clock: playClock } : {}) });
 
   // Probes registered by the game folder (.studio/adapter.js) go first so an
   // AI-written adapter can override a built-in one.
@@ -27491,7 +27841,7 @@ function startBridge(opts               )       {
 __def(__exports, "readEditParams", () => readEditParams);
 __def(__exports, "startBridge", () => startBridge);
 };
-__defs[67] = function (__exports) {
+__defs[68] = function (__exports) {
 'use strict';
 // main.ts
 
@@ -27509,12 +27859,12 @@ __require(0);
 // boot.js (classic, side effects only) must run before everything else of
 // the three.js adapter: it installs __THREE_DEVTOOLS__ and wraps rAF/render.
 __require(1);
-const { threeProbe } = __require(12);
-const { startBridge } = __require(66);
+const { threeProbe } = __require(13);
+const { startBridge } = __require(67);
 
 startBridge({ builtins: [threeProbe] });
 
 
 };
-__require(67);
+__require(68);
 })();

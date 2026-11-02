@@ -27,7 +27,7 @@ import type { PlayClock } from '../core/play-clock.ts';
 
 export interface PauseParts {
   time: Pick<TimeControlImpl, 'freeze' | 'thaw' | 'frozen' | 'step' | 'setRate' | 'rate'>;
-  clock: Pick<PlayClock, 'stop' | 'go' | 'stopped' | 'setRate' | 'rate' | 'advance' | 'at' | 'realNow'>;
+  clock: Pick<PlayClock, 'stop' | 'go' | 'stopped' | 'setRate' | 'rate' | 'advance' | 'at' | 'realNow'> & Partial<Pick<PlayClock, 'late'>>;
 }
 
 /** One step of "Next frame": a 60-frames-a-second frame of the game's time (decision 10). */

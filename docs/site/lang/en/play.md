@@ -2,7 +2,7 @@
 title: Play
 nav: Play
 order: 3
-written-for: 0.1.76
+written-for: 0.1.77
 description: Play your game in the editor, slow it down, pause it on the exact frame, edit that moment by hand or with your AI, and keep it as a checkpoint.
 ---
 
@@ -46,7 +46,7 @@ You get the same tools as in Edit, on the frame you stopped on: the list (it flo
 
 ![The boss moved to the left lane: Just for this moment, and ✦ Have Claude make it appear here](media/pause-made.webp)
 
-To change where the game makes something, drag it to where it should appear and press **✦ Have Claude make it appear here** on its card. The ask box gets **Make boss appear here** with the chip **boss · here**. Send it, and Claude changes the game’s code. Its reply shows over the ask box with **Reload**: press it to leave the paused moment and play the game again with the change (your **Save · N** stays). The boss comes in where you put it. If you resume instead, **Reload** is on the line over the game.
+To change where the game makes something, drag it to where it should appear and press **✦ Have Claude make it appear here** on its card. The ask box gets **Make boss appear here** with the chip **boss · here**. Send it, and Claude changes the game’s code. Its reply shows over the ask box with **▶ Try from 0:05.02**: press it to see the change from the same moment (see [Try the fix from the same moment](#try-the-fix-from-the-same-moment)). Your **Save · N** stays. If you resume instead, **Reload** is on the line over the game.
 
 ### This moment
 
@@ -58,11 +58,43 @@ At the top of the list, **This moment** shows your game’s own numbers on the f
 - **Ask for it too.** “Give me 5 seconds left” in the ask box: your AI sets it in This moment for you, and <kbd>⌘</kbd><kbd>Z</kbd> undoes it.
 - A number in gray is one you can see but not change here.
 
-Your AI connects the moment to your game once: these numbers and the checkpoints, in one go. Until it does, the list says **Numbers like the score, and starting from here, aren’t ready for this game yet.** Press **✦ Have Claude connect this moment to the game**: the ask box gets **Show this moment’s numbers and let the game start from here** with the chip **This moment**. Send it. When Claude is done, press **Reload** on its reply and pause again. In the web demo, **Neon Run** already has them; a game there without numbers shows no **This moment**.
+Your AI connects the moment to your game once: these numbers and the checkpoints, in one go. Until it does, the list says **Numbers like the score, and starting from here, aren’t ready for this game yet.** Press **✦ Have Claude connect this moment to the game**: the ask box gets **Show this moment’s numbers and let the game start from here** with the chip **This moment**. Send it. When Claude is done, press **▶ Try from …** on its reply. Claude also connects it by itself the first time it fixes something you asked about from a paused moment. In the web demo, **Neon Run** already has them; a game there without numbers shows no **This moment**.
 
 ### Ask about this moment
 
-The ask box says **Ask Claude about this moment…** (your AI’s name, if it isn’t Claude). Your AI sees the moment you paused: a picture of the game, where your camera was, what was near you, and any errors. Ask why it happened, how it works, or what to change. Send as many messages as you like; **▴ Earlier · 2** shows what you said before in this pause.
+When you pause, the cursor is already in the ask box at the bottom, so you can just type. The box says **Ask Claude about this moment…** (your AI’s name, if it isn’t Claude). At its left is a small picture of the frame you stopped on, with its time, like **0:05.02**: that picture goes to your AI with your words. A thin violet line around the game shows you’re in a paused moment (Edit has no line).
+
+![Paused: the cursor in the ask box, the paused frame small at its left with 0:05.02, a violet line around the game](media/pause-ask.webp)
+
+Your AI sees the moment you paused: that picture of the game, where your camera was, what was near you, and any errors. Ask why it happened, how it works, or what to change. Send as many messages as you like; **▴ Earlier · 2** shows what you said before in this pause.
+
+Changed your mind? Press <kbd>P</kbd> right away and the game goes on: until you type a letter or click the ask box, <kbd>P</kbd>, <kbd>.</kbd>, <kbd>N</kbd> and <kbd>Esc</kbd> still work as keys. Once you type, they’re letters; press <kbd>Esc</kbd> or click the game, and they work again. On a phone, the keyboard doesn’t open by itself: tap the ask box when you want to type. A narrow box says just **Ask Claude…**.
+
+#### Point at the frame
+
+To say “here,” press **◎ Mark** in the ask box (or <kbd>N</kbd>). Click the game to mark a spot, or drag to circle an area. Each mark gets a number on the frame and a chip in the box, like **① here** and **② area**, so you can write “bring the boss in from ①.” Press **×** on a chip or <kbd>⌘</kbd><kbd>Z</kbd> to take a mark away; the others are numbered again. Press **◎ Mark** or <kbd>N</kbd> again (or <kbd>Esc</kbd>) to stop marking; sending your words stops it too. The marks stay until you resume. On a phone, **◎** shows its name until you’ve used it once.
+
+![Two marks on the paused frame, ① an area and ② a spot, with their chips in the ask box](media/pause-mark.webp)
+
+#### What your AI gets
+
+Click the small picture in the ask box to see what goes with your words: the frame (and a copy with your marks drawn on), what you selected or marked, with what the game made first and the line of your game’s code that makes it, like **Made at** `game.js:121` (a mark on an empty spot says where it is, like **① a spot on the ground**), this moment’s numbers and any errors, and **Kept to replay from 0:05.02**: the editor keeps the moment you asked from, so you can try the fix from it. A game that can’t start mid-run yet says **Time only: 0:05.02**. <kbd>Esc</kbd> closes it. Your AI looks at both the picture and the code before it changes anything, opens the same moment with its change to check it, and replies in one line with what it did.
+
+![What Claude gets: the frame with marks ① ②, an object and its code line, the game time, this moment kept](media/pause-gets.webp)
+
+#### Try the fix from the same moment
+
+When your AI changes the game, its reply is one line: what it did, and under it, small, the files it changed. Next to it:
+
+- **▶ Try from 0:05.02** opens the game again with the new code, at the moment you asked from, and stays paused there. Your talk and your marks are still there, so you can say “a bit more to the left” right away. The editor never reloads by itself: you choose when to try.
+- **Before / After** puts the frame you asked from (with your marks) next to the same moment with the new code. If you haven’t tried it yet, it tries it first. **Keep · Resume** plays on from there; **Undo Claude’s change** puts the code back.
+- **↶ Undo** puts the game’s files back to before your AI’s change, right away, and you stay in the paused moment. Press **▶ Try from …** to see it. It takes back the change of that reply only: after “a bit more to the left,” Undo goes back to the first fix, not to the game before both.
+
+![Claude’s reply over the ask box: one line, game.js under it, ▶ Try from 0:05.35, Before / After, Undo](media/pause-try.webp)
+
+The same moment means the same state: the score, the time left and what the game made are as they were. So a change to where the game makes something (a boss already on screen) shows from the next one on, after you resume. **▶ Try** says so, like **Already out: boss, so your change shows from the next one.**, and so does **Before / After** under the After, with **▶ Resume to see it**. If your game can’t start mid-run yet, **▶ Try** plays from the start and stops at the same time, and says **Same time, new run**. Your AI adds what’s needed to start mid-run along with its first fix from a paused moment, so the next try opens the very moment.
+
+![Before / After at 0:05.61: the frame you asked from with your marks, and the same moment with the new code](media/pause-compare.webp)
 
 ### Slow it down, one frame at a time
 
@@ -85,12 +117,12 @@ Paused just before the boss? Keep that moment, and next time start right there i
 
 - **Your scene is always the current one.** A checkpoint keeps the game’s moment, not your layout: a gate you moved after keeping it stands where you moved it.
 - **Rename or delete** with **⋯** on its row in **▶ Play ⌄**. **Play ⌄** lists the checkpoints of the level you’re on, newest first.
-- **After your AI fixes something**, its reply has **⚑ From Before the boss** next to **Reload**: the fixed game opens right at the boss.
+- **After your AI fixes something**, press **▶ Try from …** on its reply to see the fix at the moment you asked from, or choose **⚑ Play from Before the boss** in **▶ Play ⌄** to open the fixed game right at the boss.
 - Checkpoints stay in the editor (in the game folder’s `.studio/checkpoints/`). They’re never part of your published game.
 
 ![▶ Play ⌄ with Play from the start and ⚑ Play from Before the boss](media/pause-checkpoint-open.webp)
 
-Your AI adds this to the game together with **This moment**. Until it does, **⚑** says **This game can’t start from the middle yet.** with the same **✦ Have Claude connect this moment to the game**: send it, and when Claude is done press **Reload**. The web demo keeps no checkpoints (**⚑** says so); your own Studio does.
+Your AI adds this to the game together with **This moment**. Until it does, **⚑** says **This game can’t start from the middle yet.** with the same **✦ Have Claude connect this moment to the game**: send it, and when Claude is done press **▶ Try from …** on its reply. The web demo keeps no checkpoints (**⚑** says so); your own Studio does.
 
 If your game changes so much that a checkpoint can’t open, the game starts from the beginning instead and a line at the top says **The game changed, so this checkpoint can’t open**. Press **✦ Have Claude fix it**: the game pauses and the ask box gets the request. Claude makes the game read the old checkpoint again.
 
@@ -108,7 +140,7 @@ If your game changes so much that a checkpoint can’t open, the game starts fro
 
 On a phone or in a narrow window, the top bar shows the time, the speed, **❚❚** and **Edit**; paused, **▶ Resume**. The list opens as a sheet from the bottom, with **This moment** folded to one line (press it for the numbers) and **⚑ Checkpoint** at its right. Back in Edit, **⚑ Checkpoints · 1** at the top of the list opens your checkpoints (a phone has no **▶ Play ⌄**). Select something the game moves or made and one line over the ask box says **Just for this moment** (after you move what the game made: **✦ Have Claude make it appear here**). In full screen, **❚❚** is in the game’s corner (the top bar isn’t visible): pressing it leaves full screen and opens the paused moment.
 
-The web demo pauses too, with **Neon Run**, where a boss comes in: set **Time left** to 5 in **This moment** and resume. There’s no AI there, so there’s no ask box and no ✦.
+The web demo pauses too, with **Neon Run**, where a boss comes in: set **Time left** to 5 in **This moment** and resume. The paused moment has the ask box with its picture, so you can see how asking works, but the demo isn’t connected to an AI: when you send, one line says **This demo isn’t connected to an AI. Open your game with Claude Code or Codex to ask.** and nothing is sent. There’s no ✦ there.
 
 ## Ask while you play
 

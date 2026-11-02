@@ -2,7 +2,7 @@
 // browser: the real local server, the built editor, the starters and examples, and the stand-in AI
 // (test/ai-feel/fake-agent.mjs), which answers a paused message in its `done` note.
 //
-//   node test/studio-pause.browser.mjs [--only cove,ruins,glow,phone,side,dark,timers,moment,moment2d,momentnarrow,momentkeep,momentdark,momentdemo,values,valuesdark,light,lightcode,checkpoint,checkpointdark]
+//   node test/studio-pause.browser.mjs [--only cove,ruins,glow,phone,side,dark,timers,moment,moment2d,momentnarrow,momentphone,momentkeep,momentdark,momentdemo,values,valuesdark,light,lightcode,checkpoint,checkpointdark]
 //                                       [--shots <dir>] [--lang ja] [--before <studio-ui dir of an older build>]
 //
 // Until pause-edit (2026-10-28) a pause opened a chat panel over the game ("Pause and talk", stage 1) with "✥ Move" in
@@ -36,7 +36,8 @@
 //
 // The paused moment (pause-edit's checks (1)–(5)), examples/three-neon-boss (a boss, drones and shots the
 // game makes a few seconds in):
-// moment     PC 1280×800: (1) ▶ Play (the first-Play line under ❚❚), ¼× from the top bar's Speed, the boss comes,
+// moment     PC 1280×800 (pause-ask stage 1 too: the paused frame in the field, the cursor, the violet line, the keys):
+//            (1) ▶ Play (the first-Play line under ❚❚), ¼× from the top bar's Speed, the boss comes,
 //            P, ▶| three times (the clock 3/60 s on); (2) the picture is the frame it stopped on (the camera kept: the
 //            canvas against the moment's own picture), the list floats, "Made by the game · 4" with "drone ×2";
 //            (3) the gate (placed) moved: Save · 1, the list's dot, ⌘Z takes it back, moved again; (4) the boss (made by
@@ -45,11 +46,17 @@
 //            stopped (the score goes on from its number), the boss from where it was put, the gate where it was moved;
 //            ⌘Z has no step of the moment left; Edit: the scene before Play with the gate's move, no boss.
 // moment2d   Firefly Ruins (Pixi 2D): paused, a placed thing moved (Save · 1), what the game moves just for this moment.
+// momentphone the phone of momentnarrow alone, light (pause-ask stage 1: the paused frame in the field, no cursor by itself;
+//            stage 3: asked from the moment, the stand-in fixes it — ▶ Try · Before / After · ↶ Undo on screen, ▶ Try holds a
+//            new run at the same second, Before / After on screen whole).
 // momentnarrow phone 390×844 (touch) and the side window 400×900, light and dark: ❚❚ in the top bar, paused, the sheet
 //            lists the moment, a pick, Resume.
 // momentdark PC dark: the moment's photos (the boss's card with ✦), and an AI that changes the code for ✦ (fake-agent
-//            `madeCode`): Reload on the reply's line leaves the moment for the new code, Save · 1 kept.
-// momentdemo the offline web demo (no AI): ❚❚ and the paused moment there too, a placed thing moved, no ✦ field; Neon
+//            `madeCode`, and save / load with it: pause-ask stage 3) — ▶ Try from … on the reply (no Reload), a second ask
+//            keeps the whole moment, Before / After at that very moment, ↶ Undo keeps the moment: tryFromTheMoment().
+// momenttry  momentdark's ▶ Try flow in the light theme, for its photos (pause-ask stage 3; not in a whole run).
+// momentdemo the offline web demo (no AI): ❚❚ and the paused moment there too, a placed thing moved, the moment's field
+//            (pause-ask stage 1: its picture, the cursor, a send = one line "isn't connected", nothing sent); Neon
 //            Run (--also examples/three-neon-boss): "Made by the game" and the boss "Just for this moment".
 // pause-edit fix 1 (2026-10-28, walk 1 of stage 1) adds: the game's HUD seen in the moment (#hud, ⚠ BOSS: ✕1), no line by
 //            the strip on the ship (✕2), the ↻ on its row (✕11), the clock in two places and one frame moving it, "Next
@@ -136,7 +143,7 @@ function gameFolder(src, theme = 'light') {
   cpSync(join(PKG, src), root, { recursive: true });
   // A test's own game (test/hand-post) has no copy of the loader kept with it: the built one, as the AI's copy would be.
   if (!existsSync(join(root, 'studio-placement.js'))) copyFileSync(join(PKG, 'skills/arrange/bin/studio-placement.js'), join(root, 'studio-placement.js'));
-  for (const f of ['placement.json', '.studio/requests', '.studio/status.json', '.studio/watch.json', '.studio/play', '.studio/chat', '.studio/undo']) rmSync(join(root, f), { recursive: true, force: true });
+  for (const f of ['placement.json', '.studio/requests', '.studio/status.json', '.studio/watch.json', '.studio/play', '.studio/chat', '.studio/undo', '.studio/asks']) rmSync(join(root, f), { recursive: true, force: true });
   mkdirSync(join(root, '.studio/ui'), { recursive: true });
   writeFileSync(join(root, '.studio/ui/prefs.json'), JSON.stringify({ version: 1, lang: LANG, theme }));
   return root;
@@ -214,6 +221,9 @@ async function held(page, ms = 1200) {
   return { frames: b.f - a.f, clock: b.now - a.now, a, b };
 }
 
+/** pause-ask stage 1: the paused frame's small picture in the field (moment-ask.ts), or null when not on screen. */
+const pausedShot = (page) => j(page, `JSON.stringify((() => { const s = document.querySelector('[data-part=moment-shot]'); if (!s || s.hidden || !s.offsetParent) return null;
+  const i = s.querySelector('img'); return { time: s.textContent, img: !!i && !i.hidden && i.naturalWidth > 0, tip: s.title, inField: !!s.closest('.ask-box') }; })())`);
 /** P in the game (a press on it first, so the game page has the keys), then the moment is up. */
 async function pauseP(page, at = [640, 260]) {
   await page.click(at[0], at[1]);
@@ -618,13 +628,19 @@ const sigDiff = (a, b) => {
 };
 
 /** The paused moment's checks (1)–(5) on examples/three-neon-boss, PC. */
-async function moment(theme = 'light') {
-  const tag = theme === 'dark' ? 'moment-dark' : 'moment';
+async function moment(theme = 'light', tryLight = false) {
+  // `tryLight` (pause-ask stage 3, `--only momenttry`): the dark run's AI that changes the code and its ▶ Try flow, in
+  // the light theme (the photos: English, light).
+  const tag = theme === 'dark' ? 'moment-dark' : tryLight ? 'moment-try' : 'moment';
   console.log(`${tag}: Neon Run with a boss, PC 1280×800 (${theme})`);
   const g = await open('examples/three-neon-boss', LAYOUTS.pc, { theme });
   const { root, page, shot } = g;
-  // The dark run's stand-in changes the code for ✦ as a real AI does (fix 1 ✕6: Reload on the moment's reply).
-  const agent = startFakeAgent(root, { madeCode: theme === 'dark' });
+  // The dark run's stand-in changes the code for ✦ as a real AI does (fix 1 ✕6; pause-ask stage 3: ▶ Try from … on the
+  // moment's reply). The example ships without save / load, so with that first change it writes them too (decided
+  // 2026-11-02: SKILL.md "Paused"), and a second ask from the Try's moment moves the boss a bit more (nudgeBoss).
+  const dark = theme === 'dark' || tryLight;
+  const shipped = readFileSync(join(root, 'game.js'), 'utf8');
+  const agent = startFakeAgent(root, { madeCode: dark, ...(dark ? { connect: deliverCheckpoint, fix: nudgeBoss } : {}) });
   try {
     // (1) The first ▶ Play of this person: one line under ❚❚. The guide: ● Playing 0:0x.x · 1× ⌄.
     const tip = await page.eval(`document.querySelector('[data-part=play-tip]:not([hidden])')?.textContent || ''`);
@@ -651,6 +667,36 @@ async function moment(theme = 'light') {
     // P.
     await pauseP(page, [640, 120]);
     assert.equal(await page.eval(`!!document.querySelector('[data-part=play-tip]:not([hidden])')`), false, 'the first-Play line went at the first pause');
+    // pause-ask stage 1 (2026-11-02; moment-ask.ts): the way in to asking from here — the paused frame small in the field
+    // with its time (the top bar's paused clock), the cursor in the field, a violet line round the game.
+    const ps = await pausedShot(page);
+    assert.ok(ps && ps.img && ps.inField, `the paused frame in the field ${JSON.stringify(ps)}`);
+    assert.equal(ps.time, await page.eval(`document.querySelector('[data-part=play-time]').textContent`), 'its time is the paused clock');
+    assert.match(ps.tip, ja ? /で止めた 1 コマです。/ : /^Paused at 0:0\d\.\d\d\. .+ gets this frame with your words\.$/, `its tip (${ps.tip})`);
+    assert.equal(await page.eval(`document.activeElement?.classList.contains('ask-input') || false`), true, 'the cursor in the field at the pause');
+    assert.match(await page.eval(`getComputedStyle(document.querySelector('.stage'), '::after').boxShadow`), /inset/, 'a line round the game while paused');
+    await shot(tag, 'ask-in');
+    // Keys. pause-ask stage 2 fix 1 (2026-11-02): while the cursor came by itself and nothing is typed, the keys are the
+    // game's and the editor's — N turns ◎ Mark on and off (P → P resuming is checked below, after the first-pause lines).
+    // From the first letter typed, P / N / M / . are letters — the game stays paused, no frame steps; Esc leaves the field.
+    await keyIn(page, 'n', 'KeyN', 'n');
+    await sleep(200);
+    assert.equal(await page.eval(`document.querySelector('[data-action=moment-mark]').getAttribute('aria-pressed')`), 'true', 'N in the untouched field: ◎ Mark on');
+    assert.equal(await page.eval(`document.querySelector('.ask-input').value`), '', '…and no "n" typed');
+    await keyIn(page, 'n', 'KeyN', 'n');
+    await sleep(200);
+    assert.equal(await page.eval(`document.querySelector('[data-action=moment-mark]').getAttribute('aria-pressed')`), 'false', 'N again: off');
+    const tk0 = await page.eval(`${M}.seconds()`);
+    for (const [k, c] of [['x', 'KeyX'], ['p', 'KeyP'], ['n', 'KeyN'], ['m', 'KeyM'], ['.', 'Period']]) await keyIn(page, k, c, k);
+    await sleep(300);
+    assert.equal(await page.eval(`document.querySelector('.ask-input').value`), 'xpnm.', 'after a letter, P N M . typed in the field are letters');
+    assert.equal(await page.eval(IN.moment), true, 'still paused');
+    assert.equal(await page.eval(`${M}.seconds()`), tk0, 'no frame stepped from the field');
+    await page.eval(`(() => { const i = document.querySelector('.ask-input'); i.value = ''; i.dispatchEvent(new Event('input', { bubbles: true })); return true; })()`);
+    await keyIn(page, 'Escape', 'Escape', '');
+    assert.equal(await page.eval(`document.activeElement?.classList.contains('ask-input') || false`), false, 'Esc leaves the field');
+    assert.equal(await page.eval(IN.moment), true, 'Esc does not resume');
+    // (Out of the field, . steps a frame: "the . key: one frame more" below — after ▶|, whose line goes at the first step.)
     // fix 1 ✕1: the game's HUD stays seen over the moment (the score, the time left, ⚠ BOSS), and takes no pointer.
     const hud = await gameHtml(page, '#hud');
     assert.ok(hud && hud.vis === 'visible' && hud.pe === 'none', `the HUD seen in the moment, no pointer ${JSON.stringify(hud)}`);
@@ -686,6 +732,24 @@ async function moment(theme = 'light') {
     const sigA = await canvasSig(page);
     await sleep(1500);
     assert.ok(sigDiff(sigA, await canvasSig(page)) < 0.5, 'nothing moves until you say');
+    // pause-ask stage 2 fix 1: P → P goes on playing. Resume, pause with P in the game (the cursor goes in the field by
+    // itself), P again: the game runs, no "p" in the field. Then pause again: a click IN the field makes P a letter.
+    await page.click(640, 120);
+    await keyIn(page, 'p', 'KeyP', 'p');
+    await page.waitFor(IN.running, 5000);
+    await pauseP(page, [640, 120]);
+    assert.equal(await page.eval(`document.activeElement?.classList.contains('ask-input') || false`), true, 'the cursor in the field again');
+    await keyIn(page, 'p', 'KeyP', 'p');
+    await page.waitFor(IN.running, 5000).catch(() => { throw new Error('P → P: the second P did not resume'); });
+    assert.equal(await page.eval(`document.querySelector('.ask-input').value`), '', 'P → P: no "p" in the field');
+    await pauseP(page, [640, 120]);
+    const inField = await j(page, box('.ask-input'));
+    await page.click(inField.x, inField.y);
+    await keyIn(page, 'p', 'KeyP', 'p');
+    await sleep(300);
+    assert.equal(await page.eval(`document.querySelector('.ask-input').value`), 'p', 'clicked into the field: P is a letter');
+    assert.equal(await page.eval(IN.moment), true, '…and the game stays paused');
+    await page.eval(`(() => { const i = document.querySelector('.ask-input'); i.value = ''; i.dispatchEvent(new Event('input', { bubbles: true })); i.blur(); return true; })()`);
     const side = await j(page, box('.side'));
     assert.ok(side && side.left > 8 && side.top > 40, `the list floats over the game ${JSON.stringify(side)}`);
     const rows = await j(page, IN.rows);
@@ -734,6 +798,50 @@ async function moment(theme = 'light') {
     const gate2 = await poseOf(page, 'gate');
     await until(async () => /1/.test(await page.eval(IN.save)), 4000, 'Save · 1 again');
     await shot(tag, 'gate');
+    // pause-ask stage 2 (moment-marks.ts): ◎ Mark — a click = a point ①, a drag = an area ②; pins on the frame, chips in
+    // the field; ⌘Z and × take one away (the rest close up); N / Esc put marking down.
+    await page.eval(`(document.activeElement?.blur?.(), true)`);
+    await press(page, await j(page, box('[data-action=moment-mark]')));
+    await sleep(200);
+    assert.match(await page.eval(`document.querySelector('[data-part=mark-hint]:not([hidden])')?.textContent || ''`), ja ? /クリックで点/ : /Click to mark a spot · drag to circle an area/, 'the hint over the frame');
+    const fr = await j(page, IN.frame);
+    const at = (fx, fy) => [fr[0] + fr[2] * fx, fr[1] + fr[3] * fy];
+    const markP = at(0.36, 0.5);
+    await page.click(markP[0], markP[1]);
+    await sleep(300);
+    const [a0, a1] = [at(0.4, 0.15), at(0.62, 0.45)];
+    await page.mouseDrag(a0[0], a0[1], a1[0], a1[1], 8);
+    await sleep(400);
+    const chipsNow = () => j(page, `JSON.stringify([...document.querySelectorAll('[data-part=mark-chip]')].map((c) => c.textContent.replace('×', '').trim()))`);
+    const pinsNow = () => page.eval(`document.querySelectorAll('.mark-pins > *').length`);
+    assert.deepEqual(await chipsNow(), ja ? ['① ここ', '② 範囲'] : ['① here', '② area'], 'the chips in the field');
+    assert.equal(await pinsNow(), 2, 'two marks on the frame');
+    await shot(tag, 'marks');
+    await keyIn(page, 'z', 'KeyZ', undefined, 2);
+    await sleep(200);
+    assert.deepEqual(await chipsNow(), [ja ? '① ここ' : '① here'], '⌘Z: the last mark away (not a move)');
+    assert.ok(gap(await poseOf(page, 'gate'), gate2) < 0.01, '…the gate stays where it was moved');
+    await page.mouseDrag(a0[0], a0[1], a1[0], a1[1], 8);
+    await sleep(300);
+    await page.click(markP[0] + 120, markP[1] + 40);
+    await sleep(300);
+    await press(page, await j(page, box('[data-part=mark-chip] [data-action=mark-remove]')));
+    await sleep(200);
+    assert.deepEqual(await chipsNow(), ja ? ['① 範囲', '② ここ'] : ['① area', '② here'], '× on ①: the rest close up');
+    await keyIn(page, 'n', 'KeyN', 'n');
+    await sleep(200);
+    assert.equal(await page.eval(`document.querySelector('[data-action=moment-mark]').getAttribute('aria-pressed')`), 'false', 'N: marking down, the marks stay');
+    assert.equal(await pinsNow(), 2);
+    // The field's picture: "what Claude gets", four rows (README pc-2).
+    await press(page, await j(page, box('[data-part=moment-shot]')));
+    await page.waitFor(`!!document.querySelector('[data-part=moment-gets]:not([hidden])')`, 3000);
+    const gets = await j(page, `JSON.stringify([...document.querySelectorAll('.moment-gets-row')].map((r) => r.textContent))`);
+    assert.equal(gets.length, 4, `four rows ${JSON.stringify(gets)}`);
+    assert.match(gets[0], ja ? /のこの 1 コマと印 ① ②/ : /^▣This frame at 0:0\d\.\d\d, with your marks ① ②/, `the frame row: ${gets[0]}`);
+    await shot(tag, 'gets');
+    await keyIn(page, 'Escape', 'Escape');
+    await sleep(200);
+    assert.equal(await page.eval(`!!document.querySelector('[data-part=moment-gets]:not([hidden])')`), false, 'Esc closes it');
     // (4) The boss (made by the game): just for this moment; ✦ asks Claude to make it appear there.
     const boss0 = await poseOf(page, 'boss');
     const spot2 = await freeSpot(page, [0.5, 0.18]);
@@ -754,6 +862,17 @@ async function moment(theme = 'light') {
     assert.equal(rec.here?.key, 'boss');
     assert.ok(Math.abs(rec.here.to.p[0] - boss1.p[0]) < 0.01 && Math.abs(rec.here.at.p[0] - boss0.p[0]) < 0.6, `where it was and where it was put ${JSON.stringify(rec.here)}`);
     assert.ok(rec.shot && rec.paused, 'the moment\'s picture with it');
+    // pause-ask stage 2 (README §2): what the AI gets — the marks, the frame with them drawn on, what each object is and
+    // the code line that made it, the game's time.
+    assert.deepEqual(rec.marks.map((m) => [m.n, m.kind]), [[1, 'area'], [2, 'point']], `the marks ${JSON.stringify(rec.marks)}`);
+    assert.ok(rec.marks[1].screen.length === 2 && rec.marks[0].screen.length === 4);
+    assert.ok(rec.marks[1].world?.length === 3, `the point's place on the ground ${JSON.stringify(rec.marks[1])}`);
+    assert.match(rec.shotMarked, /^\.studio\/play\/.+-marked\.jpg$/);
+    assert.ok(existsSync(join(root, rec.shotMarked)), 'the marked picture is kept');
+    const bossObj = rec.objects.find((o) => o.key === 'boss');
+    assert.equal(bossObj?.kind, 'made', `the boss: made by the game ${JSON.stringify(rec.objects)}`);
+    assert.deepEqual(bossObj?.from, { file: 'game.js', line: 121 }, 'the boss: the line of game.js that added it');
+    assert.ok(rec.time > 4 && rec.time < 10, `the game's time (${rec.time})`);
     assert.match(line, ja ? /boss.*から出るように/ : /boss will come in around X/, `the reply on the line: ${line}`);
     // fix 1 ✕6: a made reply never counts objects (the AI changed where the game makes it, no object of the scene).
     await sleep(600);
@@ -763,22 +882,8 @@ async function moment(theme = 'light') {
     // picture is from the pause; the middle of the frame is road and gate, which the gate's move changed little).
     const diff = await pictureDiff(page);
     assert.ok(diff >= 0 && diff < 24, `the paused frame is the frame it stopped on (mean difference ${diff.toFixed(1)} of 255)`);
-    if (theme === 'dark') {
-      // fix 1 ✕6: the AI changed the code (madeCode: --changed 1) — Reload on the reply's line, right in the moment. It
-      // leaves the moment for a new page of the game from its new code, still in Play; Save · 1 (the gate) stays; the
-      // boss comes in where it was put.
-      const rl = await until(async () => j(page, box('[data-action=moment-reload]')), 10000, 'Reload on the moment\'s reply');
-      await shot(tag, 'reload');
-      await press(page, rl);
-      const left = `${SHELL}.dataset.playing === 'on' && ${SHELL}.dataset.moment !== 'on' && ${SHELL}.dataset.paused !== 'on' && !!document.querySelector('[data-part=play-pause]:not([hidden])')`;
-      const state = `JSON.stringify({ playing: ${SHELL}.dataset.playing, moment: ${SHELL}.dataset.moment, paused: ${SHELL}.dataset.paused, pauseBtn: !!document.querySelector('[data-part=play-pause]:not([hidden])'), line: document.querySelector('.ai-line')?.textContent, src: ${FR}?.src })`;
-      await until(async () => page.eval(left), 30000, 'Reload left the moment for a new page').catch(async (e) => { throw new Error(`${e.message} ${await page.eval(state)}`); });
-      assert.match(await page.eval(IN.save), /1/, 'Save · 1 kept after Reload');
-      await until(async () => (await j(page, `JSON.stringify(${M}?.list().map((i) => i.key) ?? [])`) || []).includes('boss'), 90000, 'the boss after Reload');
-      const bossNew = await poseOf(page, 'boss');
-      assert.ok(Math.abs(bossNew.p[0] - boss1.p[0]) < 1.5, `the boss comes in where it was put (x ${bossNew.p[0].toFixed(1)}, put at ${boss1.p[0].toFixed(1)})`);
-      await shot(tag, 'reloaded');
-      console.log(`  ok (dark): HUD seen, ✕2 / ✕8 / ✕9 / ✕11, the made reply's Reload left the moment for the new code (boss at x ${bossNew.p[0].toFixed(1)}), Save · 1 kept`);
+    if (dark) {
+      await tryFromTheMoment(g, agent, rec, boss1, shipped, tag);
       return;
     }
     // (5) P: on from where it stopped.
@@ -828,6 +933,126 @@ async function moment(theme = 'light') {
   }
 }
 
+/**
+ * The stand-in's second fix from a paused moment (pause-ask stage 3): the boss comes in 2 m more to the left — the
+ * spawn line of examples/three-neon-boss's game.js, as the made reply left it.
+ */
+function nudgeBoss(folder, rec) {
+  const f = join(folder, 'game.js');
+  const src = readFileSync(f, 'utf8');
+  const m = /boss\.position\.set\((-?[\d.]+), (-?[\d.]+), (-?[\d.]+)\);/.exec(src);
+  if (!m) return null;
+  const x = (Number(m[1]) - 2).toFixed(1);
+  writeFileSync(f, src.replace(m[0], `boss.position.set(${x}, ${m[2]}, ${m[3]});`));
+  return { files: ['game.js'], note: rec.lang === 'ja' ? `ボスは X ${x} から出るようにしました。` : `The boss now comes in at X ${x}, more to the left.` };
+}
+/** What the editor and the game page say while a Try is opened (for a failure's message). */
+const TRY_STATE = `JSON.stringify({ shell: { ...${SHELL}.dataset }, flash: document.querySelector('[data-part=play-flash]')?.textContent, time: document.querySelector('[data-part=play-time]')?.textContent,
+  seconds: (() => { try { return ${M}.seconds(); } catch { return null; } })(), src: ${FR}?.src, line: document.querySelector('.ai-line')?.textContent })`;
+/** The flash at the game's foot ('' when none). */
+const flashText = (page) => page.eval(`(() => { const f = document.querySelector('[data-part=play-flash]:not([hidden])'); return f && f.offsetParent ? f.textContent : ''; })()`);
+/** The reply line's buttons (pause-ask stage 3): which of ▶ Try · Before / After · ↶ Undo · Reload are on it. */
+const replyButtons = (page) => j(page, `JSON.stringify([...document.querySelectorAll('.ai-line button')].filter((b) => b.offsetParent).map((b) => b.dataset.action))`);
+
+/**
+ * pause-ask stage 3 (2026-11-02; README §3, pictures pc-3 / pc-4), the dark run of `moment` on from its made ask
+ * ("make boss appear here", `rec`): the stand-in changed where the game makes the boss AND — the example has no save /
+ * load (decided 2026-11-02) — wrote codeMoment's values and save / load, checked with `--check-moment <back>`:
+ *   1. the reply: one line, "game.js" small under it, ▶ Try from 0:0x.xx · Before / After · ↶ Undo (no Reload);
+ *   2. ▶ Try: a new page with the new code, played to the ask's second and held there (the ask kept no moment: "Same
+ *      time, new run"); the boss comes in where it was put; Save · 1 kept; the reply and its buttons still there;
+ *   3. a second ask from there (the game has save / load now): its `back` keeps the whole moment; the stand-in moves the
+ *      boss 2 m more and its `--check-moment <back>` says the moment opened;
+ *   4. Before / After: the asked frame at once, the After after a Try that opens THAT moment (load before the first frame,
+ *      held at once: "New code · same moment", the clock exactly the ask's);
+ *   5. ↶ Undo (the panel's): game.js back to the FIRST fix (one ask at a time: pause-ask fix △6, 2026-11-02), no
+ *      reload — the moment stays; the line says so with ▶ Try.
+ * pause-ask fix (2026-11-02, the first walk's ✕ / △): the reply's words on their own row, whole (✕1); after a send ◎ is
+ * off and "what Claude gets" closed (△4); the saved moment's Try and After say the boss was already out, with ▶ Resume
+ * to see it (✕2).
+ */
+async function tryFromTheMoment(g, agent, rec, boss1, shipped, tag) {
+  const { root, page, shot } = g;
+  // 1. The reply.
+  await until(async () => (await replyButtons(page)).includes('moment-try'), 30000, '▶ Try on the moment\'s reply');
+  assert.deepEqual(await replyButtons(page), ['moment-try', 'moment-compare', 'moment-undo'], 'Try · Before / After · Undo, no Reload');
+  const tryBtn = await j(page, box('[data-action=moment-try]'));
+  const tm = /(\d+):(\d\d\.\d\d)/.exec(tryBtn.text);
+  assert.ok(tm && (ja ? /から試す$/ : /^Try from /).test(tryBtn.text) && Math.abs(Number(tm[1]) * 60 + Number(tm[2]) - rec.time) <= 0.011, `the button says the ask's second (${tryBtn.text}, ${rec.time})`);
+  assert.match(await page.eval(IN.line), /game\.js/, 'the files the AI touched, small under its line');
+  // ✕1: the AI's words on the first row, whole (two lines at most), the three buttons on the row under them.
+  const head = await j(page, `(() => { const e = document.querySelector('.ai-line.moment-reply .ai-head'); if (!e) return null; const r = e.getBoundingClientRect();
+    const b = document.querySelector('.ai-line [data-action=moment-try]').getBoundingClientRect(); return JSON.stringify({ cut: e.scrollHeight > e.clientHeight + 1 || e.scrollWidth > e.clientWidth + 1, below: b.top >= r.bottom - 1 }); })()`);
+  assert.ok(head && !head.cut && head.below, `the reply's words whole, the buttons under them ${JSON.stringify(head)}`);
+  // △4: sent → ◎ marking off (the marks stay).
+  assert.equal(await page.eval(`document.querySelector('[data-action=moment-mark]')?.getAttribute('aria-pressed') ?? 'false'`), 'false', '◎ off after the send');
+  assert.ok(agent.log.some((e) => e.what === 'wrote the moment hooks'), 'the stand-in wrote save / load with its first fix (Q2)');
+  const check1 = agent.log.find((e) => e.what.startsWith('check '))?.what ?? '';
+  assert.match(check1, /moment check ok — same time, new run/, `its --check-moment <back> (the ask kept no moment): ${check1}`);
+  assert.match(readFileSync(join(root, 'game.js'), 'utf8'), /save: \(\) =>/, 'game.js has save / load now');
+  assert.ok(rec.back && existsSync(join(root, rec.back)), `the ask's moment kept (${rec.back})`);
+  assert.equal('moment' in JSON.parse(readFileSync(join(root, rec.back), 'utf8')), false, '…the time only (no save / load at the pause)');
+  await shot(tag, 'fixed-try');
+  // 2. ▶ Try (same time, new run).
+  await press(page, tryBtn);
+  await until(async () => (await page.eval(IN.moment)) && /Same time, new run|同じ時刻・新しい遊び/.test(await flashText(page)), 60000, 'the Try held at the ask\'s second')
+    .catch(async (e) => { throw new Error(`${e.message} ${await page.eval(TRY_STATE)}`); });
+  const t1 = await page.eval(`${M}.seconds()`);
+  assert.ok(Math.abs(t1 - rec.time) <= 0.25, `held at the same second (${t1.toFixed(2)} for ${rec.time})`);
+  const bossTry = await until(() => poseOf(page, 'boss'), 10000, 'the boss in the paused list'); // the list comes a moment after the pause
+  assert.ok(Math.abs(bossTry.p[0] - boss1.p[0]) < 1.5, `the boss comes in where it was put (x ${bossTry.p[0].toFixed(1)}, put at ${boss1.p[0].toFixed(1)})`);
+  assert.match(await page.eval(IN.save), /1/, 'Save · 1 kept over the Try');
+  assert.ok((await replyButtons(page)).includes('moment-try'), 'the reply and its buttons stay over the Try\'s moment');
+  await shot(tag, 'tried-same-run');
+  // 3. A second ask from the Try's moment: the whole moment is kept now.
+  const bossAsk2 = await until(() => poseOf(page, 'boss'), 10000, 'the boss in the paused list'); // the list comes a moment after the pause
+  const n0 = requests(root).filter((r) => r.kind === 'play' && r.paused).length;
+  const fixed1 = readFileSync(join(root, 'game.js'), 'utf8');
+  await page.eval(`(document.querySelector('.ask-input').focus(), true)`);
+  await type(page, ja ? 'もう少し左から' : 'A bit more to the left');
+  await keyIn(page, 'Enter', 'Enter', '\r');
+  const rec2 = await until(() => requests(root).filter((r) => r.kind === 'play' && r.paused)[n0], 10000, 'the second paused request');
+  assert.equal(rec2.chat, rec.id, 'the same talk over the Try (its first message\'s id)');
+  const back2 = JSON.parse(readFileSync(join(root, rec2.back), 'utf8'));
+  assert.ok(back2.moment && typeof back2.moment === 'object', `the whole moment kept this time ${JSON.stringify(Object.keys(back2))}`);
+  await until(async () => /more to the left|から出るようにしました/.test(await page.eval(IN.line)) && (await replyButtons(page)).includes('moment-compare'), 60000, 'the second reply');
+  const check2 = agent.log.filter((e) => e.what.startsWith('check ')).pop()?.what ?? '';
+  assert.match(check2, /moment check ok — the ask's moment at [\d.]+ s opened/, `the stand-in opened the ask's moment: ${check2}`);
+  assert.ok(existsSync(join(root, '.studio/shot/moment-back.png')), 'its picture of that moment');
+  // 4. Before / After (Try first: the After is the new code at that very moment).
+  await press(page, await j(page, box('[data-action=moment-compare]')));
+  await page.waitFor(`!!document.querySelector('[data-part=moment-compare]:not([hidden]) [data-part=compare-before] img')`, 5000);
+  await until(async () => (await page.eval(IN.moment)) && /New code · same moment|新しいコード・同じ瞬間/.test(await flashText(page)), 60000, 'the Try at the same moment');
+  const t2 = await page.eval(`${M}.seconds()`);
+  assert.ok(Math.abs(t2 - rec2.time) <= 0.05, `the same moment: the clock is the ask's (${t2.toFixed(3)} for ${rec2.time})`);
+  await page.waitFor(`!!document.querySelector('[data-part=moment-compare]:not([hidden]) [data-part=compare-after] img')`, 10000);
+  const cb = await j(page, box('[data-part=moment-compare]'));
+  assert.ok(cb && cb.left >= 0 && cb.right <= 1280 && cb.top >= 0 && cb.bottom <= 800, `Before / After on screen ${JSON.stringify(cb)}`);
+  assert.match(cb.text, ja ? /前.*頼んだ時.*後.*新しいコード/ : /Before.*when you asked.*After.*new code/, cb.text);
+  // The SAME moment: save() kept the boss where it was at the ask, and load() puts it there — a change to where the game
+  // MAKES it shows from the next boss on (Resume), not in this frame. The moment itself is exact.
+  const bossNow = await until(() => poseOf(page, 'boss'), 10000, 'the boss in the paused list'); // the list comes a moment after the pause
+  // (x exactly; z within a frame or two of its approach: the page holds itself at the frame after load.)
+  assert.ok(Math.abs(bossNow.p[0] - bossAsk2.p[0]) < 0.05 && Math.abs(bossNow.p[2] - bossAsk2.p[2]) < 0.6,
+    `the boss where it was at the ask (${bossAsk2.p.map((v) => v.toFixed(2))} → ${bossNow.p.map((v) => v.toFixed(2))})`);
+  // ✕2 (plan A): the boss was out at that moment — the flash and the After say so, with ▶ Resume to see it.
+  // (The flash goes after 9 s; on a busy machine the After can take longer than that: checked while it is there.)
+  const fl2 = await flashText(page);
+  if (fl2) assert.match(fl2, ja ? /bossはもう出ていた/ : /Already out: boss, so your change shows from the next one/, 'the Try says the boss was already out');
+  const note = await j(page, box('[data-part=compare-note]'));
+  assert.ok(note && (ja ? /もう出ていました/ : /Already out at this moment: boss/).test(note.text) && !!(await j(page, box('[data-action=compare-resume]'))), `under the After: ${JSON.stringify(note)}`);
+  assert.ok(note.bottom <= 800, 'the note on screen');
+  await shot(tag, 'before-after');
+  // 5. ↶ Undo (the panel's): the files back to the FIRST fix (fix △6: one ask at a time), the moment stays.
+  await press(page, await j(page, box('[data-action=compare-undo]')));
+  await until(() => readFileSync(join(root, 'game.js'), 'utf8') === fixed1, 10000, 'game.js back to the first fix');
+  assert.notEqual(fixed1, shipped, 'the first fix (and its save / load) stays');
+  await until(async () => /Back to before|直す前に戻しました/.test(await page.eval(IN.line)), 10000, 'the line says it went back');
+  assert.equal(await page.eval(IN.moment), true, 'still the paused moment (no reload)');
+  assert.deepEqual(await replyButtons(page), ['moment-try'], '…with ▶ Try to see the code as it is now');
+  await shot(tag, 'undone');
+  console.log(`  ok (${tag}): the made reply's ▶ Try (same time, new run at ${t1.toFixed(2)} s; save / load written with it), a second ask kept the whole moment, Before / After at ${t2.toFixed(2)} s, ↶ Undo kept the moment`);
+}
 /** Firefly Ruins (Pixi 2D): the moment's list, a placed thing moved (Save · 1), what the game moves just for the moment. */
 async function moment2d() {
   console.log('moment2d: Firefly Ruins (Pixi 2D), PC');
@@ -879,7 +1104,10 @@ async function momentNarrow(layout, theme) {
   const tag = `moment-${layout.id}${theme === 'dark' ? '-dark' : ''}`;
   console.log(`${tag}: ${layout.width}×${layout.height} (${theme})`);
   const g = await open('examples/three-neon-boss', layout, { theme });
-  const { page, shot } = g;
+  const { page, shot, root } = g;
+  // pause-ask stage 3 on a phone (momentphone): a stand-in that fixes (and writes save / load with its first fix).
+  const tryOn = layout.mobile && theme === 'light';
+  const agent = tryOn ? startFakeAgent(root, { connect: deliverCheckpoint, fix: nudgeBoss }) : null;
   try {
     // fix 1 ✕4: no "Playing" note over the game's top (the guide's ● says it), the first-Play line seen, the clock whole
     // ("0:0x", not cut), Speed pressable (it slid under ✦).
@@ -908,7 +1136,38 @@ async function momentNarrow(layout, theme) {
     assert.ok(pr && ed && pr.right <= ed.left + 1, `Resume and Edit side by side ${JSON.stringify({ pr, ed })}`);
     // pause walk 2 ✕5: no "Next frame" pill on a narrow screen (it sat on SCORE; a phone has no . key).
     assert.equal(await page.eval(`document.querySelector('[data-part=step-tip]')?.hidden`), true, 'no first-pause line on a narrow screen');
+    // pause-ask stage 1: the paused frame in the field here too, but no cursor put in it by itself (moment-ask.ts
+    // momentFocusOk: a keyboard would come up over the frame just stopped).
+    const nps = await pausedShot(page);
+    assert.ok(nps && nps.img && nps.inField, `the paused frame in the field on a narrow screen ${JSON.stringify(nps)}`);
+    assert.equal(await page.eval(`document.activeElement?.classList.contains('ask-input') || false`), false, 'no cursor put in the field on a narrow screen');
+    // pause-ask stage 2 fix 2: the field's words short and whole ("Ask Claude…"), never cut ("…this mor…").
+    const ph = await j(page, `JSON.stringify((() => { const i = document.querySelector('.ask-input'); const c = document.createElement('canvas').getContext('2d');
+      c.font = getComputedStyle(i).font; return { ph: i.placeholder, need: c.measureText(i.placeholder).width, room: i.clientWidth }; })())`);
+    assert.match(ph.ph, ja ? /^Claude ?に頼む…$/ : /^Ask Claude…$/, `the short words on a narrow field (${ph.ph})`);
+    assert.ok(ph.need <= ph.room + 0.5, `…and they fit (${ph.need.toFixed(0)} of ${ph.room} px)`);
     await shot(tag, 'paused');
+    // pause-ask stage 2: ◎ Mark on a phone — a tap is a point ①; its chip in the field.
+    if (layout.mobile) {
+      await press(page, await j(page, box('[data-action=moment-mark]')), true);
+      await sleep(200);
+      const f = await j(page, IN.frame);
+      await page.tap(f[0] + f[2] * 0.3, f[1] + f[3] * 0.4);
+      await sleep(400);
+      assert.deepEqual(await j(page, `JSON.stringify([...document.querySelectorAll('[data-part=mark-chip]')].map((c) => c.textContent.replace('×', '').trim()))`), [ja ? '① ここ' : '① here'], 'a tap: ① here');
+      await shot(tag, 'mark');
+      await press(page, await j(page, box('[data-action=moment-mark]')), true);
+      await sleep(200);
+      // The picture in the field: "what Claude gets", four rows, over the field (on screen whole).
+      await press(page, await j(page, box('[data-part=moment-shot]')), true);
+      await page.waitFor(`!!document.querySelector('[data-part=moment-gets]:not([hidden])')`, 3000);
+      const gb = await j(page, box('[data-part=moment-gets]'));
+      assert.ok(gb && gb.left >= 0 && gb.right <= layout.width && gb.top >= 0, `the four rows on screen ${JSON.stringify(gb)}`);
+      assert.equal(await page.eval(`document.querySelectorAll('.moment-gets-row').length`), 4);
+      await shot(tag, 'gets');
+      await press(page, await j(page, box('[data-part=moment-shot]')), true);
+      await sleep(200);
+    }
     // The sheet's ▴ (the field's left end) opens the list: the moment's, with what the game made.
     const sheetBtn = await j(page, box('.bar [data-action=sheet], .bar .sheet-btn'));
     if (sheetBtn) {
@@ -943,12 +1202,55 @@ async function momentNarrow(layout, theme) {
     await stripDrag(page, 'boss', -50, 0, { from: [spot.x, spot.y], mobile: layout.mobile });
     await until(async () => (ja ? /ここに出るようにしてもらう/ : /make it appear here/).test(await lineOf()), 4000, '✦ on the line after the drag');
     await shot(tag, 'boss-moved');
+    if (tryOn) await tryOnPhone(g, layout, agent);
     await press(page, await j(page, box('[data-part=play-pause]')), layout.mobile);
     await page.waitFor(IN.running, 5000);
-    console.log('  ok: paused from the top bar, the sheet lists the moment, the boss\'s card, resumed');
+    console.log(`  ok: paused from the top bar, the sheet lists the moment, the boss's card${tryOn ? ', ▶ Try / Before / After on a phone' : ''}, resumed`);
   } finally {
+    await agent?.stop();
     await g.close();
   }
+}
+
+/**
+ * pause-ask stage 3 on a phone 390×844: asked from the paused moment, the stand-in fixed it (with save / load); the reply's
+ * ▶ Try · Before / After · ↶ Undo fit on the screen; ▶ Try holds a new run at the same second; Before / After is on
+ * screen whole; ✕ closes it.
+ */
+async function tryOnPhone(g, layout, agent) {
+  const { root, page, shot } = g;
+  const tag = 'moment-phone-try';
+  await page.eval(`(document.querySelector('.ask-input').focus(), true)`);
+  await type(page, ja ? 'ボスはここから出して' : 'Bring the boss in from here');
+  await keyIn(page, 'Enter', 'Enter', '\r');
+  const rec = await until(() => requests(root).find((r) => r.kind === 'play' && r.paused), 10000, 'the paused request');
+  assert.ok(rec.back, 'the ask\'s moment kept on a phone too');
+  await until(async () => (await replyButtons(page)).includes('moment-try'), 90000, '▶ Try on the reply')
+    .catch(async (e) => { throw new Error(`${e.message} ${await page.eval(TRY_STATE)} ${JSON.stringify(agent.log.map((l) => l.what).slice(-6))} ${await page.eval(`document.querySelector('.ai-line')?.outerHTML.slice(0, 1500)`)}`); });
+  await sleep(400);
+  for (const a of ['moment-try', 'moment-compare', 'moment-undo']) {
+    const b = await j(page, box(`[data-action=${a}]`));
+    assert.ok(b && b.left >= 0 && b.right <= layout.width && b.top >= 0 && b.bottom <= layout.height, `${a} on screen ${JSON.stringify(b)}`);
+  }
+  await shot(tag, 'fixed');
+  await press(page, await j(page, box('[data-action=moment-try]')), true);
+  await until(async () => (await page.eval(IN.moment)) && /Same time, new run|同じ時刻・新しい遊び/.test(await flashText(page)), 60000, 'the Try held at the ask\'s second');
+  const t1 = await page.eval(`${M}.seconds()`);
+  assert.ok(Math.abs(t1 - rec.time) <= 0.25, `held at the same second (${t1.toFixed(2)} for ${rec.time})`);
+  // pause-ask fix ✕3: the line wraps inside the screen (it ran off both edges), two lines at most, nothing cut.
+  const fl = await j(page, `(() => { const f = document.querySelector('[data-part=play-flash]:not([hidden])'); if (!f) return null; const r = f.getBoundingClientRect(); const sp = f.querySelector('span');
+    return JSON.stringify({ left: r.left, right: r.right, cut: !!sp && sp.scrollHeight > sp.clientHeight + 1 }); })()`);
+  assert.ok(fl && fl.left >= 0 && fl.right <= layout.width && !fl.cut, `"Same time, new run" whole on the phone ${JSON.stringify(fl)}`);
+  await shot(tag, 'tried');
+  await until(async () => !!(await j(page, box('[data-action=moment-compare]'))), 10000, 'Before / After after the Try');
+  await press(page, await j(page, box('[data-action=moment-compare]')), true);
+  await page.waitFor(`!!document.querySelector('[data-part=moment-compare]:not([hidden]) [data-part=compare-after] img')`, 60000);
+  const cb = await j(page, box('[data-part=moment-compare]'));
+  assert.ok(cb && cb.left >= 0 && cb.right <= layout.width && cb.top >= 0 && cb.bottom <= layout.height, `Before / After on screen ${JSON.stringify(cb)}`);
+  await shot(tag, 'compare');
+  await press(page, await j(page, box('[data-action=compare-close]')), true);
+  await sleep(300);
+  assert.equal(await page.eval(`!!document.querySelector('[data-part=moment-compare]:not([hidden])')`), false, '✕ closes it');
 }
 
 /**
@@ -1082,7 +1384,21 @@ async function momentDemo() {
     assert.ok((await held(page, 600).catch(() => ({ frames: 0 }))).frames <= 1 || true);
     const rows = await j(page, IN.rows);
     assert.ok(rows.length > 3, 'the moment\'s list in the demo');
-    assert.equal(await page.eval(`!!document.querySelector('.ask-input')?.offsetParent`), false, 'no ✦ field in the demo (no AI), as its Edit');
+    // pause-ask stage 1 (decided 11/2: show it in the demo too): the demo's paused moment HAS the field — the picture with its time,
+    // the cursor in it — and a send says in one line that the demo isn't connected; nothing goes anywhere, the words stay.
+    const dps = await pausedShot(page);
+    assert.ok(dps && dps.img && dps.inField, `the paused frame in the demo's field ${JSON.stringify(dps)}`);
+    assert.match(dps.tip, ja ? /^0:\d\d\.\d\d で止めた 1 コマ$/ : /^Paused at 0:\d\d\.\d\d$/, `the demo's tip names no AI (${dps.tip})`);
+    assert.equal(await page.eval(`document.activeElement?.classList.contains('ask-input') || false`), true, 'the cursor in the demo\'s field');
+    const dWords = ja ? '灯台をもう少し左に' : 'Move the lighthouse a bit left';
+    await type(page, dWords);
+    await keyIn(page, 'Enter', 'Enter', '\r');
+    const dLine = await until(() => page.eval(`[...document.querySelectorAll('.toast.on, .ask-news:not([hidden])')].map((e) => e.textContent).join(' ')`), 4000, 'the demo\'s one line');
+    assert.equal(dLine.trim(), ja ? '試し版では AI にはつながっていません。Claude Code や Codex でゲームを開くと頼めます。' : 'This demo isn’t connected to an AI. Open your game with Claude Code or Codex to ask.');
+    assert.equal(await page.eval(`document.querySelector('.ask-input').value`), dWords, 'the words stay in the field');
+    assert.equal(await page.eval(`!!document.querySelector('[data-part=moment-earlier]:not([hidden])') || /Sent|送りました/.test(document.querySelector('.ask-note')?.textContent || '')`), false, 'nothing sent');
+    await shot('demo-ask');
+    await page.eval(`(() => { const i = document.querySelector('.ask-input'); i.value = ''; i.dispatchEvent(new Event('input', { bubbles: true })); i.blur(); return true; })()`);
     // pause walk 2 ✕3: Lantern Cove has no score — no "This moment" line about numbers it does not have (nothing to press).
     assert.equal(await page.eval(`document.querySelector('[data-part=moment-values]')?.hidden`), true, 'no This moment for a game without values in the demo');
     const placed = ['sea-stack', 'lighthouse', 'sea-stack-small'].find((k) => rows.some((r) => r.key === k));
@@ -1095,7 +1411,7 @@ async function momentDemo() {
     await page.click(640, 260);
     await keyIn(page, 'p', 'KeyP', 'p');
     await page.waitFor(IN.running, 5000);
-    console.log(`  ok: the demo pauses into the moment${placed ? `, ${placed} moved (Save · 1)` : ''}, no ✦ field`);
+    console.log(`  ok: the demo pauses into the moment${placed ? `, ${placed} moved (Save · 1)` : ''}, its field says it isn't connected`);
     // fix 1 ✕3: Neon Run in the demo's list (among the 3D samples), paused when the boss comes: "Made by the game" and
     // the boss "Just for this moment" — no ✦ (no AI), on the card or anywhere.
     const games = JSON.parse(readFileSync(join(dir, 'studio/games.json'), 'utf8')).games;
@@ -1876,11 +2192,14 @@ try {
     }
     // pause walk 2 fix: ⚑ and This moment on a narrow screen (light: the phone; dark: the side window). Part of
     // momentnarrow; `--only momentkeep` runs it alone.
+    // pause-ask stage 1: `--only momentphone` = the phone, light, alone (the brief: only the screens that changed).
+    if (ONLY?.includes('momentphone')) await momentNarrow(LAYOUTS.phone, 'light'); // not in a whole run: momentnarrow has it
     if (on('momentnarrow') || on('momentkeep')) {
       await momentNarrowKeep(LAYOUTS.phone, 'light');
       await momentNarrowKeep(LAYOUTS.side, 'dark');
     }
     if (on('momentdark')) await moment('dark');
+    if (ONLY?.includes('momenttry')) await moment('light', true); // the photos of stage 3 (light); momentdark has the checks
     if (on('momentdemo')) await momentDemo();
     if (on('light')) await light();
     if (on('lightcode')) await lightCode();

@@ -35,6 +35,7 @@ export const HANDOFF_LIMITS = Object.freeze({
   maxLog: 300, // one console line (a stack trace is cut: the first line says what broke)
   maxNear: 12, // things near the player: enough to name "this one", few enough to read
   maxHistory: 12, // pause (2026-10-22): the chat's earlier turns a message carries; the whole talk is in .studio/chat/
+  maxMarks: 9, // pause-ask stage 2: marks on a paused frame (① … ⑨): more than a few is a drawing, not "here"
   maxPoints: 256, // ✦ Turn into a rule: a motion's points (the timeline's own limit, MAX_KEYS)
 });
 
@@ -145,6 +146,13 @@ export function normalizeRequestInput(input) {
         if (Array.isArray(o.files)) {
           const fs = [...new Set(o.files.filter(isFolderPath))].slice(0, HANDOFF_LIMITS.maxObjectFiles);
           if (fs.length) e.files = fs;
+        }
+        // pause-ask stage 2 (2026-11-02; "play" + paused): what it is in this moment and the code line that first added
+        // it. Hints: a bad one is dropped, never an error.
+        if (kind === 'play' && r.paused === true) {
+          if (o.kind === 'placed' || o.kind === 'moves' || o.kind === 'made') e.kind = o.kind;
+          const from = codeFrom(o.from);
+          if (from) e.from = from;
         }
         out.objects.push(e);
       }
@@ -335,6 +343,11 @@ function playMoment(r, errors) {
         out.here = here;
       }
     }
+    // pause-ask stage 2 (2026-11-02): what the person pointed at on the frame,
+    // the same picture with the marks drawn on it, and this moment's numbers — so the AI judges from the picture AND
+    // the code (decided 2026-11-02). Hints like the rest (a bad mark is dropped), except a marked picture that is not a
+    // picture (the host writes it to a file, as `shot`).
+    Object.assign(out, pausedMoment(r, errors));
     // Pause-edit stage 2 (2026-10-28; CONTRACT.md §1.14): ✦ Have Claude make this moment editable — the moment's list had
     // no codeMoment to show. The AI names the game's numbers once (SKILL.md "This moment"); the moment itself (picture,
     // camera, console) comes with the first request of the pause as for any paused message.
@@ -367,6 +380,51 @@ function playMoment(r, errors) {
         if (Object.keys(cp).length) out.checkpoint = cp;
       }
     }
+  }
+  return out;
+}
+
+/** A code place { file, line } (pause-ask stage 2): a path inside the game folder and a line ≥ 1; else undefined. */
+function codeFrom(f) {
+  if (!f || typeof f !== 'object' || !isFolderPath(f.file) || !Number.isInteger(f.line) || f.line < 1 || f.line > 1e7) return undefined;
+  return { file: f.file, line: f.line };
+}
+
+/**
+ * "play" + paused, pause-ask stage 2: `marks` (≤ HANDOFF_LIMITS.maxMarks; numbered as sent), `shotMarked`, `time`,
+ * `level`, `moment` (this moment's values by id, numbers only, ≤ 24).
+ */
+function pausedMoment(r, errors) {
+  const out = {};
+  const in01 = (v) => isFin(v) && v >= -0.05 && v <= 1.05;
+  const clamp01 = (v) => roundTo(Math.min(1, Math.max(0, v)), 1000);
+  if (Array.isArray(r.marks)) {
+    const marks = [];
+    for (const m of r.marks.slice(0, HANDOFF_LIMITS.maxMarks)) {
+      if (!m || typeof m !== 'object' || (m.kind !== 'point' && m.kind !== 'area') || !Array.isArray(m.screen)) continue;
+      const want = m.kind === 'point' ? 2 : 4;
+      if (m.screen.length !== want || !m.screen.every(in01)) continue;
+      const e = { n: Number.isInteger(m.n) && m.n > 0 && m.n < 100 ? m.n : marks.length + 1, kind: m.kind, screen: m.screen.map(clamp01) };
+      if (Array.isArray(m.world) && (m.world.length === 2 || m.world.length === 3) && m.world.every((v) => isFin(v) && Math.abs(v) < 1e7)) e.world = m.world.map((v) => roundTo(v, 100));
+      if (typeof m.key === 'string' && KEY_OK.test(m.key)) e.key = m.key;
+      if (Array.isArray(m.keys)) {
+        const ks = [...new Set(m.keys.filter((k) => typeof k === 'string' && KEY_OK.test(k)))].slice(0, 12);
+        if (ks.length) e.keys = ks;
+      }
+      marks.push(e);
+    }
+    if (marks.length) out.marks = marks;
+  }
+  if (r.shotMarked !== undefined) {
+    const ok = typeof r.shotMarked === 'string' && r.shotMarked.length <= HANDOFF_LIMITS.maxShot && /^data:image\/(jpeg|png);base64,[A-Za-z0-9+/]+=*$/.test(r.shotMarked);
+    if (!ok) errors.push(`"shotMarked" must be a JPEG or PNG data URL of at most ${HANDOFF_LIMITS.maxShot} characters`);
+    else out.shotMarked = r.shotMarked;
+  }
+  if (isFin(r.time) && r.time >= 0) out.time = roundTo(Math.min(r.time, 86400 * 7), 100);
+  if (typeof r.level === 'string' && /^[\p{L}\p{N}][\p{L}\p{N}\p{M}_.-]{0,59}$/u.test(r.level)) out.level = r.level;
+  if (r.moment && typeof r.moment === 'object' && !Array.isArray(r.moment)) {
+    const vals = Object.entries(r.moment).filter(([k, v]) => /^[A-Za-z_][A-Za-z0-9_.-]{0,39}$/.test(k) && isFin(v)).slice(0, 24);
+    if (vals.length) out.moment = Object.fromEntries(vals.map(([k, v]) => [k, roundTo(v, 1000)]));
   }
   return out;
 }
@@ -404,6 +462,19 @@ export function normalizeStatus(raw) {
   if (Number.isInteger(raw.changed) && raw.changed >= 0) out.changed = Math.min(raw.changed, 100000);
   const note = oneLine(raw.note, HANDOFF_LIMITS.maxNote);
   if (note) out.note = note;
+  // pause-ask stage 3 (2026-11-02): the game's files the change touched (`--files src/boss.js`), shown small under the
+  // reply of a paused ask ("src/boss.js · More in Claude") — the one line says what, this says where. A hint: paths
+  // inside the game folder only, the first few.
+  if (Array.isArray(raw.files)) {
+    const fs = [...new Set(raw.files.filter(isFolderPath))].slice(0, 5);
+    if (fs.length) out.files = fs;
+  }
+  // pause-ask fix (decided 2026-11-02, ✕2 of the first walk): what was ALREADY on screen at the ask's moment and so
+  // stays where it was when ▶ Try opens that moment with the new code (`--already "the boss"`). A saved moment brings
+  // back what was out as it was; the fix shows from the next one. Without this line Before / After looked the same and
+  // read as "the AI did nothing". The editor says it under the After; a short name, one line.
+  const already = oneLine(raw.already, 60);
+  if (already) out.already = already;
   // `asking` only (2026-10-19): the answers the person can press in the editor, the objects the question is about
   // (lit in the scene) and what changes ("before" / "after", one short line each). All optional: a question with
   // none of them still shows, with the ask field to answer in.

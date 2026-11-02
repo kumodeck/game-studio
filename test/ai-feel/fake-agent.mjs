@@ -82,7 +82,8 @@ export function chatReplyFor(rec) {
   if (rec.made && rec.here && Array.isArray(rec.here.to?.p)) {
     const name = rec.here.label || rec.here.key;
     const x = Number(rec.here.to.p[0]).toFixed(1);
-    return ja ? `${name}は X ${x} のあたりから出るようにします。読み込み直すと、そこから出ます。` : `${name} will come in around X ${x}. Reload and it appears there.`;
+    // One line: what was done (SKILL.md "Paused": never "Reload" — the editor offers ▶ Try from … itself).
+    return ja ? `${name}は X ${x} のあたりから出るようにします。` : `${name} will come in around X ${x}.`;
   }
   const near = Array.isArray(rec.near) && rec.near[0] ? rec.near[0].label || rec.near[0].key : '';
   const turns = Array.isArray(rec.history) ? rec.history.length : 0;
@@ -107,8 +108,13 @@ function edit(file, from, to) {
  * `madeCode` (pause-edit fix 1, 2026-10-28; walk 1 ✕6): a paused `made` request ("make it appear here") is answered as
  * a real AI does — examples/three-neon-boss's game.js makes the boss where it was put — with `--changed 1`. Without it the
  * stand-in only says it would (`--changed 0`), as before.
+ * pause-ask stage 3 (2026-11-02; SKILL.md "Paused"): `fix(folder, rec)` changes the code for a paused ask that is not a
+ * "made" one and answers `{ files, note, changed? }` (null = an answer only); `connect(folder)` writes the game's
+ * codeMoment values and save / load. As SKILL.md asks, with a change from a paused moment whose `back` kept no moment
+ * (the game had no save / load: decided 2026-11-02), `connect` runs first, with the fix; after any change it runs
+ * `--check-moment <back>` (the line is in the log as `check …`) and replies with `--files`.
  */
-export function startFakeAgent(folder, { slow = false, onEvent = () => {}, plan: given = null, madeCode = false } = {}) {
+export function startFakeAgent(folder, { slow = false, onEvent = () => {}, plan: given = null, madeCode = false, fix = null, connect = null } = {}) {
   const t0 = Date.now();
   const log = [];
   const note = (what) => {
@@ -172,15 +178,47 @@ export function startFakeAgent(folder, { slow = false, onEvent = () => {}, plan:
         status('working', '--request', paused[2], '--note', rec.lang === 'ja' ? 'この瞬間を見ています' : 'Looking at this moment');
         note('working');
         let changed = 0;
+        let reply = null;
+        const files = [];
         const gameJs = join(folder, 'game.js');
-        if (madeCode && rec.made && Array.isArray(rec.here?.to?.p) && existsSync(gameJs)) {
+        const made = madeCode && rec.made && Array.isArray(rec.here?.to?.p) && existsSync(gameJs);
+        const fixing = !rec.made && typeof fix === 'function';
+        // The moment it was asked from (stage 3): kept whole only when the game had save / load at the pause.
+        let kept = null;
+        if (typeof rec.back === 'string') {
+          try {
+            kept = JSON.parse(readFileSync(join(folder, rec.back), 'utf8'));
+          } catch {
+            kept = null;
+          }
+        }
+        if ((made || fixing) && connect && kept && !('moment' in kept)) {
+          connect(folder);
+          files.push('game.js');
+          note('wrote the moment hooks');
+        }
+        if (made) {
           const [x, y, z] = rec.here.to.p.map((v) => Number(v).toFixed(1));
           edit(gameJs, 'boss.position.set(0, 2.6, -26);', `boss.position.set(${x}, ${y}, ${z});`);
           changed = 1;
+          if (!files.includes('game.js')) files.push('game.js');
           note('wrote a file');
+        } else if (fixing) {
+          const r = fix(folder, rec);
+          if (r) {
+            changed = r.changed ?? 1;
+            reply = r.note;
+            for (const f of r.files ?? []) if (!files.includes(f)) files.push(f);
+            note('wrote a file');
+          }
+        }
+        // SKILL.md "Paused": check from the same moment before replying (the picture .studio/shot/moment-back.png).
+        if (changed && typeof rec.back === 'string') {
+          const c = spawnSync(process.execPath, [CLI, folder, '--check-moment', rec.back], { encoding: 'utf8', timeout: 120000 });
+          note(`check ${(c.stdout || c.stderr || '').trim().split('\n').pop()}`);
         }
         await sleep(gap.look);
-        status('done', '--request', paused[2], '--changed', String(changed), '--note', chatReplyFor(rec));
+        status('done', '--request', paused[2], '--changed', String(changed), ...(files.length && changed ? ['--files', files.join(',')] : []), '--note', reply ?? chatReplyFor(rec));
         note('replied');
       }).catch((e) => note(`error ${e.message}`));
     } else if (saved) {

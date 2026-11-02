@@ -1522,6 +1522,43 @@ away, one line right over the field says "Just for this moment" (and ✦, below)
   (`{ version, id, at, paused, shot, view, near, logs, size, turns: [{ who: "you" | "ai", text, at, request, state?,
   changed?, choices? }] }`). The line reads `studio: request play <path> "<words>" (paused, chat .studio/chat/<id>.json,
   picture …)`. Words typed in the ✦ field over the game when it paused go on in the field.
+- **Marks and the code's places** (pause-ask stage 2, 2026-11-02): **◎ Mark** in the field (key N) — a click on the
+  frame = a point, a drag = an area; numbered pins on the frame and chips "① here" / "② area" in the field (× and ⌘Z
+  take one away). Every message of the pause then carries `marks` (`[{ n, kind: "point" | "area", screen: [x, y] |
+  [x0, y0, x1, y1] (0–1 of the frame), world?, key?, keys? }]`, ≤ 9; `world` / `key` / `keys` from
+  `studio:moment/mark-at { id, x, y, box? }` → `studio:moment/mark-is { id, key, world?, keys? }`: the tap's test,
+  `toGround`, the pivots inside the area) and `shotMarked` (the frame with the marks drawn on; kept as
+  `.studio/play/<id>-marked.jpg`), plus `time` (seconds since ▶ Play), `level`, `moment` (`{ <value id>: number }`,
+  codeMoment), and `objects[]` with `kind` (`placed` | `moves` | `made`) and `from` (`{ file, line }`: the game's code
+  line that first added it — `Adapter.fromOf`, three.js: boot.js keeps an Error at the first `Object3D.add`, read at the
+  pause; `studio:play/paused` carries them as `from`). The objects are the selected ones, then what the marks point at.
+  The line adds `N marks, marked picture …`. Pressing the field's picture shows "Claude gets this with your words" —
+  the frame (and marks), the objects with their code places, this moment's numbers (and the console's errors), this
+  moment kept. Tests: `test/moment-marks.test.ts`, `test/moment-gets.test.ts`, `test/code-from.test.mjs`,
+  `test/studio-pause.browser.mjs` (`moment`).
+- **The same moment after the fix** (pause-ask stage 3, 2026-11-02): every message of the pause sends `back` — `{ time,
+  level, moment?, view? }`, `moment` = the game's codeMoment `save()` then (absent without save / load: the time
+  alone). The host keeps it as `.studio/asks/<request id>.json` (the newest 24; never a checkpoint of ⚑'s list, never in
+  the game or its published files; `GET /__studio/api/asks/<id>` for the editor page, `StudioHost.askMoment`) and the
+  record says `"back": ".studio/asks/<id>.json"`; the line adds `moment … (--check-moment … before you reply)`. The AI
+  opens it with `studio.mjs <folder> --check-moment <back>` (its code as it is now, headless; `.studio/shot/
+  moment-back.png`; without a `moment`: a new run played to the same second). Its done status may name the files it
+  touched (`files`, `--files a.js,b.js`) and what was already out at the moment and so keeps its old place there
+  (`already`, `--already "the boss"`, ≤ 60 characters; pause-ask fix 2026-11-02). The reply of a paused ask then shows one line (the note; the files small
+  under it) and **▶ Try from 0:05.02** (a new Play page with the code as it is now: `studio:moment/load` before its first
+  frame when the moment was kept whole, and `studio:play/pause { at }` — the page holds itself when its clock reaches
+  `at`; the field's talk, marks and the pause's asks carry over; the foot says "New code · same moment, 0:05.02", or
+  "Same time, new run · 0:05.02. This game couldn't start mid-run yet."; a moment opened whole adds what was already
+  out: "Already out: the boss, so your change shows from the next one." from `already`, else the made object the ask
+  was about, else "What was already out stays where it was."), **Before / After** (the asked frame with its marks beside
+  the Try's frame; Try runs first when it has not; under a whole moment's After the same sentence with ▶ Resume to see
+  it; Undo · Keep · Resume) and **↶ Undo** (the files back to before THIS ask — the host's snapshot of that request —
+  at once, no reload: the moment stays; one ask at a time since the fix of 2026-11-02). Each pause tells how late a game
+  that cuts long frames at 50 ms would be by then (`play/paused` `late`, from `PlayClock.late`); a new run's Try that is
+  0.3 s or more off the asking run says so ("This run loaded slower: the game may be 2.1 s behind."). The editor never reloads by itself. A game without
+  save / load: the AI writes them with its first change from a pause (decided 2026-11-02, SKILL.md "Paused"). A host
+  without `askMoment`: the old Reload. Tests: `test/ask-moments.test.mjs`, `test/moment-try.test.ts`,
+  `src/server/server.test.mjs`, `test/studio-pause.browser.mjs` (`moment`, `momentphone`).
 - **The ways out**: **▶ Resume** (P, the top bar) — the editor is put away, the game goes on from that frame with
   what was moved where it was left (the score, the timers, everything the game made as they were); "Resumed from
   0:42.3" at the game's foot. **Edit** — the scene before Play (§3.5.3), with the placed things moved in a moment.
@@ -1545,7 +1582,7 @@ away, one line right over the field says "Just for this moment" (and ✦, below)
 - **Checkpoints** (stage 3, §1.14.1): ⚑ right of Speed keeps this moment (a name, the game's save()); ▶ Play ⌄ "⚑ Play
   from …" opens a new page there (load(m) before its first frame); a game without save / load: one line and ✦.
 - **The AI's hands in a paused moment** (§3.6): done on the moment, not back in Edit first.
-- Messages: shell → bridge `studio:play/pause { on? }`, `studio:play/speed { rate }`, `studio:play/step { on }`,
+- Messages: shell → bridge `studio:play/pause { on?, at? }`, `studio:play/speed { rate }`, `studio:play/step { on }`,
   `studio:play/on { …, ai? }`, `studio:core/edit { on, moment }`; bridge → shell `studio:play/paused { on, edit, why,
   ask, draft }`, `studio:play/time`, `studio:core/ready { moment }`; `play/ask` carries `paused`, `chat`, `history`;
   `play/sent` carries the kept request's `id`. Tests: `test/pause.test.ts`, `test/studio-pause.browser.mjs` (`moment`

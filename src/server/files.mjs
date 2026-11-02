@@ -186,8 +186,11 @@ export async function writeStudioNote(rootReal, name, text) {
  */
 // chat/<id>.json (pause, 2026-10-22): the talk over a paused game, named by its first `play` request (play-chat.mjs).
 // play/<id>.jpg: a "play" request's picture, and since studio-canvas-ui stage 2 (2026-10-24) an "ask" one's (✦ Ask … to
-// make this UI editable: the picture round the place pressed).
-const STUDIO_WRITABLE = /^(generated\.json|requests\/[0-9]{8}-[0-9]{6}-[0-9]{3}-[a-z-]{2,10}-[0-9a-f]{4}\.json|play\/[0-9]{8}-[0-9]{6}-[0-9]{3}-(?:play|ask)-[0-9a-f]{4}\.(?:jpg|png)|chat\/[0-9]{8}-[0-9]{6}-[0-9]{3}-play-[0-9a-f]{4}\.json|status\.json|watch\.json|wake\.json|told\.json|server\.json|open\.json|next-step\.md|check\.md|view-check\.md|view-check\/(?:game|editor)\.png|shot\/game(?:-phone)?\.png|shot\/moment-(?:kept|opened)\.png|ui\/prefs\.json|data\/[a-z0-9][a-z0-9-]{0,39}\.json)$/;
+// make this UI editable: the picture round the place pressed). play/<id>-marked.jpg (pause-ask stage 2, 2026-11-02): a
+// paused request's frame with the person's marks drawn on (`shotMarked`). asks/<id>.json (pause-ask stage 3, 2026-11-02;
+// ask-moments.mjs): the moment a paused request was asked from (`back`), named by the request's id; shot/moment-back.png:
+// `--check-moment <back>`'s picture of that moment opened with the game's code as it is now.
+const STUDIO_WRITABLE = /^(generated\.json|asks\/[0-9]{8}-[0-9]{6}-[0-9]{3}-play-[0-9a-f]{4}\.json|requests\/[0-9]{8}-[0-9]{6}-[0-9]{3}-[a-z-]{2,10}-[0-9a-f]{4}\.json|play\/[0-9]{8}-[0-9]{6}-[0-9]{3}-(?:play|ask)-[0-9a-f]{4}(?:-marked)?\.(?:jpg|png)|chat\/[0-9]{8}-[0-9]{6}-[0-9]{3}-play-[0-9a-f]{4}\.json|status\.json|watch\.json|wake\.json|told\.json|server\.json|open\.json|next-step\.md|check\.md|view-check\.md|view-check\/(?:game|editor)\.png|shot\/game(?:-phone)?\.png|shot\/moment-(?:kept|opened|back)\.png|ui\/prefs\.json|data\/[a-z0-9][a-z0-9-]{0,39}\.json)$/;
 
 // checkpoints/<id>.json (pause-edit stage 3, 2026-10-28; checkpoints.mjs): the paused moments the person kept with ⚑. The
 // id comes from the person's name ("Before the boss" → Before-the-boss; a Japanese name keeps its letters): letters and digits of any
@@ -251,7 +254,8 @@ export async function readStudioFile(rootReal, rel, maxBytes) {
 export async function readStudioFileInfo(rootReal, rel, maxBytes) {
   // chat/<id>.json (pause, 2026-10-22): read back only to add a turn (play-chat.mjs); no route serves it.
   // checkpoints/<id>.json (pause-edit stage 3): read by its own route (checkpoints.mjs), for the editor page only.
-  if (!isCheckpointRel(rel) && !/^(generated\.json|adapter\.js|tools\.js|studio\.json|status\.json|watch\.json|wake\.json|told\.json|open\.json|ui\/prefs\.json|ui\/studio\.css|ui\/shell\.js|data\/[a-z0-9][a-z0-9-]{0,39}\.json|chat\/[0-9]{8}-[0-9]{6}-[0-9]{3}-play-[0-9a-f]{4}\.json)$/.test(rel)) return null;
+  // asks/<id>.json (pause-ask stage 3): an ask's moment, read by its own route (ask-moments.mjs) and --check-moment.
+  if (!isCheckpointRel(rel) && !/^(generated\.json|asks\/[0-9]{8}-[0-9]{6}-[0-9]{3}-play-[0-9a-f]{4}\.json|adapter\.js|tools\.js|studio\.json|status\.json|watch\.json|wake\.json|told\.json|open\.json|ui\/prefs\.json|ui\/studio\.css|ui\/shell\.js|data\/[a-z0-9][a-z0-9-]{0,39}\.json|chat\/[0-9]{8}-[0-9]{6}-[0-9]{3}-play-[0-9a-f]{4}\.json)$/.test(rel)) return null;
   let p = path.join(rootReal, '.studio');
   try {
     for (const part of ['', ...rel.split('/').slice(0, -1)]) {

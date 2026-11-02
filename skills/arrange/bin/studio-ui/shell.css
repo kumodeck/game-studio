@@ -240,6 +240,139 @@ img.thumb:not([src]) { content: url("data:image/gif;base64,R0lGODlhAQABAIAAAAAAA
 .shell[data-moment="on"]:not([data-layout="phone"])[data-moment-fold="on"] .stage > .moment-unfold { display: inline-flex; position: absolute; top: 12px; left: 12px; z-index: 4;
   background: var(--col); box-shadow: var(--shadow); border-radius: 999px; }
 .shell[data-moment="on"] .nav-row[data-tool="library"], .shell[data-moment="on"] .timeline-panel, .shell[data-moment="on"] .layer-switch { display: none; }
+/* pause-ask stage 1 (2026-11-02; moment-ask.ts). While paused, a thin violet
+   line round the game: "the AI sees this frame". Violet = the AI's colour (rule 2), as the field's light while it works
+   — but a still, square line on the GAME's edge, not a running light on the field, so the two never read alike. Edit has
+   no line round the game at all, which is how a paused moment and Edit read apart at a glance (both show the same
+   tools). Over the frame, under the floating list, the card and the field (z-index 3 < the list's 4, the dock's 5);
+   never takes a pointer. The web demo shows it too: its field is there to try (decided 2026-11-02). */
+.shell[data-moment="on"] .stage::after { content: ""; position: absolute; inset: 0; z-index: 3; border-radius: inherit; pointer-events: none;
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--ai) 85%, transparent); }
+/* The paused frame, small, first in the field with its time ("0:05.02"): the picture that goes with the words. 54×32
+   (the game's frame cut to fill, as the mock's pc-1 / phone-1); the time on it, white on the picture's own dark foot. */
+.moment-shot { position: relative; flex: none; width: 54px; height: 32px; border-radius: 6px; overflow: hidden; background: #000;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--ai) 55%, transparent); cursor: default; }
+.moment-shot[hidden] { display: none; }
+.moment-shot-img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.moment-shot-time { position: absolute; left: 0; right: 0; bottom: 0; padding: 6px 0 1px; text-align: center; font-size: 10px; font-weight: 600; line-height: 1;
+  color: #fff; background: linear-gradient(transparent, rgba(0, 0, 0, .72)); font-variant-numeric: tabular-nums; }
+/* The picture takes the spark's place (one mark at the field's head) and sits close to the capsule's round end. */
+.ask-box:has(> .moment-shot:not([hidden])) { padding-left: 6px; }
+.ask-box:has(> .moment-shot:not([hidden])) > .ask-spark { display: none; }
+/* pause-ask stage 2 (2026-11-02): the picture is a button now — it opens "what Claude gets" (moment-gets.ts). */
+.moment-shot[role="button"] { cursor: pointer; }
+.moment-shot[role="button"]:focus-visible { outline: 2px solid var(--ai); outline-offset: 2px; }
+/* ◎ Mark in the moment's field (moment-marks.ts; key N). A small round button before the send arrow, the pick's orange
+   when on (marks are YOUR pointing, as the chips of what you selected): README pc-1. */
+.ask-mark { flex: none; display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 9px 0 7px; border: 0; border-radius: 999px;
+  background: transparent; color: var(--text-2); font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; }
+.ask-mark[hidden] { display: none; }
+.ask-mark:hover { background: color-mix(in srgb, var(--text) 8%, transparent); color: var(--text); }
+.ask-mark[aria-pressed="true"] { background: var(--you-soft); color: var(--you-text); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--you) 55%, transparent); }
+.ask-mark-ring { width: 12px; height: 12px; border-radius: 50%; box-shadow: inset 0 0 0 2px currentColor; position: relative; }
+.ask-mark-ring::after { content: ""; position: absolute; inset: 4px; border-radius: 50%; background: currentColor; }
+/* On a phone the word goes (the ring says it; the tip / label says "Mark…"): the field's room is for words — once the
+   person has used ◎ (pause-ask fix △10, 2026-11-02: before that a bare ring beside the green dot read as nothing; main.ts
+   data-mark-word). "Ask Claude…" still fits beside "◎ Mark" at 390 px. */
+.shell[data-layout="phone"]:not([data-mark-word="on"]) .ask-mark-word { display: none; }
+.shell[data-layout="phone"] .ask-mark { padding: 0 7px; }
+/* The marks' chips "① here ×": the pick's orange, as the selected object's chip beside them. */
+.mark-chips { flex: 0 1 auto; display: inline-flex; gap: 4px; min-width: 0; overflow: hidden; }
+.mark-chips[hidden] { display: none; }
+.mark-chip { flex: none; display: inline-flex; align-items: center; height: 20px; padding: 0 2px 0 7px; border-radius: 999px; font-size: 12px; font-weight: 600;
+  color: var(--you-text); background: var(--you-soft); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--you) 45%, transparent); white-space: nowrap; }
+.mark-chip-n { margin-right: 3px; }
+.mark-chip-x { width: 18px; height: 18px; margin-left: 2px; padding: 0; border: 0; border-radius: 50%; background: none; color: inherit; font: inherit; line-height: 1; cursor: pointer; }
+.mark-chip-x:hover { background: color-mix(in srgb, var(--you) 22%, transparent); }
+/* The layer over the game: the pins always (pointer-free), the whole frame takes the pointer only while marking. */
+.mark-layer { position: absolute; inset: 0; z-index: 3; pointer-events: none; }
+.mark-layer[hidden] { display: none; }
+.mark-layer[data-marking="on"] { pointer-events: auto; cursor: crosshair; touch-action: none; }
+.mark-pin { position: absolute; width: 0; height: 0; }
+.mark-pin::before { content: ""; position: absolute; left: -4px; top: -4px; width: 8px; height: 8px; border-radius: 50%; background: var(--studio-accent);
+  box-shadow: 0 0 0 2px rgba(0, 0, 0, .45); }
+.mark-n { position: absolute; display: grid; place-items: center; min-width: 22px; height: 22px; padding: 0 4px; border-radius: 999px; font-size: 12px; font-weight: 700;
+  color: #fff; background: var(--studio-accent); box-shadow: 0 0 0 2px rgba(0, 0, 0, .45), 0 2px 6px rgba(0, 0, 0, .35); font-variant-numeric: tabular-nums; }
+.mark-pin > .mark-n { left: -11px; top: -39px; }
+.mark-area { position: absolute; border: 2px dashed var(--studio-accent); border-radius: 6px; background: color-mix(in srgb, var(--studio-accent) 10%, transparent); }
+.mark-area > .mark-n { left: -11px; top: -11px; }
+.mark-area.live > .mark-n { display: none; }
+.mark-area[hidden] { display: none; }
+/* "Click to mark a spot · drag to circle an area": just over the field and the AI's line (the dock: main.ts --dock-h,
+   16 px from the edge + 12 px of air) — pause-ask fix △5, 2026-11-02. It was over the frame's top, where games put their
+   banner ("⚠ BOSS"), the first pause's "Next frame · Make this a checkpoint" and the web demo's "This is a test version"
+   all sat in the same band. A phone already had it over the field (below). */
+.mark-hint { position: absolute; top: auto; bottom: calc(var(--dock-h, 56px) + 28px); left: 50%; transform: translateX(-50%); padding: 6px 12px; border-radius: 999px; font-size: 12px; font-weight: 600;
+  color: #fff; background: rgba(0, 0, 0, .66); white-space: nowrap; pointer-events: none; }
+.mark-hint[hidden] { display: none; }
+/* A phone: over the field instead (the game's HUD has the top corner — "SCORE" sat under the hint), and the chips are
+   the number alone ("①", its × still there): the short words "Ask Claude…" keep their room. */
+.shell[data-layout="phone"] .mark-hint { top: auto; bottom: calc(92px + env(safe-area-inset-bottom)); }
+.shell[data-layout="phone"] .mark-chip > span:not(.mark-chip-n) { display: none; }
+.shell[data-layout="phone"] .mark-chip-n { margin-right: 0; }
+/* "Claude gets this with your words" (moment-gets.ts; README pc-2): a card over the field's head on PC, over the
+   frame's foot on a phone (the field is under the frame there). */
+.moment-gets { position: absolute; left: 50%; bottom: 76px; transform: translateX(-50%); z-index: 6; width: min(470px, calc(100% - 24px)); padding: 12px 14px 6px;
+  border-radius: 14px; background: var(--float-solid, var(--col)); color: var(--text); box-shadow: var(--shadow); font-size: 13px; }
+.moment-gets[hidden] { display: none; }
+.shell[data-layout="phone"] .moment-gets { bottom: calc(80px + env(safe-area-inset-bottom)); }
+.moment-gets-title { color: var(--text-2); font-size: 12px; font-weight: 600; margin-bottom: 4px; }
+.moment-gets-row { display: flex; gap: 10px; padding: 8px 0; border-top: 1px solid color-mix(in srgb, var(--text) 10%, transparent); }
+.moment-gets-row:first-of-type { border-top: 0; }
+.moment-gets-icon { flex: none; width: 16px; color: var(--text-2); text-align: center; }
+.moment-gets-words { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.moment-gets-words b { font-weight: 600; }
+.moment-gets-words small { color: var(--text-2); font-size: 11.5px; }
+.moment-gets-words code { padding: 0 4px; border-radius: 4px; background: color-mix(in srgb, var(--text) 8%, transparent); font-size: 11px; }
+/* pause-ask stage 3 (2026-11-02; moment-try.ts, README pc-3 / pc-4): ▶ Try from 0:05.02 is the reply's one violet
+   button (the AI's colour: "the AI's change, at your moment"); Before / After hangs over the game, the two frames side
+   by side (stacked on a phone), the words asked at its foot with Undo and Keep · Resume. */
+.ai-line .link.try { background: var(--ai); color: #fff; }
+.ai-line .link.try:hover { background: color-mix(in srgb, var(--ai) 86%, #000); }
+.ai-line .link.try .icon { color: #fff; }
+.moment-compare { position: absolute; left: 50%; top: 12px; transform: translateX(-50%); z-index: 7; width: min(1140px, calc(100% - 24px));
+  max-height: calc(100% - 108px); overflow: auto; padding: 10px 14px 12px; border-radius: 14px; background: var(--float-solid, var(--col)); color: var(--text);
+  box-shadow: var(--shadow); font-size: 13px; }
+.moment-compare[hidden] { display: none; }
+.moment-compare-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--text-2); font-size: 12px; font-weight: 600; }
+.moment-compare-head .icon-btn { width: 28px; height: 28px; border: 0; border-radius: 8px; background: transparent; color: var(--text-2); display: inline-grid; place-items: center; cursor: pointer; }
+.moment-compare-head .icon-btn:hover { background: var(--raise-2); }
+.moment-compare-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 6px; }
+.moment-compare-side { margin: 0; min-width: 0; display: flex; flex-direction: column; }
+.moment-compare-side .moment-compare-pic { margin-top: auto; }
+.moment-compare-side figcaption { display: flex; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+.moment-compare-side figcaption b { font-weight: 600; }
+.moment-compare-sub { color: var(--text-2); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.moment-compare-side.after figcaption b { color: var(--ai-text, var(--ai)); }
+.moment-compare-pic { display: grid; place-items: center; aspect-ratio: 16 / 10; border-radius: 10px; overflow: hidden; background: var(--raise-2); }
+.moment-compare-pic:has(img) { aspect-ratio: auto; }
+/* Each picture keeps its own shape (a phone's game is tall: cropped to 16:10 it showed only the HUD, 2026-11-02). */
+.moment-compare-pic img { display: block; width: 100%; height: auto; max-height: 52vh; object-fit: contain; }
+.moment-compare-wait { color: var(--text-2); font-size: 12px; padding: 0 12px; text-align: center; }
+/* Under the After when it is the saved moment (pause-ask fix ✕2, plan A, 2026-11-02): "Already out at this moment: the
+   boss. It stays where it was; your change shows from the next one." and ▶ Resume to see it — the reason the two
+   pictures can look the same, where the eye compares them. */
+.moment-compare-note { display: flex; align-items: center; gap: 8px; margin-top: 6px; color: var(--text-2); font-size: 12px; line-height: 1.35; }
+.moment-compare-note > span { flex: 1 1 auto; min-width: 0; }
+.moment-compare-note .btn { flex: none; display: inline-flex; align-items: center; gap: 6px; min-height: 28px; padding: 0 10px; border: 0; border-radius: 8px;
+  background: var(--ai-soft, var(--raise-2)); color: var(--ai-text, var(--text)); font: inherit; font-weight: 600; cursor: pointer; white-space: nowrap; }
+.moment-compare-note .btn .icon { width: 12px; height: 12px; }
+.shell[data-layout="phone"] .moment-compare-note, .shell[data-fit="side"] .moment-compare-note { flex-direction: column; align-items: stretch; font-size: 11px; }
+.moment-compare-foot { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+.moment-compare-asked { flex: 1 1 auto; min-width: 0; color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.moment-compare-foot .btn { flex: none; display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 0 12px; border: 0; border-radius: 8px;
+  background: var(--raise-2); color: var(--text); font: inherit; font-weight: 600; cursor: pointer; }
+.moment-compare-foot .btn .icon { width: 14px; height: 14px; }
+.moment-compare-foot .btn.primary { background: var(--ai); color: #fff; }
+.shell[data-layout="phone"] .moment-compare, .shell[data-fit="side"] .moment-compare { top: 8px; max-height: calc(100% - 96px); padding: 8px 10px 10px; }
+/* A phone / the side window: still side by side (the game is tall there, two half-width frames read best). */
+.shell[data-layout="phone"] .moment-compare-pair, .shell[data-fit="side"] .moment-compare-pair { gap: 8px; }
+.shell[data-layout="phone"] .moment-compare-side figcaption, .shell[data-fit="side"] .moment-compare-side figcaption { flex-direction: column; gap: 0; }
+.shell[data-layout="phone"] .moment-compare-sub, .shell[data-fit="side"] .moment-compare-sub { white-space: normal; font-size: 11px; }
+.shell[data-layout="phone"] .moment-compare-pic img, .shell[data-fit="side"] .moment-compare-pic img { max-height: 58vh; }
+.shell[data-layout="phone"] .moment-compare-pic, .shell[data-fit="side"] .moment-compare-pic { aspect-ratio: 9 / 16; }
+.shell[data-layout="phone"] .moment-compare-asked, .shell[data-fit="side"] .moment-compare-asked { display: none; }
+.shell[data-layout="phone"] .moment-compare-foot, .shell[data-fit="side"] .moment-compare-foot { justify-content: flex-end; }
 /* The moment's line over the field on a phone (fix 1 ✕5; main.ts momentLine): the card's ✦ chip, under the words. */
 .moment-line.has-appear { flex-direction: column; gap: 4px; }
 .moment-line .moment-appear { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; min-height: 28px; padding: 2px 10px; border: 0; border-radius: 8px;
@@ -345,7 +478,19 @@ img.thumb:not([src]) { content: url("data:image/gif;base64,R0lGODlhAQABAIAAAAAAA
    top-left HUD (it crossed "SCORE"); "Next frame" is not shown there at all (moment.ts). */
 .shell[data-layout="phone"] .play-tip { white-space: normal; max-width: min(200px, 50%); border-radius: 14px; line-height: 1.35; }
 .play-flash { left: 50%; bottom: 24px; transform: translateX(-50%); }
+/* pause-ask fix ✕3 (2026-11-02): a flash wraps to two lines inside the game instead of running off both edges ("e, new
+   run · 0:05.40. The game couldn’t start from the middle whe" on a phone). Radius 16: still a pill on one line. */
+/* Centred with left / right 12 px and auto margins, not translateX(-50%): the rise animation's transform replaced that
+   translate while it ran, so the flash first came in half off to the right (on a phone, past the edge). */
+.play-flash { left: 12px; right: 12px; margin: 0 auto; transform: none; width: max-content; max-width: min(640px, calc(100% - 24px));
+  white-space: normal; border-radius: 16px; line-height: 1.35; }
+.play-flash > span { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .play-flash .icon { width: 12px; height: 12px; }
+/* Paused (pause-ask stage 3: ▶ Try's "New code · same moment, 0:05.02"), the foot has the field and the AI's reply over
+   it: the flash goes above them, or it is drawn behind them and never read (2026-11-02). */
+/* pause-ask fix (2026-11-02): over the dock as tall as it is now (main.ts --dock-h): the reply with ▶ Try is two rows
+   since ✕1, and a fixed 150 px put the flash on its top edge. */
+.shell[data-paused="on"] .play-flash { bottom: max(150px, calc(var(--dock-h, 0px) + 28px)); }
 /* ⚑ Make this a checkpoint (pause-edit stage 3): after Speed while paused, the guide's small round button. A phone's bar has
    no room for one more (fix 1 ✕4): there it is in ⌘K. */
 .play-guide .play-flag { width: 28px; padding: 0; color: var(--text); }
@@ -2295,6 +2440,19 @@ li.obj[aria-selected="true"] .hand-mark .hand-tag { padding: 0 4px; }
 @keyframes off-lit { 0% { background: var(--ai-soft); box-shadow: inset 0 0 0 1.5px var(--ai); } 100% { background: transparent; box-shadow: none; } }
 @media (prefers-reduced-motion: reduce) { .off-row.lit, .rule-knobs > .lit { animation: none; background: var(--ai-soft); } }
 .shell[data-layout="phone"][data-fold="min"] .ai-caption > .offset-choices:not([hidden]) { display: flex; }
+/* pause-ask stage 3 (2026-11-02): folded, a paused ask's reply with ▶ Try from … still shows (the only way to see the fix
+   from the same moment; a dot on ▴ hid it). Its line wraps so its three buttons fit 390 px. */
+.shell[data-layout="phone"][data-fold="min"] .ai-caption:has(> .ai-line:not([hidden]) [data-action=moment-try]) { display: grid; }
+.shell[data-layout="phone"][data-fold="min"] .ai-caption > .ai-line:not([hidden]):has([data-action=moment-try]) { display: flex; }
+/* pause-ask fix ✕1 (2026-11-02; main.ts .moment-reply): PC, the side window and a phone alike — the AI's words take the
+   whole first row and wrap to two lines (never "The boss now comes in at…"), the buttons sit on the row under them,
+   lined up with the words (past the dot). The small files row stays one line. */
+.ai-line.moment-reply { flex-wrap: wrap; row-gap: 6px; }
+.ai-line.moment-reply > .ai-text { flex-basis: calc(100% - 18px); }
+.ai-line.moment-reply > .ai-text.two > .ai-head { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.ai-line.moment-reply > .ai-text + .link { margin-left: 18px; }
+.shell[data-layout="phone"] .ai-line.moment-reply > .ai-text { flex-basis: calc(100% - 14px); }
+.shell[data-layout="phone"] .ai-line.moment-reply > .ai-text + .link { margin-left: 14px; }
 /* Phone: the same, the four may take two lines (no ⌥ there: Just this one is the way in). */
 /* Phone / side window: the same parts in the sheet; the knobs' names a little wider (as the numbers' labels, .fields). */
 .shell[data-layout="phone"] .knob { grid-template-columns: 56px minmax(0, 1fr); }

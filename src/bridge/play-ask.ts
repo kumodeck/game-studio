@@ -430,9 +430,19 @@ export function startPlayAsk(o: PlayAskOptions): PlayAskHandle {
   let before = 0;
   // A page opened from a checkpoint (stage 3, startFrom): its first frame is the checkpoint's second, not 0:00.
   let from = 0;
+  // `clockOn`: the clock above means something (a Play page's first frame ran, or an edit page woke into Play); before
+  // that playSeconds() is not this Play's time and a pause at a time (pauseAt) must not fire on it.
+  let clockOn = false;
+  // How late a game that cuts long frames would be since this Play's first frame (play-clock.ts `late`, s), told with
+  // each pause (pause-ask fix △7): the editor compares the ask's run with ▶ Try's new run and says so when they differ.
+  let late0 = 0;
+  const lateNow = () => Math.max(0, ((o.pause?.clock.late ?? 0) - late0) / 1000);
   if (hold && !o.standby) void firstFrame().then(() => {
     t0 = hold.now() - from * 1000;
+    late0 = o.pause?.clock.late ?? 0;
+    clockOn = true;
     tellTime();
+    watchPauseAt();
   });
   const playSeconds = () => (hold ? Math.max(0, (hold.now() - t0) / 1000) : 0);
   function tellTime() {
@@ -646,10 +656,53 @@ export function startPlayAsk(o: PlayAskOptions): PlayAskHandle {
     }
   }
 
+  /** Each listed object's code place (Adapter.fromOf), or undefined when the adapter can't tell any. */
+  function codeFromAll(w: ReturnType<typeof world>): Record<string, { file: string; line: number }> | undefined {
+    if (!w || typeof w.fromOf !== 'function') return undefined;
+    const out: Record<string, { file: string; line: number }> = {};
+    let n = 0;
+    for (const it of listOf(w).slice(0, 200)) {
+      try {
+        const f = w.fromOf(it.key);
+        if (f) (out[it.key] = f), n++;
+      } catch {
+        /* a hint only */
+      }
+    }
+    return n ? out : undefined;
+  }
+
+  // ----- pause at a time (pause-ask stage 3, 2026-11-02; play/pause `at`): ▶ Try from 0:05.02 -----
+  // The editor opens the game again with the AI's new code and wants it held at the ask's second: at once for a page
+  // opened at the ask's moment (its clock starts at that second: startFrom), or when a new run reaches it (a game without
+  // save / load: "same time, new run"). Watched with the page's own timers (not the game's frames: those are the
+  // game's, and held by the pause itself), finer as the second comes near, so the pause lands within a frame of it.
+  let pauseAt: number | null = null;
+  let pauseAtTimer = 0;
+  function watchPauseAt() {
+    nativeClearTimeout(pauseAtTimer);
+    if (pauseAt === null || !hold) return;
+    if (clockOn && awake && host && !hold.paused) {
+      const left = pauseAt - playSeconds();
+      if (left <= 0.004) {
+        // pauseNow() clears pauseAt when it pauses; a page busy right now (a moment still loading) is tried again.
+        void pauseNow();
+        pauseAtTimer = nativeSetTimeout(watchPauseAt, 16);
+        return;
+      }
+      pauseAtTimer = nativeSetTimeout(watchPauseAt, Math.max(1, Math.min(50, (left * 1000) / Math.max(0.05, hold.rate) - 8)));
+      return;
+    }
+    pauseAtTimer = nativeSetTimeout(watchPauseAt, 16);
+  }
+
   // ----- the paused moment (play-pause.ts holds the game; play-move.ts wakes the editor over it) -----
   let pausing = false;
   async function pauseNow() {
     if (!hold || hold.paused || pausing || o.busy?.()) return;
+    // Paused by hand (or by the time itself): a pause at a time is done with.
+    pauseAt = null;
+    nativeClearTimeout(pauseAtTimer);
     pausing = true;
     try {
       // Words already typed in the ✦ field go to the editor page's field (the person was about to ask; now they can).
@@ -674,7 +727,11 @@ export function startPlayAsk(o: PlayAskOptions): PlayAskHandle {
       const why = kinds && w0 ? kinds.pause(listOf(w0), w0.dim) : {};
       momentUp = !!momentHost?.wake();
       const { type: _t, text: _x, ...rest } = ask as Extract<BridgeToShell, { type: 'studio:play/ask' }>;
-      post({ type: 'studio:play/paused', on: true, edit: momentUp, why, ask: rest, ...(draft ? { draft } : {}) });
+      // pause-ask stage 2 (2026-11-02): where in the game's code each object was first added (Adapter.fromOf, three.js;
+      // a hint for the AI's request `objects[].from`). Read now, once, for what is listed (≤ 200).
+      const from = codeFromAll(w0);
+      const late = Math.round(lateNow() * 100) / 100;
+      post({ type: 'studio:play/paused', on: true, edit: momentUp, why, ask: rest, ...(draft ? { draft } : {}), ...(from ? { from } : {}), ...(late > 0 ? { late } : {}) });
       tellTime();
       render();
     } finally {
@@ -953,6 +1010,10 @@ export function startPlayAsk(o: PlayAskOptions): PlayAskHandle {
     } else if (m.type === 'studio:play/open') {
       // The editor's ✦ (phone): the same as ` or the corner mark. Paused: the editor page's own field is the way.
       if (host && !barOpen && !hold?.paused) openBar();
+    } else if (m.type === 'studio:play/pause' && typeof m.at === 'number' && Number.isFinite(m.at)) {
+      // pause-ask stage 3: hold at that second of this Play (▶ Try from 0:05.02), not now.
+      pauseAt = Math.max(0, m.at);
+      watchPauseAt();
     } else if (m.type === 'studio:play/pause') {
       // The editor's ❚❚ Pause to edit / ▶ Resume (and P while its page has the keys): the same as P here.
       const want = m.on ?? !hold?.paused;
@@ -1024,6 +1085,7 @@ export function startPlayAsk(o: PlayAskOptions): PlayAskHandle {
       kinds?.restart(next);
       // The game's time from this Play (the edit page's clock went on through earlier Plays), on from the last Play's.
       if (hold) t0 = hold.now() - before * 1000;
+      clockOn = true;
       post({ type: 'studio:play/hello' });
     },
     sleep() {

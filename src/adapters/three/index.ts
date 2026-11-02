@@ -86,6 +86,8 @@ export function fitThreeAdapter(raw: Raw, canvas: HTMLCanvasElement): StudioAdap
     remove: (key) => raw.remove(key),
     putBack: (key) => raw.putBack(key),
     assetsOf: (key) => raw.assetsOf(key),
+    // pause-ask stage 2 (2026-11-02; code-from.js): the game's code line that first added it — the request's `from`.
+    fromOf: (key) => raw.fromOf?.(key) ?? null,
     player: () => raw.player(),
     // For game tools: the edit camera's ray onto a horizontal plane, and the
     // way back. Only while editing (the edit camera exists then).

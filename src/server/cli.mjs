@@ -38,7 +38,8 @@ import { fileURLToPath } from 'node:url';
 // Node stops with one line before any other code runs (node-check.mjs).
 import { NODE_MIN } from './node-check.mjs';
 import { startStudioServer } from './server.mjs';
-import { momentCheck } from './moment-check.mjs';
+import { backCheck, momentCheck } from './moment-check.mjs';
+import { askMomentId } from './ask-moments.mjs';
 import { encodeQR, qrToTerminal } from './qr.mjs';
 import { runViewCheck, runGameShot } from './view-check.mjs';
 import { writeStudioFile } from './files.mjs';
@@ -88,6 +89,10 @@ Options:
                    then a fresh run with load(that) before its first frame. One line; pictures
                    .studio/shot/moment-kept.png and moment-opened.png. Exit 0 ok, 1 failed (what
                    threw), 3 could not check (no Chrome, no hooks)
+  --check-moment <back>  open the moment a paused request was asked from (its "back",
+                   .studio/asks/<id>.json) with the game's code as it is now, in a private headless
+                   Chrome, and shoot it: .studio/shot/moment-back.png. Look at it before you reply.
+                   Without save / load in the game: played from the start to the same time
   --ui <folder>    built editor UI (default: studio-ui next to this file)
 
 A folder without a game (no index.html and no other page that looks like a game):
@@ -114,6 +119,9 @@ For the AI agent (hand-offs, see the arrange skill), then exit:
     --request <id>   the latest request this is about (default: the newest waiting one)
     --changed <n>    how many things you changed in the game (shown as "done (n)")
     --note <text>    one short line for the person, in their language
+    --files <a,b>    done: the game files you changed (shown small under a paused ask's reply)
+    --already <name> done: what was already out at the ask's moment and keeps its old place there
+                     ("the boss"; the editor says your change shows from the next one)
     asking only (the editor shows them under the question; the person can answer there):
     --choice <text>  an answer button (up to 4: --choice "Undo it" --choice "Keep it")
     --about <key>    an object the question is about, lit in the scene (repeat, or key,key)
@@ -229,6 +237,7 @@ export async function main(argv) {
 
   if (args.checkView) return checkView(root, entry, args, here);
   if (args.shot) return gameShot(root, entry);
+  if (args.checkMoment && args.checkMomentBack) return backCheck(root, entry, args.checkMomentBack);
   if (args.checkMoment) return momentCheck(root, entry, args.checkMomentAt);
   const srv = await startStudioServer({
     root,
@@ -541,7 +550,7 @@ async function writeStatus(root, args) {
   }
   const st = normalizeStatus({
     state: args.status, request, changed: Number.isFinite(args.changed) ? Math.round(args.changed) : undefined,
-    note: args.note, at: new Date().toISOString(),
+    note: args.note, files: args.files, already: args.already, at: new Date().toISOString(),
     choices: args.choices, about: args.about, before: args.before, after: args.after,
   });
   // Pause (2026-10-22): a reply to a message of the chat over a paused game goes into that talk's file too
@@ -588,6 +597,8 @@ function parseArgs(argv) {
     else if (a === '--check-moment') {
       out.checkMoment = true;
       if (/^\d+(\.\d+)?$/.test(argv[i + 1] ?? '')) out.checkMomentAt = Number(argv[++i]);
+      // pause-ask stage 3: or a paused request's `back` (.studio/asks/<id>.json, or the request id) — that moment.
+      else if (askMomentId(argv[i + 1] ?? '')) out.checkMomentBack = argv[++i];
     }
     else if (a === '--entry') out.entry = argv[++i];
     else if (a === '--ui') out.ui = argv[++i];
@@ -601,6 +612,10 @@ function parseArgs(argv) {
     else if (a === '--request') out.request = argv[++i];
     else if (a === '--changed') out.changed = Number(argv[++i]);
     else if (a === '--note') out.note = argv[++i];
+    // --files a.js,b.js (pause-ask stage 3): the game files the change touched, shown under a paused ask's reply.
+    else if (a === '--files') (out.files ||= []).push(...String(argv[++i] || '').split(',').map((f) => f.trim()).filter(Boolean));
+    // --already "the boss" (pause-ask fix, 2026-11-02): what the saved moment brings back as it was (StudioStatus.already).
+    else if (a === '--already') out.already = argv[++i] || '';
     else if (a === '--choice') (out.choices ||= []).push(argv[++i] || '');
     else if (a === '--about') (out.about ||= []).push(...String(argv[++i] || '').split(',').map((k) => k.trim()).filter(Boolean));
     else if (a === '--before') out.before = argv[++i];

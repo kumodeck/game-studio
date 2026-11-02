@@ -70,6 +70,7 @@
     holdAfterRender: false,
     holdAfterCamera: null, // ready({ camera }) before that camera drew: hold after its first render (see ready())
     placed: false,         // true from that render until the hold: the rest of that frame is not drawn (see wrapRender)
+    addedAt: new WeakMap(), // Object3D → the Error made when the game first added it (pause-ask stage 2: its code place)
     screen: null,          // who drew the picture the canvas holds: { by: 'game' | 'studio', w, h } (§5 noteDraw, pause-light)
     setTimeout: nativeTimeout // the browser's own (see above)
   };
@@ -109,6 +110,14 @@
     proto.add = function () {
       for (var i = 0; i < arguments.length; i++) {
         try { guessModel(arguments[i]); } catch (e) { /* best effort */ }
+        // pause-ask stage 2 (2026-11-02; adapter.js fromOf): where in the game's code this object was first added — an
+        // Error kept, not its text: V8 formats the stack only when it is read (at a pause, for the objects asked
+        // about), so a game adding bullets every frame pays for a small object, not a string. First add only (a
+        // re-add after a remove is the same object from the same code). A hint for the AI ("from src/boss.js:42").
+        try {
+          var c = arguments[i];
+          if (c && typeof c === 'object' && !state.addedAt.has(c)) state.addedAt.set(c, new Error('studio:add'));
+        } catch (e) { /* best effort */ }
       }
       return origAdd.apply(this, arguments);
     };

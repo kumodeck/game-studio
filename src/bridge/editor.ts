@@ -1425,6 +1425,52 @@ export function createEditor(deps: EditorDeps): Editor {
           // studio-motion-flow: a Library motion held over the game — which object is under it (answered at once).
           if (typeof msg.x === 'number' && typeof msg.y === 'number') post({ type: 'studio:placement/at-is', id: Number(msg.id) || 0, key: input?.keyAt(msg.x, msg.y) ?? null });
           break;
+        case 'studio:moment/mark-at': {
+          // pause-ask stage 2 (2026-11-02; shell moment-marks.ts): a mark the person put on the paused frame — what is
+          // under the point (the same test as a tap), where that is on the ground (3D: the ground plane y 0, toGround;
+          // 2D: the stage point), and for an area what stands inside it (each object's pivot on screen). All
+          // hints for the AI's request: none of it changes anything here, and "unknown" is a fine answer.
+          if (typeof msg.x !== 'number' || typeof msg.y !== 'number') break;
+          const key = input?.keyAt(msg.x, msg.y) ?? null;
+          let world: number[] | null = null;
+          try {
+            world = adapter.toGround?.(msg.x, msg.y) ?? null;
+          } catch {
+            world = null;
+          }
+          let keys: string[] | undefined;
+          const b = Array.isArray(msg.box) && msg.box.length === 4 && msg.box.every((v) => typeof v === 'number') ? msg.box : null;
+          if (b) {
+            // What fills the area most first, then the first 12 (pause-ask fix △1, decided 2026-11-02): the scene's order
+            // put the road (first in the list, under everything) before the boss the person circled. Nearest the middle
+            // alone was tried the same day: a small drone by the middle came before the boss whose pivot sat on the
+            // circle's edge. So: the object's screen box inside the area (px², `rect`, else a square of `size`), ties by
+            // the distance to the middle. The editor then puts what the game made first (shell moment-gets.ts orderMarked).
+            const mx = (b[0] + b[2]) / 2;
+            const my = (b[1] + b[3]) / 2;
+            const inside: Array<{ key: string; o: number; d: number }> = [];
+            for (const it of state.items) {
+              let a: ReturnType<typeof adapter.anchor> = null;
+              try {
+                a = adapter.anchor(it.key);
+              } catch {
+                a = null;
+              }
+              if (!a || !a.visible) continue;
+              const [cx, cy] = a.center;
+              if (!(cx >= b[0] && cx <= b[2] && cy >= b[1] && cy <= b[3])) continue;
+              const half = Math.max(1, a.size || 0) / 2;
+              const r = a.rect ?? { x: cx - half, y: cy - half, w: half * 2, h: half * 2 };
+              const ow = Math.max(0, Math.min(r.x + r.w, b[2]) - Math.max(r.x, b[0]));
+              const oh = Math.max(0, Math.min(r.y + r.h, b[3]) - Math.max(r.y, b[1]));
+              inside.push({ key: it.key, o: ow * oh, d: Math.hypot(cx - mx, cy - my) });
+              if (inside.length >= 200) break;
+            }
+            keys = inside.sort((p, q) => q.o - p.o || p.d - q.d).slice(0, 12).map((x) => x.key);
+          }
+          post({ type: 'studio:moment/mark-is', id: Number(msg.id) || 0, key, ...(world && world.every((v) => Number.isFinite(v)) ? { world } : {}), ...(keys ? { keys } : {}) });
+          break;
+        }
         case 'studio:placement/hover':
           input?.setHover(Array.isArray(msg.keys) ? msg.keys.filter((k) => typeof k === 'string').slice(0, 500) : []);
           dirtyFrame = true;
