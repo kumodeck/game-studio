@@ -2696,6 +2696,12 @@ export interface PlacementPlace {
   /** The hand-placed objects this layout replaced (✦ To code): hidden until the AI takes them out of the code. */
   from?: string[];
   /**
+   * ⌘Z on that swap (studio-motion-fix, decided 2026-11-05): the hand-placed objects are back and the rule puts none —
+   * the rule is still in the code, so Save asks the AI to take it out (or "Undo AI change" does). Before, ⌘Z showed the
+   * hand objects again with the rule's on top of them: twelve lamps, and "⌘Z undoes it" still on screen.
+   */
+  off?: true;
+  /**
    * Offsets (studio-offsets, 2026-10-24): a drag of one of its objects the code has no knob for, kept as a rule — which
    * way, how and how much — over at(), before the keep-out areas and the pins; ≤ 8. Until Save writes them into the code.
    */

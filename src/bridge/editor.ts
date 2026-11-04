@@ -1278,7 +1278,7 @@ export function createEditor(deps: EditorDeps): Editor {
     };
     input = attachInput({ adapter, edits, core, win, post: inPost, state, select, selectMany, step, tools: toolHost, markDirty: () => (dirtyFrame = true),
       ...(still() ? { passKeyUp: true, moment: true } : { unhold }), ...(deps.ignore ? { ignore: deps.ignore } : {}),
-      ...(layer === 'world' && !deps.paused ? { codePlace } : {}),
+      ...(layer === 'world' && !deps.paused ? { codePlace, stripOff: () => keepOut.drawing() } : {}),
       // studio-canvas-ui stage 2: a press on the UI layer that selected nothing → ui-found.ts says why (or nothing, as before).
       ...(layer === 'ui' && uiFound ? { missed: (x: number, y: number) => void uiFound.missed(x, y), pressed: () => uiFound.clear(true) } : {}) });
     if (pendingHandlePx) input.setHandleSize(pendingHandlePx);

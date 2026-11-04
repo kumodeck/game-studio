@@ -68,6 +68,7 @@ import { createMotionDrag } from './motion-drag.ts';
 import { createMotionTool } from './motion-tool.ts';
 import { rulesFor } from '../core/rules.ts';
 import { samePose } from './placement-model.ts';
+import { aiMarksLabel, aiMarksOf } from './ai-marks.ts';
 import { h, safeImageSrc } from './dom.ts';
 import { detectLang, setAiName, setExtraText, translate } from './i18n.ts';
 import { NEXT_STEPS, renderNextSteps, type StepId } from './next-steps.ts';
@@ -91,7 +92,7 @@ import { LINE_FADE_MS, LINE_GRACE_MS, lineFades, lineKey, lineStayMs } from './l
 import { renderSettings } from './settings-page.ts';
 import { DEFAULT_UI, effectiveTheme, normalizeUi } from './ui-prefs.ts';
 import { dropTarget, hasLayer, layerTarget, type LayerOp } from './layers.ts';
-import { createPlacementPanel, shortName } from './placement-panel.ts';
+import { chipFamily, createPlacementPanel, shortName } from './placement-panel.ts';
 import { createTimeline } from './timeline-wire.ts';
 import { createMotionNote, noteOf } from './motion-note.ts';
 import { libCounted } from './timeline-model.ts';
@@ -278,6 +279,10 @@ export function start(host: StudioHost) {
   let fold = readFold(handStore);
   let toast = '';
   let toastTimer = 0;
+  // When the last line was shown (staleLines: a line told right before its own step stays).
+  let toastAt = 0;
+  // The editor's line of the AI's last --do (△4: it goes under the AI's reply once that comes).
+  let handsTold: { line: string; words: string; at: number } | null = null;
   const thumbs = new Map<string, string>();
   // Pictures kept from the game page before a reload (▶ Play → Edit, the AI's change): still shown, asked for again,
   // and replaced when the new one comes (Ive review 3 ⑥, 2026-10-20 — the list showed empty squares after Edit until
@@ -624,6 +629,12 @@ export function start(host: StudioHost) {
   let aiBeforeCode: Map<string, Pose> | null = null;
   let aiBaseCode: Map<string, Pose> | null = null;
   let aiMarks = new Map<string, 'moved' | 'added'>();
+  // studio-motion-fix (2026-11-05, ✕1 of the first-time walk): what the game moved by itself on the page before the AI's
+  // reload (held 'game'), and the code layouts the AI wrote back that the editor measured as the same look — neither is
+  // marked "moved" (ai-marks.ts says why). The set of layouts is cleared by a new request and by the compare.
+  let aiHeldBefore: Set<string> | undefined;
+  // Keys, not layout ids: the code's lists are emptied when the new page's first list comes, before the compare.
+  const aiSameLook = new Set<string>();
   // The marks as sent to the game (again on every edit start: a reload makes a new game page).
   let aiMarksMsg: { keys: string[]; label?: string } = { keys: [] };
   // What was last sent as marks (sendMarks), and whether the line showed the AI's question (the ask field answers it).
@@ -1571,7 +1582,24 @@ export function start(host: StudioHost) {
    * A layout took the place of hand-placed objects, or gave it back (`from`: the AI's place.code --replace, its ⌘Z): only
    * the game's loader hides / shows those, so the game reads the draft again then (as every change did before).
    */
-  const swapsHand = (a: PlacementPlace | null, b: PlacementPlace | null) => JSON.stringify(a?.from ?? null) !== JSON.stringify(b?.from ?? null);
+  // `off` too (studio-motion-fix ✕2): the rule's objects go or come back with the hand's, in one read of the draft.
+  const swapsHand = (a: PlacementPlace | null, b: PlacementPlace | null) => JSON.stringify(a?.from ?? null) !== JSON.stringify(b?.from ?? null) || !!a?.off !== !!b?.off;
+
+  /**
+   * ⌘Z / redo of ✦ Turn into a rule (studio-motion-fix ✕2, decided 2026-11-05). Undone: the hand's objects are back and the
+   * rule puts none (`off`) — the violet "Claude added 6" and "⌘Z undoes it" go with it (the comparison too, by `from`), and
+   * one line says the rule is still in the code and how it leaves. Redone: the rule's objects are lit again.
+   */
+  function swapUndone(id: string, from: PlacementPlace | null, to: PlacementPlace | null, dir: 'undo' | 'redo') {
+    if (!from?.off || !to?.from?.length || from.from?.length) return;
+    if (dir === 'redo') return;
+    if (aiMarks.size) setAiMarks(new Map());
+    // The comparison (orange dots, "Max deviation") reads `from`: it goes with it and comes back on redo by itself.
+    const hand = to.from.flatMap((k) => { const it = worldItems.find((i) => i.key === k); return it ? [displayName(it, t)] : []; });
+    const fam = chipFamily(hand);
+    const what = fam ? t('rule.swapBackNamed', { n: to.from.length, name: fam }) : t('rule.swapBack', { n: to.from.length });
+    showToast(t(lastChange && host.undoAi ? 'rule.swapUndone' : 'rule.swapUndoneSave', { what }), 9000);
+  }
 
   // ----- tools -----
   // "This moment" (pause-edit stage 2, 2026-10-28; moment-values.ts): the game's codeMoment() numbers at the top of the
@@ -2811,6 +2839,7 @@ export function start(host: StudioHost) {
       else if (c.kind === 'code-place') {
         worldModel.places.set(c.key, dir === 'undo' ? c.from : c.to);
         placesChanged(swapsHand(c.from, c.to));
+        swapUndone(c.key, c.from, c.to, dir);
       }
       // Put in this level from the Library (placeHere): undo hides it again, redo shows it again.
       else if (c.kind === 'place') {
@@ -3206,6 +3235,7 @@ export function start(host: StudioHost) {
     aiBase = null;
     aiBaseCode = null;
     aiAfter = null;
+    aiSameLook.clear();
     lastChange = null;
     // The host's answer says at once whether an AI watches (no 20 s of not knowing).
     if (info?.watching !== undefined) aiWatching = info.watching;
@@ -3342,7 +3372,16 @@ export function start(host: StudioHost) {
       // pause-ask stage 3: a paused ask's reply says, small, which files the AI touched (`--files`) — what + where.
       const pausedReply = playing && playPaused && !!pending?.id && momentAsks.has(pending.id);
       const second = s.note && (ph === 'failed' || (n > 0 && !madeReply)) ? count : '';
-      two(s.note || count, pausedReply && ph === 'done' ? filesRow(s.files, second) : second);
+      // △4 (studio-motion-fix, decided 2026-11-05): the editor's own line of the AI's --do ("Claude added “Within 5 m from
+      // the player” to …") and the AI's reply said the same thing one above the other. Once the reply is here, the
+      // editor's words go small under it, and its line over the field goes.
+      const told = ph === 'done' && !pausedReply && handsTold && handsTold.at >= (pending?.sent ?? 0) ? handsTold : null;
+      if (told && toast === told.line) {
+        clearTimeout(toastTimer);
+        toastEl.classList.remove('on');
+        hideNews();
+      }
+      two(s.note || count, pausedReply && ph === 'done' ? filesRow(s.files, second) : [told && s.note ? told.words : '', second].filter(Boolean).join(' · '));
       // The paused moment's reply when the game's code changed (`--changed` > 0, or the files say so; fix 1 ✕6): Reload
       // right here. It was only on the line over the game after ▶ Resume, and the docs said "press Reload on the reply".
       // Reload leaves the moment for a new page of the game from its new code, still in Play (as the line over the game's
@@ -4947,35 +4986,15 @@ export function start(host: StudioHost) {
         // A page after the AI's change (its draft may have been tidied away by the AI: keepNow `again`, below).
         const afterAi = !!aiBefore;
         if (aiBefore) {
-          const before = aiBefore;
-          const beforeCode = aiBeforeCode;
+          // ai-marks.ts (studio-motion-fix): what the game moves by itself and a write-back measured as the same look are
+          // never "moved by the AI".
+          const r = aiMarksOf({ before: aiBefore, beforeCode: aiBeforeCode, items: m.items, dim, heldBefore: aiHeldBefore, sameLook: aiSameLook });
           aiBefore = aiBeforeCode = null;
-          aiMarks = new Map();
-          const now0 = new Set(m.items.map((i) => i.key));
-          // An object without a name gets a new path key when the AI adds things before it in the
-          // tree (path:8 → path:11): same place as one that is gone = the same object, not a new one.
-          const goneAt = [...before.entries()].filter(([k]) => !now0.has(k)).map(([, p]) => p);
-          let renamed = 0;
-          for (const it of m.items) {
-            const was = before.get(it.key);
-            if (!was && it.unstable && goneAt.some((p) => samePose({ ...it.pose, z: undefined }, { ...p, z: undefined }, dim))) {
-              renamed++;
-              continue;
-            }
-            if (!was) aiMarks.set(it.key, 'added');
-            else if (!samePose({ ...it.pose, z: undefined }, { ...was, z: undefined }, dim)) {
-              // At its old code's pose: the person's unsaved move is not shown yet (it is pushed back below), not the AI's.
-              const code0 = beforeCode?.get(it.key);
-              if (!code0 || !samePose({ ...it.pose, z: undefined }, { ...code0, z: undefined }, dim)) aiMarks.set(it.key, 'moved');
-            }
-          }
-          const now = new Set(m.items.map((i) => i.key));
-          aiGone = Math.max(0, [...before.keys()].filter((k) => !now.has(k)).length - renamed);
-          // The same marks in the game: violet outlines and one tag ("AI added 3"). Sent below, with the poses.
-          const marks = [...aiMarks.entries()];
-          const added = marks.filter(([, v]) => v === 'added').length;
-          const label = !marks.length ? undefined : added === marks.length ? t('ai.tagAdded', { n: added }) : added === 0 ? t('ai.tagMoved', { n: marks.length }) : t('ai.tagChanged', { n: marks.length });
-          aiMarksMsg = { keys: marks.map(([k]) => k), label };
+          aiSameLook.clear();
+          aiMarks = r.marks;
+          aiGone = r.gone;
+          // The same marks in the game: violet outlines and one tag ("Claude added 3"). Sent below, with the poses.
+          aiMarksMsg = { keys: [...aiMarks.keys()], label: aiMarksLabel(aiMarks, t) };
           placementPanel.markRows();
           renderAiLine();
         }
@@ -5215,20 +5234,50 @@ export function start(host: StudioHost) {
   }
 
   // ----- actions -----
+  /**
+   * A line that spoke of the step before goes when the person takes the next one (studio-motion-fix △1, decided
+   * 2026-11-05): "Placed hex 3 by hand · Revert · ⌘Z" stayed up after Count was turned and after ⌘Z had taken the hand
+   * placement back (Revert still looked pressable), and the AI's "Saved: … · Undo AI change" stayed up over a new drag
+   * and ✦, where pressing it would undo something the person no longer had in mind. A line shown just now (the step's
+   * own line, told right before its push) stays.
+   */
+  function staleLines() {
+    if (Date.now() - toastAt > 400) {
+      clearTimeout(toastTimer);
+      toastEl.classList.remove('on');
+      hideNews();
+    }
+    // The AI's finished line folds like it does after its time (lineGone): "● AI" / ⌘K can still bring it back.
+    if (lineShown && lineFades(currentPhase())) {
+      clearTimeout(lineTimer);
+      lineGone = lineShown;
+      lineShown = '';
+      lineFading = false;
+      renderAiLine();
+    }
+  }
+  undo.onPush = (grouped) => {
+    if (!grouped) staleLines();
+  };
   function doUndo() {
     // The four choices of a rule drag are about the step ⌘Z takes back: they go first (studio-offsets).
     codePlaces.choices.close();
     // Nothing else left to undo right after New level / Duplicate: ⌘Z takes the level back (addLevel).
     if (!undo.canUndo && levelMade) return unmakeLevel();
     const e = undo.undo();
-    if (e) applyEntry(e, 'undo');
+    if (e) (staleLinesNow(), applyEntry(e, 'undo'));
     renderButtons();
   }
   function doRedo() {
     codePlaces.choices.close();
     const e = undo.redo();
-    if (e) applyEntry(e, 'redo');
+    if (e) (staleLinesNow(), applyEntry(e, 'redo'));
     renderButtons();
+  }
+  /** ⌘Z / redo: every line about the step before goes, even one just shown (its step is the one being taken back). */
+  function staleLinesNow() {
+    toastAt = 0;
+    staleLines();
   }
   const toolsDirty = () => [...toolDirty.values()].reduce((a, b) => a + b, 0);
   /** Placement changes not saved, both layers (the UI's is 0 for a game without one). */
@@ -5756,6 +5805,7 @@ export function start(host: StudioHost) {
         const w = worldModel.original(i.key);
         return w ? [[i.key, structuredClone(w)] as [string, Pose]] : [];
       }));
+      if (!keep) aiHeldBefore = new Set(worldItems.filter((i) => i.held === 'game').map((i) => i.key));
       const busy = why === 'ai' && aiBusy(currentPhase());
       aiBase = busy ? aiBefore : null;
       aiBaseCode = busy ? aiBeforeCode : null;
@@ -5812,10 +5862,7 @@ export function start(host: StudioHost) {
   function setAiMarks(marks: Map<string, 'moved' | 'added'>) {
     aiMarks = marks;
     placementPanel.markRows();
-    const list = [...marks.entries()];
-    const added = list.filter(([, v]) => v === 'added').length;
-    const label = !list.length ? undefined : added === list.length ? t('ai.tagAdded', { n: added }) : added === 0 ? t('ai.tagMoved', { n: list.length }) : t('ai.tagChanged', { n: list.length });
-    aiMarksMsg = { keys: list.map(([k]) => k), label };
+    aiMarksMsg = { keys: [...marks.keys()], label: aiMarksLabel(marks, t) };
     sendMarks(true);
   }
 
@@ -6434,6 +6481,7 @@ export function start(host: StudioHost) {
    */
   function showToast(text: string, ms = 3500, actions?: Array<{ label: string; run(): void }>, o: { hand?: boolean; tail?: string } = {}) {
     toast = text;
+    toastAt = Date.now();
     clearTimeout(toastTimer);
     hideNews();
     toastEl.classList.toggle('hand', !!o.hand);
@@ -7005,9 +7053,9 @@ export function start(host: StudioHost) {
     },
     place: (id) => worldModel.places.get(id),
     placeIds: () => worldModel.places.ids(),
-    setPlace: (id, e) => {
+    setPlace: (id, e, o) => {
       const before = worldModel.places.get(id);
-      setPlace(id, before, e);
+      setPlace(id, o && 'undoTo' in o ? o.undoTo ?? null : before, e);
       // A keep-out area the AI added or changed (place.avoid): its row glows violet on the card (studio-code-keepout).
       keepOut.aiChanged(id, before, worldModel.places.get(id));
     },
@@ -7023,6 +7071,7 @@ export function start(host: StudioHost) {
       return true;
     },
     knobAdded: (id, names) => codePlaces.lightKnobs(id, names),
+    sameLook: (keys) => keys.forEach((k) => aiSameLook.add(k)),
     // ✦ Turn into a rule (studio-code-torule): the rule's shape from the game page, and what the swap replaced.
     ruleSamples: (code, knobs, len, per) => ruleSamples(code, knobs, len, per),
     swapped: (x) => {
@@ -7103,6 +7152,7 @@ export function start(host: StudioHost) {
       // Who changed it, and the way back, in one line where the person's eyes are (the ask bar's notice).
       const line = !undoable ? words : phone() ? t('hands.undoTouch', { text: words }) : t('hands.undo', { text: words, key: keyOf('undo', isMac()) });
       showToast(line, 8000);
+      handsTold = { line, words, at: Date.now() };
     },
   });
 

@@ -240,6 +240,19 @@ const DEG = 180 / Math.PI;
  * The ask chip's short form of a shown name: the guessed name's place and count dropped ("Black pillar by the
  * road (left, 3rd)" → "Black pillar"; the same in Japanese); other names as they are (CSS cuts what is long).
  */
+/**
+ * What several picked objects are, when they are one kind: the short name without its number ("lamp-3" → "lamp",
+ * "Street lamps 2" → "Street lamps"), the same for all of them; else null (studio-motion-fix △10, decided 2026-11-05).
+ */
+/** Below this many px of the field's own text room, a topic's second chip folds to "+1" (△8). */
+const ASK_ROOM_PX = 150;
+
+export function chipFamily(names: string[]): string | null {
+  const base = (s: string) => shortName(s).replace(/[\s_#-]*\d+$/, '').trim();
+  const first = names.length ? base(names[0]!) : '';
+  return first && names.every((x) => base(x) === first) ? first : null;
+}
+
 export function shortName(name: string): string {
   const s = nameParts(name).base.replace(/^道路わきの/, '').replace(/ by the road$/, '');
   return s.trim() || name;
@@ -523,7 +536,13 @@ export function createPlacementPanel(d: PlacementPanelDeps): PlacementPanel {
     // a review of 2026-10-22): both names, "crate · Hop" — what the words are about, read in one go, instead of "×2".
     const motionOnly = picks.filter((p) => p.startsWith('\u0000'));
     const pair = !whole && !noObj && keys.length === 1 && files.length === 1 && motionOnly.length === 1;
-    askChip.textContent = whole ? '' : pair ? `${shortName(firstName)} · ${fileName(motionOnly[0]!)}` : n === 1 ? (noObj ? firstName : shortName(firstName)) : d.t('ask.chipN', { n });
+    // Several (studio-motion-fix △10, decided 2026-11-05): "×6" alone did not say six of what. The same kind of thing
+    // ("lamp-1" … "lamp-6", "crate 2", "crate 3") reads "lamp ×6"; a mix reads "6 objects".
+    const many = () => {
+      const fam = files.length ? null : chipFamily(keys.map((key) => { const it = items.find((i) => i.key === key); return it ? displayName(it, d.t) : key; }));
+      return fam ? d.t('ask.chipNamed', { name: fam, n }) : d.t('ask.chipN', { n });
+    };
+    askChip.textContent = whole ? '' : pair ? `${shortName(firstName)} · ${fileName(motionOnly[0]!)}` : n === 1 ? (noObj ? firstName : shortName(firstName)) : many();
     askChip.classList.toggle('motion', pair);
     // …and the field says what such words look like: when it starts, how fast (the strip's old "When? (for your AI)").
     if (pair && !answer) askInput.placeholder = d.t('ask.motion');
@@ -544,7 +563,17 @@ export function createPlacementPanel(d: PlacementPanelDeps): PlacementPanel {
       askChip.replaceChildren(...(topic.pic ? [h('img', { class: 'ask-chip-pic', src: topic.pic, alt: '', dataset: { part: 'ask-chip-pic' } })] : []), topic.chip);
       if (topic.tip) askChip.title = topic.tip;
       askTag.textContent = topic.tag ?? '';
+      askTag.title = topic.tag ?? '';
+      askTag.classList.remove('folded');
       askInput.placeholder = topic.ph;
+      // △8 (studio-motion-fix, decided 2026-11-05): paused, the field also holds the moment's picture and ⊙ Mark, and
+      // with two chips the draft read "Convert the Sidewa…". When the field's own room is short, the second chip folds to
+      // "+1" (its words in the tooltip and in what is read aloud); the first chip says what the ask is about.
+      if (topic.tag) requestAnimationFrame(() => {
+        if (askTag.hidden || !askInput.isConnected || askInput.offsetWidth >= ASK_ROOM_PX) return;
+        askTag.textContent = '+1';
+        askTag.classList.add('folded');
+      });
       askInput.setAttribute('aria-label', topic.tag ? `${topic.chip} · ${topic.tag}` : topic.chip);
     }
     // A round arrow, as in message apps: grey until there is something to send.
@@ -893,6 +922,18 @@ export function createPlacementPanel(d: PlacementPanelDeps): PlacementPanel {
     const rule = d.layout?.(key) ?? null;
     // In the numbers' place: on a phone under "…" with them (the phone card is name, copy, delete and "…": W1-11).
     if (rule) fine.append(...rule.els);
+    // △9 (studio-motion-fix, decided 2026-11-05): on a phone the rule (its knobs, Keep-out areas, + Draw a box) was under
+    // ⌄ "Exact values" — a first-time maker never found it. The card itself now says what the object is in one line,
+    // "Rule · Line (both sides) · 10", which opens the fold; and the fold's name says the rule is in it.
+    if (rule && d.phone()) {
+      const head = rule.els[0]?.querySelector('.rule-head');
+      const peek = h('button', { type: 'button', class: 'rule-peek', dataset: { part: 'rule-peek' }, 'aria-expanded': String(fine.open),
+        onclick: () => (fine.open = !fine.open) }, ...(head ? [...head.childNodes].map((n) => n.cloneNode(true)) : []));
+      fine.addEventListener('toggle', () => peek.setAttribute('aria-expanded', String(fine.open)));
+      if (peek.childNodes.length) body.append(peek);
+      const sum = fine.querySelector('summary');
+      if (sum) (sum.title = d.t('placement.fineRule'), sum.setAttribute('aria-label', d.t('placement.fineRule')));
+    }
     if (rule && !rule.numbers) {
       if (d.motion && dim === '3d') fields.append(...d.motion(key));
       if (fields.childElementCount) fine.append(fields);

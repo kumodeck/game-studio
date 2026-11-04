@@ -67,7 +67,9 @@ export interface PresenceState {
 export function aiPresence(s: PresenceState): AiPresence {
   if (s.watching === true) return 'watching';
   if (aiBusy(s.phase) || s.phase === 'asking') return 'working';
-  if (s.statusTime != null && s.now - s.statusTime < HERE_STATUS_MS) return 'working';
+  // A status just written proves the AI is here — but after its "done" it is no longer working (studio-motion-fix △4,
+  // decided 2026-11-05: "Claude is working" sat under "Added … to the keep-out areas" for seconds after the reply).
+  if (s.statusTime != null && s.now - s.statusTime < HERE_STATUS_MS) return s.phase === 'done' || s.phase === 'failed' ? 'watching' : 'working';
   if (s.agent === 'codex') return 'look';
   if (s.watching === false && s.agent === 'claude' && s.lastWatching != null && s.now - s.lastWatching >= AWAY_AFTER_MS
     && s.now - s.visibleSince >= AWAY_AFTER_MS) return 'away';

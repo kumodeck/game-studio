@@ -126,7 +126,7 @@ test('Repeat and When are changes too; ⌘Z back to the saved motion → no line
 test('a new motion says "is made"; ● Rec motion on → recording, its ● turns it off', () => frames(() => {
   const r = rig();
   r.tl.make('lamp');
-  assert.deepEqual(r.note(), { change: null, rec: true, rule: false }, 'making: "● Recording · press ● when you\'re done"');
+  assert.deepEqual(r.note(), { change: null, rec: true, rule: false }, 'making: "Rec motion on · moving it adds a point · Turn off"');
   r.tl.moved('lamp', at(2), true, at(0));
   const n = r.note()!;
   assert.equal(n.change?.motion.made, true, '"lamp’s motion is made"');
@@ -203,7 +203,9 @@ test('the words: the result on what is pressed, three different drafts, never "r
   assert.equal(ja('mnext2.made', { name: '街灯 5 の動き' }), '街灯 5 の動きができました');
   assert.equal(ja('mnext2.save', { save: ja('btn.save') }), '保存するとゲームに入ります');
   assert.equal(ja('mnext2.line', { what: ja('mnext2.toNumbers') }), 'Claudeにルールベースに変換してもらう');
-  assert.equal(`${ja('mnext2.rec')} · ${ja('mnext2.recEnd', { dot: '●' })}`, '記録中 · 終わったら ● を押す');
+  // studio-motion-fix △5: the plain fact, not "● Recording" (Rec motion is on from the start).
+  assert.equal(`${ja('mnext2.rec')} · ${ja('mnext2.recEnd')} · ${ja('mnext2.recOff')}`, '動きを記録 オン · 動かすと点が増えます · オフにする');
+  assert.equal(`${en('mnext2.rec')} · ${en('mnext2.recEnd')} · ${en('mnext2.recOff')}`, 'Rec motion on · moving it adds a point · Turn off');
   assert.equal(en('mnext2.toNumbersMenu', { what: en('mnext2.toNumbers') }), 'Have Claude convert this motion to rules');
   assert.equal(en('mnext2.toNumbersSub'), 'then change radius, speed… on the card');
   assert.equal(en('mnext2.line', { what: en('mnext2.toNumbers') }), 'Have Claude convert it to rules');

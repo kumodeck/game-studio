@@ -187,3 +187,23 @@ export function inBox(q: number[], b: Box, n: 2 | 3): boolean {
   if (n === 2) return Math.abs(q[0]! - b.p[0]!) <= b.size[0]! / 2 && Math.abs(q[1]! - b.p[1]!) <= b.size[1]! / 2;
   return Math.abs(q[0]! - b.p[0]!) <= b.size[0]! / 2 && q[1]! >= b.p[1]! - 1e-9 && q[1]! <= b.p[1]! + b.size[1]! && Math.abs(q[2]! - b.p[2]!) <= b.size[2]! / 2;
 }
+
+/**
+ * A condition's words in the order the language reads them (studio-motion-fix ✕3, decided 2026-11-05). codeAvoid gives
+ * a `name`, its knobs and an `after` word ("From the player" [5 m] "within"), which Japanese reads in that order; English
+ * read "From the player Distance 5 m within" (a first-time walk of v0.1.77). `order` is the i18n key keepout.order:
+ * "after knobs name" (en: "Within [5 m] from the player") or "name knobs after" (ja). In the after-first order the
+ * name's first letter goes lower case ("From" → "from") unless it is an initialism ("AI", "UFO").
+ */
+export function avoidWords<K>(order: string, name: string, knobs: K[], after?: string): Array<string | K> {
+  const parts = order.split(/\s+/);
+  const out: Array<string | K> = [];
+  for (const p of parts) {
+    if (p === 'knobs') out.push(...knobs);
+    else if (p === 'after' && after) out.push(out.length ? after : upFirst(after));
+    else if (p === 'name' && name) out.push(out.length ? downFirst(name) : name);
+  }
+  return out;
+}
+const upFirst = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+const downFirst = (s: string) => (/^[A-Z][a-z]/.test(s) ? s.charAt(0).toLowerCase() + s.slice(1) : s);

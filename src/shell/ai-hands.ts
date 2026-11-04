@@ -16,6 +16,7 @@ import type { CodeAvoidInfo, CodeKnob, CodeMotionInfo, CodePlaceInfo, CodeUiInfo
 import { uiBoxAt } from '../loader/studio-placement.js';
 import { HANDS_MAKE_WHEN, handsAvoid, handsClip, handsMotion, handsPose, handsSaid, handsUiIds, readHandsInput } from '../schema/hands.mjs';
 import { roundKnob, turnKnobs } from './code-places.ts';
+import { avoidWords } from './keep-out-model.ts';
 import { CODE_LEN } from './motion-library.ts';
 import { MOTION_SAMPLES, gapText, motionGap, placeGaps, timeText, type HandMotion, type HandSpot, type MotionGap, type PlaceGap } from './to-rule.ts';
 import { foldGaps, foldSaid, type FoldSpot } from './write-back.ts';
@@ -106,14 +107,22 @@ export interface HandsDeps {
   /** The level on screen's changes to one code layout (null = none), and the layouts it has changes for. */
   place(id: string): PlacementPlace | null;
   placeIds(): string[];
-  /** Set them (null = none): one undo change, counted on Save, and the game shows the layout so (it reads it again). */
-  setPlace(id: string, e: PlacementPlace | null): void;
+  /**
+   * Set them (null = none): one undo change, counted on Save, and the game shows the layout so (it reads it again).
+   * `undoTo`: what ⌘Z goes back to, when that is not the entry as it is now (✦ Turn into a rule: the rule off).
+   */
+  setPlace(id: string, e: PlacementPlace | null, o?: { undoTo?: PlacementPlace | null }): void;
   /**
    * studio-writeback (2026-10-24, "the code is the truth"): the AI wrote these parts of layout `id` into the code
    * (`place.code --fold`, hands.mjs HANDS_FOLD_PARTS) — out of the file without a change of the person's (not on ⌘Z, not
    * on Save · n; "Undo AI change" brings them back). true = the file had some of them. Absent: nothing to take out.
    */
   fold?(id: string, parts: string[]): boolean;
+  /**
+   * A write-back the editor measured as the same look (every object within 1 cm / 1 px): these objects are not marked
+   * "moved by the AI" after the reload that follows (studio-motion-fix, decided 2026-11-05; shell/ai-marks.ts).
+   */
+  sameLook?(keys: string[]): void;
   /** A knob the AI added to layout `id` (✦ Write into the rule): it lights once on the card. Absent = nothing. */
   knobAdded?(id: string, names: string[]): void;
   /**
@@ -458,7 +467,11 @@ export function createAiHands(d: HandsDeps) {
         // ✦ To code: the hand-placed objects are hidden until the AI takes them out of the code (one ⌘Z brings them back).
         const gone = op.replace.filter((k: string) => !d.item(k) && !(e.from ?? []).includes(k));
         if (gone.length === op.replace.length) return { error: `no object ${gone[0]} in the editor${hint()}` };
-        d.setPlace(op.id, { ...e, from: [...new Set([...(e.from ?? []), ...op.replace])] });
+        // ⌘Z goes back to the hand-placed objects ALONE (studio-motion-fix ✕2, decided 2026-11-05): the rule is in the code
+        // already, so "before" is the rule turned off (`off`), not the entry as it was — else ⌘Z showed the hand's 6 lamps
+        // with the rule's 6 on top of them and nothing seemed to change. A second swap into the same rule keeps the first.
+        const { off: _off, ...rest } = e;
+        d.setPlace(op.id, { ...rest, from: [...new Set([...(e.from ?? []), ...op.replace])] }, e.from?.length ? undefined : { undoTo: { ...rest, off: true } });
         // How close: each hand object against the rule's object of its number, where it stands now (the model's pose).
         const g = hand.length ? placeGaps(hand, (n) => (info.keys.includes(`${op.id}-${n}`) ? d.pose(`${op.id}-${n}`)?.p : null)) : null;
         if (hand.length) d.swapped?.({ kind: 'place', id: op.id, spots: hand, gap: g?.max ?? null });
@@ -546,7 +559,15 @@ export function createAiHands(d: HandsDeps) {
           if (!x) return '';
           if (!x.code) return x.name ?? '';
           const c = d.codeAvoids().find((y) => y.code === x.code);
-          return [c?.name ?? x.code, c ? knobWords(c.knobs, knobsNow(c.knobs, x.knobs)) : '', c?.after ?? ''].filter(Boolean).join(' ');
+          // The card's order (keep-out-model.ts avoidWords): "Within 5 m from the player", not the parts as listed.
+          if (!c) return x.code;
+          // Numbers alone, as the card's row shows them: the knob's label ("Distance") made it a list, not words.
+          const now = knobsNow(c.knobs, x.knobs);
+          const kw = Object.entries(c.knobs).map(([n, k]) => {
+            const u = k.unit ? d.t(`hands.unit.${k.unit}`) : '';
+            return `${roundKnob(now[n]!)}${u === `hands.unit.${k.unit}` ? ` ${k.unit}` : u}`;
+          });
+          return avoidWords(d.t('keepout.order'), c.name, kw, c.after).join(' ');
         };
         const now = op.remove !== undefined ? was : op.box ? e.avoid?.[e.avoid.length - 1] : (e.avoid ?? []).find((a) => 'code' in a && a.code === op.code) ?? { code: op.code };
         const key = op.remove !== undefined ? 'hands.place.avoidRemove' : op.off === true ? 'hands.place.avoidOff' : r.changed ? 'hands.place.avoidSet' : 'hands.place.avoid';
@@ -674,7 +695,7 @@ export function createAiHands(d: HandsDeps) {
     const others = d.keys().filter((k) => !info.keys.includes(k) && !before.some((b) => b.key === k)).flatMap((k) => (d.pose(k) ? [d.pose(k)!] : []));
     const g = foldGaps(before, (k) => (info.keys.includes(k) ? d.pose(k) : undefined), d.dim(), others);
     if (g.max || g.gone.length) foldBase.set(id, { before, entry: JSON.stringify(d.place(id)) });
-    else foldBase.delete(id);
+    else (foldBase.delete(id), d.sameLook?.(info.keys));
     const e = d.place(id) ?? {};
     const knob = added[0] ? info.knobs[added[0]] : undefined;
     const gap = g.max ? (g.max.what === 'p' ? gapText(g.max.d, d.dim(), unit) : g.max.what === 'r' ? `${Math.round(g.max.d)}°` : `×${Math.round(g.max.d * 100) / 100}`) : '';

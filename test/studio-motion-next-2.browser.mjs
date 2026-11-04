@@ -57,14 +57,14 @@ const LINE = `(() => { const l = document.querySelector('.ai-line'); return l &&
 // The one line, as read on screen: its parts joined by a space (the gaps are the flex row's), the button that ends recording
 // read as the ● it shows (a drawn dot, not a letter); '' when it is not there.
 const NOTE = `(() => { const n = document.querySelector('[data-part=motion-note]'); if (!n || n.hidden || !n.offsetParent) return '';
-  return [...n.children].map((c) => { const x = c.cloneNode(true); x.querySelectorAll('.mn-rec-off').forEach((b) => b.replaceWith('●')); return x.textContent.replace(/\\s+/g, ' ').trim(); })
+  return [...n.children].map((c) => { const x = c.cloneNode(true); x.querySelectorAll('.mn-rec-off').forEach((b) => b.replaceWith(b.textContent)); return x.textContent.replace(/\\s+/g, ' ').trim(); })
     .filter(Boolean).join(' '); })()`;
 const W = LANG === 'ja'
-  ? { changed: (m) => `${m}を変えました`, made: (m) => `${m}ができました`, save: '保存するとゲームに入ります', rec: '記録中 · 終わったら ● を押す', rule: 'Claude にルールベースに変換してもらう',
+  ? { changed: (m) => `${m}を変えました`, made: (m) => `${m}ができました`, save: '保存するとゲームに入ります', rec: '動きを記録 オン · 動かすと点が増えます · オフにする', rule: 'Claude にルールベースに変換してもらう',
     other: (m) => `保存していない動き: ${m}`, kept: /^保存しました: (.+)/,
     menu: ['この動きを Claude にルールベースに変換してもらう', 'この動きを直してもらう…', '別の動きを足してもらう…'], subs: ['半径・速さなどをカードで変えられるように', '例：もっとゆっくり・高く跳ねる', '例：近づいたら回る'],
     drafts: ['ルールベースに変換して', 'この動きを直して:', '別の動きを足して:'], saveA: '保存' }
-  : { changed: (m) => `${m} changed`, made: (m) => `${m} is made`, save: 'Save puts it in the game', rec: 'Recording · press ● when you’re done', rule: 'Have Claude convert it to rules',
+  : { changed: (m) => `${m} changed`, made: (m) => `${m} is made`, save: 'Save puts it in the game', rec: 'Rec motion on · moving it adds a point · Turn off', rule: 'Have Claude convert it to rules',
     other: (m) => `Not saved: ${m}`, kept: /^Saved: (.+)/,
     menu: ['Have Claude convert this motion to rules', 'Have this motion changed…', 'Have another motion added…'], subs: ['then change radius, speed… on the card', 'e.g. slower, bounce higher', 'e.g. spin when you get close'],
     drafts: ['Convert it to rules', 'Change this motion:', 'Add another motion:'], saveA: 'Save' };

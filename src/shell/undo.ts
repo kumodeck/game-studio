@@ -89,8 +89,21 @@ export class UndoStack {
     this.limit = limit;
   }
 
+  /**
+   * Told after every step recorded (studio-motion-fix △1, decided 2026-11-05): the shell folds lines that spoke of the
+   * step before ("Placed hex 3 by hand · Revert", "Saved … · Undo AI change"). `grouped`: inside begin() / end() (the
+   * AI's own steps), which do not fold anything.
+   */
+  onPush: (grouped: boolean) => void = () => {};
+
   /** Record a finished gesture. No-op when nothing changed. Clears redo. */
   push(e: UndoEntry): boolean {
+    const ok = this.record(e);
+    if (ok) this.onPush(!!this.group);
+    return ok;
+  }
+
+  private record(e: UndoEntry): boolean {
     // A change from a value to the same value is nothing (every kind with a `to`: poses, motions, looks, the theme).
     const changes = e.changes.filter((c) => !('to' in c) || JSON.stringify(c.from) !== JSON.stringify(c.to));
     if (!changes.length) return false;

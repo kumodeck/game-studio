@@ -127,8 +127,8 @@ function editor() {
       return true;
     },
     place: (id) => store.get(id), placeIds: () => store.ids(),
-    setPlace: (id, e) => {
-      const from = store.get(id);
+    setPlace: (id, e, o) => {
+      const from = o && 'undoTo' in o ? o.undoTo ?? null : store.get(id);
       store.set(id, e);
       undo.push({ changes: [{ kind: 'code-place', key: id, from, to: store.get(id) }] });
     },
@@ -154,6 +154,31 @@ test('place.code --replace: where the hand lamps stood is read BEFORE the game i
   assert.deepEqual(s.spots.map((x) => [x.key, x.n]), LAMPS.map((x) => [x.key, x.n]));
   assert.deepEqual(s.spots[2]!.p, [-3.6, 0, -20], 'the hand\'s place, not the rule\'s');
   assert.equal(s.gap.key, 'lamp-3');
+});
+
+test('⌘Z on place.code --replace goes back to the hand lamps alone: the rule off, not the rule on top (studio-motion-fix ✕2)', async () => {
+  const e = editor();
+  await createAiHands(e.d).run({ id: '1', by: 'claude', ops: [{ do: 'place.code', id: 'lamp-row', replace: LAMPS.map((x) => x.key) }] });
+  const step = e.undo.undo()!.changes[0] as { from: unknown; to: unknown };
+  assert.deepEqual(step.from, { off: true }, '⌘Z: the rule puts nothing');
+  assert.deepEqual(step.to, { from: LAMPS.map((x) => x.key) }, 'redo: the swap again');
+  // The AI took the rule out of the code on Save: the game lists no lamp-row, and the entry leaves the file (no change of the person's).
+  e.store.set('lamp-row', { off: true });
+  e.store.markSaved();
+  assert.equal(e.store.settle([]), true);
+  assert.equal(e.store.get('lamp-row'), null);
+  assert.deepEqual(e.store.changedIds(), []);
+  // A rule still in the game keeps its `off`.
+  e.store.set('lamp-row', { off: true });
+  assert.equal(e.store.settle([ROW]), false);
+  assert.deepEqual(e.store.get('lamp-row'), { off: true });
+});
+
+test('places.<id>.off in placement.json: true only', async () => {
+  const { validateStudioFile } = await import('../src/schema/studio-files.mjs');
+  const f = (off: unknown) => validateStudioFile({ version: 1, tool: 'placement', dim: '3d', space: 'local', objects: {}, places: { 'lamp-row': { off } } });
+  assert.deepEqual((f(true) as { value: { places: unknown } }).value.places, { 'lamp-row': { off: true } });
+  assert.ok(!(f(false) as { ok: boolean }).ok);
 });
 
 test('motion.code --replace: the points it had are compared with the rule at 64 places; the moment and the gap in both lines', async () => {

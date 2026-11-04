@@ -392,6 +392,7 @@ const pinKeyOf = (id, key) => key.startsWith(`${id}-`) && /^[1-9][0-9]{0,3}$/.te
  *   hand   true: "Place by hand" — every object is a pin (no knobs, no formula, until the AI writes it as a list)
  *   avoid  [{ box: { p, size }, name? } | { code, knobs? }, + off?]: the layout's keep-out areas, in order
  *   from   ["lamp-1", …]: hand-placed objects this layout replaced ("✦ To code"); hidden until the AI removes them
+ *   off    true: the person undid that swap (⌘Z) — the rule puts no objects; on Save the AI takes the rule out again
  *   offsets  [{ way, how, v, odd? }]: a drag the code has no knob for, kept as a rule (studio-offsets; readOffsets)
  * An entry with nothing left is not written (same content, same bytes).
  */
@@ -415,7 +416,7 @@ function readPlaces(v, dim, fail) {
       fail(where, 'must be an object');
       continue;
     }
-    onlyFields(e, ['knobs', 'pins', 'hand', 'avoid', 'from', 'offsets'], where, fail);
+    onlyFields(e, ['knobs', 'pins', 'hand', 'avoid', 'from', 'offsets', 'off'], where, fail);
     const o = {};
     if (e.knobs !== undefined) {
       const k = readKnobs(e.knobs, `${where}.knobs`, fail);
@@ -468,6 +469,11 @@ function readPlaces(v, dim, fail) {
       // loader then hides only the ones it did not make itself.
       const f = readOrderedKeys(e.from, `${where}.from`, fail);
       if (f) o.from = f;
+    }
+    if (e.off !== undefined) {
+      // ⌘Z on ✦ Turn into a rule (studio-motion-fix, decided 2026-11-05): back to the hand-placed objects; the rule puts nothing.
+      if (e.off !== true) fail(`${where}.off`, 'must be true when present (leave it out: the rule places its objects)');
+      else o.off = true;
     }
     if (Object.keys(o).length) out[id] = o;
   }

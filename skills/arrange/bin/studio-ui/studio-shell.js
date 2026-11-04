@@ -1,4 +1,4 @@
-/* KUMODeck Game Studio 0.1.77 — MIT License — built file, edit src/ instead */
+/* KUMODeck Game Studio 0.1.78 — MIT License — built file, edit src/ instead */
 (() => {
 const __defs = [];
 const __cache = [];
@@ -2712,6 +2712,12 @@ const RESULT_FILES                         = {
                                                                                                                   
                   
      
+                                                                                                                       
+                                                                                                                        
+                                                                                                         
+     
+             
+     
                                                                                                                         
                                                                                                                           
      
@@ -3684,6 +3690,7 @@ const pinKeyOf = (id, key) => key.startsWith(`${id}-`) && /^[1-9][0-9]{0,3}$/.te
  *   hand   true: "Place by hand" — every object is a pin (no knobs, no formula, until the AI writes it as a list)
  *   avoid  [{ box: { p, size }, name? } | { code, knobs? }, + off?]: the layout's keep-out areas, in order
  *   from   ["lamp-1", …]: hand-placed objects this layout replaced ("✦ To code"); hidden until the AI removes them
+ *   off    true: the person undid that swap (⌘Z) — the rule puts no objects; on Save the AI takes the rule out again
  *   offsets  [{ way, how, v, odd? }]: a drag the code has no knob for, kept as a rule (studio-offsets; readOffsets)
  * An entry with nothing left is not written (same content, same bytes).
  */
@@ -3707,7 +3714,7 @@ function readPlaces(v, dim, fail) {
       fail(where, 'must be an object');
       continue;
     }
-    onlyFields(e, ['knobs', 'pins', 'hand', 'avoid', 'from', 'offsets'], where, fail);
+    onlyFields(e, ['knobs', 'pins', 'hand', 'avoid', 'from', 'offsets', 'off'], where, fail);
     const o = {};
     if (e.knobs !== undefined) {
       const k = readKnobs(e.knobs, `${where}.knobs`, fail);
@@ -3760,6 +3767,11 @@ function readPlaces(v, dim, fail) {
       // loader then hides only the ones it did not make itself.
       const f = readOrderedKeys(e.from, `${where}.from`, fail);
       if (f) o.from = f;
+    }
+    if (e.off !== undefined) {
+      // ⌘Z on ✦ Turn into a rule (studio-motion-fix, decided 2026-11-05): back to the hand-placed objects; the rule puts nothing.
+      if (e.off !== true) fail(`${where}.off`, 'must be true when present (leave it out: the rule places its objects)');
+      else o.off = true;
     }
     if (Object.keys(o).length) out[id] = o;
   }
@@ -11126,7 +11138,10 @@ function layOut(p, f) {
   p.skipped = [];
   p.spots = [];
   const k = knobValues(p.knobs, f.knobs);
-  const count = countOf(p, k);
+  // `off` (studio-motion-fix ✕2, decided 2026-11-05): ⌘Z on "✦ Turn into a rule" — the person went back to the objects
+  // they placed by hand, while the rule is still in the code. The rule then puts nothing (not hidden objects: hidden ones
+  // would still be listed, picked and saved), until the AI takes it out on Save or the person redoes the swap.
+  const count = f.off === true ? 0 : countOf(p, k);
   // The rule's places before any offset (try 0): the offsets' frame is made from them (studio-offsets), and the editor
   // reads them (p.base, p.frame: a drag's way and rank, `--do list`'s line / rank / offset).
   const seen = { rand: false };
@@ -16806,6 +16821,9 @@ class PlaceStore {
    */
   settle(list                 , left                                  )          {
     let changed = false;
+    // `off` (⌘Z on ✦ Turn into a rule; studio-motion-fix): the AI took the rule out of the code, as Save asked — the
+    // entry has nothing left to say (the game has no such layout now), in what is saved too: no change of the person's.
+    for (const m of [this.now, this.saved]) for (const [id, e] of [...m]) if (e.off && !list.some((p) => p.id === id)) (m.delete(id), (changed = true));
     for (const p of list) {
       const f         = { now: null, saved: null };
       for (const [m, side] of [[this.now, 'now'], [this.saved, 'saved']]         ) {
@@ -17947,6 +17965,89 @@ __def(__exports, "PlacementModel", () => PlacementModel);
 };
 __defs[38] = function (__exports) {
 'use strict';
+// ai-marks.ts
+
+// What the AI's last change did, as marks: which objects it added and which it moved (the violet outlines, the list's
+// dots and the one tag in the game, "Claude moved 2"). Split out of main.ts (studio-motion-fix, decided 2026-11-05) so
+// the rules below are unit-tested (test/ai-marks.test.ts) and main.ts stops growing.
+//
+// WHY two objects are never counted as moved by the AI (a first-time walk of v0.1.77):
+// - What the game moves by itself (Item.held 'game', the list's ↻ ones: a ring the game spins, an orb that pulses, a
+//   pillar on a code motion). Its pose is different on every frame, so the page before the reload and the page after it
+//   never agree — every Save that the AI wrote into the code ended with "AI moved 2" / "AI moved 7" on things the AI had
+//   not touched, right under the editor's own line "the look is the same". The AI can still move such an object in the
+//   code; the mark just cannot tell that from the game's own motion, and a false "moved" is worse than none.
+// - The objects of a code layout the AI wrote back (`place.code --fold`) and the editor MEASURED as the same look (every
+//   object within 1 cm / 1 px). A write-back on purpose changes nothing on screen; marking it says the opposite.
+                                                      
+const { samePose } = __require(31);
+
+                                       
+
+                              
+                                                                                  
+                            
+                                                                                                          
+                                       
+                                   
+                
+           
+                                                                                                                    
+                           
+                                                                                              
+                         
+ 
+
+                               
+                             
+                                                                                                         
+               
+ 
+
+const flat = (p      )       => ({ ...p, z: undefined });
+
+function aiMarksOf(x             )               {
+  const { before, beforeCode, items, dim } = x;
+  const marks = new Map                ();
+  const now = new Set(items.map((i) => i.key));
+  // An object without a name gets a new path key when the AI adds things before it in the
+  // tree (path:8 → path:11): same place as one that is gone = the same object, not a new one.
+  const goneAt = [...before.entries()].filter(([k]) => !now.has(k)).map(([, p]) => p);
+  let renamed = 0;
+  for (const it of items) {
+    const was = before.get(it.key);
+    if (!was && it.unstable && goneAt.some((p) => samePose(flat(it.pose), flat(p), dim))) {
+      renamed++;
+      continue;
+    }
+    if (!was) {
+      marks.set(it.key, 'added');
+      continue;
+    }
+    if (samePose(flat(it.pose), flat(was), dim)) continue;
+    if (it.held === 'game' || x.heldBefore?.has(it.key) || x.sameLook?.has(it.key)) continue;
+    // At its old code's pose: the person's unsaved move is not shown yet (it is pushed back later), not the AI's.
+    const code0 = beforeCode?.get(it.key);
+    if (!code0 || !samePose(flat(it.pose), flat(code0), dim)) marks.set(it.key, 'moved');
+  }
+  const gone = Math.max(0, [...before.keys()].filter((k) => !now.has(k)).length - renamed);
+  return { marks, gone };
+}
+
+/** The one tag in the game, in the AI's own name ("Claude moved 2": the strings use {Ai}, filled by translate()). */
+function aiMarksLabel(marks                     , t                                                            )                     {
+  const list = [...marks.values()];
+  if (!list.length) return undefined;
+  const added = list.filter((v) => v === 'added').length;
+  const key = added === list.length ? 'ai.tagAdded' : added === 0 ? 'ai.tagMoved' : 'ai.tagChanged';
+  return t(key, { n: added === list.length ? added : list.length });
+}
+
+__def(__exports, "aiMarksOf", () => aiMarksOf);
+__def(__exports, "aiMarksLabel", () => aiMarksLabel);
+};
+__defs[39] = function (__exports) {
+'use strict';
 // i18n.ts
 
 // Shell strings in English and Japanese. English is the fallback for any
@@ -18188,8 +18289,9 @@ const en = {
   'mnext2.changed': '{name} changed',
   'mnext2.save': '{save} puts it in the game',
   'mnext2.line': '{what}',
-  'mnext2.rec': 'Recording',
-  'mnext2.recEnd': 'press {dot} when you’re done',
+  'mnext2.rec': 'Rec motion on',
+  'mnext2.recEnd': 'moving it adds a point',
+  'mnext2.recOff': 'Turn off',
   'mnext2.recOffTip': 'Stop recording (Rec motion off): moving it then moves where it stands',
   'mnext2.elsewhere': 'Not saved:',
   'mnext2.more': '(+{n})',
@@ -18259,6 +18361,8 @@ const en = {
   'placement.askAi': 'Want rules for this game, like a grid, 90° turns, or things that can’t move? Just ask {ai}: “snap to a 1 m grid.”',
   'placement.unstable': 'This object has no name. Name it so your layout still finds it after the code changes.',
   'placement.fine': 'Exact values',
+  // A rule's object (△9, studio-motion-fix): the fold has the rule's knobs and keep-out areas, not only numbers.
+  'placement.fineRule': 'Rule & details',
   'ask.none': 'Select an object, then ask {ai}…',
   'noname.tag': 'Unnamed',
   // An object without a name in the list, called by its kind (names.ts; polish pass 2026-10-16).
@@ -18295,7 +18399,9 @@ const en = {
   'noname.askAi': 'Ask {ai} to name them',
   'noname.why': 'A guessed name. Named in code, {ai} can find it and its position stays put.',
   'noname.whyPlain': 'Named in code, {ai} can find it and its position stays put.',
-  'ask.chipN': '×{n}',
+  // studio-motion-fix △10 (decided 2026-11-05): "×6" alone did not say six of what.
+  'ask.chipN': '{n:1 object|# objects}',
+  'ask.chipNamed': '{name} ×{n}',
   // The side window's "Open large" (top bar, right): the same editor in a big window.
   'large.open': 'Open large',
   'large.tip': 'Open this editor in a large window',
@@ -18805,9 +18911,10 @@ const en = {
   'pal.tool.motion.words': 'motion animate animation move timeline library strip 動き モーション',
   'motion.tool.menu': 'Motion for this object',
   'pal.tool.words': 'tool strip move height turn rotate tilt size scale 道具',
-  'ai.tagAdded': 'AI added {n}',
-  'ai.tagMoved': 'AI moved {n}',
-  'ai.tagChanged': 'AI changed {n}',
+  // {Ai}, not "AI" (decided 2026-11-05): every other line names the AI ("Claude added …"); the tag was the odd one out.
+  'ai.tagAdded': '{Ai} added {n}',
+  'ai.tagMoved': '{Ai} moved {n}',
+  'ai.tagChanged': '{Ai} changed {n}',
   // The objects in the Library (library-objects.ts, "one Library" 2026-10-18): the same objects as the Scene's list, as
   // tiles in the Library's one grid next to the assets; "Show in game →" is the way from there to the game.
   'shelf.using': 'used by {n:1 object|# objects}',
@@ -19049,10 +19156,12 @@ const en = {
   'hands.place.unhand': 'undid Convert to coordinates',
   'hands.place.offsets': 'offsets {what}',
   'hands.place.noOffsets': 'offsets taken off',
-  'hands.place.avoid': '{Ai} added “{what}” to {name}’s keep-out areas',
-  'hands.place.avoidSet': '{Ai} changed “{what}” in {name}’s keep-out areas',
-  'hands.place.avoidOff': '{Ai} turned off “{what}” in {name}’s keep-out areas',
-  'hands.place.avoidRemove': '{Ai} took “{what}” off {name}’s keep-out areas',
+  // "to the keep-out areas of “crystal”" (studio-motion-fix ✕3, decided 2026-11-05): "to crystal’s keep-out areas" read as
+  // one crystal for a rule of twelve; the layout's name is the code's and cannot be made plural safely.
+  'hands.place.avoid': '{Ai} added “{what}” to the keep-out areas of “{name}”',
+  'hands.place.avoidSet': '{Ai} changed “{what}” in the keep-out areas of “{name}”',
+  'hands.place.avoidOff': '{Ai} turned off “{what}” in the keep-out areas of “{name}”',
+  'hands.place.avoidRemove': '{Ai} took “{what}” off the keep-out areas of “{name}”',
   // studio-writeback (2026-10-24, "the code is the truth"): the AI wrote a rule's changes into the rule itself — nothing
   // moved (said only so the person knows who did it), or how far off it came / what went, or the knob it added.
   'hands.place.fold': '{Ai} wrote your changes to “{name}” into its rule',
@@ -19082,10 +19191,13 @@ const en = {
   'keepout.remove': 'Remove',
   'keepout.more': 'More',
   'keepout.alsoFor': 'Also for {name}',
-  'keepout.alsoDone': 'Added “{what}” to {name}’s keep-out areas too',
+  'keepout.alsoDone': 'Added “{what}” to the keep-out areas of “{name}” too',
   'keepout.alsoHas': '{name} has “{what}” already',
-  'keepout.added': 'Added “{what}” to {name}’s keep-out areas',
-  'keepout.addedOut': 'Added “{what}” to {name}’s keep-out areas ({n:1 1 moved out|# moved out})',
+  'keepout.added': 'Added “{what}” to the keep-out areas of “{name}”',
+  // ✕3: was "{n:1 1 moved out|…}", which read "(1 1 moved out)".
+  'keepout.addedOut': 'Added “{what}” to the keep-out areas of “{name}” ({n} moved out)',
+  // How a condition's words go (keep-out-model.ts avoidWords): "Within [5 m] from the player".
+  'keepout.order': 'after knobs name',
   'keepout.skipped': '{n} of {all} {n:has|have} no place to go',
   'keepout.inside': 'Inside a keep-out area',
   'keepout.insideTip': 'Keep-out areas don’t move what you placed by hand: it stays here',
@@ -19228,6 +19340,12 @@ const en = {
   'rule.handTag': 'By hand',
   'rule.handTip': 'Placed by hand (⌥-drag), outside its rule. Revert puts it where the rule does',
   'rule.pinnedDone': 'Placed {obj} by hand (the rest stay on the rule)',
+  // ⌘Z on ✦ Turn into a rule (studio-motion-fix ✕2, decided 2026-11-05): the hand's objects are back, the rule puts none,
+  // and the rule is still in the code ("in the game" on screen: the rule words never say "code") — and how it leaves.
+  'rule.swapBack': 'Back to your {n:1 object|# objects} placed by hand',
+  'rule.swapBackNamed': 'Back to your {name} ×{n} placed by hand',
+  'rule.swapUndone': '{what} · the rule is still in the game: Undo AI change takes it out',
+  'rule.swapUndoneSave': '{what} · the rule is still in the game: Save, and {ai} takes it out',
   'rule.pinnedDoneMany': 'Placed {obj} by hand',
   'rule.pinnedMany': '{n} of {name}',
   'rule.reset': 'Revert',
@@ -19495,8 +19613,9 @@ const ja                               = {
   'mnext2.changed': '{name}を変えました',
   'mnext2.save': '{save}するとゲームに入ります',
   'mnext2.line': '{what}',
-  'mnext2.rec': '記録中',
-  'mnext2.recEnd': '終わったら {dot} を押す',
+  'mnext2.rec': '動きを記録 オン',
+  'mnext2.recEnd': '動かすと点が増えます',
+  'mnext2.recOff': 'オフにする',
   'mnext2.recOffTip': '記録を終わる（動きを記録 オフ）: そのあと動かすと、置き場所が変わります',
   'mnext2.elsewhere': '保存していない動き:',
   'mnext2.more': '（ほか {n}）',
@@ -19561,6 +19680,7 @@ const ja                               = {
   'placement.askAi': 'マス目・90° ずつの回転・動かさない物など、このゲームの決まりは {ai}に頼めます。例:「1 m のマス目に合わせて」',
   'placement.unstable': '名前のない物です。名前を付けると、コードが変わっても位置がずれません。',
   'placement.fine': '数値で合わせる',
+  'placement.fineRule': 'ルールと数値',
   'ask.none': '物を選んで、{ai}に頼む…',
   'noname.tag': '名前なし',
   'noname.kind.picture': '名前のない絵',
@@ -19590,7 +19710,8 @@ const ja                               = {
   'noname.askAi': '{ai}に名前を付けてもらう',
   'noname.why': '仮の名前です。名前があると {ai}に名前で頼めて、コードを直しても位置が残ります。',
   'noname.whyPlain': '名前があると {ai}に名前で頼めて、コードを直しても位置が残ります。',
-  'ask.chipN': '×{n}',
+  'ask.chipN': '{n} 個',
+  'ask.chipNamed': '{name} ×{n}',
   'large.open': '大きく開く',
   'large.tip': 'このエディタを大きな窓で開く',
   'large.opened': '大きな窓で開きました。続きはそちらで（この窓は閉じても大丈夫です）。',
@@ -19999,9 +20120,9 @@ const ja                               = {
   'pal.tool.motion.words': '動き モーション アニメーション タイムライン ライブラリ 道具 motion animate',
   'motion.tool.menu': 'この物の動き',
   'pal.tool.words': '道具 移動 高さ 回す 大きさ tool move height turn size',
-  'ai.tagAdded': 'AI が足した {n} 個',
-  'ai.tagMoved': 'AI が動かした {n} 個',
-  'ai.tagChanged': 'AI が変えた {n} 個',
+  'ai.tagAdded': '{ai}が足した {n} 個',
+  'ai.tagMoved': '{ai}が動かした {n} 個',
+  'ai.tagChanged': '{ai}が変えた {n} 個',
   'shelf.using': 'を使っている物 {n}',
   'shelf.clearFile': 'すべての物を見る',
   'shelf.placed': 'ゲームに置いた物',
@@ -20244,6 +20365,7 @@ const ja                               = {
   'keepout.alsoHas': '{name}にはもう「{what}」があります',
   'keepout.added': '{name}の置かない所に「{what}」を足しました',
   'keepout.addedOut': '{name}の置かない所に「{what}」を足しました（{n} 個が外へ）',
+  'keepout.order': 'name knobs after',
   'keepout.skipped': '{all} 個のうち {n} 個は置ける所がありません',
   'keepout.inside': '置かない所の中です',
   'keepout.insideTip': '手で置いた物には置かない所は効きません（このまま置かれます）',
@@ -20364,6 +20486,10 @@ const ja                               = {
   'rule.handTag': '手で置いた',
   'rule.handTip': 'ルールの外に手で置いた物です（⌥+ドラッグ）。［元の位置に戻す］でルールが決めた場所へ',
   'rule.pinnedDone': '{obj} を手で置きました（ほかはルールのまま）',
+  'rule.swapBack': '手で置いた {n} 個に戻しました',
+  'rule.swapBackNamed': '手で置いた {name} ×{n} に戻しました',
+  'rule.swapUndone': '{what} · ルールはまだゲームに残っています: 「AI の変更を元に戻す」で消えます',
+  'rule.swapUndoneSave': '{what} · ルールはまだゲームに残っています: 保存すると{ai}が消します',
   'rule.pinnedDoneMany': '{obj} を手で置きました',
   'rule.pinnedMany': '{name} {n} 個',
   'rule.reset': '元の位置に戻す',
@@ -20478,7 +20604,7 @@ __def(__exports, "detectLang", () => detectLang);
 __def(__exports, "translate", () => translate);
 __def(__exports, "plural", () => plural);
 };
-__defs[39] = function (__exports) {
+__defs[40] = function (__exports) {
 'use strict';
 // next-steps.ts
 
@@ -20588,7 +20714,7 @@ __def(__exports, "AI_STEPS", () => AI_STEPS);
 __def(__exports, "NEXT_STEPS", () => NEXT_STEPS);
 __def(__exports, "renderNextSteps", () => renderNextSteps);
 };
-__defs[40] = function (__exports) {
+__defs[41] = function (__exports) {
 'use strict';
 // ../schema/handoff.mjs
 
@@ -21121,7 +21247,7 @@ __def(__exports, "isRequestId", () => isRequestId);
 __def(__exports, "normalizeStatus", () => normalizeStatus);
 __def(__exports, "statusCovers", () => statusCovers);
 };
-__defs[41] = function (__exports) {
+__defs[42] = function (__exports) {
 'use strict';
 // ai-flow.ts
 
@@ -21149,7 +21275,7 @@ __defs[41] = function (__exports) {
 //   done / failed    the AI's one-line reply; done also has "Undo AI change"
 //   undone / redone  after the person pressed Undo / Redo
                                                             
-const { statusCovers } = __require(40);
+const { statusCovers } = __require(41);
 
                                                                                                                                                                          
 
@@ -21292,7 +21418,7 @@ __def(__exports, "QUIET_MS", () => QUIET_MS);
 __def(__exports, "reloadDecision", () => reloadDecision);
 __def(__exports, "moreIn", () => moreIn);
 };
-__defs[42] = function (__exports) {
+__defs[43] = function (__exports) {
 'use strict';
 // ai-presence.ts
 
@@ -21335,7 +21461,7 @@ __defs[42] = function (__exports) {
 // - unsure   = everything else (never seen watching, a host that cannot tell, the grace after a heartbeat stops).
 // Pure, so test/ai-presence.test.ts reads the rules without a browser; main.ts keeps the clock and draws the words.
                                               
-const { aiBusy } = __require(41);
+const { aiBusy } = __require(42);
 
                                                                              
 
@@ -21365,7 +21491,9 @@ const AWAY_AFTER_MS = 60_000;
 function aiPresence(s               )             {
   if (s.watching === true) return 'watching';
   if (aiBusy(s.phase) || s.phase === 'asking') return 'working';
-  if (s.statusTime != null && s.now - s.statusTime < HERE_STATUS_MS) return 'working';
+  // A status just written proves the AI is here — but after its "done" it is no longer working (studio-motion-fix △4,
+  // decided 2026-11-05: "Claude is working" sat under "Added … to the keep-out areas" for seconds after the reply).
+  if (s.statusTime != null && s.now - s.statusTime < HERE_STATUS_MS) return s.phase === 'done' || s.phase === 'failed' ? 'watching' : 'working';
   if (s.agent === 'codex') return 'look';
   if (s.watching === false && s.agent === 'claude' && s.lastWatching != null && s.now - s.lastWatching >= AWAY_AFTER_MS
     && s.now - s.visibleSince >= AWAY_AFTER_MS) return 'away';
@@ -21400,7 +21528,7 @@ __def(__exports, "UNSEEN_MS", () => UNSEEN_MS);
 __def(__exports, "QUIET_WORK_MS", () => QUIET_WORK_MS);
 __def(__exports, "aiNameKey", () => aiNameKey);
 };
-__defs[43] = function (__exports) {
+__defs[44] = function (__exports) {
 'use strict';
 // save-loud.ts
 
@@ -21446,7 +21574,7 @@ function bounces(prevN        , n        , playing         , reducedMotion      
 __def(__exports, "saveLoud", () => saveLoud);
 __def(__exports, "bounces", () => bounces);
 };
-__defs[44] = function (__exports) {
+__defs[45] = function (__exports) {
 'use strict';
 // ai-ask.ts
 
@@ -21525,7 +21653,7 @@ function askView(st                     , poses                                 
 __def(__exports, "poseChange", () => poseChange);
 __def(__exports, "askView", () => askView);
 };
-__defs[45] = function (__exports) {
+__defs[46] = function (__exports) {
 'use strict';
 // play-ask.ts
 
@@ -21538,7 +21666,7 @@ __defs[45] = function (__exports) {
 // Pure, so test/play-ask.test.ts reads the rules without a browser; main.ts sends the result to the game page,
 // where bridge/play-ask.ts draws it.
                                                                       
-const { moreIn } = __require(41);
+const { moreIn } = __require(42);
 
                                 
                  
@@ -21601,7 +21729,7 @@ function playWords(t                         )                         {
 __def(__exports, "playLine", () => playLine);
 __def(__exports, "playWords", () => playWords);
 };
-__defs[46] = function (__exports) {
+__defs[47] = function (__exports) {
 'use strict';
 // keymap.ts
 
@@ -21781,7 +21909,7 @@ __def(__exports, "keysOf", () => keysOf);
 __def(__exports, "keyOf", () => keyOf);
 __def(__exports, "tipText", () => tipText);
 };
-__defs[47] = function (__exports) {
+__defs[48] = function (__exports) {
 'use strict';
 // moment.ts
 
@@ -21828,7 +21956,7 @@ __defs[47] = function (__exports) {
                                                  
 const { h } = __require(16);
 const { icon, setButton } = __require(21);
-const { tipText } = __require(46);
+const { tipText } = __require(47);
 
 /**
  * "0:41.8": the game's time as the top bar writes it. Floored, so it never reads ahead of the game. `places` = digits
@@ -22134,7 +22262,7 @@ __def(__exports, "splitMoves", () => splitMoves);
 __def(__exports, "FIRST_TIP_MS", () => FIRST_TIP_MS);
 __def(__exports, "createMomentBar", () => createMomentBar);
 };
-__defs[48] = function (__exports) {
+__defs[49] = function (__exports) {
 'use strict';
 // moment-talk.ts
 
@@ -22200,7 +22328,7 @@ __def(__exports, "HISTORY_MAX", () => HISTORY_MAX);
 __def(__exports, "historyOf", () => historyOf);
 __def(__exports, "chatOnLine", () => chatOnLine);
 };
-__defs[49] = function (__exports) {
+__defs[50] = function (__exports) {
 'use strict';
 // moment-ask.ts
 
@@ -22219,7 +22347,7 @@ __defs[49] = function (__exports) {
 //
 // Pure parts are tested in test/moment-ask.test.ts; the screen in test/studio-pause.browser.mjs (moment, momentdemo).
 const { h } = __require(16);
-const { clockText } = __require(47);
+const { clockText } = __require(48);
 
 /**
  * Is the moment's field on screen? Always while paused (the demo too, Q1); outside a moment, only with an AI behind
@@ -22346,7 +22474,7 @@ __def(__exports, "createMomentShot", () => createMomentShot);
 __def(__exports, "momentKeyPasses", () => momentKeyPasses);
 __def(__exports, "askPhShort", () => askPhShort);
 };
-__defs[50] = function (__exports) {
+__defs[51] = function (__exports) {
 'use strict';
 // moment-values.ts
 
@@ -22575,7 +22703,7 @@ __def(__exports, "momentOf", () => momentOf);
 __def(__exports, "createMomentValues", () => createMomentValues);
 __def(__exports, "unitText", () => unitText);
 };
-__defs[51] = function (__exports) {
+__defs[52] = function (__exports) {
 'use strict';
 // moment-marks.ts
 
@@ -22905,7 +23033,7 @@ __def(__exports, "drawMarks", () => drawMarks);
 __def(__exports, "markedShot", () => markedShot);
 __def(__exports, "createMomentMarks", () => createMomentMarks);
 };
-__defs[52] = function (__exports) {
+__defs[53] = function (__exports) {
 'use strict';
 // moment-gets.ts
 
@@ -22926,7 +23054,7 @@ __defs[52] = function (__exports) {
 // The rows are pure (test/moment-gets.test.ts); the popover is a small card over the field (shell.css .moment-gets).
                                                                              
 const { h } = __require(16);
-const { markNumber } = __require(51);
+const { markNumber } = __require(52);
 
                             
                                                                       
@@ -23055,7 +23183,7 @@ __def(__exports, "orderMarked", () => orderMarked);
 __def(__exports, "getsRows", () => getsRows);
 __def(__exports, "createMomentGets", () => createMomentGets);
 };
-__defs[53] = function (__exports) {
+__defs[54] = function (__exports) {
 'use strict';
 // moment-try.ts
 
@@ -23250,7 +23378,7 @@ __def(__exports, "DRIFT_SAY_S", () => DRIFT_SAY_S);
 __def(__exports, "tryWords", () => tryWords);
 __def(__exports, "createMomentCompare", () => createMomentCompare);
 };
-__defs[54] = function (__exports) {
+__defs[55] = function (__exports) {
 'use strict';
 // checkpoints.ts
 
@@ -23275,7 +23403,7 @@ __defs[54] = function (__exports) {
                                                      
 const { h } = __require(16);
 const { icon } = __require(21);
-const { clockText } = __require(47);
+const { clockText } = __require(48);
 
 /** ▶ Play ⌄ and ⌘K list this many (the newest): a longer list is a save folder, not a menu. */
 const CHECKPOINTS_LISTED = 12;
@@ -23513,7 +23641,7 @@ __def(__exports, "smallShot", () => smallShot);
 __def(__exports, "createCheckpointPop", () => createCheckpointPop);
 __def(__exports, "createCheckpointNote", () => createCheckpointNote);
 };
-__defs[55] = function (__exports) {
+__defs[56] = function (__exports) {
 'use strict';
 // line-fade.ts
 
@@ -23576,7 +23704,7 @@ __def(__exports, "lineFades", () => lineFades);
 __def(__exports, "lineStayMs", () => lineStayMs);
 __def(__exports, "lineKey", () => lineKey);
 };
-__defs[56] = function (__exports) {
+__defs[57] = function (__exports) {
 'use strict';
 // ui-prefs.ts
 
@@ -23664,7 +23792,7 @@ __def(__exports, "UI_LIMITS", () => UI_LIMITS);
 __def(__exports, "normalizeUi", () => normalizeUi);
 __def(__exports, "effectiveTheme", () => effectiveTheme);
 };
-__defs[57] = function (__exports) {
+__defs[58] = function (__exports) {
 'use strict';
 // settings-page.ts
 
@@ -23674,7 +23802,7 @@ __defs[57] = function (__exports) {
                                                     
 const { h } = __require(16);
 const { icon } = __require(21);
-const { DEFAULT_UI, UI_LIMITS } = __require(56);
+const { DEFAULT_UI, UI_LIMITS } = __require(57);
 
                                
                          
@@ -23757,7 +23885,7 @@ function renderSettings(el             , d              )       {
 
 __def(__exports, "renderSettings", () => renderSettings);
 };
-__defs[58] = function (__exports) {
+__defs[59] = function (__exports) {
 'use strict';
 // edit-ops.ts
 
@@ -23861,7 +23989,7 @@ __def(__exports, "groupLayerMoves", () => groupLayerMoves);
 __def(__exports, "groupLayerPossible", () => groupLayerPossible);
 __def(__exports, "sameKind", () => sameKind);
 };
-__defs[59] = function (__exports) {
+__defs[60] = function (__exports) {
 'use strict';
 // placement-panel.ts
 
@@ -23894,10 +24022,10 @@ __defs[59] = function (__exports) {
                                                       
 const { h, safeImageSrc } = __require(16);
 const { hasLayer, layerBlocks, layerTarget, siblingsOf } = __require(32);
-const { groupLayerPossible, sameKind } = __require(58);
+const { groupLayerPossible, sameKind } = __require(59);
 const { icon, setButton } = __require(21);
 const { afterKnob, knobHeld } = __require(25);
-const { tipText } = __require(46);
+const { tipText } = __require(47);
 const { displayName, isGuessed, nameParts } = __require(14);
 const { toneThumb } = __require(17);
 
@@ -24107,6 +24235,19 @@ const DEG = 180 / Math.PI;
  * The ask chip's short form of a shown name: the guessed name's place and count dropped ("Black pillar by the
  * road (left, 3rd)" → "Black pillar"; the same in Japanese); other names as they are (CSS cuts what is long).
  */
+/**
+ * What several picked objects are, when they are one kind: the short name without its number ("lamp-3" → "lamp",
+ * "Street lamps 2" → "Street lamps"), the same for all of them; else null (studio-motion-fix △10, decided 2026-11-05).
+ */
+/** Below this many px of the field's own text room, a topic's second chip folds to "+1" (△8). */
+const ASK_ROOM_PX = 150;
+
+function chipFamily(names          )                {
+  const base = (s        ) => shortName(s).replace(/[\s_#-]*\d+$/, '').trim();
+  const first = names.length ? base(names[0] ) : '';
+  return first && names.every((x) => base(x) === first) ? first : null;
+}
+
 function shortName(name        )         {
   const s = nameParts(name).base.replace(/^道路わきの/, '').replace(/ by the road$/, '');
   return s.trim() || name;
@@ -24390,7 +24531,13 @@ function createPlacementPanel(d                    )                 {
     // a review of 2026-10-22): both names, "crate · Hop" — what the words are about, read in one go, instead of "×2".
     const motionOnly = picks.filter((p) => p.startsWith('\u0000'));
     const pair = !whole && !noObj && keys.length === 1 && files.length === 1 && motionOnly.length === 1;
-    askChip.textContent = whole ? '' : pair ? `${shortName(firstName)} · ${fileName(motionOnly[0] )}` : n === 1 ? (noObj ? firstName : shortName(firstName)) : d.t('ask.chipN', { n });
+    // Several (studio-motion-fix △10, decided 2026-11-05): "×6" alone did not say six of what. The same kind of thing
+    // ("lamp-1" … "lamp-6", "crate 2", "crate 3") reads "lamp ×6"; a mix reads "6 objects".
+    const many = () => {
+      const fam = files.length ? null : chipFamily(keys.map((key) => { const it = items.find((i) => i.key === key); return it ? displayName(it, d.t) : key; }));
+      return fam ? d.t('ask.chipNamed', { name: fam, n }) : d.t('ask.chipN', { n });
+    };
+    askChip.textContent = whole ? '' : pair ? `${shortName(firstName)} · ${fileName(motionOnly[0] )}` : n === 1 ? (noObj ? firstName : shortName(firstName)) : many();
     askChip.classList.toggle('motion', pair);
     // …and the field says what such words look like: when it starts, how fast (the strip's old "When? (for your AI)").
     if (pair && !answer) askInput.placeholder = d.t('ask.motion');
@@ -24411,7 +24558,17 @@ function createPlacementPanel(d                    )                 {
       askChip.replaceChildren(...(topic.pic ? [h('img', { class: 'ask-chip-pic', src: topic.pic, alt: '', dataset: { part: 'ask-chip-pic' } })] : []), topic.chip);
       if (topic.tip) askChip.title = topic.tip;
       askTag.textContent = topic.tag ?? '';
+      askTag.title = topic.tag ?? '';
+      askTag.classList.remove('folded');
       askInput.placeholder = topic.ph;
+      // △8 (studio-motion-fix, decided 2026-11-05): paused, the field also holds the moment's picture and ⊙ Mark, and
+      // with two chips the draft read "Convert the Sidewa…". When the field's own room is short, the second chip folds to
+      // "+1" (its words in the tooltip and in what is read aloud); the first chip says what the ask is about.
+      if (topic.tag) requestAnimationFrame(() => {
+        if (askTag.hidden || !askInput.isConnected || askInput.offsetWidth >= ASK_ROOM_PX) return;
+        askTag.textContent = '+1';
+        askTag.classList.add('folded');
+      });
       askInput.setAttribute('aria-label', topic.tag ? `${topic.chip} · ${topic.tag}` : topic.chip);
     }
     // A round arrow, as in message apps: grey until there is something to send.
@@ -24760,6 +24917,18 @@ function createPlacementPanel(d                    )                 {
     const rule = d.layout?.(key) ?? null;
     // In the numbers' place: on a phone under "…" with them (the phone card is name, copy, delete and "…": W1-11).
     if (rule) fine.append(...rule.els);
+    // △9 (studio-motion-fix, decided 2026-11-05): on a phone the rule (its knobs, Keep-out areas, + Draw a box) was under
+    // ⌄ "Exact values" — a first-time maker never found it. The card itself now says what the object is in one line,
+    // "Rule · Line (both sides) · 10", which opens the fold; and the fold's name says the rule is in it.
+    if (rule && d.phone()) {
+      const head = rule.els[0]?.querySelector('.rule-head');
+      const peek = h('button', { type: 'button', class: 'rule-peek', dataset: { part: 'rule-peek' }, 'aria-expanded': String(fine.open),
+        onclick: () => (fine.open = !fine.open) }, ...(head ? [...head.childNodes].map((n) => n.cloneNode(true)) : []));
+      fine.addEventListener('toggle', () => peek.setAttribute('aria-expanded', String(fine.open)));
+      if (peek.childNodes.length) body.append(peek);
+      const sum = fine.querySelector('summary');
+      if (sum) (sum.title = d.t('placement.fineRule'), sum.setAttribute('aria-label', d.t('placement.fineRule')));
+    }
     if (rule && !rule.numbers) {
       if (d.motion && dim === '3d') fields.append(...d.motion(key));
       if (fields.childElementCount) fine.append(fields);
@@ -25319,11 +25488,12 @@ function listOf(xs          , t                       )         {
   return xs.slice(0, -1).join(sep) + t(xs.length > 2 ? 'hold.and3' : 'hold.and') + xs[xs.length - 1];
 }
 
+__def(__exports, "chipFamily", () => chipFamily);
 __def(__exports, "shortName", () => shortName);
 __def(__exports, "createPlacementPanel", () => createPlacementPanel);
 __def(__exports, "heldGameText", () => heldGameText);
 };
-__defs[60] = function (__exports) {
+__defs[61] = function (__exports) {
 'use strict';
 // rule-motion.ts
 
@@ -25393,7 +25563,7 @@ __def(__exports, "knobSaid", () => knobSaid);
 __def(__exports, "ruleWords", () => ruleWords);
 __def(__exports, "ruleKnobsAfter", () => ruleKnobsAfter);
 };
-__defs[61] = function (__exports) {
+__defs[62] = function (__exports) {
 'use strict';
 // to-rule.ts
 
@@ -25599,7 +25769,7 @@ __def(__exports, "gapText", () => gapText);
 __def(__exports, "timeText", () => timeText);
 __def(__exports, "RuleCompare", () => RuleCompare);
 };
-__defs[62] = function (__exports) {
+__defs[63] = function (__exports) {
 'use strict';
 // path-edit.ts
 
@@ -25727,7 +25897,7 @@ __def(__exports, "setKind", () => setKind);
 __def(__exports, "toggleCorner", () => toggleCorner);
 __def(__exports, "insertAt", () => insertAt);
 };
-__defs[63] = function (__exports) {
+__defs[64] = function (__exports) {
 'use strict';
 // scene-motion.ts
 
@@ -25847,7 +26017,7 @@ __def(__exports, "withTrack", () => withTrack);
 __def(__exports, "withoutTrack", () => withoutTrack);
 __def(__exports, "withOrder", () => withOrder);
 };
-__defs[64] = function (__exports) {
+__defs[65] = function (__exports) {
 'use strict';
 // motion-card.ts
 
@@ -26009,7 +26179,7 @@ function motionMenu(d                , c            , at                        
 __def(__exports, "motionCardRow", () => motionCardRow);
 __def(__exports, "motionMenu", () => motionMenu);
 };
-__defs[65] = function (__exports) {
+__defs[66] = function (__exports) {
 'use strict';
 // timeline-wire.ts
 
@@ -26030,13 +26200,13 @@ __defs[65] = function (__exports) {
 // WHY its own file: main.ts is 3,900 lines and other members change it the same week; main.ts only routes moves,
 // the card's numbers, undo and the bridge's messages through here.
                                                                                                                                                                                                                       
-const { ruleKnobsAfter, ruleOf, ruleWords } = __require(60);
-const { handPath } = __require(61);
+const { ruleKnobsAfter, ruleOf, ruleWords } = __require(61);
+const { handPath } = __require(62);
 const { motionRunner, whenOf, whensOf } = __require(19);
-const { bend, insertAt, pointKind, setKind, toggleCorner } = __require(62);
-const { asOrdinary, asScene, joinClip, likeScene, sceneMembers, trackOrder: sceneOrder, withOrder, withTrack, withoutTrack } = __require(63);
+const { bend, insertAt, pointKind, setKind, toggleCorner } = __require(63);
+const { asOrdinary, asScene, joinClip, likeScene, sceneMembers, trackOrder: sceneOrder, withOrder, withTrack, withoutTrack } = __require(64);
 const { libOf } = __require(35);
-const { motionCardRow } = __require(64);
+const { motionCardRow } = __require(65);
                                                    
                                                      
 const { sameMotion: sameFile } = __require(36);
@@ -26256,6 +26426,9 @@ function createTimeline(d              , makePanel                             =
    * stays; the rows and the Fine-tune sheet come back with Fine-tune pressed (its ⌃), and closing the plate ends it.
    */
   let slim = false;
+  // When an object was last picked from a row's name (slimFor: not folded for that pick).
+  let rowPickAt = 0;
+  const ROW_PICK_MS = 1500;
   const fineNow = ()          => {
     if (fine !== null) return fine;
     try {
@@ -27471,6 +27644,7 @@ function createTimeline(d              , makePanel                             =
     },
     pickRow(key) {
       focusKey = key;
+      rowPickAt = Date.now();
       d.select(key);
     },
     openRow(key) {
@@ -27617,6 +27791,10 @@ function createTimeline(d              , makePanel                             =
   /** ⑨ B (studio-fix-0143): the plate to its one line for `key` (the bridge asked: plate-fold), then show it if still covered. */
   function slimFor(key        ) {
     if (!open || slim) return;
+    // Picked from a row of the plate itself (studio-motion-fix △6, decided 2026-11-05): the person is working in the rows,
+    // so they stay open — the fold that helps a pick in the list (the object behind the plate) hid the three rows of
+    // "Linked · 3" here, right after the barrel's name was pressed. The camera still shows the object (reveal).
+    if (Date.now() - rowPickAt < ROW_PICK_MS) return void d.send({ type: 'studio:core/view', view: { action: 'reveal', key } });
     slim = true;
     panel.render();
     // layout() sends the smaller inset first; the 'reveal' after it is measured against it (messages keep their order).
@@ -28030,7 +28208,7 @@ function createTimeline(d              , makePanel                             =
 
 __def(__exports, "createTimeline", () => createTimeline);
 };
-__defs[66] = function (__exports) {
+__defs[67] = function (__exports) {
 'use strict';
 // motion-note.ts
 
@@ -28043,8 +28221,8 @@ __defs[66] = function (__exports) {
 // Now ONE line, over the ask field (the dock, main.ts), where it is seen with the plate open, slim or folded:
 //   - the picked object's motion has changes not saved → "gate’s motion changed · Save puts it in the game · ✦ Have
 //     Claude convert it to rules" (studio-words-formula → studio-words-convert → studio-words-rulebased 10/25; "… is made" for a motion new since the last save), for as long as that is so;
-//   - ● Rec motion on (the plate open, a move adds a point) → "● Recording · press ● when you're done" (the second ● is a
-//     button: Rec motion off), in place of the ✦ part — finish first, then the next step;
+//   - ● Rec motion on (the plate open, a move adds a point) → "Rec motion on · moving it adds a point · Turn off" (the last
+//     is a button: Rec motion off; studio-motion-fix △5), in place of the ✦ part — finish first, then the next step;
 //   - another object picked, or none → "Not saved: gate’s motion (+1) · Save puts it in the game" (the name picks it);
 //   - Save → the line goes (the AI line says "Saved: gate’s motion", save-receipt.ts).
 // WHY over the field and not under the plate's head: the field is where the eye already is (it is the one thing always on
@@ -28137,13 +28315,14 @@ function createMotionNote(d                ) {
     }
     if (n.rec) {
       if (c) parts.push(dot());
-      // "● Recording · press ● when you're done": the second ● is the button (Rec motion off), split on the {dot} mark.
-      const [a = '', b = ''] = t('mnext2.recEnd', { dot: '\u0000' }).split('\u0000');
-      parts.push(h('span', { class: 'mn-rec', dataset: { part: 'motion-note-rec' } }, h('span', { class: 'mn-rec-dot', 'aria-hidden': 'true' }), t('mnext2.rec')),
-        dot(),
-        h('span', { class: 'mn-rec-end' }, a,
-          h('button', { type: 'button', class: 'mn-rec-off', title: t('mnext2.recOffTip'), 'aria-label': t('mnext2.recOffTip'), dataset: { action: 'motion-note-rec-off', part: 'motion-note-rec-off' }, onclick: () => d.recOff() },
-            h('span', { class: 'mn-rec-dot' })), b));
+      // "Rec motion on · moving it adds a point · Turn off" (studio-motion-fix △5, decided 2026-11-05). It was "● Recording ·
+      // press ● when you're done" in the recorder's red: Rec motion is on from the start, so opening the timeline showed
+      // a recording nobody had started, and which ● ended it was not clear. Now the plain fact, what a move does, and the
+      // way out in words (the same button: Rec motion off).
+      parts.push(h('span', { class: 'mn-rec', dataset: { part: 'motion-note-rec' } }, t('mnext2.rec')), dot(),
+        h('span', { class: 'mn-rec-end', text: t('mnext2.recEnd') }), dot(),
+        h('button', { type: 'button', class: 'mn-rec-off', title: t('mnext2.recOffTip'), dataset: { action: 'motion-note-rec-off', part: 'motion-note-rec-off' }, onclick: () => d.recOff() },
+          t('mnext2.recOff')));
     }
     if (n.rule && d.toRule) {
       parts.push(dot(), h('button', { type: 'button', class: 'mn-rule', title: t('tl.ruleTip'), dataset: { action: 'motion-note-rule', part: 'motion-note-rule' }, onclick: () => d.toRule () },
@@ -28158,7 +28337,7 @@ function createMotionNote(d                ) {
 __def(__exports, "noteOf", () => noteOf);
 __def(__exports, "createMotionNote", () => createMotionNote);
 };
-__defs[67] = function (__exports) {
+__defs[68] = function (__exports) {
 'use strict';
 // motion-ask.ts
 
@@ -28210,7 +28389,7 @@ function createMotionAsk(d               ) {
 
 __def(__exports, "createMotionAsk", () => createMotionAsk);
 };
-__defs[68] = function (__exports) {
+__defs[69] = function (__exports) {
 'use strict';
 // save-receipt.ts
 
@@ -28322,7 +28501,7 @@ __def(__exports, "RECEIPT_NAMES", () => RECEIPT_NAMES);
 __def(__exports, "savedList", () => savedList);
 __def(__exports, "receipt", () => receipt);
 };
-__defs[69] = function (__exports) {
+__defs[70] = function (__exports) {
 'use strict';
 // offset-model.ts
 
@@ -28485,7 +28664,7 @@ __def(__exports, "snapAmount", () => snapAmount);
 __def(__exports, "noAmount", () => noAmount);
 __def(__exports, "rowAt", () => rowAt);
 };
-__defs[70] = function (__exports) {
+__defs[71] = function (__exports) {
 'use strict';
 // offset-choices.ts
 
@@ -28508,7 +28687,7 @@ __defs[70] = function (__exports) {
                                                                                                                   
 const { h } = __require(16);
 const { knobEl } = __require(25);
-const { addOffset } = __require(69);
+const { addOffset } = __require(70);
 
                                                                          
                                                        
@@ -28819,7 +28998,7 @@ __def(__exports, "createOffsetChoices", () => createOffsetChoices);
 __def(__exports, "offsetRowWords", () => offsetRowWords);
 __def(__exports, "offsetRowsEl", () => offsetRowsEl);
 };
-__defs[71] = function (__exports) {
+__defs[72] = function (__exports) {
 'use strict';
 // code-place-wire.ts
 
@@ -28869,10 +29048,10 @@ __defs[71] = function (__exports) {
 const { h } = __require(16);
 const { knobEl, knobNumber } = __require(25);
 const { turnKnobs } = __require(34);
-const { amountWords, createOffsetChoices, offsetRowWords, offsetRowsEl } = __require(70);
-const { addOffset, dragAmount, jitterRow, lastOf, movesRank, noAmount, MAX_OFFSETS } = __require(69);
+const { amountWords, createOffsetChoices, offsetRowWords, offsetRowsEl } = __require(71);
+const { addOffset, dragAmount, jitterRow, lastOf, movesRank, noAmount, MAX_OFFSETS } = __require(70);
 const { roundPose } = __require(31);
-const { gapText, placeGaps } = __require(61);
+const { gapText, placeGaps } = __require(62);
 
                                                                          
 
@@ -29636,7 +29815,7 @@ function createCodePlaceWire(d                   )                {
 
 __def(__exports, "createCodePlaceWire", () => createCodePlaceWire);
 };
-__defs[72] = function (__exports) {
+__defs[73] = function (__exports) {
 'use strict';
 // keep-out-model.ts
 
@@ -29830,6 +30009,26 @@ function inBox(q          , b     , n       )          {
   return Math.abs(q[0]  - b.p[0] ) <= b.size[0]  / 2 && q[1]  >= b.p[1]  - 1e-9 && q[1]  <= b.p[1]  + b.size[1]  && Math.abs(q[2]  - b.p[2] ) <= b.size[2]  / 2;
 }
 
+/**
+ * A condition's words in the order the language reads them (studio-motion-fix ✕3, decided 2026-11-05). codeAvoid gives
+ * a `name`, its knobs and an `after` word ("From the player" [5 m] "within"), which Japanese reads in that order; English
+ * read "From the player Distance 5 m within" (a first-time walk of v0.1.77). `order` is the i18n key keepout.order:
+ * "after knobs name" (en: "Within [5 m] from the player") or "name knobs after" (ja). In the after-first order the
+ * name's first letter goes lower case ("From" → "from") unless it is an initialism ("AI", "UFO").
+ */
+function avoidWords   (order        , name        , knobs     , after         )                    {
+  const parts = order.split(/\s+/);
+  const out                    = [];
+  for (const p of parts) {
+    if (p === 'knobs') out.push(...knobs);
+    else if (p === 'after' && after) out.push(out.length ? after : upFirst(after));
+    else if (p === 'name' && name) out.push(out.length ? downFirst(name) : name);
+  }
+  return out;
+}
+const upFirst = (s        ) => s.charAt(0).toUpperCase() + s.slice(1);
+const downFirst = (s        ) => (/^[A-Z][a-z]/.test(s) ? s.charAt(0).toLowerCase() + s.slice(1) : s);
+
 __def(__exports, "MAX_AVOID", () => MAX_AVOID);
 __def(__exports, "rowsOf", () => rowsOf);
 __def(__exports, "switchRow", () => switchRow);
@@ -29844,8 +30043,9 @@ __def(__exports, "copyRowTo", () => copyRowTo);
 __def(__exports, "changedRows", () => changedRows);
 __def(__exports, "rowKey", () => rowKey);
 __def(__exports, "inBox", () => inBox);
+__def(__exports, "avoidWords", () => avoidWords);
 };
-__defs[73] = function (__exports) {
+__defs[74] = function (__exports) {
 'use strict';
 // keep-out-wire.ts
 
@@ -29856,7 +30056,7 @@ __defs[73] = function (__exports) {
 //   Keep-out areas
 //   [●] ▨ Box 1                       Hand   ⋯ ×      a box drawn on the ground (orange: the hand's)
 //   [●] ▨ On the road                 Rule   ⋯        the layout's own codeAvoid() (violet dashed: a rule's)
-//   [●] ▨ From the player [5 m] within Rule  ⋯ ×      a condition the AI added; its number is a knob
+//   [●] ▨ Within [5 m] from the player Rule  ⋯ ×      a condition the AI added; its number is a knob (avoidWords)
 //   1 of 12 has no place to go
 //   [+ Draw a box]  [✦ Describe with text]
 //
@@ -29876,7 +30076,7 @@ const { h } = __require(16);
 const { icon } = __require(21);
 const { knobEl } = __require(25);
                                                    
-const { MAX_AVOID, addBox, canRemove, changedRows, copyRowTo, knobRow, knobsNow, nextBoxName, removeRow, rowKey, rowsOf, setBox, switchRow } = __require(72);
+const { MAX_AVOID, addBox, avoidWords, canRemove, changedRows, copyRowTo, knobRow, knobsNow, nextBoxName, removeRow, rowKey, rowsOf, setBox, switchRow } = __require(73);
 
                                                                          
                                    
@@ -29985,7 +30185,8 @@ function createKeepOutWire(d                 )              {
         } else endLive(p.id, next);
       },
     }));
-    return [c.name, ...knobs, ...(c.after ? [c.after] : [])];
+    // In the language's order (✕3 of the first-time walk, 2026-11-05): "Within [5 m] from the player".
+    return avoidWords(t('keepout.order'), c.name, knobs, c.after);
   }
 
   /** The words of a row as one line (a toast, the ⋯ menu): knobs as numbers. */
@@ -29995,7 +30196,7 @@ function createKeepOutWire(d                 )              {
     if (!c) return row.code;
     const now = knobsNow(c.knobs, row.knobs);
     const ks = Object.entries(c.knobs).map(([n, k]) => `${Math.round(now[n]  * 100) / 100}${unit(k.unit)}`);
-    return [c.name, ...ks, c.after ?? ''].filter(Boolean).join(' ');
+    return avoidWords(t('keepout.order'), c.name, ks, c.after).join(' ');
   }
 
   function rowEl(p               , row          )              {
@@ -30170,7 +30371,7 @@ function createKeepOutWire(d                 )              {
 
 __def(__exports, "createKeepOutWire", () => createKeepOutWire);
 };
-__defs[74] = function (__exports) {
+__defs[75] = function (__exports) {
 'use strict';
 // palette.ts
 
@@ -30481,7 +30682,7 @@ __def(__exports, "SUGGEST_MIN", () => SUGGEST_MIN);
 __def(__exports, "suggests", () => suggests);
 __def(__exports, "createPalette", () => createPalette);
 };
-__defs[75] = function (__exports) {
+__defs[76] = function (__exports) {
 'use strict';
 // thumb-fit.ts
 
@@ -30582,7 +30783,7 @@ function fitPicture(src        , out = OUT)                  {
 __def(__exports, "FIT_MARGIN", () => FIT_MARGIN);
 __def(__exports, "fitPicture", () => fitPicture);
 };
-__defs[76] = function (__exports) {
+__defs[77] = function (__exports) {
 'use strict';
 // undo.ts
 
@@ -30677,8 +30878,21 @@ class UndoStack {
     this.limit = limit;
   }
 
+  /**
+   * Told after every step recorded (studio-motion-fix △1, decided 2026-11-05): the shell folds lines that spoke of the
+   * step before ("Placed hex 3 by hand · Revert", "Saved … · Undo AI change"). `grouped`: inside begin() / end() (the
+   * AI's own steps), which do not fold anything.
+   */
+  onPush                             = () => {};
+
   /** Record a finished gesture. No-op when nothing changed. Clears redo. */
   push(e           )          {
+    const ok = this.record(e);
+    if (ok) this.onPush(!!this.group);
+    return ok;
+  }
+
+          record(e           )          {
     // A change from a value to the same value is nothing (every kind with a `to`: poses, motions, looks, the theme).
     const changes = e.changes.filter((c) => !('to' in c) || JSON.stringify(c.from) !== JSON.stringify(c.to));
     if (!changes.length) return false;
@@ -30829,7 +31043,7 @@ __def(__exports, "poseChange", () => poseChange);
 __def(__exports, "UndoStack", () => UndoStack);
 __def(__exports, "sharedMotion", () => sharedMotion);
 };
-__defs[77] = function (__exports) {
+__defs[78] = function (__exports) {
 'use strict';
 // write-back.ts
 
@@ -30922,7 +31136,7 @@ __def(__exports, "FOLD_TOL", () => FOLD_TOL);
 __def(__exports, "foldGaps", () => foldGaps);
 __def(__exports, "foldSaid", () => foldSaid);
 };
-__defs[78] = function (__exports) {
+__defs[79] = function (__exports) {
 'use strict';
 // ai-hands.ts
 
@@ -30944,10 +31158,11 @@ __defs[78] = function (__exports) {
 const { uiBoxAt } = __require(19);
 const { HANDS_MAKE_WHEN, handsAvoid, handsClip, handsMotion, handsPose, handsSaid, handsUiIds, readHandsInput } = __require(33);
 const { roundKnob, turnKnobs } = __require(34);
+const { avoidWords } = __require(73);
 const { CODE_LEN } = __require(35);
-const { MOTION_SAMPLES, gapText, motionGap, placeGaps, timeText } = __require(61);
-const { foldGaps, foldSaid } = __require(77);
-const { momentNumber } = __require(50);
+const { MOTION_SAMPLES, gapText, motionGap, placeGaps, timeText } = __require(62);
+const { foldGaps, foldSaid } = __require(78);
+const { momentNumber } = __require(51);
 
                            
              
@@ -31034,14 +31249,22 @@ const { momentNumber } = __require(50);
                                                                                                             
                                            
                        
-                                                                                                                        
-                                                       
+     
+                                                                                                                    
+                                                                                                                
+     
+                                                                                               
      
                                                                                                                   
                                                                                                                          
                                                                                                                     
      
                                               
+     
+                                                                                                                      
+                                                                                                                
+     
+                                  
                                                                                                                   
                                                 
      
@@ -31386,7 +31609,11 @@ function createAiHands(d           ) {
         // ✦ To code: the hand-placed objects are hidden until the AI takes them out of the code (one ⌘Z brings them back).
         const gone = op.replace.filter((k        ) => !d.item(k) && !(e.from ?? []).includes(k));
         if (gone.length === op.replace.length) return { error: `no object ${gone[0]} in the editor${hint()}` };
-        d.setPlace(op.id, { ...e, from: [...new Set([...(e.from ?? []), ...op.replace])] });
+        // ⌘Z goes back to the hand-placed objects ALONE (studio-motion-fix ✕2, decided 2026-11-05): the rule is in the code
+        // already, so "before" is the rule turned off (`off`), not the entry as it was — else ⌘Z showed the hand's 6 lamps
+        // with the rule's 6 on top of them and nothing seemed to change. A second swap into the same rule keeps the first.
+        const { off: _off, ...rest } = e;
+        d.setPlace(op.id, { ...rest, from: [...new Set([...(e.from ?? []), ...op.replace])] }, e.from?.length ? undefined : { undoTo: { ...rest, off: true } });
         // How close: each hand object against the rule's object of its number, where it stands now (the model's pose).
         const g = hand.length ? placeGaps(hand, (n) => (info.keys.includes(`${op.id}-${n}`) ? d.pose(`${op.id}-${n}`)?.p : null)) : null;
         if (hand.length) d.swapped?.({ kind: 'place', id: op.id, spots: hand, gap: g?.max ?? null });
@@ -31474,7 +31701,15 @@ function createAiHands(d           ) {
           if (!x) return '';
           if (!x.code) return x.name ?? '';
           const c = d.codeAvoids().find((y) => y.code === x.code);
-          return [c?.name ?? x.code, c ? knobWords(c.knobs, knobsNow(c.knobs, x.knobs)) : '', c?.after ?? ''].filter(Boolean).join(' ');
+          // The card's order (keep-out-model.ts avoidWords): "Within 5 m from the player", not the parts as listed.
+          if (!c) return x.code;
+          // Numbers alone, as the card's row shows them: the knob's label ("Distance") made it a list, not words.
+          const now = knobsNow(c.knobs, x.knobs);
+          const kw = Object.entries(c.knobs).map(([n, k]) => {
+            const u = k.unit ? d.t(`hands.unit.${k.unit}`) : '';
+            return `${roundKnob(now[n] )}${u === `hands.unit.${k.unit}` ? ` ${k.unit}` : u}`;
+          });
+          return avoidWords(d.t('keepout.order'), c.name, kw, c.after).join(' ');
         };
         const now = op.remove !== undefined ? was : op.box ? e.avoid?.[e.avoid.length - 1] : (e.avoid ?? []).find((a) => 'code' in a && a.code === op.code) ?? { code: op.code };
         const key = op.remove !== undefined ? 'hands.place.avoidRemove' : op.off === true ? 'hands.place.avoidOff' : r.changed ? 'hands.place.avoidSet' : 'hands.place.avoid';
@@ -31602,7 +31837,7 @@ function createAiHands(d           ) {
     const others = d.keys().filter((k) => !info.keys.includes(k) && !before.some((b) => b.key === k)).flatMap((k) => (d.pose(k) ? [d.pose(k) ] : []));
     const g = foldGaps(before, (k) => (info.keys.includes(k) ? d.pose(k) : undefined), d.dim(), others);
     if (g.max || g.gone.length) foldBase.set(id, { before, entry: JSON.stringify(d.place(id)) });
-    else foldBase.delete(id);
+    else (foldBase.delete(id), d.sameLook?.(info.keys));
     const e = d.place(id) ?? {};
     const knob = added[0] ? info.knobs[added[0]] : undefined;
     const gap = g.max ? (g.max.what === 'p' ? gapText(g.max.d, d.dim(), unit) : g.max.what === 'r' ? `${Math.round(g.max.d)}°` : `×${Math.round(g.max.d * 100) / 100}`) : '';
@@ -31847,7 +32082,7 @@ function createAiHands(d           ) {
 
 __def(__exports, "createAiHands", () => createAiHands);
 };
-__defs[79] = function (__exports) {
+__defs[80] = function (__exports) {
 'use strict';
 // tooltip.ts
 
@@ -31967,7 +32202,7 @@ function installTooltips(root             )                                    {
 
 __def(__exports, "installTooltips", () => installTooltips);
 };
-__defs[80] = function (__exports) {
+__defs[81] = function (__exports) {
 'use strict';
 // shortcuts.ts
 
@@ -31981,7 +32216,7 @@ __defs[80] = function (__exports) {
 // (no Height in 2D, the draw-order keys only in 2D).
 const { h } = __require(16);
 const { icon } = __require(21);
-const { KEYMAP, keysOf } = __require(46);
+const { KEYMAP, keysOf } = __require(47);
 
                                     
                          
@@ -32057,7 +32292,7 @@ function createShortcutSheet(d                   ) {
 
 __def(__exports, "createShortcutSheet", () => createShortcutSheet);
 };
-__defs[81] = function (__exports) {
+__defs[82] = function (__exports) {
 'use strict';
 // context-menu.ts
 
@@ -32357,7 +32592,7 @@ function createContextMenu(d                 ) {
 __def(__exports, "placeMenu", () => placeMenu);
 __def(__exports, "createContextMenu", () => createContextMenu);
 };
-__defs[82] = function (__exports) {
+__defs[83] = function (__exports) {
 'use strict';
 // levels.ts
 
@@ -32777,7 +33012,7 @@ __def(__exports, "slugOf", () => slugOf);
 __def(__exports, "levelIdOf", () => levelIdOf);
 __def(__exports, "Levels", () => Levels);
 };
-__defs[83] = function (__exports) {
+__defs[84] = function (__exports) {
 'use strict';
 // check-note.ts
 
@@ -32816,7 +33051,7 @@ function checkNoteId(check                        , items                       
 
 __def(__exports, "checkNoteId", () => checkNoteId);
 };
-__defs[84] = function (__exports) {
+__defs[85] = function (__exports) {
 'use strict';
 // level-switch.ts
 
@@ -32990,7 +33225,7 @@ function createLevelSwitch(d                 ) {
 __def(__exports, "makeRows", () => makeRows);
 __def(__exports, "createLevelSwitch", () => createLevelSwitch);
 };
-__defs[85] = function (__exports) {
+__defs[86] = function (__exports) {
 'use strict';
 // context-rows.ts
 
@@ -33188,7 +33423,7 @@ function contextRows(place          , f          )           {
 
 __def(__exports, "contextRows", () => contextRows);
 };
-__defs[86] = function (__exports) {
+__defs[87] = function (__exports) {
 'use strict';
 // safe-save.ts
 
@@ -33299,7 +33534,7 @@ function createSafeSave(deps                              ) {
 __def(__exports, "bigChanges", () => bigChanges);
 __def(__exports, "createSafeSave", () => createSafeSave);
 };
-__defs[87] = function (__exports) {
+__defs[88] = function (__exports) {
 'use strict';
 // unsaved-guard.ts
 
@@ -33456,7 +33691,7 @@ __def(__exports, "lostBy", () => lostBy);
 __def(__exports, "playAsks", () => playAsks);
 __def(__exports, "createUnsavedGuard", () => createUnsavedGuard);
 };
-__defs[88] = function (__exports) {
+__defs[89] = function (__exports) {
 'use strict';
 // layer-switch.ts
 
@@ -33526,7 +33761,7 @@ function createLayerSwitch(choose                        , togglePeek           
 
 __def(__exports, "createLayerSwitch", () => createLayerSwitch);
 };
-__defs[89] = function (__exports) {
+__defs[90] = function (__exports) {
 'use strict';
 // ui-layer.ts
 
@@ -33629,7 +33864,7 @@ __def(__exports, "uiEntries", () => uiEntries);
 __def(__exports, "withLooks", () => withLooks);
 __def(__exports, "withUi", () => withUi);
 };
-__defs[90] = function (__exports) {
+__defs[91] = function (__exports) {
 'use strict';
 // ui-card.ts
 
@@ -33799,7 +34034,7 @@ function createUiCard(d            ) {
 
 __def(__exports, "createUiCard", () => createUiCard);
 };
-__defs[91] = function (__exports) {
+__defs[92] = function (__exports) {
 'use strict';
 // ui-screens.ts
 
@@ -33862,7 +34097,7 @@ function createUiScreens(d               ) {
 
 __def(__exports, "createUiScreens", () => createUiScreens);
 };
-__defs[92] = function (__exports) {
+__defs[93] = function (__exports) {
 'use strict';
 // ui-style-model.ts
 
@@ -34097,7 +34332,7 @@ __def(__exports, "validLook", () => validLook);
 __def(__exports, "validTheme", () => validTheme);
 __def(__exports, "UiStyleModel", () => UiStyleModel);
 };
-__defs[93] = function (__exports) {
+__defs[94] = function (__exports) {
 'use strict';
 // ui-theme.ts
 
@@ -34212,7 +34447,7 @@ function createUiTheme(d             ) {
 
 __def(__exports, "createUiTheme", () => createUiTheme);
 };
-__defs[94] = function (__exports) {
+__defs[95] = function (__exports) {
 'use strict';
 // ui-wire.ts
 
@@ -34228,11 +34463,11 @@ __defs[94] = function (__exports) {
 //     end of editing) and here only to draw the card — never saved. A new game page starts without them.
                                                                                                                                                                             
                                                    
-const { createUiCard } = __require(90);
-const { withLooks } = __require(89);
-const { createUiScreens } = __require(91);
-const { UiStyleModel, validLook, validTheme } = __require(92);
-const { createUiTheme } = __require(93);
+const { createUiCard } = __require(91);
+const { withLooks } = __require(90);
+const { createUiScreens } = __require(92);
+const { UiStyleModel, validLook, validTheme } = __require(93);
+const { createUiTheme } = __require(94);
                                                    
 
                              
@@ -34499,7 +34734,7 @@ function createUiWire(d            ) {
 
 __def(__exports, "createUiWire", () => createUiWire);
 };
-__defs[95] = function (__exports) {
+__defs[96] = function (__exports) {
 'use strict';
 // ui-missing.ts
 
@@ -34617,7 +34852,7 @@ function createUiMissing(d               ) {
 
 __def(__exports, "createUiMissing", () => createUiMissing);
 };
-__defs[96] = function (__exports) {
+__defs[97] = function (__exports) {
 'use strict';
 // sheet-fold.ts
 
@@ -34694,7 +34929,7 @@ __def(__exports, "barPress", () => barPress);
 __def(__exports, "FOLD_DRAG", () => FOLD_DRAG);
 __def(__exports, "gripEnd", () => gripEnd);
 };
-__defs[97] = function (__exports) {
+__defs[98] = function (__exports) {
 'use strict';
 // main.ts
 
@@ -34722,63 +34957,64 @@ const { createMotionDrag } = __require(28);
 const { createMotionTool } = __require(29);
 const { rulesFor } = __require(30);
 const { samePose } = __require(37);
+const { aiMarksLabel, aiMarksOf } = __require(38);
 const { h, safeImageSrc } = __require(16);
-const { detectLang, setAiName, setExtraText, translate } = __require(38);
-const { NEXT_STEPS, renderNextSteps } = __require(39);
-const { statusCovers } = __require(40);
+const { detectLang, setAiName, setExtraText, translate } = __require(39);
+const { NEXT_STEPS, renderNextSteps } = __require(40);
+const { statusCovers } = __require(41);
 const { handsFoldEntry } = __require(33);
                                                
-const { aiBusy, aiPhase, moreIn, reloadDecision } = __require(41);
-const { aiNameKey, aiPresence, presenceSure, QUIET_WORK_MS, UNSEEN_MS } = __require(42);
-const { bounces, saveLoud } = __require(43);
-const { askView: questionView } = __require(44);
-const { playLine, playWords } = __require(45);
-const { clockNow, clockText, createMomentBar, madeRows, speedText, splitMoves } = __require(47);
-const { chatOnLine, historyOf } = __require(48);
-const { askFieldShown, askPhShort, createMomentShot, momentAskOffline, momentFocusOk, momentKeyPasses, shotTimeOnClock } = __require(49);
-const { createMomentValues, momentNumber, unitText } = __require(50);
-const { createMomentMarks, markedShot } = __require(51);
-const { createMomentGets, getsRows, orderMarked } = __require(52);
-const { createMomentCompare, filesRow, isTryPause, replyActions, tryWords } = __require(53);
-const { CHECKPOINTS_LISTED, checkpointsOf, createCheckpointNote, createCheckpointPop, defaultCheckpointName, reloadCheckpoint, smallShot } = __require(54);
-const { LINE_FADE_MS, LINE_GRACE_MS, lineFades, lineKey, lineStayMs } = __require(55);
-const { renderSettings } = __require(57);
-const { DEFAULT_UI, effectiveTheme, normalizeUi } = __require(56);
+const { aiBusy, aiPhase, moreIn, reloadDecision } = __require(42);
+const { aiNameKey, aiPresence, presenceSure, QUIET_WORK_MS, UNSEEN_MS } = __require(43);
+const { bounces, saveLoud } = __require(44);
+const { askView: questionView } = __require(45);
+const { playLine, playWords } = __require(46);
+const { clockNow, clockText, createMomentBar, madeRows, speedText, splitMoves } = __require(48);
+const { chatOnLine, historyOf } = __require(49);
+const { askFieldShown, askPhShort, createMomentShot, momentAskOffline, momentFocusOk, momentKeyPasses, shotTimeOnClock } = __require(50);
+const { createMomentValues, momentNumber, unitText } = __require(51);
+const { createMomentMarks, markedShot } = __require(52);
+const { createMomentGets, getsRows, orderMarked } = __require(53);
+const { createMomentCompare, filesRow, isTryPause, replyActions, tryWords } = __require(54);
+const { CHECKPOINTS_LISTED, checkpointsOf, createCheckpointNote, createCheckpointPop, defaultCheckpointName, reloadCheckpoint, smallShot } = __require(55);
+const { LINE_FADE_MS, LINE_GRACE_MS, lineFades, lineKey, lineStayMs } = __require(56);
+const { renderSettings } = __require(58);
+const { DEFAULT_UI, effectiveTheme, normalizeUi } = __require(57);
 const { dropTarget, hasLayer, layerTarget } = __require(32);
-const { createPlacementPanel, shortName } = __require(59);
-const { createTimeline } = __require(65);
-const { createMotionNote, noteOf } = __require(66);
+const { chipFamily, createPlacementPanel, shortName } = __require(60);
+const { createTimeline } = __require(66);
+const { createMotionNote, noteOf } = __require(67);
 const { libCounted } = __require(24);
-const { createMotionAsk } = __require(67);
+const { createMotionAsk } = __require(68);
 const { CODE_LEN, motionLibrary } = __require(35);
 const { attachWorld, roundLib } = __require(36);
 const { icon, setButton } = __require(21);
-const { receipt } = __require(68);
-const { createCodePlaceWire } = __require(71);
-const { createKeepOutWire } = __require(73);
-const { createPalette } = __require(74);
-const { fitPicture } = __require(75);
+const { receipt } = __require(69);
+const { createCodePlaceWire } = __require(72);
+const { createKeepOutWire } = __require(74);
+const { createPalette } = __require(75);
+const { fitPicture } = __require(76);
 const { PlacementModel } = __require(37);
-const { UndoStack, poseChange, sharedMotion } = __require(76);
-const { createAiHands } = __require(78);
-const { MOTION_SAMPLES, RuleCompare, gapText, motionGap, timeText } = __require(61);
-const { copyKey, groupLayerMoves, groupLayerPossible, sameKind } = __require(58);
+const { UndoStack, poseChange, sharedMotion } = __require(77);
+const { createAiHands } = __require(79);
+const { MOTION_SAMPLES, RuleCompare, gapText, motionGap, timeText } = __require(62);
+const { copyKey, groupLayerMoves, groupLayerPossible, sameKind } = __require(59);
 const { displayName, forgetNames, noteItems, useGivenNames, useNameLang } = __require(14);
-const { keyOf, tipText } = __require(46);
-const { installTooltips } = __require(79);
-const { createShortcutSheet } = __require(80);
-const { createContextMenu } = __require(81);
-const { Levels, worldOf } = __require(82);
-const { checkNoteId } = __require(83);
-const { createLevelSwitch, makeRows } = __require(84);
-const { contextRows } = __require(85);
-const { bigChanges, createSafeSave } = __require(86);
-const { createUnsavedGuard, lostBy, playAsks } = __require(87);
-const { createLayerSwitch } = __require(88);
-const { uiAsPlacement, uiEntries, withUi } = __require(89);
-const { createUiWire } = __require(94);
-const { createUiMissing } = __require(95);
-const { barPress, FOLD_DRAG, gripEnd, readFold, writeFold } = __require(96);
+const { keyOf, tipText } = __require(47);
+const { installTooltips } = __require(80);
+const { createShortcutSheet } = __require(81);
+const { createContextMenu } = __require(82);
+const { Levels, worldOf } = __require(83);
+const { checkNoteId } = __require(84);
+const { createLevelSwitch, makeRows } = __require(85);
+const { contextRows } = __require(86);
+const { bigChanges, createSafeSave } = __require(87);
+const { createUnsavedGuard, lostBy, playAsks } = __require(88);
+const { createLayerSwitch } = __require(89);
+const { uiAsPlacement, uiEntries, withUi } = __require(90);
+const { createUiWire } = __require(95);
+const { createUiMissing } = __require(96);
+const { barPress, FOLD_DRAG, gripEnd, readFold, writeFold } = __require(97);
 
                                                                         
 
@@ -34932,6 +35168,10 @@ function start(host            ) {
   let fold = readFold(handStore);
   let toast = '';
   let toastTimer = 0;
+  // When the last line was shown (staleLines: a line told right before its own step stays).
+  let toastAt = 0;
+  // The editor's line of the AI's last --do (△4: it goes under the AI's reply once that comes).
+  let handsTold                                                     = null;
   const thumbs = new Map                ();
   // Pictures kept from the game page before a reload (▶ Play → Edit, the AI's change): still shown, asked for again,
   // and replaced when the new one comes (Ive review 3 ⑥, 2026-10-20 — the list showed empty squares after Edit until
@@ -35278,6 +35518,12 @@ function start(host            ) {
   let aiBeforeCode                           = null;
   let aiBaseCode                           = null;
   let aiMarks = new Map                           ();
+  // studio-motion-fix (2026-11-05, ✕1 of the first-time walk): what the game moved by itself on the page before the AI's
+  // reload (held 'game'), and the code layouts the AI wrote back that the editor measured as the same look — neither is
+  // marked "moved" (ai-marks.ts says why). The set of layouts is cleared by a new request and by the compare.
+  let aiHeldBefore                         ;
+  // Keys, not layout ids: the code's lists are emptied when the new page's first list comes, before the compare.
+  const aiSameLook = new Set        ();
   // The marks as sent to the game (again on every edit start: a reload makes a new game page).
   let aiMarksMsg                                     = { keys: [] };
   // What was last sent as marks (sendMarks), and whether the line showed the AI's question (the ask field answers it).
@@ -36225,7 +36471,24 @@ function start(host            ) {
    * A layout took the place of hand-placed objects, or gave it back (`from`: the AI's place.code --replace, its ⌘Z): only
    * the game's loader hides / shows those, so the game reads the draft again then (as every change did before).
    */
-  const swapsHand = (a                       , b                       ) => JSON.stringify(a?.from ?? null) !== JSON.stringify(b?.from ?? null);
+  // `off` too (studio-motion-fix ✕2): the rule's objects go or come back with the hand's, in one read of the draft.
+  const swapsHand = (a                       , b                       ) => JSON.stringify(a?.from ?? null) !== JSON.stringify(b?.from ?? null) || !!a?.off !== !!b?.off;
+
+  /**
+   * ⌘Z / redo of ✦ Turn into a rule (studio-motion-fix ✕2, decided 2026-11-05). Undone: the hand's objects are back and the
+   * rule puts none (`off`) — the violet "Claude added 6" and "⌘Z undoes it" go with it (the comparison too, by `from`), and
+   * one line says the rule is still in the code and how it leaves. Redone: the rule's objects are lit again.
+   */
+  function swapUndone(id        , from                       , to                       , dir                 ) {
+    if (!from?.off || !to?.from?.length || from.from?.length) return;
+    if (dir === 'redo') return;
+    if (aiMarks.size) setAiMarks(new Map());
+    // The comparison (orange dots, "Max deviation") reads `from`: it goes with it and comes back on redo by itself.
+    const hand = to.from.flatMap((k) => { const it = worldItems.find((i) => i.key === k); return it ? [displayName(it, t)] : []; });
+    const fam = chipFamily(hand);
+    const what = fam ? t('rule.swapBackNamed', { n: to.from.length, name: fam }) : t('rule.swapBack', { n: to.from.length });
+    showToast(t(lastChange && host.undoAi ? 'rule.swapUndone' : 'rule.swapUndoneSave', { what }), 9000);
+  }
 
   // ----- tools -----
   // "This moment" (pause-edit stage 2, 2026-10-28; moment-values.ts): the game's codeMoment() numbers at the top of the
@@ -37465,6 +37728,7 @@ function start(host            ) {
       else if (c.kind === 'code-place') {
         worldModel.places.set(c.key, dir === 'undo' ? c.from : c.to);
         placesChanged(swapsHand(c.from, c.to));
+        swapUndone(c.key, c.from, c.to, dir);
       }
       // Put in this level from the Library (placeHere): undo hides it again, redo shows it again.
       else if (c.kind === 'place') {
@@ -37860,6 +38124,7 @@ function start(host            ) {
     aiBase = null;
     aiBaseCode = null;
     aiAfter = null;
+    aiSameLook.clear();
     lastChange = null;
     // The host's answer says at once whether an AI watches (no 20 s of not knowing).
     if (info?.watching !== undefined) aiWatching = info.watching;
@@ -37996,7 +38261,16 @@ function start(host            ) {
       // pause-ask stage 3: a paused ask's reply says, small, which files the AI touched (`--files`) — what + where.
       const pausedReply = playing && playPaused && !!pending?.id && momentAsks.has(pending.id);
       const second = s.note && (ph === 'failed' || (n > 0 && !madeReply)) ? count : '';
-      two(s.note || count, pausedReply && ph === 'done' ? filesRow(s.files, second) : second);
+      // △4 (studio-motion-fix, decided 2026-11-05): the editor's own line of the AI's --do ("Claude added “Within 5 m from
+      // the player” to …") and the AI's reply said the same thing one above the other. Once the reply is here, the
+      // editor's words go small under it, and its line over the field goes.
+      const told = ph === 'done' && !pausedReply && handsTold && handsTold.at >= (pending?.sent ?? 0) ? handsTold : null;
+      if (told && toast === told.line) {
+        clearTimeout(toastTimer);
+        toastEl.classList.remove('on');
+        hideNews();
+      }
+      two(s.note || count, pausedReply && ph === 'done' ? filesRow(s.files, second) : [told && s.note ? told.words : '', second].filter(Boolean).join(' · '));
       // The paused moment's reply when the game's code changed (`--changed` > 0, or the files say so; fix 1 ✕6): Reload
       // right here. It was only on the line over the game after ▶ Resume, and the docs said "press Reload on the reply".
       // Reload leaves the moment for a new page of the game from its new code, still in Play (as the line over the game's
@@ -39601,35 +39875,15 @@ function start(host            ) {
         // A page after the AI's change (its draft may have been tidied away by the AI: keepNow `again`, below).
         const afterAi = !!aiBefore;
         if (aiBefore) {
-          const before = aiBefore;
-          const beforeCode = aiBeforeCode;
+          // ai-marks.ts (studio-motion-fix): what the game moves by itself and a write-back measured as the same look are
+          // never "moved by the AI".
+          const r = aiMarksOf({ before: aiBefore, beforeCode: aiBeforeCode, items: m.items, dim, heldBefore: aiHeldBefore, sameLook: aiSameLook });
           aiBefore = aiBeforeCode = null;
-          aiMarks = new Map();
-          const now0 = new Set(m.items.map((i) => i.key));
-          // An object without a name gets a new path key when the AI adds things before it in the
-          // tree (path:8 → path:11): same place as one that is gone = the same object, not a new one.
-          const goneAt = [...before.entries()].filter(([k]) => !now0.has(k)).map(([, p]) => p);
-          let renamed = 0;
-          for (const it of m.items) {
-            const was = before.get(it.key);
-            if (!was && it.unstable && goneAt.some((p) => samePose({ ...it.pose, z: undefined }, { ...p, z: undefined }, dim))) {
-              renamed++;
-              continue;
-            }
-            if (!was) aiMarks.set(it.key, 'added');
-            else if (!samePose({ ...it.pose, z: undefined }, { ...was, z: undefined }, dim)) {
-              // At its old code's pose: the person's unsaved move is not shown yet (it is pushed back below), not the AI's.
-              const code0 = beforeCode?.get(it.key);
-              if (!code0 || !samePose({ ...it.pose, z: undefined }, { ...code0, z: undefined }, dim)) aiMarks.set(it.key, 'moved');
-            }
-          }
-          const now = new Set(m.items.map((i) => i.key));
-          aiGone = Math.max(0, [...before.keys()].filter((k) => !now.has(k)).length - renamed);
-          // The same marks in the game: violet outlines and one tag ("AI added 3"). Sent below, with the poses.
-          const marks = [...aiMarks.entries()];
-          const added = marks.filter(([, v]) => v === 'added').length;
-          const label = !marks.length ? undefined : added === marks.length ? t('ai.tagAdded', { n: added }) : added === 0 ? t('ai.tagMoved', { n: marks.length }) : t('ai.tagChanged', { n: marks.length });
-          aiMarksMsg = { keys: marks.map(([k]) => k), label };
+          aiSameLook.clear();
+          aiMarks = r.marks;
+          aiGone = r.gone;
+          // The same marks in the game: violet outlines and one tag ("Claude added 3"). Sent below, with the poses.
+          aiMarksMsg = { keys: [...aiMarks.keys()], label: aiMarksLabel(aiMarks, t) };
           placementPanel.markRows();
           renderAiLine();
         }
@@ -39869,20 +40123,50 @@ function start(host            ) {
   }
 
   // ----- actions -----
+  /**
+   * A line that spoke of the step before goes when the person takes the next one (studio-motion-fix △1, decided
+   * 2026-11-05): "Placed hex 3 by hand · Revert · ⌘Z" stayed up after Count was turned and after ⌘Z had taken the hand
+   * placement back (Revert still looked pressable), and the AI's "Saved: … · Undo AI change" stayed up over a new drag
+   * and ✦, where pressing it would undo something the person no longer had in mind. A line shown just now (the step's
+   * own line, told right before its push) stays.
+   */
+  function staleLines() {
+    if (Date.now() - toastAt > 400) {
+      clearTimeout(toastTimer);
+      toastEl.classList.remove('on');
+      hideNews();
+    }
+    // The AI's finished line folds like it does after its time (lineGone): "● AI" / ⌘K can still bring it back.
+    if (lineShown && lineFades(currentPhase())) {
+      clearTimeout(lineTimer);
+      lineGone = lineShown;
+      lineShown = '';
+      lineFading = false;
+      renderAiLine();
+    }
+  }
+  undo.onPush = (grouped) => {
+    if (!grouped) staleLines();
+  };
   function doUndo() {
     // The four choices of a rule drag are about the step ⌘Z takes back: they go first (studio-offsets).
     codePlaces.choices.close();
     // Nothing else left to undo right after New level / Duplicate: ⌘Z takes the level back (addLevel).
     if (!undo.canUndo && levelMade) return unmakeLevel();
     const e = undo.undo();
-    if (e) applyEntry(e, 'undo');
+    if (e) (staleLinesNow(), applyEntry(e, 'undo'));
     renderButtons();
   }
   function doRedo() {
     codePlaces.choices.close();
     const e = undo.redo();
-    if (e) applyEntry(e, 'redo');
+    if (e) (staleLinesNow(), applyEntry(e, 'redo'));
     renderButtons();
+  }
+  /** ⌘Z / redo: every line about the step before goes, even one just shown (its step is the one being taken back). */
+  function staleLinesNow() {
+    toastAt = 0;
+    staleLines();
   }
   const toolsDirty = () => [...toolDirty.values()].reduce((a, b) => a + b, 0);
   /** Placement changes not saved, both layers (the UI's is 0 for a game without one). */
@@ -40410,6 +40694,7 @@ function start(host            ) {
         const w = worldModel.original(i.key);
         return w ? [[i.key, structuredClone(w)]                  ] : [];
       }));
+      if (!keep) aiHeldBefore = new Set(worldItems.filter((i) => i.held === 'game').map((i) => i.key));
       const busy = why === 'ai' && aiBusy(currentPhase());
       aiBase = busy ? aiBefore : null;
       aiBaseCode = busy ? aiBeforeCode : null;
@@ -40466,10 +40751,7 @@ function start(host            ) {
   function setAiMarks(marks                                ) {
     aiMarks = marks;
     placementPanel.markRows();
-    const list = [...marks.entries()];
-    const added = list.filter(([, v]) => v === 'added').length;
-    const label = !list.length ? undefined : added === list.length ? t('ai.tagAdded', { n: added }) : added === 0 ? t('ai.tagMoved', { n: list.length }) : t('ai.tagChanged', { n: list.length });
-    aiMarksMsg = { keys: list.map(([k]) => k), label };
+    aiMarksMsg = { keys: [...marks.keys()], label: aiMarksLabel(marks, t) };
     sendMarks(true);
   }
 
@@ -41088,6 +41370,7 @@ function start(host            ) {
    */
   function showToast(text        , ms = 3500, actions                                        , o                                    = {}) {
     toast = text;
+    toastAt = Date.now();
     clearTimeout(toastTimer);
     hideNews();
     toastEl.classList.toggle('hand', !!o.hand);
@@ -41659,9 +41942,9 @@ function start(host            ) {
     },
     place: (id) => worldModel.places.get(id),
     placeIds: () => worldModel.places.ids(),
-    setPlace: (id, e) => {
+    setPlace: (id, e, o) => {
       const before = worldModel.places.get(id);
-      setPlace(id, before, e);
+      setPlace(id, o && 'undoTo' in o ? o.undoTo ?? null : before, e);
       // A keep-out area the AI added or changed (place.avoid): its row glows violet on the card (studio-code-keepout).
       keepOut.aiChanged(id, before, worldModel.places.get(id));
     },
@@ -41677,6 +41960,7 @@ function start(host            ) {
       return true;
     },
     knobAdded: (id, names) => codePlaces.lightKnobs(id, names),
+    sameLook: (keys) => keys.forEach((k) => aiSameLook.add(k)),
     // ✦ Turn into a rule (studio-code-torule): the rule's shape from the game page, and what the swap replaced.
     ruleSamples: (code, knobs, len, per) => ruleSamples(code, knobs, len, per),
     swapped: (x) => {
@@ -41757,6 +42041,7 @@ function start(host            ) {
       // Who changed it, and the way back, in one line where the person's eyes are (the ask bar's notice).
       const line = !undoable ? words : phone() ? t('hands.undoTouch', { text: words }) : t('hands.undo', { text: words, key: keyOf('undo', isMac()) });
       showToast(line, 8000);
+      handsTold = { line, words, at: Date.now() };
     },
   });
 
@@ -41919,7 +42204,7 @@ function start(host            ) {
 
 __def(__exports, "start", () => start);
 };
-__defs[98] = function (__exports) {
+__defs[99] = function (__exports) {
 'use strict';
 // host-local.ts
 
@@ -42137,19 +42422,19 @@ function createLocalHost(base         = LOCAL_PATHS.api)             {
 
 __def(__exports, "createLocalHost", () => createLocalHost);
 };
-__defs[99] = function (__exports) {
+__defs[100] = function (__exports) {
 'use strict';
 // local.ts
 
 // Entry of studio-shell.js: the shell page served by the local server
 // (skills/arrange/bin/studio.mjs), talking to it through createLocalHost().
 // The browser-only web demo has its own entry (src/hosts/browser/main.ts).
-const { start } = __require(97);
-const { createLocalHost } = __require(98);
+const { start } = __require(98);
+const { createLocalHost } = __require(99);
 
 start(createLocalHost());
 
 
 };
-__require(99);
+__require(100);
 })();

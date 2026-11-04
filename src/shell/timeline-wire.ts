@@ -244,6 +244,9 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
    * stays; the rows and the Fine-tune sheet come back with Fine-tune pressed (its ⌃), and closing the plate ends it.
    */
   let slim = false;
+  // When an object was last picked from a row's name (slimFor: not folded for that pick).
+  let rowPickAt = 0;
+  const ROW_PICK_MS = 1500;
   const fineNow = (): boolean => {
     if (fine !== null) return fine;
     try {
@@ -1459,6 +1462,7 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
     },
     pickRow(key) {
       focusKey = key;
+      rowPickAt = Date.now();
       d.select(key);
     },
     openRow(key) {
@@ -1605,6 +1609,10 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
   /** ⑨ B (studio-fix-0143): the plate to its one line for `key` (the bridge asked: plate-fold), then show it if still covered. */
   function slimFor(key: string) {
     if (!open || slim) return;
+    // Picked from a row of the plate itself (studio-motion-fix △6, decided 2026-11-05): the person is working in the rows,
+    // so they stay open — the fold that helps a pick in the list (the object behind the plate) hid the three rows of
+    // "Linked · 3" here, right after the barrel's name was pressed. The camera still shows the object (reveal).
+    if (Date.now() - rowPickAt < ROW_PICK_MS) return void d.send({ type: 'studio:core/view', view: { action: 'reveal', key } });
     slim = true;
     panel.render();
     // layout() sends the smaller inset first; the 'reveal' after it is measured against it (messages keep their order).

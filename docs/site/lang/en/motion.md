@@ -63,7 +63,7 @@ A **point** says “at this time, be here.”
 1. Move the time line to a moment, like 2 s.
 2. Move, turn or resize the object.
 
-With **● Rec motion** on (it is, to start; it is in **Fine-tune**), that adds a point at the time line. The first one also adds a point at 0 s, where the object started. Press <kbd>K</kbd> to add a point without moving anything.
+With **● Rec motion** on (it is, to start; it is in **Fine-tune**), that adds a point at the time line. The line over the box says so: **Rec motion on · moving it adds a point · Turn off** (nothing is being recorded until you move it). The first one also adds a point at 0 s, where the object started. Press <kbd>K</kbd> to add a point without moving anything.
 
 To change points, click them (<kbd>Shift</kbd> or <kbd>⌘</kbd> adds more, or drag a box):
 

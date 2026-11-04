@@ -45,6 +45,8 @@ const WORDS: Record<Lang, { point: (t: string) => string; area: string; handle: 
     line: (t) => `押すと ${t} 秒にポイント` },
 };
 
+/** Up to this many points, each shows its time beside it; more: the ends and the picked ones only (△5). */
+const LABEL_ALL = 6;
 const CSS = `
 .root { position: fixed; inset: 0; pointer-events: none; z-index: 2147483646; }
 svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
@@ -276,11 +278,17 @@ export function createTimelineView(d: TimelineViewDeps): TimelineView {
         svg.append(dm);
       } else circle(p, on ? 8.5 : 7, on ? YOU : '#fff', on ? '#fff' : YOU);
       const t = s.keys[i]!.t;
-      const label = doc.createElementNS(NS, 'text');
-      label.setAttribute('x', (p[0] + 12).toFixed(1));
-      label.setAttribute('y', (p[1] - 9).toFixed(1));
-      label.textContent = `${t.toFixed(1)}s`;
-      svg.append(label);
+      // The time beside the point: every point's while there are few; with many (a spiral turned into 16 points), only
+      // the first, the last, the picked ones and their neighbours (studio-motion-fix △5, decided 2026-11-05: sixteen
+      // tags lay over each other and none could be read). The tooltip still says each point's time.
+      const near = (j: number) => s.sel.includes(j) || drag?.i === j;
+      if (s.keys.length <= LABEL_ALL || i === 0 || i === s.keys.length - 1 || near(i) || near(i - 1) || near(i + 1)) {
+        const label = doc.createElementNS(NS, 'text');
+        label.setAttribute('x', (p[0] + 12).toFixed(1));
+        label.setAttribute('y', (p[1] - 9).toFixed(1));
+        label.textContent = `${t.toFixed(1)}s`;
+        svg.append(label);
+      }
       // The hit area is bigger than the dot: 32 px across with a mouse, 44 with a finger — but while making, the point
       // where the object stands (the last step's end, under the object) takes its dot and a little round it only (20 /
       // 28 px; the dot is 14–17 px with its ring): a press on the dot is the point (studio-fix-0164, onDown), a press on

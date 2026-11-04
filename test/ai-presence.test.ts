@@ -19,6 +19,7 @@ test('a fresh heartbeat is "watching", whoever the AI is', () => {
 test('the AI holding a request right now is "working" even with no heartbeat (a turn the plugin woke it into)', () => {
   for (const phase of ['seen', 'received', 'working', 'updating', 'asking'] as const) assert.equal(aiPresence(base({ phase })), 'working', phase);
   assert.equal(aiPresence(base({ statusTime: NOW - HERE_STATUS_MS + 1 })), 'working', 'it just wrote its status');
+  assert.equal(aiPresence(base({ statusTime: NOW - 1000, phase: 'done' })), 'watching', 'its "done" just now: here, not working');
   assert.equal(aiPresence(base({ statusTime: NOW - HERE_STATUS_MS })), 'unsure', 'an older status proves nothing');
   assert.equal(presenceSure('working'), true);
 });

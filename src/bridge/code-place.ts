@@ -105,6 +105,8 @@ interface Entry {
 export const PLACE_WORDS: Record<Lang, {
   head: (name: string, n: number) => string; drag: (labels: string[]) => string; alone: string; chipAlone: string;
   fixed: Record<PlaceWay, string>; pinned: (name: string) => string; hand: string;
+  /** The chip when the knob is at the end of its range (studio-motion-fix △2): the drag stopped there, it did not jump. */
+  lo: string; hi: string;
 }> = {
   en: {
     head: (name, n) => `${name} ×${n} (rule): `,
@@ -115,6 +117,8 @@ export const PLACE_WORDS: Record<Lang, {
       up: 'Height is set by the rule', turn: 'Angle is set by the rule', size: 'Size is set by the rule', group: 'Objects placed by a rule don’t move as a group' },
     pinned: (name) => `By hand: outside the ${name} rule`,
     hand: 'By hand',
+    lo: ' · smallest',
+    hi: ' · largest',
   },
   ja: {
     head: (name, n) => `${name} ×${n}（ルール）: `,
@@ -125,6 +129,8 @@ export const PLACE_WORDS: Record<Lang, {
       up: '高さはルールで決まっています', turn: '向きはルールで決まっています', size: '大きさはルールで決まっています', group: 'ルールで並んだ物はまとめて動かせません' },
     pinned: (name) => `手で置いた: ${name}のルールの外`,
     hand: '手で置いた',
+    lo: ' · いちばん小さい',
+    hi: ' · いちばん大きい',
   },
 };
 // studio-offsets (2026-10-24): the words of a drag that moves the whole rule (the chip while the finger is down, the line
@@ -273,6 +279,27 @@ export function findBy(dist: (v: number) => number, lo: number, hi: number, whol
     v = dist(f) <= dist(k) ? f : k;
   }
   return Number.isFinite(dist(v)) ? v : null;
+}
+
+/**
+ * The finger's spot read at the dragged object's scale (△2, studio-motion-fix): how many pixels it went from where the
+ * object stood, turned into metres with the metres-per-pixel AT the object, along the way it went on the ground. In 3D
+ * only (2D has one scale); unchanged when the adapter cannot say where a point is on screen.
+ */
+export function nearScale(a: Pick<StudioAdapter, 'toScreen'>, start: Pose, want: Pose, n: number): Pose {
+  if (n !== 3 || !a.toScreen || start.p.length < 3 || want.p.length < 3) return want;
+  const dx = want.p[0]! - start.p[0]!, dz = want.p[2]! - start.p[2]!;
+  const len = Math.hypot(dx, dz);
+  if (len < 1e-6) return want;
+  const s0 = a.toScreen(start.p), sw = a.toScreen(want.p);
+  const s1 = a.toScreen([start.p[0]! + dx / len, start.p[1]!, start.p[2]! + dz / len]);
+  if (!s0 || !sw || !s1) return want;
+  const perM = Math.hypot(s1[0] - s0[0], s1[1] - s0[1]);
+  if (!(perM > 0.5)) return want;
+  const m = Math.hypot(sw[0] - s0[0], sw[1] - s0[1]) / perM;
+  // Never further than the ground under the finger (near the camera that is the closer of the two).
+  const k = Math.min(m, len) / len;
+  return { ...want, p: [start.p[0]! + dx * k, want.p[1]!, start.p[2]! + dz * k] };
 }
 
 /** A knob's search range: its min / max, else ten times round its number (a knob written without a range). */
@@ -907,7 +934,11 @@ text.hand { fill: ${SAND_TEXT}; }
       const at = (k: Record<string, number>) => codePose(p.id, dr.i, k) as RulePose | null;
       let chip = '';
       if (dr.mode === 'knob') {
-        const gap = (k: Record<string, number>) => poseGap(dr.tool, at(k), want);
+        // △2 of the first-time walk (studio-motion-fix, decided 2026-11-05): 40 px on a far hexagon took Gap 6 → 2 m (its
+        // end) — the ground under the finger runs away with depth. A knob's Move drag reads the finger at the OBJECT's
+        // scale (metres per pixel where it stood when the drag began), along the way the finger went.
+        const wantK = dr.tool === 'move' ? nearScale(a, start, want, n) : want;
+        const gap = (k: Record<string, number>) => poseGap(dr.tool, at(k), wantK);
         // Each knob in turn (Move: along, then side, three rounds — enough for a row's gap and its distance from the road,
         // which do not pull against each other); the same steps as the card's knob after (shell/knob.ts snapKnob: a
         // hundredth of its range, so a drag gives "4.5 m").
@@ -934,9 +965,13 @@ text.hand { fill: ${SAND_TEXT}; }
           d.post({ type: 'studio:place/knob', id: p.id, knob: dr.knobs[0]!, v: next[dr.knobs[0]!]!, end: false, key, knobs: { ...next } });
         } else if (offRule(at({ ...k0, ...dr.v }), a.anchor(key)?.pose)) relay([p.id]);
         const turned = dr.knobs.filter((nm) => Math.abs(dr.v[nm]! - dr.from[nm]!) > 1e-9);
+        const pw = PLACE_WORDS[lang] ?? PLACE_WORDS.en;
         chip = (turned.length ? turned : dr.knobs.slice(0, 1)).map((nm) => {
           const def = p.knobs[nm]!;
-          return `${def.label} ${knobText(dr.from[nm]!, def.step)} → ${knobText(dr.v[nm]!, def.step)}${unitText(lang, def.unit)}`;
+          const [lo, hi] = knobRange(def);
+          // At the end of its range: said, so "6 → 2 m" reads as "it stopped there", not as a jump (△2).
+          const end = dr.v[nm]! <= lo + 1e-9 ? pw.lo : dr.v[nm]! >= hi - 1e-9 ? pw.hi : '';
+          return `${def.label} ${knobText(dr.from[nm]!, def.step)} → ${knobText(dr.v[nm]!, def.step)}${unitText(lang, def.unit)}${end}`;
         }).join(' · ');
       } else if (dr.mode === 'offset' && dr.way) {
         // The offset this drag makes: how far the finger went that way (on a grid a hand can hit), kept as the way's

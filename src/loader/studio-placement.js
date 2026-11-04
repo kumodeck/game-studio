@@ -1298,7 +1298,10 @@ function layOut(p, f) {
   p.skipped = [];
   p.spots = [];
   const k = knobValues(p.knobs, f.knobs);
-  const count = countOf(p, k);
+  // `off` (studio-motion-fix ✕2, decided 2026-11-05): ⌘Z on "✦ Turn into a rule" — the person went back to the objects
+  // they placed by hand, while the rule is still in the code. The rule then puts nothing (not hidden objects: hidden ones
+  // would still be listed, picked and saved), until the AI takes it out on Save or the person redoes the swap.
+  const count = f.off === true ? 0 : countOf(p, k);
   // The rule's places before any offset (try 0): the offsets' frame is made from them (studio-offsets), and the editor
   // reads them (p.base, p.frame: a drag's way and rank, `--do list`'s line / rank / offset).
   const seen = { rand: false };

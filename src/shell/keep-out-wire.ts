@@ -5,7 +5,7 @@
 //   Keep-out areas
 //   [●] ▨ Box 1                       Hand   ⋯ ×      a box drawn on the ground (orange: the hand's)
 //   [●] ▨ On the road                 Rule   ⋯        the layout's own codeAvoid() (violet dashed: a rule's)
-//   [●] ▨ From the player [5 m] within Rule  ⋯ ×      a condition the AI added; its number is a knob
+//   [●] ▨ Within [5 m] from the player Rule  ⋯ ×      a condition the AI added; its number is a knob (avoidWords)
 //   1 of 12 has no place to go
 //   [+ Draw a box]  [✦ Describe with text]
 //
@@ -25,7 +25,7 @@ import { h } from './dom.ts';
 import { icon } from './icons.ts';
 import { knobEl } from './knob.ts';
 import type { PlaceStore } from './code-places.ts';
-import { MAX_AVOID, addBox, canRemove, changedRows, copyRowTo, knobRow, knobsNow, nextBoxName, removeRow, rowKey, rowsOf, setBox, switchRow, type AvoidRow } from './keep-out-model.ts';
+import { MAX_AVOID, addBox, avoidWords, canRemove, changedRows, copyRowTo, knobRow, knobsNow, nextBoxName, removeRow, rowKey, rowsOf, setBox, switchRow, type AvoidRow } from './keep-out-model.ts';
 
 type T = (key: string, vars?: Record<string, string | number>) => string;
 type Entry = PlacementPlace | null;
@@ -134,7 +134,8 @@ export function createKeepOutWire(d: KeepOutWireDeps): KeepOutWire {
         } else endLive(p.id, next);
       },
     }));
-    return [c.name, ...knobs, ...(c.after ? [c.after] : [])];
+    // In the language's order (✕3 of the first-time walk, 2026-11-05): "Within [5 m] from the player".
+    return avoidWords(t('keepout.order'), c.name, knobs, c.after);
   }
 
   /** The words of a row as one line (a toast, the ⋯ menu): knobs as numbers. */
@@ -144,7 +145,7 @@ export function createKeepOutWire(d: KeepOutWireDeps): KeepOutWire {
     if (!c) return row.code;
     const now = knobsNow(c.knobs, row.knobs);
     const ks = Object.entries(c.knobs).map(([n, k]) => `${Math.round(now[n]! * 100) / 100}${unit(k.unit)}`);
-    return [c.name, ...ks, c.after ?? ''].filter(Boolean).join(' ');
+    return avoidWords(t('keepout.order'), c.name, ks, c.after).join(' ');
   }
 
   function rowEl(p: CodePlaceInfo, row: AvoidRow): HTMLElement {

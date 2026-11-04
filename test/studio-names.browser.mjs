@@ -236,11 +236,11 @@ for (const sz of SIZES) {
     const obj = named.at(-1).objects.find((o) => o.key === pick);
     assert.ok(obj, `${tag}: the name request is not about the picked pillar`);
     assert.ok(JSON.stringify(named.at(-1)).includes(nameOf[pick]), `${tag}: the guessed name is not sent along`);
-    // 3b. Several picked: the chip is a count.
+    // 3b. Several picked: the chip is a count — with the kind when they are one kind ("Black pillar ×4"; studio-motion-fix △10).
     await page.eval(`studioShell.actions.selectMany(${JSON.stringify(pillars.slice(0, 4))}, ${JSON.stringify(pillars[0])})`);
     await sleep(600);
     const many = await page.eval(`document.querySelector('.ask-chip').innerText`);
-    assert.equal(many, '×4', `${tag}: several picked, the chip reads "${many}"`);
+    assert.ok(/ ×4$|^4 (objects|個)$/.test(many), `${tag}: several picked, the chip reads "${many}"`);
     await shot('3-several');
     const errors = page.logs.filter((l) => l.startsWith('exception'));
     assert.deepEqual(errors, [], 'page errors');

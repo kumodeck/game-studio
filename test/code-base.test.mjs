@@ -180,6 +180,24 @@ for (const [name, file] of [['source', 'src/loader/studio-placement.js'], ['buil
     assert.deepEqual(['lamp-1', 'lamp-2'].map((k) => byKey(scene, k).visible), [true, true], 'the code\'s lamps are not');
   });
 
+  test(`loader (${name}): off (⌘Z on ✦ Turn into a rule) — the rule puts nothing, the hand-placed objects show`, async () => {
+    const L = await load();
+    clear();
+    const scene = new O3();
+    const hand = [1, 2].map((i) => {
+      const o = new O3(`lamp-${i}`);
+      scene.add(o);
+      return o;
+    });
+    L.codePlace('lamp-row', { name: 'Street lamps', count: 2, make: () => new O3('lamp'), at: (i) => ({ p: [-4, 0, -i * 6] }) });
+    const r = await L.applyPlacement(scene, file3({ places: { 'lamp-row': { off: true } } }));
+    assert.deepEqual(r.places['lamp-row'], { keys: [], skipped: [] });
+    assert.equal(scene.children.filter((c) => /^lamp-row-/.test(c.name)).length, 0, 'no rule lamps');
+    assert.deepEqual(hand.map((o) => o.visible), [true, true], 'the hand lamps are there');
+    // Redo (the swap again, in place): the rule's lamps come back.
+    assert.deepEqual(L.relayCodePlace('lamp-row', { from: ['lamp-1', 'lamp-2'] }).keys, ['lamp-row-1', 'lamp-row-2']);
+  });
+
   test(`loader (${name}): PixiJS — a layout on the stage, labels and keys, 2D boxes`, async () => {
     const L = await load();
     clear();

@@ -186,21 +186,21 @@ Each change is one <kbd>⌘</kbd><kbd>Z</kbd> and counts on **Save** (**Saved: h
 Put a row of street lamps down one by one, and now you would rather tune it as a row? Select them (several things you placed yourself) and press **✦ Have Claude convert it to rules** on their card. The chat box at the bottom gets the words **Convert it to rules** — add “6 m apart” if you know it — and you send them. Your AI writes the nearest rule (a row, a grid, a circle, a scatter) and puts it in their place: the ones you placed are hidden, the rule’s stand there, lit violet, with the rule’s numbers on the card.
 
 - **How close it came is measured by the editor**, not said by the AI: the card says **Max deviation: lamp-3 (0.6 m)**, and in the game an orange dot marks where each one stood, with a thin line to the rule’s one and **lamp-3 · 0.6 m** over the farthest. **Compare with original** turns those marks off and on.
-- One <kbd>⌘</kbd><kbd>Z</kbd> brings back the ones you placed. When no rule comes close (things scattered by hand), your AI leaves them as they are and tells you in a line.
+- One <kbd>⌘</kbd><kbd>Z</kbd> brings back the ones you placed, and the rule’s things go (the line says **Back to your lamp ×6 placed by hand · the rule is still in the game: Undo AI change takes it out**; or Save, and your AI takes it out). When no rule comes close (things scattered by hand), your AI leaves them as they are and tells you in a line.
 - The comparison stays until **Save**; after Save, your AI takes the ones you placed out of the game’s code (the rule is in their place).
 
 ![Six street lamps turned into a row: the rule’s lamps lit violet, orange dots where the hand-placed ones stood, “lamp-3 · 0.6 m”, and the card’s “Compare with original” with “Max deviation: lamp-3 (0.6 m)”](media/to-rule-place.webp)
 
 ### Keep-out areas
 
-Under a layout's numbers, **Keep-out areas** lists where that layout puts nothing. The game shows each one on the ground in red hatching: a box you drew (**Drawn by hand**) has an orange edge, an area your game's rule decides (“On the road”, **Rule**) a violet dashed one.
+Under a layout's numbers, **Keep-out areas** lists where that layout puts nothing (on a phone: press the card’s **Rule** line, or ⌄ **Rule & details**). The game shows each one on the ground in red hatching: a box you drew (**Drawn by hand**) has an orange edge, an area your game's rule decides (“On the road”, **Rule**) a violet dashed one.
 
-- **+ Draw a box**, then drag on the ground (one finger on a phone; <kbd>Esc</kbd> stops). The things of that layout step out of the box while you draw, and the line says how many moved. Drag its corners to resize it (<kbd>Shift</kbd>: its height), its middle to move it.
+- **+ Draw a box**, then drag on the ground (one finger on a phone; <kbd>Esc</kbd> stops; the tool strip is put away meanwhile). The things of that layout step out of the box while you draw, and the line says how many moved. Drag its corners to resize it (<kbd>Shift</kbd>: its height), its middle to move it.
 - **✦ Describe with text** puts the layout and **Keep-out areas** in the box for your AI: say it in your words, “not within 5 m of the player”. Your AI turns it into a rule in the game and adds it to the list (the new row glows violet). A number in it, like **5 m**, is one you can turn: in the list, or the ◇ on its edge in the game.
 - The switch turns one off (it stays in the list); **×** removes a box or an area your AI added. **⋯ Also for** adds the same area to another layout: an area only ever acts on the layout it is listed under.
 - What you placed yourself is never moved by an area: its card says **Inside a keep-out area** under **By hand** when it stands in one. When an area leaves no room, the list says **1 of 12 has no place to go**, and a red × shows where it would have gone.
 
-![Crystals scattered by a rule: a box drawn by hand (orange), “On the road” and “From the player 6 m within” (violet), and the card’s Keep-out areas](media/keep-out.webp)
+![Crystals scattered by a rule: a box drawn by hand (orange), “On the road” and “Within 6 m from the player” (violet), and the card’s Keep-out areas](media/keep-out.webp)
 
 ## The side window and phones
 

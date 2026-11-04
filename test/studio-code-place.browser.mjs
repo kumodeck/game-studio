@@ -136,7 +136,7 @@ const MOTION_FILE = { version: 1, tool: 'placement', dim: '3d', space: 'local', 
 // Step 3: crystals scattered by a rule that keeps off the road; a second condition (near the player's start) for the AI.
 const W3 = LANG === 'ja'
   ? { title: '置かない所', road: '道の上', rule: 'ルール', hand: '手で描いた', chip: '置かない所', crystal: '結晶', near: 'プレイヤーから', out: '個が外へ', skipped: '個は置ける所がありません', inside: '置かない所の中です', box: '四角 1', ask: 'プレイヤーから 5 m 以内には置かない' }
-  : { title: 'Keep-out areas', road: 'On the road', rule: 'Rule', hand: 'Drawn by hand', chip: 'Keep-out areas', crystal: 'crystal', near: 'From the player', out: 'moved out', skipped: 'no place to go', inside: 'Inside a keep-out area', box: 'Box 1', ask: 'not within 5 m of the player' };
+  : { title: 'Keep-out areas', road: 'On the road', rule: 'Rule', hand: 'Drawn by hand', chip: 'Keep-out areas', crystal: 'crystal', near: 'from the player', out: 'moved out', skipped: 'no place to go', inside: 'Inside a keep-out area', box: 'Box 1', ask: 'not within 5 m of the player' };
 const KEEPOUT = `
     // Twelve crystals scattered over the field, never on the road (the AI's codePlace and codeAvoid; SKILL.md "Code layouts").
     codePlace('crystal', {
@@ -666,6 +666,8 @@ async function toRule(theme) {
     check((await handRows()) > 0, `…and in the list again (${await handRows()} rows)`);
     const p4 = (await ai([{ do: 'list' }])).results?.[0]?.list?.places?.find((p) => p.id === 'lamp-row');
     check(!p4?.from, `…and the layout no longer replaces them (${JSON.stringify(p4?.from ?? null)})`);
+    // studio-motion-fix ✕2: …and the rule puts none of its own on top of them (`off`), until the AI takes it out on Save.
+    check(!(p4?.keys ?? []).length && JSON.parse(readFileSync(join(root, 'placement.json'), 'utf8')).places?.['lamp-row']?.off === true, `…and the rule's lamps are gone (${JSON.stringify({ keys: p4?.keys, draft: JSON.parse(readFileSync(join(root, 'placement.json'), 'utf8')).places?.['lamp-row'] })})`);
     await page.eval(`studioShell.actions.select('lamp-row-3')`);
     await sleep(700);
     check(!(await card()).includes(T.compare), 'no comparison on the card after ⌘Z');

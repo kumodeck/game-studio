@@ -1583,6 +1583,9 @@ yourself, in this order — never answer with steps for them:
    is yours to tidy up after: don't explain any of them.
 5. **On Save**: `from` → take those hand-placed objects out of the code, then `place.code --id lamp-row --fold from`
    (Code layouts, step 5). A motion needs nothing more: the file has `{ "name", "code" }` in place of its points now.
+   **`off: true`** instead (`places.lamp-row = { "off": true }`) = they pressed ⌘Z on the swap: they kept their own
+   lamps, and the rule shows nothing. Take the `codePlace('lamp-row', …)` out of the code and keep the hand-placed ones;
+   the entry leaves the file by itself once the game has no such layout (nothing to send).
 
 ### Levels (`levels`)
 

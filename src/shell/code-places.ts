@@ -172,6 +172,9 @@ export class PlaceStore {
    */
   settle(list: CodePlaceInfo[], left?: (id: string, f: Folded) => void): boolean {
     let changed = false;
+    // `off` (⌘Z on ✦ Turn into a rule; studio-motion-fix): the AI took the rule out of the code, as Save asked — the
+    // entry has nothing left to say (the game has no such layout now), in what is saved too: no change of the person's.
+    for (const m of [this.now, this.saved]) for (const [id, e] of [...m]) if (e.off && !list.some((p) => p.id === id)) (m.delete(id), (changed = true));
     for (const p of list) {
       const f: Folded = { now: null, saved: null };
       for (const [m, side] of [[this.now, 'now'], [this.saved, 'saved']] as const) {

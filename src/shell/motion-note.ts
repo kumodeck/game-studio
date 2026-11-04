@@ -7,8 +7,8 @@
 // Now ONE line, over the ask field (the dock, main.ts), where it is seen with the plate open, slim or folded:
 //   - the picked object's motion has changes not saved → "gate’s motion changed · Save puts it in the game · ✦ Have
 //     Claude convert it to rules" (studio-words-formula → studio-words-convert → studio-words-rulebased 10/25; "… is made" for a motion new since the last save), for as long as that is so;
-//   - ● Rec motion on (the plate open, a move adds a point) → "● Recording · press ● when you're done" (the second ● is a
-//     button: Rec motion off), in place of the ✦ part — finish first, then the next step;
+//   - ● Rec motion on (the plate open, a move adds a point) → "Rec motion on · moving it adds a point · Turn off" (the last
+//     is a button: Rec motion off; studio-motion-fix △5), in place of the ✦ part — finish first, then the next step;
 //   - another object picked, or none → "Not saved: gate’s motion (+1) · Save puts it in the game" (the name picks it);
 //   - Save → the line goes (the AI line says "Saved: gate’s motion", save-receipt.ts).
 // WHY over the field and not under the plate's head: the field is where the eye already is (it is the one thing always on
@@ -101,13 +101,14 @@ export function createMotionNote(d: MotionNoteDeps) {
     }
     if (n.rec) {
       if (c) parts.push(dot());
-      // "● Recording · press ● when you're done": the second ● is the button (Rec motion off), split on the {dot} mark.
-      const [a = '', b = ''] = t('mnext2.recEnd', { dot: '\u0000' }).split('\u0000');
-      parts.push(h('span', { class: 'mn-rec', dataset: { part: 'motion-note-rec' } }, h('span', { class: 'mn-rec-dot', 'aria-hidden': 'true' }), t('mnext2.rec')),
-        dot(),
-        h('span', { class: 'mn-rec-end' }, a,
-          h('button', { type: 'button', class: 'mn-rec-off', title: t('mnext2.recOffTip'), 'aria-label': t('mnext2.recOffTip'), dataset: { action: 'motion-note-rec-off', part: 'motion-note-rec-off' }, onclick: () => d.recOff() },
-            h('span', { class: 'mn-rec-dot' })), b));
+      // "Rec motion on · moving it adds a point · Turn off" (studio-motion-fix △5, decided 2026-11-05). It was "● Recording ·
+      // press ● when you're done" in the recorder's red: Rec motion is on from the start, so opening the timeline showed
+      // a recording nobody had started, and which ● ended it was not clear. Now the plain fact, what a move does, and the
+      // way out in words (the same button: Rec motion off).
+      parts.push(h('span', { class: 'mn-rec', dataset: { part: 'motion-note-rec' } }, t('mnext2.rec')), dot(),
+        h('span', { class: 'mn-rec-end', text: t('mnext2.recEnd') }), dot(),
+        h('button', { type: 'button', class: 'mn-rec-off', title: t('mnext2.recOffTip'), dataset: { action: 'motion-note-rec-off', part: 'motion-note-rec-off' }, onclick: () => d.recOff() },
+          t('mnext2.recOff')));
     }
     if (n.rule && d.toRule) {
       parts.push(dot(), h('button', { type: 'button', class: 'mn-rule', title: t('tl.ruleTip'), dataset: { action: 'motion-note-rule', part: 'motion-note-rule' }, onclick: () => d.toRule!() },

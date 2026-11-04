@@ -1,4 +1,4 @@
-/* KUMODeck Game Studio 0.1.77 — MIT License — built file, edit src/ instead */
+/* KUMODeck Game Studio 0.1.78 — MIT License — built file, edit src/ instead */
 (() => {
 const __defs = [];
 const __cache = [];
@@ -6714,6 +6714,12 @@ const RESULT_FILES                         = {
                                                                                                                   
                   
      
+                                                                                                                       
+                                                                                                                        
+                                                                                                         
+     
+             
+     
                                                                                                                         
                                                                                                                           
      
@@ -9900,7 +9906,10 @@ function layOut(p, f) {
   p.skipped = [];
   p.spots = [];
   const k = knobValues(p.knobs, f.knobs);
-  const count = countOf(p, k);
+  // `off` (studio-motion-fix ✕2, decided 2026-11-05): ⌘Z on "✦ Turn into a rule" — the person went back to the objects
+  // they placed by hand, while the rule is still in the code. The rule then puts nothing (not hidden objects: hidden ones
+  // would still be listed, picked and saved), until the AI takes it out on Save or the person redoes the swap.
+  const count = f.off === true ? 0 : countOf(p, k);
   // The rule's places before any offset (try 0): the offsets' frame is made from them (studio-offsets), and the editor
   // reads them (p.base, p.frame: a drag's way and rank, `--do list`'s line / rank / offset).
   const seen = { rand: false };
@@ -16302,6 +16311,8 @@ function freshPins(was                                , next                    
 const PLACE_WORDS                
                                                                                                                   
                                                                                   
+                                                                                                                           
+                         
    = {
   en: {
     head: (name, n) => `${name} ×${n} (rule): `,
@@ -16312,6 +16323,8 @@ const PLACE_WORDS
       up: 'Height is set by the rule', turn: 'Angle is set by the rule', size: 'Size is set by the rule', group: 'Objects placed by a rule don’t move as a group' },
     pinned: (name) => `By hand: outside the ${name} rule`,
     hand: 'By hand',
+    lo: ' · smallest',
+    hi: ' · largest',
   },
   ja: {
     head: (name, n) => `${name} ×${n}（ルール）: `,
@@ -16322,6 +16335,8 @@ const PLACE_WORDS
       up: '高さはルールで決まっています', turn: '向きはルールで決まっています', size: '大きさはルールで決まっています', group: 'ルールで並んだ物はまとめて動かせません' },
     pinned: (name) => `手で置いた: ${name}のルールの外`,
     hand: '手で置いた',
+    lo: ' · いちばん小さい',
+    hi: ' · いちばん大きい',
   },
 };
 // studio-offsets (2026-10-24): the words of a drag that moves the whole rule (the chip while the finger is down, the line
@@ -16470,6 +16485,27 @@ function findBy(dist                       , lo        , hi        , whole = fal
     v = dist(f) <= dist(k) ? f : k;
   }
   return Number.isFinite(dist(v)) ? v : null;
+}
+
+/**
+ * The finger's spot read at the dragged object's scale (△2, studio-motion-fix): how many pixels it went from where the
+ * object stood, turned into metres with the metres-per-pixel AT the object, along the way it went on the ground. In 3D
+ * only (2D has one scale); unchanged when the adapter cannot say where a point is on screen.
+ */
+function nearScale(a                                 , start      , want      , n        )       {
+  if (n !== 3 || !a.toScreen || start.p.length < 3 || want.p.length < 3) return want;
+  const dx = want.p[0]  - start.p[0] , dz = want.p[2]  - start.p[2] ;
+  const len = Math.hypot(dx, dz);
+  if (len < 1e-6) return want;
+  const s0 = a.toScreen(start.p), sw = a.toScreen(want.p);
+  const s1 = a.toScreen([start.p[0]  + dx / len, start.p[1] , start.p[2]  + dz / len]);
+  if (!s0 || !sw || !s1) return want;
+  const perM = Math.hypot(s1[0] - s0[0], s1[1] - s0[1]);
+  if (!(perM > 0.5)) return want;
+  const m = Math.hypot(sw[0] - s0[0], sw[1] - s0[1]) / perM;
+  // Never further than the ground under the finger (near the camera that is the closer of the two).
+  const k = Math.min(m, len) / len;
+  return { ...want, p: [start.p[0]  + dx * k, want.p[1] , start.p[2]  + dz * k] };
 }
 
 /** A knob's search range: its min / max, else ten times round its number (a knob written without a range). */
@@ -17104,7 +17140,11 @@ text.hand { fill: ${SAND_TEXT}; }
       const at = (k                        ) => codePose(p.id, dr.i, k)                   ;
       let chip = '';
       if (dr.mode === 'knob') {
-        const gap = (k                        ) => poseGap(dr.tool, at(k), want);
+        // △2 of the first-time walk (studio-motion-fix, decided 2026-11-05): 40 px on a far hexagon took Gap 6 → 2 m (its
+        // end) — the ground under the finger runs away with depth. A knob's Move drag reads the finger at the OBJECT's
+        // scale (metres per pixel where it stood when the drag began), along the way the finger went.
+        const wantK = dr.tool === 'move' ? nearScale(a, start, want, n) : want;
+        const gap = (k                        ) => poseGap(dr.tool, at(k), wantK);
         // Each knob in turn (Move: along, then side, three rounds — enough for a row's gap and its distance from the road,
         // which do not pull against each other); the same steps as the card's knob after (shell/knob.ts snapKnob: a
         // hundredth of its range, so a drag gives "4.5 m").
@@ -17131,9 +17171,13 @@ text.hand { fill: ${SAND_TEXT}; }
           d.post({ type: 'studio:place/knob', id: p.id, knob: dr.knobs[0] , v: next[dr.knobs[0] ] , end: false, key, knobs: { ...next } });
         } else if (offRule(at({ ...k0, ...dr.v }), a.anchor(key)?.pose)) relay([p.id]);
         const turned = dr.knobs.filter((nm) => Math.abs(dr.v[nm]  - dr.from[nm] ) > 1e-9);
+        const pw = PLACE_WORDS[lang] ?? PLACE_WORDS.en;
         chip = (turned.length ? turned : dr.knobs.slice(0, 1)).map((nm) => {
           const def = p.knobs[nm] ;
-          return `${def.label} ${knobText(dr.from[nm] , def.step)} → ${knobText(dr.v[nm] , def.step)}${unitText(lang, def.unit)}`;
+          const [lo, hi] = knobRange(def);
+          // At the end of its range: said, so "6 → 2 m" reads as "it stopped there", not as a jump (△2).
+          const end = dr.v[nm]  <= lo + 1e-9 ? pw.lo : dr.v[nm]  >= hi - 1e-9 ? pw.hi : '';
+          return `${def.label} ${knobText(dr.from[nm] , def.step)} → ${knobText(dr.v[nm] , def.step)}${unitText(lang, def.unit)}${end}`;
         }).join(' · ');
       } else if (dr.mode === 'offset' && dr.way) {
         // The offset this drag makes: how far the finger went that way (on a grid a hand can hit), kept as the way's
@@ -17248,6 +17292,7 @@ __def(__exports, "toolKnobs", () => toolKnobs);
 __def(__exports, "dragKnob", () => dragKnob);
 __def(__exports, "findKnob", () => findKnob);
 __def(__exports, "findBy", () => findBy);
+__def(__exports, "nearScale", () => nearScale);
 __def(__exports, "knobRange", () => knobRange);
 __def(__exports, "poseGap", () => poseGap);
 __def(__exports, "poseAsk", () => poseAsk);
@@ -17409,6 +17454,11 @@ const CODE_FREE = 3;
                                           
                                                                                                   
                        
+     
+                                                                                                                       
+                                                                                                             
+     
+                           
  
 
                               
@@ -18948,7 +18998,7 @@ function attachInput(deps           )              {
     // No tag for an object without a name: its label is its key (`path:3/0`), an inner handle a person must never see
     // (dogfood 2026-10-17, U4). The card names it ("Unnamed shape"). inRects: the tag shows only on hover (Ive wave 1, W1-2).
     handles.selection(item ? shapeOf('you', [key ], rects) : null, item ? rects : [], item && a?.visible && inRects(rects) && !item.unstable ? item.label : null);
-    handles.place(a, item ? stripCaps() : null, adapter.dim);
+    handles.place(deps.stripOff?.() ? null : a, item && !deps.stripOff?.() ? stripCaps() : null, adapter.dim);
   };
 
   return {
@@ -19172,6 +19222,8 @@ const WORDS                                                                     
     line: (t) => `押すと ${t} 秒にポイント` },
 };
 
+/** Up to this many points, each shows its time beside it; more: the ends and the picked ones only (△5). */
+const LABEL_ALL = 6;
 const CSS = `
 .root { position: fixed; inset: 0; pointer-events: none; z-index: 2147483646; }
 svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
@@ -19403,11 +19455,17 @@ function createTimelineView(d                  )               {
         svg.append(dm);
       } else circle(p, on ? 8.5 : 7, on ? YOU : '#fff', on ? '#fff' : YOU);
       const t = s.keys[i] .t;
-      const label = doc.createElementNS(NS, 'text');
-      label.setAttribute('x', (p[0] + 12).toFixed(1));
-      label.setAttribute('y', (p[1] - 9).toFixed(1));
-      label.textContent = `${t.toFixed(1)}s`;
-      svg.append(label);
+      // The time beside the point: every point's while there are few; with many (a spiral turned into 16 points), only
+      // the first, the last, the picked ones and their neighbours (studio-motion-fix △5, decided 2026-11-05: sixteen
+      // tags lay over each other and none could be read). The tooltip still says each point's time.
+      const near = (j        ) => s.sel.includes(j) || drag?.i === j;
+      if (s.keys.length <= LABEL_ALL || i === 0 || i === s.keys.length - 1 || near(i) || near(i - 1) || near(i + 1)) {
+        const label = doc.createElementNS(NS, 'text');
+        label.setAttribute('x', (p[0] + 12).toFixed(1));
+        label.setAttribute('y', (p[1] - 9).toFixed(1));
+        label.textContent = `${t.toFixed(1)}s`;
+        svg.append(label);
+      }
       // The hit area is bigger than the dot: 32 px across with a mouse, 44 with a finger — but while making, the point
       // where the object stands (the last step's end, under the object) takes its dot and a little round it only (20 /
       // 28 px; the dot is 14–17 px with its ring): a press on the dot is the point (studio-fix-0164, onDown), a press on
@@ -21634,6 +21692,26 @@ function inBox(q          , b     , n       )          {
   return Math.abs(q[0]  - b.p[0] ) <= b.size[0]  / 2 && q[1]  >= b.p[1]  - 1e-9 && q[1]  <= b.p[1]  + b.size[1]  && Math.abs(q[2]  - b.p[2] ) <= b.size[2]  / 2;
 }
 
+/**
+ * A condition's words in the order the language reads them (studio-motion-fix ✕3, decided 2026-11-05). codeAvoid gives
+ * a `name`, its knobs and an `after` word ("From the player" [5 m] "within"), which Japanese reads in that order; English
+ * read "From the player Distance 5 m within" (a first-time walk of v0.1.77). `order` is the i18n key keepout.order:
+ * "after knobs name" (en: "Within [5 m] from the player") or "name knobs after" (ja). In the after-first order the
+ * name's first letter goes lower case ("From" → "from") unless it is an initialism ("AI", "UFO").
+ */
+function avoidWords   (order        , name        , knobs     , after         )                    {
+  const parts = order.split(/\s+/);
+  const out                    = [];
+  for (const p of parts) {
+    if (p === 'knobs') out.push(...knobs);
+    else if (p === 'after' && after) out.push(out.length ? after : upFirst(after));
+    else if (p === 'name' && name) out.push(out.length ? downFirst(name) : name);
+  }
+  return out;
+}
+const upFirst = (s        ) => s.charAt(0).toUpperCase() + s.slice(1);
+const downFirst = (s        ) => (/^[A-Z][a-z]/.test(s) ? s.charAt(0).toLowerCase() + s.slice(1) : s);
+
 __def(__exports, "MAX_AVOID", () => MAX_AVOID);
 __def(__exports, "rowsOf", () => rowsOf);
 __def(__exports, "switchRow", () => switchRow);
@@ -21648,6 +21726,7 @@ __def(__exports, "copyRowTo", () => copyRowTo);
 __def(__exports, "changedRows", () => changedRows);
 __def(__exports, "rowKey", () => rowKey);
 __def(__exports, "inBox", () => inBox);
+__def(__exports, "avoidWords", () => avoidWords);
 };
 __defs[53] = function (__exports) {
 'use strict';
@@ -21955,6 +22034,8 @@ text { font: 700 11px -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-
                 
                                                           
                 
+                                                                                        
+                     
  
 
            
@@ -22313,8 +22394,12 @@ function createKeepOutView(d                 )              {
     for (const x of ps) if (x.kind === 'tag' && x.text) tag(x.at, x.text, x.color === 'box' ? YOU : x.color === 'hint' ? 'rgba(20,20,26,.88)' : 'rgba(20,20,26,.72)');
   }
   /** A small label: white words on a rounded tag (`at` = its left end, middle). */
-  function tag(at                  , text        , bg        ) {
+  function tag(at0                  , text        , bg        ) {
     const wd = 12 + [...text].reduce((s, ch) => s + (ch.charCodeAt(0) > 0x2e80 ? 11 : 6.4), 0);
+    // Kept inside the window (studio-motion-fix △9, decided 2026-11-05: on a phone "On the road" read "On the ro" at the
+    // right edge): the tag slides in by what it would lose, never past the left edge.
+    const vw = win.innerWidth || 0;
+    const at                   = [vw ? Math.max(4, Math.min(at0[0], vw - wd - 4)) : at0[0], Math.max(12, at0[1])];
     const r = doc.createElementNS(NS, 'rect');
     r.setAttribute('x', at[0].toFixed(1));
     r.setAttribute('y', (at[1] - 9).toFixed(1));
@@ -22643,6 +22728,7 @@ function createKeepOutView(d                 )              {
       apply(msg);
     },
     frame: draw,
+    drawing: () => !!shown?.draw,
     clear() {
       if (drag) cancel();
       shown = null;
@@ -24400,7 +24486,7 @@ function createEditor(deps            )         {
     };
     input = attachInput({ adapter, edits, core, win, post: inPost, state, select, selectMany, step, tools: toolHost, markDirty: () => (dirtyFrame = true),
       ...(still() ? { passKeyUp: true, moment: true } : { unhold }), ...(deps.ignore ? { ignore: deps.ignore } : {}),
-      ...(layer === 'world' && !deps.paused ? { codePlace } : {}),
+      ...(layer === 'world' && !deps.paused ? { codePlace, stripOff: () => keepOut.drawing() } : {}),
       // studio-canvas-ui stage 2: a press on the UI layer that selected nothing → ui-found.ts says why (or nothing, as before).
       ...(layer === 'ui' && uiFound ? { missed: (x        , y        ) => void uiFound.missed(x, y), pressed: () => uiFound.clear(true) } : {}) });
     if (pendingHandlePx) input.setHandleSize(pendingHandlePx);

@@ -85,6 +85,8 @@ export interface KeepOutView {
   frame(): void;
   /** Draw nothing (editing ended, the layer switched). */
   clear(): void;
+  /** "+ Draw a box" is on (the tool strip is put away meanwhile: input.ts stripOff). */
+  drawing(): boolean;
 }
 
 type Drag =
@@ -443,8 +445,12 @@ export function createKeepOutView(d: KeepOutViewDeps): KeepOutView {
     for (const x of ps) if (x.kind === 'tag' && x.text) tag(x.at, x.text, x.color === 'box' ? YOU : x.color === 'hint' ? 'rgba(20,20,26,.88)' : 'rgba(20,20,26,.72)');
   }
   /** A small label: white words on a rounded tag (`at` = its left end, middle). */
-  function tag(at: [number, number], text: string, bg: string) {
+  function tag(at0: [number, number], text: string, bg: string) {
     const wd = 12 + [...text].reduce((s, ch) => s + (ch.charCodeAt(0) > 0x2e80 ? 11 : 6.4), 0);
+    // Kept inside the window (studio-motion-fix △9, decided 2026-11-05: on a phone "On the road" read "On the ro" at the
+    // right edge): the tag slides in by what it would lose, never past the left edge.
+    const vw = win.innerWidth || 0;
+    const at: [number, number] = [vw ? Math.max(4, Math.min(at0[0], vw - wd - 4)) : at0[0], Math.max(12, at0[1])];
     const r = doc.createElementNS(NS, 'rect');
     r.setAttribute('x', at[0].toFixed(1));
     r.setAttribute('y', (at[1] - 9).toFixed(1));
@@ -773,6 +779,7 @@ export function createKeepOutView(d: KeepOutViewDeps): KeepOutView {
       apply(msg);
     },
     frame: draw,
+    drawing: () => !!shown?.draw,
     clear() {
       if (drag) cancel();
       shown = null;

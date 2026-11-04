@@ -1902,10 +1902,11 @@ button.shelf-file.to:hover { background: var(--raise-2); }
   text-decoration: underline; text-decoration-color: color-mix(in srgb, currentColor 40%, transparent); text-underline-offset: 2px; cursor: pointer; }
 .mn-go:hover { background: var(--raise-2); }
 /* Recording: the Rec motion's red (.tl-auto.on), its dot as in Fine-tune; the second dot is the button that ends it. */
-.mn-rec { display: inline-flex; align-items: center; gap: 6px; color: var(--rec); font-weight: 600; }
+/* △5 (studio-motion-fix): a quiet fact, not the recorder's red — nothing was started by the person. */
+.mn-rec { display: inline-flex; align-items: center; gap: 6px; color: var(--text); font-weight: 600; }
 .mn-rec-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--rec); box-shadow: 0 0 0 3px var(--rec-soft); }
 .mn-rec-end { display: inline-flex; align-items: center; gap: 4px; }
-.mn-rec-off { display: inline-grid; place-items: center; width: 22px; height: 22px; padding: 0; border: 0; border-radius: 50%; background: var(--raise-2); cursor: pointer; }
+.mn-rec-off { display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border: 0; border-radius: 999px; background: var(--raise-2); color: var(--text); font: inherit; cursor: pointer; }
 .mn-rec-off:hover { background: var(--raise-3); }
 .mn-rule { display: inline-flex; align-items: center; gap: 4px; padding: 2px 6px; margin: 0 -6px; border: 0; border-radius: var(--r); background: none;
   color: var(--ai-text); font: inherit; font-weight: 600; cursor: pointer; }
@@ -2554,3 +2555,32 @@ li.obj[aria-selected="true"] .hand-mark .hand-tag { padding: 0 4px; }
    "◉ Max deviation 0.1 m" is the place to press there, 44 px high (the first phone picture had a tall violet bar). */
 .shell[data-layout="phone"] .tl-head .tl-compare { min-height: 44px; }
 .shell[data-layout="phone"] .tl-head .tl-compare .cmp-sw { min-height: 0; height: 12px; }
+/* studio-motion-fix △3 (decided 2026-11-05; a first-time walk of v0.1.77): words that were cut with "…" where there was
+   room for them. The card's name takes two lines before it is cut ("Street la…" beside four small buttons); a rule's
+   knob names its knob in full ("Count (…", "From t…" in a 48 px column) — the name takes what the box leaves, and may
+   wrap; the AI's line (a Save receipt, "Shall I scatter them instead?") wraps to two lines like a paused reply's. */
+.head-text strong { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow-wrap: anywhere; line-height: 1.25; }
+.rule-knobs .knob { grid-template-columns: minmax(48px, 1fr) minmax(64px, 96px); column-gap: 8px; }
+.rule-knobs .knob-l { white-space: normal; line-height: 1.2; overflow: visible; }
+.ai-line .ai-text.two > .ai-head, .ai-line .ai-text.two > .ai-sub:not(.has-more), .ai-line > .ai-text:not(.two) {
+  white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+/* △9 (studio-motion-fix, decided 2026-11-05): a phone has no keys — the 1–4 beside the four choices go there. */
+.shell[data-layout="phone"] [data-part=offset-choices] kbd { display: none; }
+/* The card's ⋯ rows on a phone (under ⌄): one button per row, not words run together ("Show in Library Select all 12…"). */
+.shell[data-layout="phone"] .fine > .link-btn { display: flex; width: 100%; min-height: 40px; align-items: center; padding: 0 10px; margin-top: 4px;
+  border-radius: 8px; background: var(--raise-2); color: var(--text); text-decoration: none; }
+/* A rule's one line on the phone card itself (placement-panel.ts rule-peek): what it is, before ⌄ is opened. */
+.rule-peek { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 36px; padding: 0 8px; border: 0; border-radius: 8px;
+  background: transparent; box-shadow: inset 0 0 0 1px var(--ai-soft); color: var(--text); font: inherit; text-align: left; cursor: pointer; }
+.rule-peek .rule-tag { flex: none; }
+/* …and the grey row with "More in Claude" (△3/△4): what is said wraps to two lines; "More in Claude" stays whole at its end. */
+.ai-line .ai-text.two > .ai-sub.has-more { align-items: flex-end; }
+.ai-sub.has-more > .ai-said { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+/* △6 (studio-motion-fix, decided 2026-11-05): Fine-tune's last row ("Show all moving objects") was under the plate's foot —
+   the sheet grew past the rows and the window cut it. It now takes the rows' height (at least four rows) and scrolls
+   inside it, so every row of it is reachable without the plate growing off screen. */
+.tl-main:has(> .tl-fine:not([hidden])) > .tl-fine { contain: size; height: 100%; min-height: calc(var(--tl-ruler) + 4 * var(--tl-row)); }
+/* The folded phone card shows nothing of its body but this line; opened, the rule's own block says it (no twice). */
+.shell[data-layout="phone"] .card:has(.fine):not(:has(.fine[open])) .card-body:has(> .rule-peek) { height: auto; padding: 6px 0 2px; }
+.shell[data-layout="phone"] .card:has(.fine):not(:has(.fine[open])) .card-body > .rule-peek { display: flex; }
+.shell[data-layout="phone"] .card:has(.fine[open]) .card-body > .rule-peek { display: none; }

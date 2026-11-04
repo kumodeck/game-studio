@@ -124,7 +124,7 @@ test('the shell: a box drawn is ONE undo step and one Save count, whatever its s
   assert.equal(s.undo.size, 1);
   assert.deepEqual(s.model.places.get('crystal'), { avoid: [{ box: { p: [2, 0, 2], size: [3, 3, 3] }, name: 'Box 1' }] });
   assert.equal(s.model.dirty(), 1, 'Save · 1');
-  assert.equal(s.told.at(-1), 'Added “Box 1” to crystal’s keep-out areas (2 moved out)');
+  assert.equal(s.told.at(-1), 'Added “Box 1” to the keep-out areas of “crystal” (2 moved out)');
   // Its corner dragged: one more step; ⌘Z twice: nothing in the file.
   s.w.box({ id: 'crystal', i: 0, p: [2, 0, 2], size: [5, 3, 3], end: false });
   s.w.box({ id: 'crystal', i: 0, p: [3, 0, 2], size: [5, 3, 3], end: true });
@@ -154,13 +154,13 @@ test('the shell: Esc in the middle of a box keeps nothing; + Draw a box stops af
   // The request (✦ Describe with text): the layout, its areas as they are, the knob's number now.
   assert.deepEqual(s.w.request('crystal'), {
     id: 'crystal', name: 'crystal', n: 12, knobs: { n: 12 },
-    avoid: [{ code: 'road', name: 'On the road' }, { code: 'near-player', name: 'From the player 6 m within', knobs: { r: 6 } }],
+    avoid: [{ code: 'road', name: 'On the road' }, { code: 'near-player', name: 'Within 6 m from the player', knobs: { r: 6 } }],
   });
   assert.equal(s.w.chip('crystal'), 'crystal ×12');
   // Draw on, a box, off by itself.
   s.w.box({ id: 'crystal', i: -1, p: [1, 0, 1], size: [2, 3, 2], end: true, out: 0 });
   assert.equal(s.w.drawing(), null);
-  assert.equal(s.told.at(-1), 'Added “Box 1” to crystal’s keep-out areas');
+  assert.equal(s.told.at(-1), 'Added “Box 1” to the keep-out areas of “crystal”');
 });
 
 // ----- the loader with a box: out of the box, pins stay, skipped -----
@@ -274,4 +274,15 @@ test('the words: "rule", never "code"; the words chosen on 10/24', () => {
   assert.equal(translate('en', 'keepout.skipped', { n: 3, all: 12 }), '3 of 12 have no place to go');
   assert.equal(translate('ja', 'keepout.addedOut', { name: 'crystal', what: '四角 1', n: 2 }), 'crystalの置かない所に「四角 1」を足しました（2 個が外へ）');
   assert.equal(translate('ja', 'keepout.inside'), '置かない所の中です');
+});
+
+test('a condition reads in the language\'s order; one moved out says 1 once (studio-motion-fix ✕3)', async () => {
+  const { avoidWords } = await import('../src/shell/keep-out-model.ts');
+  const { translate } = await import('../src/shell/i18n.ts');
+  assert.equal(avoidWords(translate('en', 'keepout.order'), 'From the player', ['5 m'], 'within').join(' '), 'Within 5 m from the player');
+  assert.equal(avoidWords(translate('ja', 'keepout.order'), 'プレイヤーから', ['5 m'], '以内').join(' '), 'プレイヤーから 5 m 以内');
+  assert.equal(avoidWords(translate('en', 'keepout.order'), 'On the road', [], undefined).join(' '), 'On the road');
+  assert.equal(avoidWords(translate('en', 'keepout.order'), 'AI path', ['2 m'], 'near').join(' '), 'Near 2 m AI path', 'an initialism keeps its capitals');
+  assert.equal(translate('en', 'keepout.addedOut', { what: 'Box 1', name: 'crystal', n: 1 }), 'Added “Box 1” to the keep-out areas of “crystal” (1 moved out)');
+  assert.equal(translate('en', 'hands.place.avoid', { what: 'Within 5 m from the player', name: 'crystal', Ai: 'Claude' }), 'Claude added “Within 5 m from the player” to the keep-out areas of “crystal”');
 });

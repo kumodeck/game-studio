@@ -621,7 +621,9 @@ keep-out area belongs to the layout it is drawn for, not to the whole level.
   row) leaves that number out (`skipped`). Objects put by hand (`pins`, `hand`) are never moved by them.
 - **The file's `places`** (§4.1): only what the person changed — knobs `{ v, was }`, `pins` (that one by hand),
   `hand: true` (all by hand), `avoid` (boxes and conditions, `off`), `from` (hand-placed objects the layout replaced:
-  the loader hides them — only objects it did not make itself — until the AI takes them out of the code). Each level
+  the loader hides them — only objects it did not make itself — until the AI takes them out of the code), `off: true`
+  (⌘Z on ✦ Turn into a rule, studio-motion-fix 2026-11-05: the layout puts no objects — the hand-placed ones are back —
+  until the AI takes the rule out of the code on Save; the entry then leaves the file, `PlaceStore.settle`). Each level
   its own.
 - The loader's lists are on `globalThis[Symbol.for('game-studio.codePlaces')]` / `'codeAvoids'`; the bridge sends
   `studio:code-places { list: [{ id, name, keys, skipped, knobs, drag?, avoid }], avoids: [{ code, name, after?, knobs,
@@ -709,7 +711,10 @@ keep-out area belongs to the layout it is drawn for, not to the whole level.
   §3.4). The AI writes the rule and swaps it in (`--do place.code --replace` / `motion.code --replace`, §3.6); the
   editor reads where the hand's shape was just before and **measures** how close the rule came (`src/shell/to-rule.ts`:
   each object against the rule's object of the same number, the whole distance; a motion at 64 places of one round, its
-  own repeat included). Until Save (Save clears it; ⌘Z of the swap hides it, ⌘⇧Z shows it again): the layout's card has
+  own repeat included). ⌘Z of a layout's swap is the hand's objects alone again: the entry goes to `{ off: true }` (not
+  to what it was: the rule is in the code already), the violet marks and the comparison go, and the line says "Back to
+  your lamp ×6 placed by hand · the rule is still in the game: Undo AI change takes it out" (studio-motion-fix ✕2; before,
+  the rule's 6 lamps stayed on top of the hand's and "⌘Z undoes it" stayed up). Until Save (Save clears it; ⌘Z of the swap hides it, ⌘⇧Z shows it again): the layout's card has
   "◉ Compare with original" and "Max deviation: lamp-3 (0.6 m)", its guide (`studio:place/guide` `compare`: `was` and
   `names` per rule number) draws an orange dot where each stood, a thin line to the rule's object and the chip
   "lamp-3 · 0.6 m" over the farthest; a rule motion's strip glows with orange marks at the old points' times, the

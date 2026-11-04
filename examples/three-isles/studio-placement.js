@@ -842,7 +842,7 @@ p.keys = [];
 p.skipped = [];
 p.spots = [];
 const k = knobValues(p.knobs, f.knobs);
-const count = countOf(p, k);
+const count = f.off === true ? 0 : countOf(p, k);
 const seen = { rand: false };
 const first = [];
 for (let i = 0; i < count; i++) first.push(codePlaceAt(p, i, k, 0, level, n, seen));

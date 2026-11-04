@@ -148,6 +148,11 @@ export interface InputDeps {
   missed?: (x: number, y: number) => void;
   /** Every press in the game page, first (the cross of the last miss goes: "the next action"). */
   pressed?: () => void;
+  /**
+   * The tool strip is put away (studio-motion-fix △7, decided 2026-11-05): "+ Draw a box" is on — a drag on the ground
+   * draws the box, so the strip's ↕ under the first press must not lift all twelve crystals. Absent = never.
+   */
+  stripOff?: () => boolean;
 }
 
 export interface InputHandle {
@@ -1687,7 +1692,7 @@ export function attachInput(deps: InputDeps): InputHandle {
     // No tag for an object without a name: its label is its key (`path:3/0`), an inner handle a person must never see
     // (dogfood 2026-10-17, U4). The card names it ("Unnamed shape"). inRects: the tag shows only on hover (Ive wave 1, W1-2).
     handles.selection(item ? shapeOf('you', [key!], rects) : null, item ? rects : [], item && a?.visible && inRects(rects) && !item.unstable ? item.label : null);
-    handles.place(a, item ? stripCaps() : null, adapter.dim);
+    handles.place(deps.stripOff?.() ? null : a, item && !deps.stripOff?.() ? stripCaps() : null, adapter.dim);
   };
 
   return {
