@@ -126,6 +126,8 @@ import { uiAsPlacement, uiEntries, withUi } from './ui-layer.ts';
 import { createUiWire } from './ui-wire.ts';
 import { createUiMissing } from './ui-missing.ts';
 import { barPress, FOLD_DRAG, gripEnd, readFold, writeFold } from './sheet-fold.ts';
+import { createClip } from './clip.ts';
+import { normalizeClipPrefs } from './clip-model.ts';
 
 type Phase = 'loading' | 'waiting' | 'no-adapter' | 'ready' | 'playing';
 
@@ -828,6 +830,45 @@ export function start(host: StudioHost) {
   // and goes (✦ on a phone, hidden while paused; Save, shown after a move) sits LEFT of it, so the bar, aligned right,
   // never slides ❚❚ out from under the finger that pressed it.
   const topActions = h('div', { class: 'top-actions', dataset: { part: 'top-actions' } }, playAskBtn, topSave, playPauseBtn, playSplit);
+  // The saved line floats at the game's foot (the stage), not in the dock: the dock is put away while playing, and a
+  // clip is made while playing.
+  // ● Clip ⌄ (stage 1, decided 2026-11-05; clip.ts; `clipper`, as `clip` is the ⌘C copy list): left of the ▶ Play group, right of Undo / Redo — the plan's "between
+  // ↶ ↷ and the AI". One press records the game's next seconds as an MP4 (Movies › KUMODeck, a download in the web demo).
+  // PC only in stage 1 (shell.css hides it in the phone layout; a phone's Share… is stage 2).
+  const clipper = createClip({
+    t: (k, v) => t(k, v),
+    host,
+    post: (m) => postGame(m),
+    playing: () => playing,
+    paused: () => playPaused,
+    play: () => clipPlay(),
+    resume: () => postGame({ type: 'studio:play/pause', on: false }),
+    game: () => gameName,
+    prefs: () => uiPrefs.clip ?? normalizeClipPrefs(undefined),
+    setPrefs: (p) => changeUi({ ...uiPrefs, clip: p }),
+    menu: (at, rows) => {
+      const r = at.getBoundingClientRect();
+      ctxMenu.show(rows, r.right, r.bottom + 4, { place: 'clip', label: t('clip.more') });
+      const mm = ctxMenu.el.getBoundingClientRect();
+      ctxMenu.el.style.left = `${Math.max(8, Math.round(r.right - mm.width))}px`;
+    },
+    toast: (text, ms) => showToast(text, ms),
+    changed: (st) => {
+      if (st === 'idle') delete app.dataset.clip;
+      else app.dataset.clip = st;
+    },
+  });
+  /** ● Clip pressed in Edit: ▶ Play (its own choice window and all), then the game page's hello says it is playing. */
+  const clipWaiters: Array<(ok: boolean) => void> = [];
+  async function clipPlay(): Promise<boolean> {
+    await togglePlay();
+    if (!playing) return false;
+    if (playAskOn) return true;
+    return new Promise<boolean>((resolve) => {
+      const timer = window.setTimeout(() => resolve(false), 15000);
+      clipWaiters.push((ok) => (window.clearTimeout(timer), resolve(ok)));
+    });
+  }
   /** ▶ Play ⌄'s menu — or, on a phone, the same rows under the list's "⚑ Checkpoints · N" (`at`; pause walk 2 ✕1). */
   function openPlayMenu(at: HTMLElement = playMoreBtn) {
     const r = at.getBoundingClientRect();
@@ -885,7 +926,7 @@ export function start(host: StudioHost) {
   };
   const largeBtn = btn('open-large', () => void openLarge(), { class: 'icon-btn large-btn' });
   // The web demo has no AI to show the state of (W1-6): no "● AI" at all.
-  const header = h('header', { class: 'top', dataset: { part: 'header' } }, brand, toolsRow, h('div', { class: 'top-right' }, footer, largeBtn, topActions));
+  const header = h('header', { class: 'top', dataset: { part: 'header' } }, brand, toolsRow, h('div', { class: 'top-right' }, footer, clipper.el, largeBtn, topActions));
   // World | UI (UI stage 1, layer-switch.ts): the top bar's middle on PC, over the game on a phone (renderAll).
   const layerSwitch = createLayerSwitch((l) => setEditLayer(l), () => setUiPeek(!uiPeek));
   layerSwitch.el.hidden = true;
@@ -1183,7 +1224,7 @@ export function start(host: StudioHost) {
   // Checkpoints (stage 3; checkpoints.ts): the line when one did not open, at the top of the game; the field under ⚑.
   const cpNote = createCheckpointNote({ t, aiVars: () => aiVars() });
   const cpPop = createCheckpointPop({ t, aiVars: () => aiVars(), changed: (on) => (app.dataset.checkpoint = on ? 'open' : 'closed') });
-  const stage = h('div', { class: 'stage', dataset: { part: 'stage' } }, iframe, scrim, assetsPage, inspector, dock, levelNote, momentBar.tip, momentBar.stepTip, momentBar.note, cpNote.el, momentUnfoldBtn);
+  const stage = h('div', { class: 'stage', dataset: { part: 'stage' } }, iframe, scrim, assetsPage, inspector, dock, levelNote, momentBar.tip, momentBar.stepTip, momentBar.note, cpNote.el, momentUnfoldBtn, clipper.bar, clipper.line);
   const app = h('div', { class: 'shell', dataset: { part: 'app' } }, header, side, stage);
   document.getElementById('app')!.replaceWith(app);
   panel.append(toolEl);
@@ -2322,6 +2363,8 @@ export function start(host: StudioHost) {
       if (lineRecallable()) act('ai-recall', t('ai.recall'), 'spark', () => recallLine(), undefined, t('pal.aiUndo.words'));
     }
     if (undo.canRedo) act('redo', t('btn.redo'), 'redo', doRedo, keyOf('redo', mac), `${describe(undo.peekRedo())} redo やり直す`);
+    // ● Clip (stage 1, 2026-11-05): listed here because it has no key (the keys while playing are the game's). PC only.
+    if (!phone()) act('clip', clipper.state === 'rec' ? t('clip.stopTip') : t('clip.palette'), 'play', () => clipper.press(), undefined, 'clip video record movie mp4 share x 録画 動画 クリップ');
     if (keys.length) act('deselect', t('ops.selectNone'), 'close', () => selectObject(null), keyOf('deselect', mac), 'deselect unselect none 選択解除');
     if (keys.length && editing && libraryShown() && targets().length) act('add-to-scene', t('lib.addToScene'), 'copy', () => addToScene(), undefined, 'add scene place 足す 置く');
     // The strip's tools (with something picked): the chosen one is marked with a check, its key on the right.
@@ -4671,6 +4714,7 @@ export function start(host: StudioHost) {
   };
 
   function onBridge(m: BridgeToShell) {
+    if (clipper.onMessage(m)) return;
     if (timeline.onMessage(m)) return;
     if (m.type === 'studio:placement/at-is') return motionDrag.answer(m.id, m.key);
     if (m.type === 'studio:moment/mark-is') {
@@ -4803,6 +4847,7 @@ export function start(host: StudioHost) {
         }
         if (playing) {
           playAskOn = true;
+          for (const w of clipWaiters.splice(0)) w(true);
           playMark = !phone();
           postGame(playOn());
           sendPlayLine(true);

@@ -1194,6 +1194,8 @@ except `.studio/adapter.js` through its own route).
 | `GET /__studio/api/checkpoints` | — | `{ checkpoints: CheckpointInfo[], broken: string[] }`: `.studio/checkpoints/` newest first (`id`, `name`, `at`, `level`, `time`; no moment), files that do not read as one apart (pause-edit stage 3, §1.14.1) |
 | `POST /__studio/api/checkpoints` | `{ name, level, time, moment, shot? }` | `{ ok, id, path }`: kept as `.studio/checkpoints/<id>.json` (`id` from the name; the same name in the same level replaced); 422 when it is not one (`moment` not JSON or > 1 000 000 characters, no name …); 409 past 200. No stdout line |
 | `GET / PATCH / DELETE /__studio/api/checkpoints/:id` | — / `{ name }` / — | `{ value: Checkpoint }` (404 when missing or broken) / `{ ok, id, path }` (renamed: the file follows the name) / `{ ok }` (404 when there was none) |
+| `POST /__studio/api/clips?stem=<name>` | raw MP4 bytes (≤ 64 MB, must start with an `ftyp` box) | 201 `{ ok, name, where, reveal }`: ● Clip (§3.5.4) saved as `<stem>-N.mp4` (a free N, never overwritten) in Movies › KUMODeck (`where: "movies"`; Windows / Linux `~/Videos/KUMODeck`, `"videos"`), never the game folder; `?replace=<name>` = the clip just saved, its end swapped (404 when it is not there). No stdout line |
+| `POST /__studio/api/clips/reveal` | `{ name }` | `{ ok }`: the system's file manager with that clip selected (`open -R`, `explorer /select,`, `xdg-open <folder>`); 404 for a clip not in the folder |
 | `GET/PUT /__studio/api/ui` | UI prefs JSON | `.studio/ui/prefs.json` (≤ 16 KB) (§8) |
 | `GET /__studio/game-ui.css`, `/__studio/game-ui.js` | — | `.studio/ui/studio.css`, `.studio/ui/shell.js`, or empty (§8) |
 | `GET /<path>` | — | Game files; HTML gets the two script tags of §1.4 first in `<head>` |
@@ -1660,6 +1662,34 @@ moves as in Edit (the call made 2026-10-28), and what the game moves or made is 
   only in a page opened with `studio=edit`).
 - Screen tests: `__gameStudio._debug` is absent while the page plays (as on a
   Play page), and `_play.playing()` says whether it plays.
+
+#### 3.5.4 ● Clip: a short video of the game (2026-11-05, stage 1)
+
+One press of **● Clip** (the top bar, PC) records the game's next 6 / 8 / 12 s (Clip ⌄; 8 first) as a 1280×720 H.264 MP4
+at 30 fps, no sound, and saves it on the person's computer with a post for X. In Edit it starts ▶ Play first; a paused
+game resumes. A second press ends the clip one second later.
+
+- **Where it is recorded: the game page** (`src/bridge/play-clip.ts`), because the editor page cannot read another
+  origin's frame. Each frame = the page's HTML UI painted into layers by the play picture's painter (`play-shot.ts`
+  `paintPage`, again only when the page changed, ≤ 10 / s) with the canvases' live pictures between them, fitted into
+  16:9 on black. Encoded with WebCodecs `VideoEncoder` (`avc1.42E01F`, AVC format), each chunk posted to the editor page.
+  The editor's own parts (`data-studio-ui`, `game-studio-*`) are never drawn.
+- **Messages**: `studio:clip/start { id, seconds, fps, w, h, codec, bitrate, mark, lines }`, `studio:clip/stop { id }` →
+  `studio:clip/started { total }`, `config { avcc, alt? }`, `chunk { data, key, ts, dur, alt? }` (transferred),
+  `progress { done, total }`, `done { frames, markFrom }`, or `error { why: webgpu | tainted | no-encoder | nothing |
+  failed, msg? }`. A WebGPU canvas (seen through `getContext('webgpu')`) and a canvas the browser refuses to read
+  (another site's picture) are said in one line, not recorded.
+- **The MP4 box** is written by the editor page (`src/shell/mp4.ts`: ftyp, moov first, one mdat; no dependency).
+- **The mark** (`src/shell/clip-model.ts`): the last second carries "Made with KUMODeck Game Studio /
+  github.com/kumodeck/game-studio", bottom right, small, and the post carries the address — one switch for both.
+  `CLIP_MARK_DEFAULT` (on) is the default until the person chooses (Clip ⌄, or the line's Remove mark / Add mark);
+  their choice is kept in `.studio/ui/prefs.json` `clip: { seconds, mark }`. The last second is encoded both ways (a
+  second encoder from a key frame), so Remove mark swaps the end of the saved clip without recording again (only when
+  both encoders gave the same avcC).
+- **Saved**: through `StudioHost.clips` (`POST /api/clips`, §3.2) in Movies › KUMODeck; the line says the name, the
+  length, the place, Show in Finder, Remove mark, ✕, and the post (English, no AI, its X count) with Copy post. A host
+  without `clips` (the web demo) gives the MP4 as a download. Nothing is sent anywhere.
+- Not in stage 1: Before / After clips, Tall (9:16), ✦ Rewrite of the post, a phone's Share…, sound, WebGPU.
 
 ### 3.6 The AI's hands: editor work done by the AI (`--do`, 2026-10-24)
 

@@ -1,4 +1,4 @@
-/* KUMODeck Game Studio 0.1.79 — MIT License — built file, edit src/ instead */
+/* KUMODeck Game Studio 0.1.80 — MIT License — built file, edit src/ instead */
 (() => {
 const __defs = [];
 const __cache = [];
@@ -911,6 +911,11 @@ const TOOL_ID_RE = /^[a-z0-9][a-z0-9-]{0,39}$/;
                                                                                                             
      
                   
+     
+                                                                                                                             
+                                                                                                                  
+     
+                                                
  
 
 /**
@@ -1426,7 +1431,16 @@ const MSG_PREFIX = 'studio:';
                                                                                                                   
                                                                                    
      
-                                                           
+                                                          
+     
+                                                                                                                       
+                                                                                                                     
+                                                                                                                     
+                                                                                                           
+     
+                                                                                                                                                                 
+                                                                                         
+                                             
 
 /**
  * The one line over the game while playing (§3.5). `state`: looking = sent, the AI has it; fixing = it works on it;
@@ -1708,6 +1722,20 @@ const MSG_PREFIX = 'studio:';
                                                                                                                  
      
                                                   
+     
+                                                                                                                            
+                                                                                                                        
+                                                                                                                                        
+                                     
+                                                                                                                    
+                                                                    
+     
+                                                              
+                                                                                
+                                                                                                                      
+                                                                             
+                                                                                             
+                                                                                                                            
      
                                                                                                                           
                                                                                                                            
@@ -2228,6 +2256,17 @@ function isStudioMessage(x         )                     {
                                                                                                                        
      
                                                            
+     
+                                                                                                                          
+                                                                                            
+     
+                            
+ 
+
+                           
+                                                                                                          
+                                                                                                                                                                                            
+                                                                 
  
 
 /** The longest saved moment kept (JSON characters): a game's state, not its assets — 1 MB is far past any we know. */
@@ -18607,6 +18646,41 @@ const en = {
   'gets.keptNone': 'With Claude Code or Codex, you can try the fix from here',
   // The paused ask's reply (stage 3; README picture pc-3): one line + ▶ Try from 0:05.02 · Before / After · ↶ Undo. The
   // editor never reloads by itself (the person may be in the middle of Save · N): Try is theirs to press.
+  // ● Clip (stage 1, decided 2026-11-05; clip.ts): one press records the next few seconds of the game (its picture and HTML
+  // UI, never the editor) as an MP4 X takes, saved on this computer, with a post to paste.
+  'clip.btn': 'Clip',
+  'clip.tip': 'Record the next {s} seconds of the game as a video',
+  'clip.more': 'Clip options',
+  'clip.stop': '{t} · Stop',
+  'clip.stopTip': 'Stop now (the clip ends one second later)',
+  'clip.saved': 'Clip saved · {name}',
+  'clip.downloaded': 'Clip downloaded · {name}',
+  'clip.where': '{s} s · Wide 1280×720 · {dir}',
+  'clip.dir.movies': 'Movies › KUMODeck',
+  'clip.dir.videos': 'Videos › KUMODeck',
+  'clip.dir.downloads': 'your Downloads',
+  'clip.finder': 'Show in Finder',
+  'clip.folder': 'Show in folder',
+  'clip.copy': 'Copy post',
+  'clip.copied': 'Copied',
+  'clip.count': '{n} / 280',
+  'clip.close': 'Close',
+  'clip.length': 'Length',
+  'clip.lengthRow': '{s} seconds',
+  'clip.mark': '“Made with KUMODeck” at the end',
+  'clip.markRemove': 'Remove mark',
+  'clip.markAdd': 'Add mark',
+  'clip.markOff': 'Mark removed from this clip and the post. New clips leave it off too.',
+  'clip.markOn': 'Mark added to this clip and the post. New clips have it too.',
+  'clip.saveTo': 'Saved to {dir}.',
+  'clip.local': 'Nothing leaves this computer.',
+  'clip.palette': 'Record a clip',
+  'clip.webgpu': 'Clip needs WebGL for now. This game draws with WebGPU.',
+  'clip.tainted': 'This game draws images from another site, so it can’t be recorded. Ask {ai} to put them in the game’s folder.',
+  'clip.noEncoder': 'This browser can’t make videos. Try the latest Chrome, Edge or Safari.',
+  'clip.nothing': 'Nothing to record yet: the game has no picture on screen.',
+  'clip.failed': 'The clip couldn’t be made ({msg}). Try again.',
+  'clip.saveFailed': 'The clip couldn’t be saved: {msg}',
   'try.btn': 'Try from {t}',
   'try.tip': 'Open this same moment with {ai}’s new code, paused',
   'try.opened': 'New code · same moment, {t}',
@@ -19862,6 +19936,39 @@ const ja                               = {
   'gets.keptTime': 'このゲームはまだ途中から始められません。{ai}が直すのと一緒に足します。',
   'gets.keptNoneTitle': '試し版では残しません',
   'gets.keptNone': 'Claude Code や Codex なら、ここから直しを確かめられます',
+  'clip.btn': 'クリップ',
+  'clip.tip': 'ゲームのこの先 {s} 秒を動画にする',
+  'clip.more': 'クリップの設定',
+  'clip.stop': '{t} · 止める',
+  'clip.stopTip': '今止める（動画は 1 秒後に終わります）',
+  'clip.saved': 'クリップを保存しました · {name}',
+  'clip.downloaded': 'クリップをダウンロードしました · {name}',
+  'clip.where': '{s} 秒 · 横 1280×720 · {dir}',
+  'clip.dir.movies': 'ムービー › KUMODeck',
+  'clip.dir.videos': 'ビデオ › KUMODeck',
+  'clip.dir.downloads': 'ダウンロード',
+  'clip.finder': 'Finder で見る',
+  'clip.folder': 'フォルダで見る',
+  'clip.copy': '投稿の文をコピー',
+  'clip.copied': 'コピーしました',
+  'clip.count': '{n} / 280',
+  'clip.close': '閉じる',
+  'clip.length': '長さ',
+  'clip.lengthRow': '{s} 秒',
+  'clip.mark': '最後に「Made with KUMODeck」',
+  'clip.markRemove': '印を外す',
+  'clip.markAdd': '印を付ける',
+  'clip.markOff': 'このクリップと投稿の文から印を外しました。次のクリップも外したままです。',
+  'clip.markOn': 'このクリップと投稿の文に印を付けました。次のクリップにも付きます。',
+  'clip.saveTo': '保存先: {dir}。',
+  'clip.local': 'このパソコンの外には何も送りません。',
+  'clip.palette': 'クリップを録る',
+  'clip.webgpu': 'クリップは今は WebGL のゲームだけです。このゲームは WebGPU で描いています。',
+  'clip.tainted': 'このゲームは別のサイトの画像を描いているので、録れません。画像をゲームのフォルダに置くよう{ai}に頼めます。',
+  'clip.noEncoder': 'このブラウザでは動画を作れません。新しい Chrome・Edge・Safari で試してください。',
+  'clip.nothing': 'まだ録る物がありません。ゲームの絵が出ていません。',
+  'clip.failed': 'クリップを作れませんでした（{msg}）。もう一度試してください。',
+  'clip.saveFailed': 'クリップを保存できませんでした: {msg}',
   'try.btn': '{t} から試す',
   'try.tip': '{ai}の新しいコードで同じ瞬間を開いて止める',
   'try.opened': '新しいコード・同じ瞬間 {t}',
@@ -23715,6 +23822,175 @@ __def(__exports, "lineKey", () => lineKey);
 };
 __defs[57] = function (__exports) {
 'use strict';
+// clip-model.ts
+
+// ● Clip, stage 1 (decided 2026-11-05): the pure rules — how long a clip is, what its file is called, the words of the X
+// post that go with it and their count, and the "Made with KUMODeck Game Studio" mark at its end. Unit tests:
+// test/clip-model.test.ts. The recording is in the game page (bridge/play-clip.ts), the MP4 box in shell/mp4.ts, the
+// button and the line in shell/clip.ts.
+//
+// WHY a clip at all: a person who made or fixed something in their game wants to show it. Until now the editor had no
+// way to turn that into a short video; one press of ● Clip now records the game's own picture (and its HTML UI) for a
+// few seconds and saves an MP4 that X takes, with a post they can paste. Nothing is sent anywhere by the editor.
+
+/** The lengths in Clip ⌄ (seconds). 8 s first: long enough for one move, short enough to watch twice on a phone. */
+const CLIP_LENGTHS = [6, 8, 12]         ;
+                                                       
+const CLIP_DEFAULT_LENGTH             = 8;
+
+/** Frames per second recorded: X plays 30 and 60; 30 keeps the encoder well ahead of real time on a laptop without a GPU. */
+const CLIP_FPS = 30;
+/** Wide only in stage 1 (Tall, a 9:16 window given to the game while recording, is stage 2). */
+const CLIP_WIDE = { w: 1280, h: 720 }         ;
+/** H.264 bits per second: ~6 MB for 12 s, far under X's limit (512 MB), sharp enough for small HUD text at 720p. */
+const CLIP_BITRATE = 4_000_000;
+/**
+ * The H.264 profile and level asked of the browser's encoder: Constrained Baseline, level 3.1 (1280×720 at 30 fps).
+ * WHY baseline: every player plays it, X included, and it has no B-frames, so the MP4 needs no composition offsets
+ * (shell/mp4.ts writes none). Checked in headless Chrome 153: Baseline / Main / High all encode; 60 frames in 0.6 s.
+ */
+const CLIP_CODEC = 'avc1.42E01F';
+
+/**
+ * Does the end of a new clip carry the mark ("Made with KUMODeck Game Studio" + the GitHub address, its last second,
+ * bottom right, small) and does the post carry the address — until the person chooses for themselves (then their choice
+ * is kept, `ClipPrefs.mark`).
+ * Default ON (option (a) of the plan, 2026-11-05): a clip that says where it was made lets the people who see it find
+ * the editor; one press removes it, with no condition. The default is not final yet: changing it is this one line
+ * (people who already chose keep their choice).
+ */
+const CLIP_MARK_DEFAULT = true;
+
+/** The mark's two lines (English: the video goes to X, whatever the editor's language). */
+const CLIP_MARK_LINES = ['Made with KUMODeck Game Studio', 'github.com/kumodeck/game-studio']         ;
+/** The address in the post (the same place as the mark's second line). */
+const CLIP_REPO_URL = 'https://github.com/kumodeck/game-studio';
+/** The mark is on screen for this last part of the clip (seconds). */
+const CLIP_MARK_SECONDS = 1;
+
+/** X's limit for a post (weighted characters, see xLength). */
+const X_LIMIT = 280;
+
+/** What Clip ⌄ remembers (in the person's editor prefs, .studio/ui/prefs.json; in the browser for the web demo). */
+                            
+                      
+                
+ 
+
+/** A hand-edited or older prefs file reads as the defaults for anything it does not say right. */
+function normalizeClipPrefs(raw         )            {
+  const r = (raw && typeof raw === 'object' ? raw : {})                           ;
+  const seconds = CLIP_LENGTHS.includes(r.seconds              ) ? (r.seconds              ) : CLIP_DEFAULT_LENGTH;
+  const mark = typeof r.mark === 'boolean' ? r.mark : CLIP_MARK_DEFAULT;
+  return { seconds, mark };
+}
+
+/** Frames in a clip of `seconds` (whole frames). */
+function clipFrames(seconds        , fps = CLIP_FPS)         {
+  return Math.max(1, Math.round(seconds * fps));
+}
+
+/**
+ * A clip stopped early (● Clip pressed again): it ends one mark-second after the press, so the mark still gets its whole
+ * second — what comes after the press is the game going on, as before. Never longer than it was going to be. On the
+ * frame grid (ms; `elapsedMs` = time recorded so far).
+ */
+function endAfterStop(elapsedMs        , endMs        , fps = CLIP_FPS)         {
+  const dt = 1000 / fps;
+  return Math.min(endMs, Math.ceil((Math.max(elapsedMs, dt) + CLIP_MARK_SECONDS * 1000) / dt) * dt);
+}
+
+/** When the mark's second starts (ms): one second before the end (a key frame there, so the ends can be swapped). */
+function markStartMs(endMs        )         {
+  return Math.max(0, endMs - CLIP_MARK_SECONDS * 1000);
+}
+
+/**
+ * The file's name stem from the game's name: "Neon Run" → "neon-run-clip". Only a–z, 0–9 and "-" (a name the X file
+ * picker, a phone and every system take as it is); a name with nothing left (one in Japanese script only) → "game-clip". The server
+ * adds "-1", "-2"… (never overwrites, src/server/clips.mjs).
+ */
+function clipStem(game        )         {
+  const slug = game
+    .normalize('NFKD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 40)
+    .replace(/-+$/g, '');
+  return `${slug || 'game'}-clip`;
+}
+
+/** The download's name in the web demo, where there is no folder to look for a free one: the stem and the time. */
+function downloadName(game        , at      )         {
+  const p = (n        ) => String(n).padStart(2, '0');
+  return `${clipStem(game)}-${at.getFullYear()}${p(at.getMonth() + 1)}${p(at.getDate())}-${p(at.getHours())}${p(at.getMinutes())}${p(at.getSeconds())}.mp4`;
+}
+
+/**
+ * The post that goes with the clip (English, AI-free, so it is there in the web demo too). It names the game and how long
+ * the clip is; with the mark on, also where it was made and the address — off, neither (the mark and the address are
+ * one switch: never a clip without the mark but with the address, or the other way round). No file place, no folder
+ * name, no pass: nothing of this computer.
+ */
+function postText(o                                                  )         {
+  const game = o.game.trim().replace(/\s+/g, ' ').slice(0, 60);
+  // "an 8-second", "a 6-second" (said as "eight", "six").
+  const a = /^(8|11|18)(\D|$)/.test(String(o.seconds)) ? 'an' : 'a';
+  const what = game ? `${game}: ${a} ${o.seconds}-second clip from my web game` : `${a === 'an' ? 'An' : 'A'} ${o.seconds}-second clip from my web game`;
+  return o.mark ? `${what}, made with KUMODeck Game Studio 👇 ${CLIP_REPO_URL}` : `${what} 👇`;
+}
+
+// X's own counting (twitter-text, v3 settings): a URL is 23 whatever its length; an emoji is 2 (one joined with ZWJ too);
+// these ranges (Latin, common punctuation) are 1 each; everything else (Japanese, Chinese, …) is 2.
+const WEIGHT1                          = [[0, 4351], [8192, 8205], [8208, 8223], [8242, 8247]];
+const URL_RE = /https?:\/\/[^\s]+/g;
+const EMOJI_RE = /\p{Extended_Pictographic}(️|‍\p{Extended_Pictographic}️?)*/gu;
+
+/** The post's length as X counts it (shown beside it as "96 / 280"). */
+function xLength(text        )         {
+  let n = 0;
+  const rest = text.normalize('NFC').replace(URL_RE, () => ((n += 23), '')).replace(EMOJI_RE, () => ((n += 2), ''));
+  for (const ch of rest) {
+    const c = ch.codePointAt(0) ;
+    n += WEIGHT1.some(([a, b]) => c >= a && c <= b) ? 1 : 2;
+  }
+  return n;
+}
+
+/** Why a clip could not be made, as the bridge says it (one line each in the editor's words). */
+                                                                                     
+
+/** "0:03" on the button while recording (whole seconds go up as the clip goes on). */
+function recClock(ms        )         {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+}
+
+__def(__exports, "CLIP_LENGTHS", () => CLIP_LENGTHS);
+__def(__exports, "CLIP_DEFAULT_LENGTH", () => CLIP_DEFAULT_LENGTH);
+__def(__exports, "CLIP_FPS", () => CLIP_FPS);
+__def(__exports, "CLIP_WIDE", () => CLIP_WIDE);
+__def(__exports, "CLIP_BITRATE", () => CLIP_BITRATE);
+__def(__exports, "CLIP_CODEC", () => CLIP_CODEC);
+__def(__exports, "CLIP_MARK_DEFAULT", () => CLIP_MARK_DEFAULT);
+__def(__exports, "CLIP_MARK_LINES", () => CLIP_MARK_LINES);
+__def(__exports, "CLIP_REPO_URL", () => CLIP_REPO_URL);
+__def(__exports, "CLIP_MARK_SECONDS", () => CLIP_MARK_SECONDS);
+__def(__exports, "X_LIMIT", () => X_LIMIT);
+__def(__exports, "normalizeClipPrefs", () => normalizeClipPrefs);
+__def(__exports, "clipFrames", () => clipFrames);
+__def(__exports, "endAfterStop", () => endAfterStop);
+__def(__exports, "markStartMs", () => markStartMs);
+__def(__exports, "clipStem", () => clipStem);
+__def(__exports, "downloadName", () => downloadName);
+__def(__exports, "postText", () => postText);
+__def(__exports, "xLength", () => xLength);
+__def(__exports, "recClock", () => recClock);
+};
+__defs[58] = function (__exports) {
+'use strict';
 // ui-prefs.ts
 
 // UI preferences (.studio/ui.json): where the panel sits, how wide, which
@@ -23728,6 +24004,7 @@ __defs[57] = function (__exports) {
 // The file is hand-editable, so everything read from it goes through
 // normalizeUi(): unknown fields are dropped and numbers clamped, and a broken
 // file falls back to the defaults (which are the original look).
+const { normalizeClipPrefs } = __require(57);
                                               
 
 const DEFAULT_UI          = {
@@ -23786,6 +24063,8 @@ function normalizeUi(raw         )          {
     const seen = [...new Set(r.seen.filter((x)              => typeof x === 'string' && /^[a-z0-9-]{1,40}$/.test(x)))].slice(0, 20);
     if (seen.length) out.seen = seen;
   }
+  // ● Clip ⌄ (2026-11-05): kept only once chosen; read leniently (clip-model.ts).
+  if (r.clip && typeof r.clip === 'object') out.clip = normalizeClipPrefs(r.clip);
   // `intro` (the first-run tips' step, removed 2026-10-17) is dropped here: an
   // older prefs.json that still has it loads fine and loses it on the next save.
   return out;
@@ -23801,7 +24080,7 @@ __def(__exports, "UI_LIMITS", () => UI_LIMITS);
 __def(__exports, "normalizeUi", () => normalizeUi);
 __def(__exports, "effectiveTheme", () => effectiveTheme);
 };
-__defs[58] = function (__exports) {
+__defs[59] = function (__exports) {
 'use strict';
 // settings-page.ts
 
@@ -23811,7 +24090,7 @@ __defs[58] = function (__exports) {
                                                     
 const { h } = __require(16);
 const { icon } = __require(21);
-const { DEFAULT_UI, UI_LIMITS } = __require(57);
+const { DEFAULT_UI, UI_LIMITS } = __require(58);
 
                                
                          
@@ -23894,7 +24173,7 @@ function renderSettings(el             , d              )       {
 
 __def(__exports, "renderSettings", () => renderSettings);
 };
-__defs[59] = function (__exports) {
+__defs[60] = function (__exports) {
 'use strict';
 // edit-ops.ts
 
@@ -23998,7 +24277,7 @@ __def(__exports, "groupLayerMoves", () => groupLayerMoves);
 __def(__exports, "groupLayerPossible", () => groupLayerPossible);
 __def(__exports, "sameKind", () => sameKind);
 };
-__defs[60] = function (__exports) {
+__defs[61] = function (__exports) {
 'use strict';
 // placement-panel.ts
 
@@ -24031,7 +24310,7 @@ __defs[60] = function (__exports) {
                                                       
 const { h, safeImageSrc } = __require(16);
 const { hasLayer, layerBlocks, layerTarget, siblingsOf } = __require(32);
-const { groupLayerPossible, sameKind } = __require(59);
+const { groupLayerPossible, sameKind } = __require(60);
 const { icon, setButton } = __require(21);
 const { afterKnob, knobHeld } = __require(25);
 const { tipText } = __require(47);
@@ -25502,7 +25781,7 @@ __def(__exports, "shortName", () => shortName);
 __def(__exports, "createPlacementPanel", () => createPlacementPanel);
 __def(__exports, "heldGameText", () => heldGameText);
 };
-__defs[61] = function (__exports) {
+__defs[62] = function (__exports) {
 'use strict';
 // rule-motion.ts
 
@@ -25572,7 +25851,7 @@ __def(__exports, "knobSaid", () => knobSaid);
 __def(__exports, "ruleWords", () => ruleWords);
 __def(__exports, "ruleKnobsAfter", () => ruleKnobsAfter);
 };
-__defs[62] = function (__exports) {
+__defs[63] = function (__exports) {
 'use strict';
 // to-rule.ts
 
@@ -25778,7 +26057,7 @@ __def(__exports, "gapText", () => gapText);
 __def(__exports, "timeText", () => timeText);
 __def(__exports, "RuleCompare", () => RuleCompare);
 };
-__defs[63] = function (__exports) {
+__defs[64] = function (__exports) {
 'use strict';
 // path-edit.ts
 
@@ -25906,7 +26185,7 @@ __def(__exports, "setKind", () => setKind);
 __def(__exports, "toggleCorner", () => toggleCorner);
 __def(__exports, "insertAt", () => insertAt);
 };
-__defs[64] = function (__exports) {
+__defs[65] = function (__exports) {
 'use strict';
 // scene-motion.ts
 
@@ -26026,7 +26305,7 @@ __def(__exports, "withTrack", () => withTrack);
 __def(__exports, "withoutTrack", () => withoutTrack);
 __def(__exports, "withOrder", () => withOrder);
 };
-__defs[65] = function (__exports) {
+__defs[66] = function (__exports) {
 'use strict';
 // motion-card.ts
 
@@ -26188,7 +26467,7 @@ function motionMenu(d                , c            , at                        
 __def(__exports, "motionCardRow", () => motionCardRow);
 __def(__exports, "motionMenu", () => motionMenu);
 };
-__defs[66] = function (__exports) {
+__defs[67] = function (__exports) {
 'use strict';
 // timeline-wire.ts
 
@@ -26209,13 +26488,13 @@ __defs[66] = function (__exports) {
 // WHY its own file: main.ts is 3,900 lines and other members change it the same week; main.ts only routes moves,
 // the card's numbers, undo and the bridge's messages through here.
                                                                                                                                                                                                                       
-const { ruleKnobsAfter, ruleOf, ruleWords } = __require(61);
-const { handPath } = __require(62);
+const { ruleKnobsAfter, ruleOf, ruleWords } = __require(62);
+const { handPath } = __require(63);
 const { motionRunner, whenOf, whensOf } = __require(19);
-const { bend, insertAt, pointKind, setKind, toggleCorner } = __require(63);
-const { asOrdinary, asScene, joinClip, likeScene, sceneMembers, trackOrder: sceneOrder, withOrder, withTrack, withoutTrack } = __require(64);
+const { bend, insertAt, pointKind, setKind, toggleCorner } = __require(64);
+const { asOrdinary, asScene, joinClip, likeScene, sceneMembers, trackOrder: sceneOrder, withOrder, withTrack, withoutTrack } = __require(65);
 const { libOf } = __require(35);
-const { motionCardRow } = __require(65);
+const { motionCardRow } = __require(66);
                                                    
                                                      
 const { sameMotion: sameFile } = __require(36);
@@ -28217,7 +28496,7 @@ function createTimeline(d              , makePanel                             =
 
 __def(__exports, "createTimeline", () => createTimeline);
 };
-__defs[67] = function (__exports) {
+__defs[68] = function (__exports) {
 'use strict';
 // motion-note.ts
 
@@ -28368,7 +28647,7 @@ __def(__exports, "noteUnderReply", () => noteUnderReply);
 __def(__exports, "noteUnderWords", () => noteUnderWords);
 __def(__exports, "createMotionNote", () => createMotionNote);
 };
-__defs[68] = function (__exports) {
+__defs[69] = function (__exports) {
 'use strict';
 // motion-ask.ts
 
@@ -28420,7 +28699,7 @@ function createMotionAsk(d               ) {
 
 __def(__exports, "createMotionAsk", () => createMotionAsk);
 };
-__defs[69] = function (__exports) {
+__defs[70] = function (__exports) {
 'use strict';
 // save-receipt.ts
 
@@ -28532,7 +28811,7 @@ __def(__exports, "RECEIPT_NAMES", () => RECEIPT_NAMES);
 __def(__exports, "savedList", () => savedList);
 __def(__exports, "receipt", () => receipt);
 };
-__defs[70] = function (__exports) {
+__defs[71] = function (__exports) {
 'use strict';
 // offset-model.ts
 
@@ -28695,7 +28974,7 @@ __def(__exports, "snapAmount", () => snapAmount);
 __def(__exports, "noAmount", () => noAmount);
 __def(__exports, "rowAt", () => rowAt);
 };
-__defs[71] = function (__exports) {
+__defs[72] = function (__exports) {
 'use strict';
 // offset-choices.ts
 
@@ -28718,7 +28997,7 @@ __defs[71] = function (__exports) {
                                                                                                                   
 const { h } = __require(16);
 const { knobEl } = __require(25);
-const { addOffset } = __require(70);
+const { addOffset } = __require(71);
 
                                                                          
                                                        
@@ -29029,7 +29308,7 @@ __def(__exports, "createOffsetChoices", () => createOffsetChoices);
 __def(__exports, "offsetRowWords", () => offsetRowWords);
 __def(__exports, "offsetRowsEl", () => offsetRowsEl);
 };
-__defs[72] = function (__exports) {
+__defs[73] = function (__exports) {
 'use strict';
 // code-place-wire.ts
 
@@ -29079,10 +29358,10 @@ __defs[72] = function (__exports) {
 const { h } = __require(16);
 const { knobEl, knobNumber } = __require(25);
 const { turnKnobs } = __require(34);
-const { amountWords, createOffsetChoices, offsetRowWords, offsetRowsEl } = __require(71);
-const { addOffset, dragAmount, jitterRow, lastOf, movesRank, noAmount, MAX_OFFSETS } = __require(70);
+const { amountWords, createOffsetChoices, offsetRowWords, offsetRowsEl } = __require(72);
+const { addOffset, dragAmount, jitterRow, lastOf, movesRank, noAmount, MAX_OFFSETS } = __require(71);
 const { roundPose } = __require(31);
-const { gapText, placeGaps } = __require(62);
+const { gapText, placeGaps } = __require(63);
 
                                                                          
 
@@ -29846,7 +30125,7 @@ function createCodePlaceWire(d                   )                {
 
 __def(__exports, "createCodePlaceWire", () => createCodePlaceWire);
 };
-__defs[73] = function (__exports) {
+__defs[74] = function (__exports) {
 'use strict';
 // keep-out-model.ts
 
@@ -30076,7 +30355,7 @@ __def(__exports, "rowKey", () => rowKey);
 __def(__exports, "inBox", () => inBox);
 __def(__exports, "avoidWords", () => avoidWords);
 };
-__defs[74] = function (__exports) {
+__defs[75] = function (__exports) {
 'use strict';
 // keep-out-wire.ts
 
@@ -30107,7 +30386,7 @@ const { h } = __require(16);
 const { icon } = __require(21);
 const { knobEl } = __require(25);
                                                    
-const { MAX_AVOID, addBox, avoidWords, canRemove, changedRows, copyRowTo, knobRow, knobsNow, nextBoxName, removeRow, rowKey, rowsOf, setBox, switchRow } = __require(73);
+const { MAX_AVOID, addBox, avoidWords, canRemove, changedRows, copyRowTo, knobRow, knobsNow, nextBoxName, removeRow, rowKey, rowsOf, setBox, switchRow } = __require(74);
 
                                                                          
                                    
@@ -30402,7 +30681,7 @@ function createKeepOutWire(d                 )              {
 
 __def(__exports, "createKeepOutWire", () => createKeepOutWire);
 };
-__defs[75] = function (__exports) {
+__defs[76] = function (__exports) {
 'use strict';
 // palette.ts
 
@@ -30713,7 +30992,7 @@ __def(__exports, "SUGGEST_MIN", () => SUGGEST_MIN);
 __def(__exports, "suggests", () => suggests);
 __def(__exports, "createPalette", () => createPalette);
 };
-__defs[76] = function (__exports) {
+__defs[77] = function (__exports) {
 'use strict';
 // thumb-fit.ts
 
@@ -30814,7 +31093,7 @@ function fitPicture(src        , out = OUT)                  {
 __def(__exports, "FIT_MARGIN", () => FIT_MARGIN);
 __def(__exports, "fitPicture", () => fitPicture);
 };
-__defs[77] = function (__exports) {
+__defs[78] = function (__exports) {
 'use strict';
 // undo.ts
 
@@ -31074,7 +31353,7 @@ __def(__exports, "poseChange", () => poseChange);
 __def(__exports, "UndoStack", () => UndoStack);
 __def(__exports, "sharedMotion", () => sharedMotion);
 };
-__defs[78] = function (__exports) {
+__defs[79] = function (__exports) {
 'use strict';
 // write-back.ts
 
@@ -31167,7 +31446,7 @@ __def(__exports, "FOLD_TOL", () => FOLD_TOL);
 __def(__exports, "foldGaps", () => foldGaps);
 __def(__exports, "foldSaid", () => foldSaid);
 };
-__defs[79] = function (__exports) {
+__defs[80] = function (__exports) {
 'use strict';
 // ai-hands.ts
 
@@ -31189,10 +31468,10 @@ __defs[79] = function (__exports) {
 const { uiBoxAt } = __require(19);
 const { HANDS_MAKE_WHEN, handsAvoid, handsClip, handsMotion, handsPose, handsSaid, handsUiIds, readHandsInput } = __require(33);
 const { roundKnob, turnKnobs } = __require(34);
-const { avoidWords } = __require(73);
+const { avoidWords } = __require(74);
 const { CODE_LEN } = __require(35);
-const { MOTION_SAMPLES, gapText, motionGap, placeGaps, timeText } = __require(62);
-const { foldGaps, foldSaid } = __require(78);
+const { MOTION_SAMPLES, gapText, motionGap, placeGaps, timeText } = __require(63);
+const { foldGaps, foldSaid } = __require(79);
 const { momentNumber } = __require(51);
 
                            
@@ -32113,7 +32392,7 @@ function createAiHands(d           ) {
 
 __def(__exports, "createAiHands", () => createAiHands);
 };
-__defs[80] = function (__exports) {
+__defs[81] = function (__exports) {
 'use strict';
 // tooltip.ts
 
@@ -32233,7 +32512,7 @@ function installTooltips(root             )                                    {
 
 __def(__exports, "installTooltips", () => installTooltips);
 };
-__defs[81] = function (__exports) {
+__defs[82] = function (__exports) {
 'use strict';
 // shortcuts.ts
 
@@ -32323,7 +32602,7 @@ function createShortcutSheet(d                   ) {
 
 __def(__exports, "createShortcutSheet", () => createShortcutSheet);
 };
-__defs[82] = function (__exports) {
+__defs[83] = function (__exports) {
 'use strict';
 // context-menu.ts
 
@@ -32623,7 +32902,7 @@ function createContextMenu(d                 ) {
 __def(__exports, "placeMenu", () => placeMenu);
 __def(__exports, "createContextMenu", () => createContextMenu);
 };
-__defs[83] = function (__exports) {
+__defs[84] = function (__exports) {
 'use strict';
 // levels.ts
 
@@ -33043,7 +33322,7 @@ __def(__exports, "slugOf", () => slugOf);
 __def(__exports, "levelIdOf", () => levelIdOf);
 __def(__exports, "Levels", () => Levels);
 };
-__defs[84] = function (__exports) {
+__defs[85] = function (__exports) {
 'use strict';
 // check-note.ts
 
@@ -33082,7 +33361,7 @@ function checkNoteId(check                        , items                       
 
 __def(__exports, "checkNoteId", () => checkNoteId);
 };
-__defs[85] = function (__exports) {
+__defs[86] = function (__exports) {
 'use strict';
 // level-switch.ts
 
@@ -33256,7 +33535,7 @@ function createLevelSwitch(d                 ) {
 __def(__exports, "makeRows", () => makeRows);
 __def(__exports, "createLevelSwitch", () => createLevelSwitch);
 };
-__defs[86] = function (__exports) {
+__defs[87] = function (__exports) {
 'use strict';
 // context-rows.ts
 
@@ -33454,7 +33733,7 @@ function contextRows(place          , f          )           {
 
 __def(__exports, "contextRows", () => contextRows);
 };
-__defs[87] = function (__exports) {
+__defs[88] = function (__exports) {
 'use strict';
 // safe-save.ts
 
@@ -33565,7 +33844,7 @@ function createSafeSave(deps                              ) {
 __def(__exports, "bigChanges", () => bigChanges);
 __def(__exports, "createSafeSave", () => createSafeSave);
 };
-__defs[88] = function (__exports) {
+__defs[89] = function (__exports) {
 'use strict';
 // unsaved-guard.ts
 
@@ -33722,7 +34001,7 @@ __def(__exports, "lostBy", () => lostBy);
 __def(__exports, "playAsks", () => playAsks);
 __def(__exports, "createUnsavedGuard", () => createUnsavedGuard);
 };
-__defs[89] = function (__exports) {
+__defs[90] = function (__exports) {
 'use strict';
 // layer-switch.ts
 
@@ -33792,7 +34071,7 @@ function createLayerSwitch(choose                        , togglePeek           
 
 __def(__exports, "createLayerSwitch", () => createLayerSwitch);
 };
-__defs[90] = function (__exports) {
+__defs[91] = function (__exports) {
 'use strict';
 // ui-layer.ts
 
@@ -33895,7 +34174,7 @@ __def(__exports, "uiEntries", () => uiEntries);
 __def(__exports, "withLooks", () => withLooks);
 __def(__exports, "withUi", () => withUi);
 };
-__defs[91] = function (__exports) {
+__defs[92] = function (__exports) {
 'use strict';
 // ui-card.ts
 
@@ -34065,7 +34344,7 @@ function createUiCard(d            ) {
 
 __def(__exports, "createUiCard", () => createUiCard);
 };
-__defs[92] = function (__exports) {
+__defs[93] = function (__exports) {
 'use strict';
 // ui-screens.ts
 
@@ -34128,7 +34407,7 @@ function createUiScreens(d               ) {
 
 __def(__exports, "createUiScreens", () => createUiScreens);
 };
-__defs[93] = function (__exports) {
+__defs[94] = function (__exports) {
 'use strict';
 // ui-style-model.ts
 
@@ -34363,7 +34642,7 @@ __def(__exports, "validLook", () => validLook);
 __def(__exports, "validTheme", () => validTheme);
 __def(__exports, "UiStyleModel", () => UiStyleModel);
 };
-__defs[94] = function (__exports) {
+__defs[95] = function (__exports) {
 'use strict';
 // ui-theme.ts
 
@@ -34478,7 +34757,7 @@ function createUiTheme(d             ) {
 
 __def(__exports, "createUiTheme", () => createUiTheme);
 };
-__defs[95] = function (__exports) {
+__defs[96] = function (__exports) {
 'use strict';
 // ui-wire.ts
 
@@ -34494,11 +34773,11 @@ __defs[95] = function (__exports) {
 //     end of editing) and here only to draw the card — never saved. A new game page starts without them.
                                                                                                                                                                             
                                                    
-const { createUiCard } = __require(91);
-const { withLooks } = __require(90);
-const { createUiScreens } = __require(92);
-const { UiStyleModel, validLook, validTheme } = __require(93);
-const { createUiTheme } = __require(94);
+const { createUiCard } = __require(92);
+const { withLooks } = __require(91);
+const { createUiScreens } = __require(93);
+const { UiStyleModel, validLook, validTheme } = __require(94);
+const { createUiTheme } = __require(95);
                                                    
 
                              
@@ -34765,7 +35044,7 @@ function createUiWire(d            ) {
 
 __def(__exports, "createUiWire", () => createUiWire);
 };
-__defs[96] = function (__exports) {
+__defs[97] = function (__exports) {
 'use strict';
 // ui-missing.ts
 
@@ -34883,7 +35162,7 @@ function createUiMissing(d               ) {
 
 __def(__exports, "createUiMissing", () => createUiMissing);
 };
-__defs[97] = function (__exports) {
+__defs[98] = function (__exports) {
 'use strict';
 // sheet-fold.ts
 
@@ -34960,7 +35239,664 @@ __def(__exports, "barPress", () => barPress);
 __def(__exports, "FOLD_DRAG", () => FOLD_DRAG);
 __def(__exports, "gripEnd", () => gripEnd);
 };
-__defs[98] = function (__exports) {
+__defs[99] = function (__exports) {
+'use strict';
+// mp4.ts
+
+// The MP4 box for ● Clip (decided 2026-11-05): one H.264 video track, written by hand. Pure; test/clip-model.test.ts
+// (mp4 part) writes one and reads it back.
+//
+// WHY our own and not a library: the browser's encoder (WebCodecs VideoEncoder, bridge/play-clip.ts) gives the H.264
+// samples but no file; X takes MP4 / MOV, not WebM. One video track with no B-frames (Constrained Baseline, see
+// clip-model.ts CLIP_CODEC) is the plainest MP4 there is — about 150 lines — and the editor ships with no runtime
+// dependencies, so a muxer library would be the first one. MediaRecorder could write an MP4 itself, but it takes the
+// frames' times from the wall clock (stage 2's still "Before" and Try's wait could not be cut), so it is not used.
+//
+// The layout ("fast start"): ftyp, moov (all the tables), then mdat with every sample in one chunk. moov goes first so a
+// player (and X's upload check) can start before the whole file is read.
+
+                            
+                                                                                                   
+                   
+                           
+               
+                                                                      
+             
+                          
+              
+ 
+
+                           
+                
+                 
+                                                                                
+                   
+                       
+     
+                                                                                                                   
+                                                                                                                     
+                                          
+     
+                 
+ 
+
+/** Ticks per second of the track: 30 fps → 3000 per frame, 60 fps → 1500, both whole. */
+const MP4_TIMESCALE = 90000;
+/** Ticks per second of the movie header (ms). */
+const MOVIE_TIMESCALE = 1000;
+
+const enc = new TextEncoder();
+
+class Out {
+  parts               = [];
+  size = 0;
+  bytes(b            ) {
+    this.parts.push(b);
+    this.size += b.length;
+  }
+  u8(n        ) {
+    this.bytes(Uint8Array.of(n & 255));
+  }
+  u16(n        ) {
+    this.bytes(Uint8Array.of((n >>> 8) & 255, n & 255));
+  }
+  u32(n        ) {
+    this.bytes(Uint8Array.of((n >>> 24) & 255, (n >>> 16) & 255, (n >>> 8) & 255, n & 255));
+  }
+  zeros(n        ) {
+    this.bytes(new Uint8Array(n));
+  }
+  str(s        ) {
+    this.bytes(enc.encode(s));
+  }
+  done()             {
+    const o = new Uint8Array(this.size);
+    let at = 0;
+    for (const p of this.parts) (o.set(p, at), (at += p.length));
+    return o;
+  }
+}
+
+/** A box: 4-byte size, 4-character type, then what `fill` writes. */
+function box(type        , fill                  )             {
+  const inner = new Out();
+  fill(inner);
+  const o = new Out();
+  o.u32(8 + inner.size);
+  o.str(type);
+  for (const p of inner.parts) o.bytes(p);
+  return o.done();
+}
+/** A "full box": a box with a version byte and 3 bytes of flags first. */
+const fullBox = (type        , version        , flags        , fill                  ) =>
+  box(type, (o) => {
+    o.u8(version);
+    o.u8((flags >>> 16) & 255);
+    o.u16(flags & 0xffff);
+    fill(o);
+  });
+
+/** The unit matrix of mvhd / tkhd (16.16 and 2.30 fixed point). */
+function matrix(o     ) {
+  for (const v of [0x00010000, 0, 0, 0, 0x00010000, 0, 0, 0, 0x40000000]) o.u32(v);
+}
+
+/** Each sample's duration in track ticks, from the µs timestamps (rounded on the running time, so nothing drifts). */
+function sampleTicks(samples             , timescale = MP4_TIMESCALE, endUs         )           {
+  const at = (us        ) => Math.round((us * timescale) / 1e6);
+  return samples.map((s, i) => {
+    const end = i + 1 < samples.length ? samples[i + 1] .ts : Math.max(s.ts + 1, endUs ?? s.ts + s.dur);
+    return Math.max(1, at(end) - at(s.ts));
+  });
+}
+
+/** The whole MP4 file. Throws when there is nothing to write. */
+function muxMp4(t          )             {
+  if (!t.samples.length) throw new Error('no samples');
+  const ticks = sampleTicks(t.samples, MP4_TIMESCALE, t.endUs);
+  const total = ticks.reduce((a, b) => a + b, 0);
+  const movieDur = Math.round((total * MOVIE_TIMESCALE) / MP4_TIMESCALE);
+  const n = t.samples.length;
+
+  const ftyp = box('ftyp', (o) => {
+    o.str('isom');
+    o.u32(0x200);
+    for (const b of ['isom', 'iso2', 'avc1', 'mp41']) o.str(b);
+  });
+
+  const moovWith = (mdatData        ) =>
+    box('moov', (o) => {
+      o.bytes(fullBox('mvhd', 0, 0, (m) => {
+        m.u32(0); // created
+        m.u32(0); // modified
+        m.u32(MOVIE_TIMESCALE);
+        m.u32(movieDur);
+        m.u32(0x00010000); // rate 1.0
+        m.u16(0x0100); // volume 1.0
+        m.zeros(10);
+        matrix(m);
+        m.zeros(24);
+        m.u32(2); // next track id
+      }));
+      o.bytes(box('trak', (tr) => {
+        tr.bytes(fullBox('tkhd', 0, 3, (m) => {
+          m.u32(0);
+          m.u32(0);
+          m.u32(1); // track id
+          m.u32(0);
+          m.u32(movieDur);
+          m.zeros(8);
+          m.u16(0); // layer
+          m.u16(0); // alternate group
+          m.u16(0); // volume (video)
+          m.u16(0);
+          matrix(m);
+          m.u32(t.width * 0x10000);
+          m.u32(t.height * 0x10000);
+        }));
+        tr.bytes(box('mdia', (md) => {
+          md.bytes(fullBox('mdhd', 0, 0, (m) => {
+            m.u32(0);
+            m.u32(0);
+            m.u32(MP4_TIMESCALE);
+            m.u32(total);
+            m.u16(0x55c4); // "und"
+            m.u16(0);
+          }));
+          md.bytes(fullBox('hdlr', 0, 0, (m) => {
+            m.u32(0);
+            m.str('vide');
+            m.zeros(12);
+            m.str('VideoHandler');
+            m.u8(0);
+          }));
+          md.bytes(box('minf', (mi) => {
+            mi.bytes(fullBox('vmhd', 0, 1, (m) => m.zeros(8)));
+            mi.bytes(box('dinf', (d) => d.bytes(fullBox('dref', 0, 0, (m) => {
+              m.u32(1);
+              m.bytes(fullBox('url ', 0, 1, () => undefined));
+            }))));
+            mi.bytes(box('stbl', (st) => {
+              st.bytes(fullBox('stsd', 0, 0, (m) => {
+                m.u32(1);
+                m.bytes(box('avc1', (a) => {
+                  a.zeros(6);
+                  a.u16(1); // data reference index
+                  a.zeros(16);
+                  a.u16(t.width);
+                  a.u16(t.height);
+                  a.u32(0x00480000); // 72 dpi
+                  a.u32(0x00480000);
+                  a.u32(0);
+                  a.u16(1); // frames per sample
+                  a.zeros(32); // compressor name
+                  a.u16(0x0018); // depth
+                  a.u16(0xffff);
+                  a.bytes(box('avcC', (c) => c.bytes(t.avcc)));
+                }));
+              }));
+              // Durations, run-length coded (a steady 30 fps clip is one entry).
+              const runs                          = [];
+              for (const d of ticks) {
+                const last = runs[runs.length - 1];
+                if (last && last[1] === d) last[0]++;
+                else runs.push([1, d]);
+              }
+              st.bytes(fullBox('stts', 0, 0, (m) => {
+                m.u32(runs.length);
+                for (const [c, d] of runs) (m.u32(c), m.u32(d));
+              }));
+              const keys = t.samples.flatMap((s, i) => (s.key ? [i + 1] : []));
+              st.bytes(fullBox('stss', 0, 0, (m) => {
+                m.u32(keys.length);
+                for (const k of keys) m.u32(k);
+              }));
+              st.bytes(fullBox('stsc', 0, 0, (m) => {
+                m.u32(1);
+                m.u32(1); // first chunk
+                m.u32(n); // samples per chunk: all of them
+                m.u32(1); // sample description
+              }));
+              st.bytes(fullBox('stsz', 0, 0, (m) => {
+                m.u32(0);
+                m.u32(n);
+                for (const s of t.samples) m.u32(s.data.length);
+              }));
+              st.bytes(fullBox('stco', 0, 0, (m) => {
+                m.u32(1);
+                m.u32(mdatData);
+              }));
+            }));
+          }));
+        }));
+      }));
+    });
+
+  // moov's size does not depend on the offset's value, so build it once to learn where mdat's data starts.
+  const moovSize = moovWith(0).length;
+  const moov = moovWith(ftyp.length + moovSize + 8);
+  const dataSize = t.samples.reduce((a, s) => a + s.data.length, 0);
+  const o = new Out();
+  o.bytes(ftyp);
+  o.bytes(moov);
+  o.u32(8 + dataSize);
+  o.str('mdat');
+  for (const s of t.samples) o.bytes(s.data);
+  return o.done();
+}
+
+/** What a written MP4 says about itself (tests, and the screen test's check of a saved clip). */
+                          
+                
+                
+                 
+                                            
+                  
+                  
+               
+                
+                                             
+                     
+ 
+
+/** Reads back the boxes muxMp4 writes (not a general MP4 reader). null when it does not read as one. */
+function mp4Info(b            )                 {
+  const dv = new DataView(b.buffer, b.byteOffset, b.byteLength);
+  const type = (at        ) => String.fromCharCode(b[at] , b[at + 1] , b[at + 2] , b[at + 3] );
+  const info                                         = { order: [] };
+  const walk = (from        , to        , depth        ) => {
+    let at = from;
+    while (at + 8 <= to) {
+      const size = dv.getUint32(at);
+      const ty = type(at + 4);
+      if (size < 8 || at + size > to) return;
+      if (depth === 0) info.order.push(ty);
+      const body = at + 8;
+      if (ty === 'ftyp') info.brand = type(body);
+      else if (ty === 'tkhd') {
+        info.width = dv.getUint32(at + size - 8) / 0x10000;
+        info.height = dv.getUint32(at + size - 4) / 0x10000;
+      } else if (ty === 'mdhd') info.seconds = dv.getUint32(body + 16) / dv.getUint32(body + 12);
+      else if (ty === 'stsz') info.samples = dv.getUint32(body + 8);
+      else if (ty === 'stss') info.keys = dv.getUint32(body + 4);
+      else if (ty === 'stsd') info.codec = type(body + 12);
+      if (['moov', 'trak', 'mdia', 'minf', 'stbl'].includes(ty)) walk(body, at + size, depth + 1);
+      at += size;
+    }
+  };
+  walk(0, b.length, 0);
+  if (!info.brand || info.samples === undefined || info.seconds === undefined) return null;
+  return {
+    brand: info.brand,
+    width: info.width ?? 0,
+    height: info.height ?? 0,
+    seconds: info.seconds,
+    samples: info.samples,
+    keys: info.keys ?? 0,
+    codec: info.codec ?? '',
+    fastStart: info.order.indexOf('moov') >= 0 && info.order.indexOf('moov') < info.order.indexOf('mdat'),
+  };
+}
+
+__def(__exports, "MP4_TIMESCALE", () => MP4_TIMESCALE);
+__def(__exports, "sampleTicks", () => sampleTicks);
+__def(__exports, "muxMp4", () => muxMp4);
+__def(__exports, "mp4Info", () => mp4Info);
+};
+__defs[100] = function (__exports) {
+'use strict';
+// clip.ts
+
+// ● Clip, stage 1 (decided 2026-11-05): the button in the top bar, Clip ⌄, and the line when the clip is saved. The rules
+// are in clip-model.ts, the recording in the game page (bridge/play-clip.ts), the MP4 box in mp4.ts, the folder in
+// src/server/clips.mjs. main.ts places the parts and forwards the game page's `studio:clip/*` messages.
+//
+// The flow (one press):
+//   ● Clip → Play first if in Edit (a paused game resumes) → the next 8 s (6 / 8 / 12 in ⌄) are recorded: the button is red
+//   "0:03 · Stop", the game has a red frame (only what is inside it is in the clip) and a thin bar of the time left. A
+//   second press stops early (one more second for the mark). Then the line, where the AI's line is:
+//     row 1: ✓ Clip saved · neon-run-clip-1.mp4 / 8 s · Wide 1280×720 · Movies › KUMODeck · Show in Finder · Remove mark · ✕
+//     row 2: the post (English, the same words with no AI) · 102 / 280 · Copy post
+//   The web demo has no folder: the clip is a download, and its line says so.
+// WHY no key (⌘K lists it instead): while playing, the keys are the game's (keymap.ts); a letter would fight its controls.
+// WHY the next seconds, not the last ones: recording all through ▶ Play costs heat and battery, and a clip that only
+// starts on a press never records what the person did not mean to show.
+                                                                               
+const { h } = __require(16);
+const { icon } = __require(21);
+                                                   
+const { CLIP_BITRATE, CLIP_CODEC, CLIP_FPS, CLIP_LENGTHS, CLIP_MARK_LINES, CLIP_WIDE, X_LIMIT, clipStem, downloadName, postText, recClock, xLength } = __require(57);
+const { muxMp4 } = __require(99);
+
+                           
+                                                                 
+                   
+                               
+                     
+                    
+                                                                                                                         
+                           
+                 
+                 
+                     
+                               
+                                                 
+                                         
+                                                                                
+                                  
+ 
+
+                                                               
+
+/** What was saved, kept for the line's buttons (Show in Finder, the swap). */
+                 
+               
+                                                                           
+                
+                               
+                  
+                
+                                                                                                             
+                           
+                   
+ 
+
+function createClip(d          ) {
+  const { t } = d;
+  let state            = 'idle';
+  let id = '';
+  let startedAt = 0;
+  let clock                    ;
+  let total = 0;
+  let wanted            = d.prefs();
+  let main              = [];
+  let alt              = [];
+  let avcc                    = null;
+  let altAvcc                    = null;
+  let saved               = null;
+  /** When the game page last said something about this clip: a page that went (Reload, Play from the start) says nothing more. */
+  let heard = 0;
+  /** No word from the game page for this long while recording: the clip is given up, and said so. */
+  const SILENT_MS = 8000;
+
+  // ----- the button: ● Clip | ⌄ (one capsule, like ▶ Play ⌄) -----
+  const label = h('span', { class: 'clip-label' });
+  const btn = h('button', { type: 'button', class: 'clip-btn', dataset: { action: 'clip', part: 'clip' }, onclick: () => void press() },
+    h('span', { class: 'rec-dot', 'aria-hidden': 'true' }), label);
+  const more = h('button', { type: 'button', class: 'clip-more', dataset: { action: 'clip-more', part: 'clip-more' }, 'aria-haspopup': 'menu', onclick: () => openMenu() });
+  more.append(icon('chevronDown'));
+  const el = h('div', { class: 'clip-split', dataset: { part: 'clip-split' } }, btn, more);
+  // The time left, a thin bar under the game's frame while recording (main.ts puts it in the stage).
+  const bar = h('div', { class: 'clip-time', 'aria-hidden': 'true', dataset: { part: 'clip-time' } }, h('span'));
+
+  // ----- the line when it is saved (main.ts puts it where the AI's line is) -----
+  const line = h('div', { class: 'clip-line', role: 'status', 'aria-live': 'polite', hidden: true, dataset: { part: 'clip-line' } });
+
+  function setState(s           ) {
+    state = s;
+    d.changed(s);
+    render();
+  }
+
+  function render() {
+    const recording = state === 'rec' || state === 'starting';
+    btn.classList.toggle('on', recording);
+    btn.disabled = state === 'saving';
+    more.hidden = recording;
+    label.textContent = recording ? t('clip.stop', { t: recClock(state === 'rec' ? performance.now() - startedAt : 0) }) : t('clip.btn');
+    btn.title = recording ? t('clip.stopTip') : t('clip.tip', { s: wanted.seconds });
+    btn.setAttribute('aria-label', btn.title);
+    more.title = t('clip.more');
+    more.setAttribute('aria-label', t('clip.more'));
+    bar.hidden = !recording;
+  }
+
+  function openMenu() {
+    const p = d.prefs();
+    const dir = d.host.clips ? t(placeKey(navigator.platform)) : t('clip.dir.downloads');
+    const rows              = [{ head: t('clip.length') }];
+    for (const s of CLIP_LENGTHS) {
+      rows.push({ id: `clip-${s}`, label: t('clip.lengthRow', { s }), checked: p.seconds === s, run: () => (d.setPrefs({ ...d.prefs(), seconds: s }), (wanted = d.prefs()), render()) });
+    }
+    rows.push({ sep: true },
+      { id: 'clip-mark', label: t('clip.mark'), checked: p.mark, run: () => (d.setPrefs({ ...d.prefs(), mark: !d.prefs().mark }), (wanted = d.prefs())) },
+      { sep: true }, { note: `${t('clip.saveTo', { dir })} ${t('clip.local')}` });
+    d.menu(more, rows);
+  }
+
+  /** ● Clip pressed (the button, ⌘K). */
+  async function press() {
+    if (state === 'rec') {
+      d.post({ type: 'studio:clip/stop', id });
+      return;
+    }
+    if (state !== 'idle') return;
+    if (typeof (window                              ).VideoEncoder === 'undefined') {
+      d.toast(t('clip.noEncoder'), 7000);
+      return;
+    }
+    setState('starting');
+    if (!d.playing() && !(await d.play())) {
+      setState('idle');
+      return;
+    }
+    if (d.paused()) d.resume();
+    wanted = d.prefs();
+    id = `clip-${Date.now().toString(36)}`;
+    main = [];
+    alt = [];
+    avcc = null;
+    altAvcc = null;
+    d.post({ type: 'studio:clip/start', id, seconds: wanted.seconds, fps: CLIP_FPS, w: CLIP_WIDE.w, h: CLIP_WIDE.h, codec: CLIP_CODEC, bitrate: CLIP_BITRATE,
+      mark: wanted.mark, lines: [...CLIP_MARK_LINES] });
+    // Nothing back from the game page (an old bridge, a page that went): give up after a while.
+    clock = window.setTimeout(() => {
+      if (state === 'starting') (setState('idle'), d.toast(t('clip.failed', { msg: 'no answer from the game' }), 6000));
+    }, 5000);
+  }
+
+  /** A `studio:clip/*` message from the game page; true when it was one. */
+  function onMessage(m               )          {
+    if (!m.type.startsWith('studio:clip/')) return false;
+    if (!('id' in m) || m.id !== id) return true;
+    heard = performance.now();
+    switch (m.type) {
+      case 'studio:clip/started':
+        window.clearTimeout(clock);
+        total = m.total;
+        startedAt = performance.now();
+        setState('rec');
+        clock = window.setInterval(() => {
+          label.textContent = t('clip.stop', { t: recClock(performance.now() - startedAt) });
+          if (performance.now() - heard > SILENT_MS) {
+            window.clearInterval(clock);
+            id = '';
+            setState('idle');
+            d.toast(t('clip.failed', { msg: 'the game page went' }), 6000);
+          }
+        }, 250);
+        (bar.firstElementChild               ).style.width = '0%';
+        break;
+      case 'studio:clip/progress':
+        total = m.total;
+        (bar.firstElementChild               ).style.width = `${Math.min(100, (m.done / Math.max(1, m.total)) * 100)}%`;
+        break;
+      case 'studio:clip/config':
+        if (m.alt) altAvcc = new Uint8Array(m.avcc);
+        else avcc = new Uint8Array(m.avcc);
+        break;
+      case 'studio:clip/chunk':
+        (m.alt ? alt : main).push({ data: new Uint8Array(m.data), key: m.key, ts: m.ts, dur: m.dur });
+        break;
+      case 'studio:clip/done':
+        window.clearInterval(clock);
+        void finish(m.seconds, m.markAt);
+        break;
+      case 'studio:clip/error':
+        window.clearInterval(clock);
+        window.clearTimeout(clock);
+        setState('idle');
+        d.toast(refusal(m.why, m.msg), 8000);
+        break;
+    }
+    return true;
+  }
+
+  function refusal(why             , msg         ) {
+    if (why === 'webgpu') return t('clip.webgpu');
+    if (why === 'tainted') return t('clip.tainted');
+    if (why === 'no-encoder') return t('clip.noEncoder');
+    if (why === 'nothing') return t('clip.nothing');
+    return t('clip.failed', { msg: msg || '?' });
+  }
+
+  async function finish(length        , markAt        ) {
+    setState('saving');
+    const seconds = Math.round(length * 10) / 10;
+    let file            ;
+    let other                    = null;
+    try {
+      main.sort((a, b) => a.ts - b.ts);
+      alt.sort((a, b) => a.ts - b.ts);
+      if (!avcc || !main.length) throw new Error('no video');
+      const endUs = Math.round(length * 1e6);
+      file = muxMp4({ width: CLIP_WIDE.w, height: CLIP_WIDE.h, avcc, samples: main, endUs });
+      // The other end: the frames before the mark's second, then the second encoder's. Only when both encoders set up
+      // the same way (the same SPS / PPS), so one MP4 header describes both — nearly always in one browser, checked.
+      const cut = markAt - 1;
+      if (altAvcc && sameBytes(altAvcc, avcc) && alt.length && alt[0] .key) {
+        other = muxMp4({ width: CLIP_WIDE.w, height: CLIP_WIDE.h, avcc, samples: [...main.filter((s) => s.ts < cut), ...alt], endUs });
+      }
+    } catch (e) {
+      setState('idle');
+      d.toast(t('clip.failed', { msg: (e         ).message }), 8000);
+      return;
+    }
+    main = [];
+    alt = [];
+    const ok = await store(file, null);
+    if (!ok) return setState('idle');
+    saved = { ...ok, seconds, mark: wanted.mark, other, file };
+    setState('idle');
+    showLine();
+  }
+
+  /** Save (the server's folder) or download (the web demo). `replace` = the name of the clip saved before. */
+  async function store(file            , replace               )                                                                                {
+    const blob = new Blob([file            ], { type: 'video/mp4' });
+    if (!d.host.clips) {
+      const name = replace ?? downloadName(d.game(), new Date());
+      const a = h('a', { href: URL.createObjectURL(blob), download: name, hidden: true });
+      document.body.append(a);
+      a.click();
+      a.remove();
+      window.setTimeout(() => URL.revokeObjectURL(a.href), 60_000);
+      return { name, where: 'downloads' };
+    }
+    const r = await d.host.clips.save(blob, replace ? { replace } : { stem: clipStem(d.game()) });
+    if (!r.ok) {
+      d.toast(t('clip.saveFailed', { msg: r.error }), 8000);
+      return null;
+    }
+    return { name: r.name, where: r.where, reveal: r.reveal };
+  }
+
+  function showLine() {
+    if (!saved) return;
+    const s = saved;
+    const post = postText({ game: d.game(), seconds: s.seconds, mark: s.mark });
+    const n = xLength(post);
+    const where = t(`clip.dir.${s.where}`);
+    const head = h('div', { class: 'clip-row' },
+      h('span', { class: 'clip-head' }, icon('check'), h('strong', { text: t(s.where === 'downloads' ? 'clip.downloaded' : 'clip.saved', { name: s.name }) })),
+      h('span', { class: 'clip-where', text: t('clip.where', { s: s.seconds, dir: where }) }));
+    if (s.reveal && d.host.clips) {
+      head.append(h('button', { type: 'button', class: 'link', dataset: { action: 'clip-reveal' }, text: t(s.reveal === 'finder' ? 'clip.finder' : 'clip.folder'),
+        onclick: () => void d.host.clips .reveal(s.name).then((r) => !r.ok && d.toast(t('clip.saveFailed', { msg: r.error || '?' }), 6000)) }));
+    }
+    if (s.other) {
+      head.append(h('button', { type: 'button', class: 'link', dataset: { action: 'clip-mark' }, text: t(s.mark ? 'clip.markRemove' : 'clip.markAdd'), onclick: () => void swap() }));
+    }
+    head.append(h('button', { type: 'button', class: 'icon-only link clip-x', dataset: { action: 'clip-close' }, title: t('clip.close'), 'aria-label': t('clip.close'),
+      onclick: () => ((line.hidden = true), (saved = null)) }, icon('close')));
+    const copyBtn = h('button', { type: 'button', class: 'link', dataset: { action: 'clip-copy' }, text: t('clip.copy'), onclick: () => void copy(post, copyBtn) });
+    const draft = h('div', { class: 'clip-row clip-post' },
+      h('span', { class: 'clip-x-mark', 'aria-hidden': 'true', text: '𝕏' }),
+      h('span', { class: 'clip-text', dataset: { part: 'clip-post' }, text: post }),
+      h('span', { class: `clip-count${n > X_LIMIT ? ' over' : ''}`, dataset: { part: 'clip-count' }, text: t('clip.count', { n }) }),
+      copyBtn);
+    line.replaceChildren(head, draft);
+    line.hidden = false;
+  }
+
+  /** "Remove mark" / "Add mark": the other end swapped in, saved over the same clip, and remembered for the next ones. */
+  async function swap() {
+    if (!saved?.other) return;
+    const s = saved;
+    const next = !s.mark;
+    const ok = await store(s.other, s.name);
+    if (!ok) return;
+    saved = { ...s, name: ok.name, mark: next, file: s.other, other: s.file };
+    d.setPrefs({ ...d.prefs(), mark: next });
+    wanted = d.prefs();
+    showLine();
+    d.toast(t(next ? 'clip.markOn' : 'clip.markOff'), 5000);
+  }
+
+  async function copy(text        , b                   ) {
+    let ok = false;
+    try {
+      await navigator.clipboard.writeText(text);
+      ok = true;
+    } catch {
+      // No clipboard permission (an http page on another machine): the old way, a selected field.
+      const ta = h('textarea', { class: 'clip-copy-src' });
+      ta.value = text;
+      document.body.append(ta);
+      ta.select();
+      try {
+        ok = document.execCommand('copy');
+      } catch {
+        ok = false;
+      }
+      ta.remove();
+    }
+    if (ok) {
+      b.textContent = t('clip.copied');
+      window.setTimeout(() => (b.textContent = t('clip.copy')), 2000);
+    }
+  }
+
+  render();
+  return {
+    el,
+    bar,
+    line,
+    press: () => void press(),
+    onMessage,
+    render,
+    get state() {
+      return state;
+    },
+    /** For tests: the last saved clip's bytes. */
+    _last: () => saved?.file ?? null,
+  };
+}
+
+/** The folder's words for this system: macOS Movies, elsewhere Videos (the server says it too, once a clip is saved). */
+function placeKey(platform        ) {
+  return /mac/i.test(platform) ? 'clip.dir.movies' : 'clip.dir.videos';
+}
+
+function sameBytes(a            , b            ) {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+  return true;
+}
+
+__def(__exports, "createClip", () => createClip);
+};
+__defs[101] = function (__exports) {
 'use strict';
 // main.ts
 
@@ -35009,43 +35945,45 @@ const { createMomentGets, getsRows, orderMarked } = __require(53);
 const { createMomentCompare, filesRow, isTryPause, replyActions, tryWords } = __require(54);
 const { CHECKPOINTS_LISTED, checkpointsOf, createCheckpointNote, createCheckpointPop, defaultCheckpointName, reloadCheckpoint, smallShot } = __require(55);
 const { LINE_FADE_MS, LINE_GRACE_MS, lineFades, lineKey, lineStayMs } = __require(56);
-const { renderSettings } = __require(58);
-const { DEFAULT_UI, effectiveTheme, normalizeUi } = __require(57);
+const { renderSettings } = __require(59);
+const { DEFAULT_UI, effectiveTheme, normalizeUi } = __require(58);
 const { dropTarget, hasLayer, layerTarget } = __require(32);
-const { chipFamily, createPlacementPanel, shortName } = __require(60);
-const { createTimeline } = __require(66);
-const { createMotionNote, noteOf, noteUnderReply, noteUnderWords } = __require(67);
+const { chipFamily, createPlacementPanel, shortName } = __require(61);
+const { createTimeline } = __require(67);
+const { createMotionNote, noteOf, noteUnderReply, noteUnderWords } = __require(68);
 const { libCounted } = __require(24);
-const { createMotionAsk } = __require(68);
+const { createMotionAsk } = __require(69);
 const { CODE_LEN, motionLibrary } = __require(35);
 const { attachWorld, roundLib } = __require(36);
 const { icon, setButton } = __require(21);
-const { receipt } = __require(69);
-const { createCodePlaceWire } = __require(72);
-const { createKeepOutWire } = __require(74);
-const { createPalette } = __require(75);
-const { fitPicture } = __require(76);
+const { receipt } = __require(70);
+const { createCodePlaceWire } = __require(73);
+const { createKeepOutWire } = __require(75);
+const { createPalette } = __require(76);
+const { fitPicture } = __require(77);
 const { PlacementModel } = __require(37);
-const { UndoStack, poseChange, sharedMotion } = __require(77);
-const { createAiHands } = __require(79);
-const { MOTION_SAMPLES, RuleCompare, gapText, motionGap, timeText } = __require(62);
-const { copyKey, groupLayerMoves, groupLayerPossible, sameKind } = __require(59);
+const { UndoStack, poseChange, sharedMotion } = __require(78);
+const { createAiHands } = __require(80);
+const { MOTION_SAMPLES, RuleCompare, gapText, motionGap, timeText } = __require(63);
+const { copyKey, groupLayerMoves, groupLayerPossible, sameKind } = __require(60);
 const { displayName, forgetNames, noteItems, useGivenNames, useNameLang } = __require(14);
 const { keyOf, tipText } = __require(47);
-const { installTooltips } = __require(80);
-const { createShortcutSheet } = __require(81);
-const { createContextMenu } = __require(82);
-const { Levels, worldOf } = __require(83);
-const { checkNoteId } = __require(84);
-const { createLevelSwitch, makeRows } = __require(85);
-const { contextRows } = __require(86);
-const { bigChanges, createSafeSave } = __require(87);
-const { createUnsavedGuard, lostBy, playAsks } = __require(88);
-const { createLayerSwitch } = __require(89);
-const { uiAsPlacement, uiEntries, withUi } = __require(90);
-const { createUiWire } = __require(95);
-const { createUiMissing } = __require(96);
-const { barPress, FOLD_DRAG, gripEnd, readFold, writeFold } = __require(97);
+const { installTooltips } = __require(81);
+const { createShortcutSheet } = __require(82);
+const { createContextMenu } = __require(83);
+const { Levels, worldOf } = __require(84);
+const { checkNoteId } = __require(85);
+const { createLevelSwitch, makeRows } = __require(86);
+const { contextRows } = __require(87);
+const { bigChanges, createSafeSave } = __require(88);
+const { createUnsavedGuard, lostBy, playAsks } = __require(89);
+const { createLayerSwitch } = __require(90);
+const { uiAsPlacement, uiEntries, withUi } = __require(91);
+const { createUiWire } = __require(96);
+const { createUiMissing } = __require(97);
+const { barPress, FOLD_DRAG, gripEnd, readFold, writeFold } = __require(98);
+const { createClip } = __require(100);
+const { normalizeClipPrefs } = __require(57);
 
                                                                         
 
@@ -35748,6 +36686,45 @@ function start(host            ) {
   // and goes (✦ on a phone, hidden while paused; Save, shown after a move) sits LEFT of it, so the bar, aligned right,
   // never slides ❚❚ out from under the finger that pressed it.
   const topActions = h('div', { class: 'top-actions', dataset: { part: 'top-actions' } }, playAskBtn, topSave, playPauseBtn, playSplit);
+  // The saved line floats at the game's foot (the stage), not in the dock: the dock is put away while playing, and a
+  // clip is made while playing.
+  // ● Clip ⌄ (stage 1, decided 2026-11-05; clip.ts; `clipper`, as `clip` is the ⌘C copy list): left of the ▶ Play group, right of Undo / Redo — the plan's "between
+  // ↶ ↷ and the AI". One press records the game's next seconds as an MP4 (Movies › KUMODeck, a download in the web demo).
+  // PC only in stage 1 (shell.css hides it in the phone layout; a phone's Share… is stage 2).
+  const clipper = createClip({
+    t: (k, v) => t(k, v),
+    host,
+    post: (m) => postGame(m),
+    playing: () => playing,
+    paused: () => playPaused,
+    play: () => clipPlay(),
+    resume: () => postGame({ type: 'studio:play/pause', on: false }),
+    game: () => gameName,
+    prefs: () => uiPrefs.clip ?? normalizeClipPrefs(undefined),
+    setPrefs: (p) => changeUi({ ...uiPrefs, clip: p }),
+    menu: (at, rows) => {
+      const r = at.getBoundingClientRect();
+      ctxMenu.show(rows, r.right, r.bottom + 4, { place: 'clip', label: t('clip.more') });
+      const mm = ctxMenu.el.getBoundingClientRect();
+      ctxMenu.el.style.left = `${Math.max(8, Math.round(r.right - mm.width))}px`;
+    },
+    toast: (text, ms) => showToast(text, ms),
+    changed: (st) => {
+      if (st === 'idle') delete app.dataset.clip;
+      else app.dataset.clip = st;
+    },
+  });
+  /** ● Clip pressed in Edit: ▶ Play (its own choice window and all), then the game page's hello says it is playing. */
+  const clipWaiters                               = [];
+  async function clipPlay()                   {
+    await togglePlay();
+    if (!playing) return false;
+    if (playAskOn) return true;
+    return new Promise         ((resolve) => {
+      const timer = window.setTimeout(() => resolve(false), 15000);
+      clipWaiters.push((ok) => (window.clearTimeout(timer), resolve(ok)));
+    });
+  }
   /** ▶ Play ⌄'s menu — or, on a phone, the same rows under the list's "⚑ Checkpoints · N" (`at`; pause walk 2 ✕1). */
   function openPlayMenu(at              = playMoreBtn) {
     const r = at.getBoundingClientRect();
@@ -35805,7 +36782,7 @@ function start(host            ) {
   };
   const largeBtn = btn('open-large', () => void openLarge(), { class: 'icon-btn large-btn' });
   // The web demo has no AI to show the state of (W1-6): no "● AI" at all.
-  const header = h('header', { class: 'top', dataset: { part: 'header' } }, brand, toolsRow, h('div', { class: 'top-right' }, footer, largeBtn, topActions));
+  const header = h('header', { class: 'top', dataset: { part: 'header' } }, brand, toolsRow, h('div', { class: 'top-right' }, footer, clipper.el, largeBtn, topActions));
   // World | UI (UI stage 1, layer-switch.ts): the top bar's middle on PC, over the game on a phone (renderAll).
   const layerSwitch = createLayerSwitch((l) => setEditLayer(l), () => setUiPeek(!uiPeek));
   layerSwitch.el.hidden = true;
@@ -36103,7 +37080,7 @@ function start(host            ) {
   // Checkpoints (stage 3; checkpoints.ts): the line when one did not open, at the top of the game; the field under ⚑.
   const cpNote = createCheckpointNote({ t, aiVars: () => aiVars() });
   const cpPop = createCheckpointPop({ t, aiVars: () => aiVars(), changed: (on) => (app.dataset.checkpoint = on ? 'open' : 'closed') });
-  const stage = h('div', { class: 'stage', dataset: { part: 'stage' } }, iframe, scrim, assetsPage, inspector, dock, levelNote, momentBar.tip, momentBar.stepTip, momentBar.note, cpNote.el, momentUnfoldBtn);
+  const stage = h('div', { class: 'stage', dataset: { part: 'stage' } }, iframe, scrim, assetsPage, inspector, dock, levelNote, momentBar.tip, momentBar.stepTip, momentBar.note, cpNote.el, momentUnfoldBtn, clipper.bar, clipper.line);
   const app = h('div', { class: 'shell', dataset: { part: 'app' } }, header, side, stage);
   document.getElementById('app') .replaceWith(app);
   panel.append(toolEl);
@@ -37242,6 +38219,8 @@ function start(host            ) {
       if (lineRecallable()) act('ai-recall', t('ai.recall'), 'spark', () => recallLine(), undefined, t('pal.aiUndo.words'));
     }
     if (undo.canRedo) act('redo', t('btn.redo'), 'redo', doRedo, keyOf('redo', mac), `${describe(undo.peekRedo())} redo やり直す`);
+    // ● Clip (stage 1, 2026-11-05): listed here because it has no key (the keys while playing are the game's). PC only.
+    if (!phone()) act('clip', clipper.state === 'rec' ? t('clip.stopTip') : t('clip.palette'), 'play', () => clipper.press(), undefined, 'clip video record movie mp4 share x 録画 動画 クリップ');
     if (keys.length) act('deselect', t('ops.selectNone'), 'close', () => selectObject(null), keyOf('deselect', mac), 'deselect unselect none 選択解除');
     if (keys.length && editing && libraryShown() && targets().length) act('add-to-scene', t('lib.addToScene'), 'copy', () => addToScene(), undefined, 'add scene place 足す 置く');
     // The strip's tools (with something picked): the chosen one is marked with a check, its key on the right.
@@ -39591,6 +40570,7 @@ function start(host            ) {
   };
 
   function onBridge(m               ) {
+    if (clipper.onMessage(m)) return;
     if (timeline.onMessage(m)) return;
     if (m.type === 'studio:placement/at-is') return motionDrag.answer(m.id, m.key);
     if (m.type === 'studio:moment/mark-is') {
@@ -39723,6 +40703,7 @@ function start(host            ) {
         }
         if (playing) {
           playAskOn = true;
+          for (const w of clipWaiters.splice(0)) w(true);
           playMark = !phone();
           postGame(playOn());
           sendPlayLine(true);
@@ -42269,7 +43250,7 @@ function start(host            ) {
 
 __def(__exports, "start", () => start);
 };
-__defs[99] = function (__exports) {
+__defs[102] = function (__exports) {
 'use strict';
 // host-local.ts
 
@@ -42354,6 +43335,13 @@ function createLocalHost(base         = LOCAL_PATHS.api)             {
   return {
     kumo: createKumoHost(base),
     checkpoints: createCheckpointHost(call),
+    // ● Clip (stage 1, 2026-11-05; src/server/clips.mjs): the MP4 goes to Movies › KUMODeck through the server.
+    clips: {
+      save: (file, to) => call                                                                           ('POST',
+        'replace' in to ? `clips?replace=${encodeURIComponent(to.replace)}` : `clips?stem=${encodeURIComponent(to.stem)}`, file, 'application/octet-stream')
+        .then((r) => ({ ok: true         , name: r.name, where: r.where, reveal: r.reveal }), (e) => ({ ok: false         , error: (e         ).message })),
+      reveal: (name) => call('POST', 'clips/reveal', JSON.stringify({ name }), 'application/json').then(() => ({ ok: true }), (e) => ({ ok: false, error: (e         ).message })),
+    },
     // pause-ask stage 3: a paused ask's moment (src/server/ask-moments.mjs), for ▶ Try from 0:05.02.
     askMoment: (id        ) => call                             ('GET', `asks/${encodeURIComponent(id)}`).then((r) => r.value ?? null, () => null),
     async open() {
@@ -42487,19 +43475,19 @@ function createLocalHost(base         = LOCAL_PATHS.api)             {
 
 __def(__exports, "createLocalHost", () => createLocalHost);
 };
-__defs[100] = function (__exports) {
+__defs[103] = function (__exports) {
 'use strict';
 // local.ts
 
 // Entry of studio-shell.js: the shell page served by the local server
 // (skills/arrange/bin/studio.mjs), talking to it through createLocalHost().
 // The browser-only web demo has its own entry (src/hosts/browser/main.ts).
-const { start } = __require(98);
-const { createLocalHost } = __require(99);
+const { start } = __require(101);
+const { createLocalHost } = __require(102);
 
 start(createLocalHost());
 
 
 };
-__require(100);
+__require(103);
 })();

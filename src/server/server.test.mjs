@@ -768,3 +768,48 @@ test('a port already in use: the editor opens on a free one and says so in one l
   assert.ok(line, `no line about the busy port: ${lines.join(' | ')}`);
   assert.match(line, new RegExp(`opened on port ${srv.port} instead`));
 });
+
+test('● Clip: an MP4 saved under a free name in the videos folder (never the game folder), the same clip swapped, Show in Finder', async (t) => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'game-studio-clips-'));
+  const runs = [];
+  const s = await start({ clips: { dir, where: 'movies', reveal: 'finder', run: (cmd, args) => runs.push([cmd, ...args]) } });
+  t.after(async () => (await s.srv.close(), await fs.rm(dir, { recursive: true, force: true })));
+  // The first bytes of any MP4: a box "ftyp".
+  const mp4 = Buffer.concat([Buffer.from([0, 0, 0, 16]), Buffer.from('ftypisom'), Buffer.alloc(4), Buffer.alloc(100, 9)]);
+  const post = (q, body, headers) => s.req('POST', `/__studio/api/clips${q}`, { body, headers: { 'content-type': 'application/octet-stream', ...headers } });
+  const a = await post('?stem=neon-run-clip', mp4);
+  assert.equal(a.status, 201, a.text);
+  assert.deepEqual(JSON.parse(a.text), { ok: true, name: 'neon-run-clip-1.mp4', where: 'movies', reveal: 'finder' });
+  const b = await post('?stem=neon-run-clip', mp4);
+  assert.equal(JSON.parse(b.text).name, 'neon-run-clip-2.mp4');
+  assert.deepEqual((await fs.readdir(dir)).sort(), ['neon-run-clip-1.mp4', 'neon-run-clip-2.mp4']);
+  // Nothing in the game folder.
+  assert.deepEqual((await fs.readdir(s.root)).filter((f) => f.endsWith('.mp4')), []);
+  // The same clip with its end swapped: written over, only a clip that is there.
+  const swapped = Buffer.concat([mp4, Buffer.alloc(10, 1)]);
+  assert.equal((await post('?replace=neon-run-clip-1.mp4', swapped)).status, 201);
+  assert.equal((await fs.readFile(path.join(dir, 'neon-run-clip-1.mp4'))).length, swapped.length);
+  assert.equal((await post('?replace=nope-9.mp4', mp4)).status, 404);
+  assert.equal((await post('?replace=..%2Fsecret.mp4', mp4)).status, 400);
+  // Not an MP4, a name that is not a stem, another origin: refused.
+  assert.equal((await post('?stem=x', Buffer.from('hello world, not a video'))).status, 415);
+  assert.equal((await post('?stem=..%2F..%2Fx', mp4)).status, 400);
+  assert.equal((await post('?stem=x', mp4, { origin: 'http://evil.example' })).status, 403);
+  // Show in Finder: the system's command with the clip, for a clip in the folder only.
+  const r = await s.req('POST', '/__studio/api/clips/reveal', { body: JSON.stringify({ name: 'neon-run-clip-2.mp4' }) });
+  assert.equal(r.status, 200, r.text);
+  assert.equal(runs.length, 1);
+  assert.ok(runs[0].some((x) => x.includes('neon-run-clip-2.mp4') || x === dir), runs[0].join(' '));
+  assert.equal((await s.req('POST', '/__studio/api/clips/reveal', { body: JSON.stringify({ name: '../x.mp4' }) })).status, 400);
+  assert.equal((await s.req('POST', '/__studio/api/clips/reveal', { body: JSON.stringify({ name: 'gone-1.mp4' }) })).status, 404);
+  assert.equal(runs.length, 1);
+  // No stdout line: nothing for the AI to do.
+  assert.ok(!s.lines.some((l) => /clip/i.test(l)), s.lines.join(' | '));
+});
+
+test('● Clip: the videos folder per system', async () => {
+  const { clipPlace } = await import('./clips.mjs');
+  assert.deepEqual(clipPlace('darwin', path.join('x', 'home')), { dir: path.join('x', 'home', 'Movies', 'KUMODeck'), where: 'movies', reveal: 'finder' });
+  assert.equal(clipPlace('linux', path.join('x', 'home')).dir, path.join('x', 'home', 'Videos', 'KUMODeck'));
+  assert.equal(clipPlace('win32', path.join('x', 'home')).where, 'videos');
+});

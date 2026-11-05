@@ -34,6 +34,7 @@ import {
 } from './files.mjs';
 import { addChatTurn, chatIdOf } from './play-chat.mjs';
 import { ASK_MOMENT_MAX_FILE, getAskMoment, keepAskMoment } from './ask-moments.mjs';
+import { clipPlace, revealClip, saveClip } from './clips.mjs';
 import { addCheckpoint, deleteCheckpoint, getCheckpoint, listCheckpoints, renameCheckpoint, CHECKPOINT_MAX_FILE } from './checkpoints.mjs';
 import { normalizeRequestInput, normalizeStatus, requestId, isRequestId, KUMODECK_STEP_IDS, FILE_STEP_IDS, HANDOFF_LIMITS } from '../schema/handoff.mjs';
 import { listAssets } from './assets.mjs';
@@ -64,6 +65,7 @@ const GAME_TOOLS_URL = '/__studio/game-tools.js';
  * @param {(line: string) => void} [o.log]  one line per event, for the agent (default: stdout)
  * @param {object} [o.kumo]    tests only: { home, env, fetch } for the optional KUMODeck sign-in (kumo.mjs)
  * @param {object} [o.env]     tests only: the environment read for which AI started the editor (which-ai.mjs; default process.env)
+ * @param {object} [o.clips]   tests only: { dir, where, reveal, run } — where ● Clip saves (clips.mjs; default Movies › KUMODeck) and the "Show in Finder" command
  * @returns {Promise<{ url: string, origin: string, port: number, close: () => Promise<void> }>}
  */
 export async function startStudioServer(o) {
@@ -116,6 +118,8 @@ export async function startStudioServer(o) {
   ctx.kumo = createKumo({ rootReal, log, ...(o.kumo || {}) });
   // The AI's hands in the editor (hands-relay.mjs): `--do` reaches the open editor page through here.
   ctx.hands = createHandsRelay();
+  // ● Clip (stage 1, 2026-11-05; clips.mjs): the person's videos folder, never the game folder.
+  ctx.clips = { ...clipPlace(), ...(o.clips || {}) };
 
   server.on('request', (req, res) => {
     handle(req, res).catch((e) => {
@@ -271,6 +275,25 @@ async function handleApi(req, res, u, ctx) {
     const p = await addAsset(ctx.rootReal, u.searchParams.get('name') || '', req, len);
     ctx.log(`studio: added ${p}`);
     return sendJson(res, 201, { path: p });
+  }
+
+  // ● Clip (stage 1, 2026-11-05; clips.mjs): the MP4 the editor page made, saved in Movies › KUMODeck (a free name, or
+  // `replace` = the same clip with its end swapped). No stdout line: nothing for the AI to do. Writes are checked by
+  // Origin like every other (handleApi's guard), so a game page of another origin cannot fill the folder.
+  if (route === 'clips' && m === 'POST') {
+    const len = req.headers['content-length'] !== undefined ? Number(req.headers['content-length']) : undefined;
+    const replace = u.searchParams.get('replace') ?? undefined;
+    const r = await saveClip(ctx.clips, { stem: u.searchParams.get('stem') || '', replace }, req, len);
+    return sendJson(res, 201, { ok: true, ...r });
+  }
+  if (route === 'clips/reveal' && m === 'POST') {
+    let name;
+    try {
+      ({ name } = JSON.parse((await readBody(req, 4096)).toString('utf8')));
+    } catch {
+      throw httpError(400, 'body must be JSON like {"name":"neon-run-clip-1.mp4"}');
+    }
+    return sendJson(res, 200, await revealClip(ctx.clips, name, ctx.clips.run));
   }
 
   if (route === 'next-step' && m === 'POST') {

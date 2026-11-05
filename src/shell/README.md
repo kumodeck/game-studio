@@ -279,3 +279,10 @@ picture for `shotMarked`) and `moment-gets.ts` (stage 2: "Claude gets this with 
 field's picture) and `moment-try.ts` (stage 3: after the AI's fix — the reply's ▶ Try from 0:05.02 · Before / After · ↶ Undo
 rules and the Before / After panel; the ask's moment is kept by the host, `back`). `test/moment-ask.test.ts`,
 `test/moment-marks.test.ts`, `test/moment-try.test.ts`.
+
+● Clip (stage 1, decided 2026-11-05; CONTRACT.md §3.5.4): `clip.ts` — the top bar's "● Clip ⌄" (right of Undo / Redo,
+PC only; ⌘K lists it, no key: the keys while playing are the game's), the recording's red button, frame and time bar,
+and the line once saved (where it went, Show in Finder, Remove mark, ✕ / the post, its X count, Copy post), a glass card
+at the game's foot (the dock is put away while playing); `clip-model.ts` — the pure rules (lengths, frames, the early stop, file names, the post, X's count, the
+mark's default `CLIP_MARK_DEFAULT` in one line); `mp4.ts` — the MP4 box written by hand (no dependency). The recording is
+the game page's (`bridge/play-clip.ts`). `test/clip-model.test.ts`, `test/studio-clip.browser.mjs`.

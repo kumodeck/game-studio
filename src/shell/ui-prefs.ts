@@ -9,6 +9,7 @@
 // The file is hand-editable, so everything read from it goes through
 // normalizeUi(): unknown fields are dropped and numbers clamped, and a broken
 // file falls back to the defaults (which are the original look).
+import { normalizeClipPrefs } from './clip-model.ts';
 import type { UiPrefs } from '../contract.ts';
 
 export const DEFAULT_UI: UiPrefs = {
@@ -67,6 +68,8 @@ export function normalizeUi(raw: unknown): UiPrefs {
     const seen = [...new Set(r.seen.filter((x): x is string => typeof x === 'string' && /^[a-z0-9-]{1,40}$/.test(x)))].slice(0, 20);
     if (seen.length) out.seen = seen;
   }
+  // ● Clip ⌄ (2026-11-05): kept only once chosen; read leniently (clip-model.ts).
+  if (r.clip && typeof r.clip === 'object') out.clip = normalizeClipPrefs(r.clip);
   // `intro` (the first-run tips' step, removed 2026-10-17) is dropped here: an
   // older prefs.json that still has it loads fine and loses it on the next save.
   return out;

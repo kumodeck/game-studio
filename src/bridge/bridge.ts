@@ -26,6 +26,7 @@ import { findUi as findUiNow, markHudCanvases, type Rect } from './ui-found.ts';
 import { runSelfCheck } from './selfcheck.ts';
 import { createEditor, type Editor } from './editor.ts';
 import { startPlayAsk, type PlayAskHandle } from './play-ask.ts';
+import { startPlayClip, watchCanvasKinds } from './play-clip.ts';
 import { startMomentValues } from './moment-values.ts';
 import { fromCheckpoint, startCheckpointHold, startMomentSave, type CheckpointHold } from './moment-load.ts';
 import { createPlaySwitch, type PlaySwitch } from './play-switch.ts';
@@ -336,6 +337,10 @@ export function startBridge(opts: BridgeOptions): void {
     playAsk = startPlayAsk({ win, parentOrigin, probes: () => [...gameProbes, ...opts.builtins], standby: edit,
       ...(checkpoint ? { busy: () => checkpoint.holding } : {}),
       ...(playClock ? { pause: { time: core.time, clock: playClock }, move: { core, rules, arranged } } : {}) });
+    // ● Clip (stage 1, 2026-11-05; play-clip.ts): the recording is made here, in the game page (the editor page cannot read
+    // another origin's frame). The WebGPU watch goes in now, before the game's code makes its canvases.
+    watchCanvasKinds(win);
+    startPlayClip({ win, parentOrigin, skip: (e) => e.tagName.startsWith('GAME-STUDIO') || e.hasAttribute('data-studio-ui') });
     // This moment's values (pause-edit stage 2, 2026-10-28; moment-values.ts): the game's codeMoment() read and changed
     // for the editor page — in an edit page and a page opened for Play alike (the moment's editor may be either).
     startMomentValues({ win, parentOrigin, paused: () => !!playAsk?.paused, draw: () => {

@@ -56,11 +56,10 @@ const onScreen = (r: DOMRect, vw: number, vh: number) => r.width >= 1 && r.heigh
  * the page's colour).
  */
 export function shootPage(win: Win, skip: (el: Element) => boolean, area?: { x: number; y: number; w: number; h: number }): string | null {
-  const doc = win.document;
   const vw = win.innerWidth, vh = win.innerHeight;
   if (!vw || !vh) return null;
   const k = area ? 1 : Math.min(1, SHOT_W / vw);
-  const out = doc.createElement('canvas');
+  const out = win.document.createElement('canvas');
   out.width = Math.round((area ? area.w : vw) * k);
   out.height = Math.round((area ? area.h : vh) * k);
   const g = out.getContext('2d');
@@ -68,6 +67,36 @@ export function shootPage(win: Win, skip: (el: Element) => boolean, area?: { x: 
   g.scale(k, k);
   // The part of the page drawn: everything below is drawn in page CSS px, moved so the area's corner is the picture's.
   if (area) g.translate(-area.x, -area.y);
+  if (!paintPage(win, g, skip, { area })) return null;
+  try {
+    return out.toDataURL('image/jpeg', 0.82);
+  } catch {
+    return null;
+  }
+}
+
+export interface PaintOptions {
+  /** Only this part of the page (CSS px): the page's colour is filled over it alone. */
+  area?: { x: number; y: number; w: number; h: number };
+  /**
+   * ● Clip (stage 1, 2026-11-05; play-clip.ts): a canvas of the page, reached in painting order, is NOT drawn — it is
+   * handed here, and what comes after it is painted on the context this returns. So the HTML UI is painted once into
+   * layers (under the first canvas, between canvases, over the last) and each video frame is those layers with the
+   * canvases' live pictures between them: the page's painting order, without painting the whole page 30 times a second.
+   * Absent = the canvases are drawn where they are (shootPage).
+   */
+  canvas?: (el: HTMLCanvasElement, r: DOMRect, alpha: number) => CanvasRenderingContext2D;
+}
+
+/**
+ * Paints the page on `g` in page CSS px (the caller scales and moves `g` first): the page's colour, then every box,
+ * text, image and canvas in the page's painting order. Returns how many things were drawn (0 = an empty page).
+ */
+export function paintPage(win: Win, g0: CanvasRenderingContext2D, skip: (el: Element) => boolean, o: PaintOptions = {}): number {
+  const doc = win.document;
+  const vw = win.innerWidth, vh = win.innerHeight;
+  const area = o.area;
+  let g = g0;
   // The page's own colour under everything (CSS gives the body's to the whole page when the root has none).
   const rootBg = [doc.documentElement, doc.body].map((e) => (e ? win.getComputedStyle(e).backgroundColor : '')).find((c) => !isTransparent(c));
   g.fillStyle = rootBg || '#000';
@@ -161,6 +190,12 @@ export function shootPage(win: Win, skip: (el: Element) => boolean, area?: { x: 
     const visible = cs.visibility === 'visible' && onScreen(r, vw, vh);
     if (visible && el !== doc.documentElement && el !== doc.body) box(el, cs, r, a);
     if (visible && tag === 'CANVAS') {
+      if (o.canvas) {
+        g.globalAlpha = 1;
+        g = o.canvas(el as HTMLCanvasElement, r, a);
+        drawn++;
+        return;
+      }
       try {
         g.globalAlpha = a;
         g.drawImage(el as HTMLCanvasElement, r.left, r.top, r.width, r.height);
@@ -201,10 +236,5 @@ export function shootPage(win: Win, skip: (el: Element) => boolean, area?: { x: 
     paint(next.el, next.alpha, next.z, true);
   }
   g.globalAlpha = 1;
-  if (!drawn) return null;
-  try {
-    return out.toDataURL('image/jpeg', 0.82);
-  } catch {
-    return null;
-  }
+  return drawn;
 }

@@ -2886,6 +2886,110 @@ async function getAskMoment(rootReal, id) {
   return text === null ? null : readAskMoment(text);
 }
 
+// ---- src/server/clips.mjs ----
+// ● Clip, stage 1 (decided 2026-11-05): where the editor's clips are saved, and "Show in Finder".
+//
+// WHY Movies › KUMODeck (Windows: Videos › KUMODeck, Linux: ~/Videos/KUMODeck) and not the game folder or .studio/:
+// - .studio/ starts with a dot: hidden, so X's file picker (and the Finder) does not show it;
+// - the game folder is the person's code: a few MB of video per press would end up in their git history.
+// The folder is made on the first clip. Never overwrites: "<stem>-1.mp4", "-2"… The one exception is the clip the
+// person just made, saved again with its end swapped ("Remove mark" / "Add mark" in the editor's line): `replace`.
+// Nothing here talks to the network; the file goes from the editor page to this folder and stays there.
+
+
+
+
+
+
+/** The largest clip taken (bytes): 12 s at 4 Mbit/s is ~6 MB; 64 MB leaves room for a busy game at a higher rate. */
+const CLIP_MAX_BYTES = 64 * 1024 * 1024;
+/** A clip's file name as the editor makes it (shell/clip-model.ts clipStem + "-N"): a–z 0–9 "-", then .mp4. */
+const NAME_RE = /^[a-z0-9][a-z0-9-]{0,60}\.mp4$/;
+const STEM_RE = /^[a-z0-9][a-z0-9-]{0,50}$/;
+
+/** Where clips go on this system, and which of the editor's words names it ('movies' | 'videos'). */
+function clipPlace(platform = process.platform, home = os.homedir()) {
+  if (platform === 'darwin') return { dir: path.join(home, 'Movies', 'KUMODeck'), where: 'movies', reveal: 'finder' };
+  return { dir: path.join(home, 'Videos', 'KUMODeck'), where: 'videos', reveal: 'folder' };
+}
+
+async function readAll(stream, max) {
+  const parts = [];
+  let n = 0;
+  for await (const c of stream) {
+    n += c.length;
+    if (n > max) throw httpError(413, 'clip is larger than 64 MB');
+    parts.push(c);
+  }
+  return Buffer.concat(parts);
+}
+
+/** Does this look like an MP4 (an ftyp box first)? A clip is never anything else. */
+const isMp4 = (b) => b.length >= 12 && b.toString('latin1', 4, 8) === 'ftyp';
+
+/**
+ * Save a clip. `stem` = the name without the number ("neon-run-clip"): the first free "<stem>-N.mp4" is taken.
+ * `replace` = a name this editor saved before (the same clip, its end swapped): written over, only if it is there.
+ * Returns { name, where, reveal }.
+ */
+async function saveClip(place, { stem, replace }, stream, declaredLength) {
+  if (declaredLength !== undefined && declaredLength > CLIP_MAX_BYTES) throw httpError(413, 'clip is larger than 64 MB');
+  const body = await readAll(stream, CLIP_MAX_BYTES);
+  if (!isMp4(body)) throw httpError(415, 'not an MP4');
+  await fs.mkdir(place.dir, { recursive: true });
+  if (replace !== undefined) {
+    if (!NAME_RE.test(replace)) throw httpError(400, 'bad clip name');
+    const abs = path.join(place.dir, replace);
+    const st = await fs.lstat(abs).catch(() => null);
+    if (!st || !st.isFile()) throw httpError(404, 'no such clip');
+    await fs.writeFile(abs, body);
+    return { name: replace, where: place.where, reveal: place.reveal };
+  }
+  if (!STEM_RE.test(stem || '')) throw httpError(400, 'bad clip name');
+  for (let n = 1; n <= 999; n++) {
+    const name = `${stem}-${n}.mp4`;
+    let handle;
+    try {
+      handle = await fs.open(path.join(place.dir, name), FS.O_WRONLY | FS.O_CREAT | FS.O_EXCL);
+    } catch (e) {
+      if (e.code === 'EEXIST') continue;
+      throw e;
+    }
+    try {
+      await handle.write(body);
+    } finally {
+      await handle.close();
+    }
+    return { name, where: place.where, reveal: place.reveal };
+  }
+  throw httpError(409, 'too many clips with this name already');
+}
+
+/**
+ * "Show in Finder": the system's file manager with the clip selected (macOS `open -R`, Windows `explorer /select,`,
+ * elsewhere the folder with xdg-open). Only a clip that is in the folder. `run` is for tests (no window opens).
+ */
+async function revealClip(place, name, run = defaultRun) {
+  if (!NAME_RE.test(name || '')) throw httpError(400, 'bad clip name');
+  const abs = path.join(place.dir, name);
+  const st = await fs.lstat(abs).catch(() => null);
+  if (!st || !st.isFile()) throw httpError(404, 'no such clip');
+  if (process.platform === 'darwin') run('open', ['-R', abs]);
+  else if (process.platform === 'win32') run('explorer', [`/select,${abs}`]);
+  else run('xdg-open', [place.dir]);
+  return { ok: true };
+}
+
+function defaultRun(cmd, args) {
+  try {
+    const p = spawn(cmd, args, { stdio: 'ignore', detached: true });
+    p.on('error', () => {});
+    p.unref();
+  } catch {
+    /* no file manager: the line still says where the clip is */
+  }
+}
+
 // ---- src/server/assets.mjs ----
 // Asset listing for the library tool (contract 3: listAssets() -> AssetFile[]).
 //
@@ -5793,6 +5897,7 @@ function handsFileList(f) {
 
 
 
+
 const PREFIX = '/__studio/';
 const EDIT_SCRIPT_URL = '/__studio/studio-edit.js';
 const GAME_ADAPTER_URL = '/__studio/game-adapter.js';
@@ -5809,6 +5914,7 @@ const GAME_TOOLS_URL = '/__studio/game-tools.js';
  * @param {(line: string) => void} [o.log]  one line per event, for the agent (default: stdout)
  * @param {object} [o.kumo]    tests only: { home, env, fetch } for the optional KUMODeck sign-in (kumo.mjs)
  * @param {object} [o.env]     tests only: the environment read for which AI started the editor (which-ai.mjs; default process.env)
+ * @param {object} [o.clips]   tests only: { dir, where, reveal, run } — where ● Clip saves (clips.mjs; default Movies › KUMODeck) and the "Show in Finder" command
  * @returns {Promise<{ url: string, origin: string, port: number, close: () => Promise<void> }>}
  */
 async function startStudioServer(o) {
@@ -5861,6 +5967,8 @@ async function startStudioServer(o) {
   ctx.kumo = createKumo({ rootReal, log, ...(o.kumo || {}) });
   // The AI's hands in the editor (hands-relay.mjs): `--do` reaches the open editor page through here.
   ctx.hands = createHandsRelay();
+  // ● Clip (stage 1, 2026-11-05; clips.mjs): the person's videos folder, never the game folder.
+  ctx.clips = { ...clipPlace(), ...(o.clips || {}) };
 
   server.on('request', (req, res) => {
     handle(req, res).catch((e) => {
@@ -6016,6 +6124,25 @@ async function handleApi(req, res, u, ctx) {
     const p = await addAsset(ctx.rootReal, u.searchParams.get('name') || '', req, len);
     ctx.log(`studio: added ${p}`);
     return sendJson(res, 201, { path: p });
+  }
+
+  // ● Clip (stage 1, 2026-11-05; clips.mjs): the MP4 the editor page made, saved in Movies › KUMODeck (a free name, or
+  // `replace` = the same clip with its end swapped). No stdout line: nothing for the AI to do. Writes are checked by
+  // Origin like every other (handleApi's guard), so a game page of another origin cannot fill the folder.
+  if (route === 'clips' && m === 'POST') {
+    const len = req.headers['content-length'] !== undefined ? Number(req.headers['content-length']) : undefined;
+    const replace = u.searchParams.get('replace') ?? undefined;
+    const r = await saveClip(ctx.clips, { stem: u.searchParams.get('stem') || '', replace }, req, len);
+    return sendJson(res, 201, { ok: true, ...r });
+  }
+  if (route === 'clips/reveal' && m === 'POST') {
+    let name;
+    try {
+      ({ name } = JSON.parse((await readBody(req, 4096)).toString('utf8')));
+    } catch {
+      throw httpError(400, 'body must be JSON like {"name":"neon-run-clip-1.mp4"}');
+    }
+    return sendJson(res, 200, await revealClip(ctx.clips, name, ctx.clips.run));
   }
 
   if (route === 'next-step' && m === 'POST') {

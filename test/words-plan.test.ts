@@ -69,8 +69,11 @@ test('no retired word in any string a person sees (ja)', () => {
   assert.deepEqual(bad, [], 'retired words (the word list)');
 });
 
+// "Clip" came back with a new meaning (● Clip, stage 1, decided 2026-11-05): a short video of the game. It stays retired
+// for the timeline (what a motion is made of), so only the ● Clip strings (`clip.*`) may say it.
+const CLIP_WORD = /\bclips?\b/i;
 test('no retired word in any string a person sees (en)', () => {
-  const bad = shown('en').filter(([k, s]) => !TO_THE_AI.has(k) && EN_RETIRED.some((r) => r.test(s)));
+  const bad = shown('en').filter(([k, s]) => !TO_THE_AI.has(k) && EN_RETIRED.some((r) => r.test(s) && !(r.source === CLIP_WORD.source && k.startsWith('clip.'))));
   assert.deepEqual(bad, [], 'retired words (the word list)');
 });
 

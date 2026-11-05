@@ -100,6 +100,13 @@ export function createLocalHost(base: string = LOCAL_PATHS.api): StudioHost {
   return {
     kumo: createKumoHost(base),
     checkpoints: createCheckpointHost(call),
+    // ● Clip (stage 1, 2026-11-05; src/server/clips.mjs): the MP4 goes to Movies › KUMODeck through the server.
+    clips: {
+      save: (file, to) => call<{ name: string; where: 'movies' | 'videos'; reveal: 'finder' | 'folder' }>('POST',
+        'replace' in to ? `clips?replace=${encodeURIComponent(to.replace)}` : `clips?stem=${encodeURIComponent(to.stem)}`, file, 'application/octet-stream')
+        .then((r) => ({ ok: true as const, name: r.name, where: r.where, reveal: r.reveal }), (e) => ({ ok: false as const, error: (e as Error).message })),
+      reveal: (name) => call('POST', 'clips/reveal', JSON.stringify({ name }), 'application/json').then(() => ({ ok: true }), (e) => ({ ok: false, error: (e as Error).message })),
+    },
     // pause-ask stage 3: a paused ask's moment (src/server/ask-moments.mjs), for ▶ Try from 0:05.02.
     askMoment: (id: string) => call<{ value: AskMoment | null }>('GET', `asks/${encodeURIComponent(id)}`).then((r) => r.value ?? null, () => null),
     async open() {

@@ -2,7 +2,7 @@
 title: Play
 nav: Play
 order: 3
-written-for: 0.1.79
+written-for: 0.1.80
 description: Play your game in the editor, slow it down, pause it on the exact frame, edit that moment by hand or with your AI, and keep it as a checkpoint.
 ---
 
@@ -149,5 +149,29 @@ You don’t have to stop. Press <kbd>`</kbd> (the key left of 1; <kbd>Shift</kbd
 Your AI gets your words with that moment. A small line at the top says what it’s doing: **Your AI is looking**, **Fixing it**, then its reply. The game never reloads under you. When you want the fix, press **Reload** (or <kbd>`</kbd> then <kbd>Enter</kbd>). Or keep playing.
 
 If your AI asks you something, the answers show up as buttons right there. For the whole story, the line says **More in Claude** (or Codex): the full reply is in your AI’s window.
+
+## Make a clip
+
+Want to show what you made or fixed? Press **● Clip** in the top bar, right of Undo and Redo. The next 8 seconds of the game become a video you can post on X.
+
+![Recording: the button is red and says the time and Stop, and a red frame goes round the game](media/clip-recording.webp)
+
+- While it records, the button is red and says the time (**0:03 · Stop**). A red frame goes round the game: only what’s inside it is in the video. Your game’s picture and its HTML (the score, the health bar) are in it. The editor, the address and your folder names aren’t.
+- Press it again to stop early. The video ends one second later.
+- In Edit, **● Clip** starts Play first. A paused game goes on.
+- **⌄** picks the length (6, 8 or 12 seconds) and whether the last second says **Made with KUMODeck Game Studio**. It remembers what you pick.
+
+When it’s done, one line shows where it went and the post to go with it:
+
+![The line once saved: the clip’s name, length and folder with Show in Finder and Remove mark, then the post with its count and Copy post](media/clip-saved.webp)
+
+- **Clip saved · neon-run-clip-1.mp4**, in **Movies › KUMODeck** (Windows and Linux: **Videos › KUMODeck**). It’s never put in your game’s folder. **Show in Finder** opens it.
+- The post under it is ready to paste, with its length as X counts it (**102 / 280**). **Copy post** copies it. Open X, paste it, and drag the video in.
+- The last second of the video says **Made with KUMODeck Game Studio** and the address, small, in the corner, and so does the post. **Remove mark** takes both off this clip, and new clips leave them off until you turn the mark back on in **⌄**.
+- Nothing leaves your computer. The editor doesn’t post anything; you do.
+
+It’s a 1280 × 720 MP4 (H.264) at 30 frames a second, with no sound. A few things don’t record yet: a game that draws with WebGPU (**Clip needs WebGL for now**), and a game that draws images from another site (ask your AI to put them in the game’s folder). The HTML over your game is drawn the same way as the picture your AI gets: boxes, text and images, without shadows or gradients.
+
+In the web demo, the video downloads instead (**Clip downloaded**).
 
 Next: [Motion](motion.md).

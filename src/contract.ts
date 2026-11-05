@@ -895,6 +895,11 @@ export interface UiPrefs {
    * game folder like the rest, so a new port or browser does not show them again. Absent = none closed yet.
    */
   seen?: string[];
+  /**
+   * ● Clip ⌄'s choices (stage 1, 2026-11-05; shell/clip-model.ts): the length and whether the end carries the mark. Absent =
+   * never chosen: the defaults of clip-model.ts (so a change of the default reaches everyone who has not chosen).
+   */
+  clip?: { seconds: 6 | 8 | 12; mark: boolean };
 }
 
 /**
@@ -1410,7 +1415,16 @@ export type ShellToBridge =
    * The request was kept (`ok`) or not, so the field can close or say it failed. `id`: the kept request's id (the
    * chat over a paused game names its first one in the messages after it, `chat`).
    */
-  | { type: 'studio:play/sent'; ok: boolean; id?: string };
+  | { type: 'studio:play/sent'; ok: boolean; id?: string }
+  /**
+   * ● Clip (stage 1, decided 2026-11-05; bridge/play-clip.ts, shell/clip.ts): record the next `seconds` of the game as
+   * H.264 (`codec`, `bitrate`) at `fps`, `w`×`h` — the page's canvases and its HTML UI, never the editor. The mark's
+   * `lines` are drawn on its last second when `mark`, and the same last second is also encoded the other way (with ↔
+   * without) so the editor can swap the end without recording again. `id` names this clip in every answer.
+   */
+  | { type: 'studio:clip/start'; id: string; seconds: number; fps: number; w: number; h: number; codec: string; bitrate: number; mark: boolean; lines: string[] }
+  /** ● Clip pressed again: end one mark-second from now (clip-model.ts endAfterStop). */
+  | { type: 'studio:clip/stop'; id: string };
 
 /**
  * The one line over the game while playing (§3.5). `state`: looking = sent, the AI has it; fixing = it works on it;
@@ -1692,6 +1706,20 @@ export type BridgeToShell =
    * line's "⚑ Before the boss" beside Reload — open it from that checkpoint (PlayLine.from), not from the start.
    */
   | { type: 'studio:play/reload'; from?: boolean }
+  /**
+   * ● Clip (stage 1, 2026-11-05): the clip's answers, in order. `started`; `config` = the encoder's avcC (SPS / PPS; `alt`:
+   * of the second encoder, the end the other way); a `chunk` per encoded frame (AVC samples, ts / dur in µs; `alt` = of
+   * the other end); `progress` every frame (`done` / `total` in ms); `done` with the frames, the clip's length (s) and where the mark's
+   * second starts (`markAt`, µs); or
+   * `error` (why: webgpu = a WebGPU canvas, tainted = a picture from another site, no-encoder = no WebCodecs H.264,
+   * nothing = no picture on screen, failed = anything else, `msg`).
+   */
+  | { type: 'studio:clip/started'; id: string; total: number }
+  | { type: 'studio:clip/config'; id: string; avcc: ArrayBuffer; alt?: boolean }
+  | { type: 'studio:clip/chunk'; id: string; data: ArrayBuffer; key: boolean; ts: number; dur: number; alt?: boolean }
+  | { type: 'studio:clip/progress'; id: string; done: number; total: number }
+  | { type: 'studio:clip/done'; id: string; frames: number; seconds: number; markAt: number }
+  | { type: 'studio:clip/error'; id: string; why: 'webgpu' | 'tainted' | 'no-encoder' | 'nothing' | 'failed'; msg?: string }
   /**
    * This moment's values (pause-edit stage 2; §1.14), in reply to `moment/ask` and `moment/set`: `values` null = the game
    * has no codeMoment() (the moment's one line and ✦ then). `set`: the change asked for (`n` given back), done or why not.
@@ -2212,6 +2240,17 @@ export interface StudioHost {
    * (pruned, or the host kept none). ▶ Try from 0:05.02 opens it. Absent = the host keeps no asks' moments (the demo).
    */
   askMoment?(requestId: string): Promise<AskMoment | null>;
+  /**
+   * ● Clip (stage 1, 2026-11-05; src/server/clips.mjs): save a clip in the person's videos folder (Movies › KUMODeck) and
+   * show it in the system's file manager. Left out (the web demo) = the clip is a download.
+   */
+  readonly clips?: ClipHost;
+}
+
+export interface ClipHost {
+  /** `stem` = a new clip ("<stem>-N.mp4", a free N); `replace` = the clip just saved, its end swapped. */
+  save(file: Blob, to: { stem: string } | { replace: string }): Promise<{ ok: true; name: string; where: 'movies' | 'videos'; reveal: 'finder' | 'folder' } | { ok: false; error: string }>;
+  reveal(name: string): Promise<{ ok: boolean; error?: string }>;
 }
 
 /** The longest saved moment kept (JSON characters): a game's state, not its assets — 1 MB is far past any we know. */
