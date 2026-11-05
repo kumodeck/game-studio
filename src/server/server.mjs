@@ -46,7 +46,7 @@ import { createKumo } from './kumo.mjs';
 import { listGameFiles, codeSignature, snapshotGame, restoreGame } from './ai-undo.mjs';
 import { readWatch, handoffLine, wakeAlive } from './ai-watch.mjs';
 import { agentFromEnv, whichAi } from './which-ai.mjs';
-import { createHandsRelay, HANDS_WAIT_MS } from './hands-relay.mjs';
+import { createHandsRelay, HANDS_MAX_MS, HANDS_WAIT_MS } from './hands-relay.mjs';
 import { readHandsInput } from '../schema/hands.mjs';
 
 const PREFIX = '/__studio/';
@@ -596,8 +596,12 @@ async function handsFromAgent(req, res, ctx) {
   if (!r.ok) return sendJson(res, 422, { error: 'ops were not read', details: r.errors });
   if (!(await ctx.hands.ready())) return sendJson(res, 200, { editor: false });
   const by = body.by === 'claude' || body.by === 'codex' ? body.by : undefined;
-  const answer = await ctx.hands.send({ ops: r.ops, ...(by ? { by } : {}) }, HANDS_WAIT_MS);
+  const answer = await ctx.hands.send({ ops: r.ops, ...(by ? { by } : {}) }, HANDS_WAIT_MS, HANDS_MAX_MS);
   if (!answer) return sendJson(res, 504, { editor: true, error: `the editor page did not answer in ${HANDS_WAIT_MS / 1000} s` });
+  // The page had the job and kept saying "still on it" (hands-relay.mjs beats) until the most a job may take.
+  if (answer.working === true && !Array.isArray(answer.results)) {
+    return sendJson(res, 504, { editor: true, busy: true, error: `the editor page was still doing it after ${HANDS_MAX_MS / 1000} s (look at the editor: the game may be stuck)` });
+  }
   const results = Array.isArray(answer.results) ? answer.results.slice(0, r.ops.length) : [];
   // The log keeps what the AI did in the editor (studio.log), one line each, like the requests' lines.
   for (const x of results) ctx.log(`studio: hands ${x && x.ok ? 'did' : 'failed'} ${String(x && x.do).slice(0, 40)}${x && (x.said || x.error) ? ' - ' + String(x.said || x.error).slice(0, 200) : ''}`);

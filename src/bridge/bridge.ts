@@ -35,7 +35,8 @@ import { applyPlacement, placementForLevel } from '../loader/studio-placement.js
 import { pickLevel } from './levels.ts';
 import { watchEarlyTaps } from './early-press.ts';
 import type { RulesHolder } from '../core/rules.ts';
-import { nativeSetTimeout } from '../core/native.ts';
+import { nativeNow, nativeSetTimeout } from '../core/native.ts';
+import { connectStep, uiOnlyMayOpen, waitReason, LATE_LOOK_MS, LOOK_MS, type ConnectSeen } from './connect-wait.ts';
 
 export interface BridgeOptions {
   builtins: AdapterProbe[];
@@ -482,13 +483,19 @@ export function startBridge(opts: BridgeOptions): void {
     capture: async () => null,
   });
 
+  // When the page's load event came (connect-wait.ts: the wait for "not connected" counts from there, not from the
+  // first look — reading the game's files on a slow computer is not the game failing to connect).
+  let loadedAt: number | null = win.document.readyState === 'complete' ? nativeNow() : null;
+  if (loadedAt === null) win.addEventListener('load', () => (loadedAt = nativeNow()), { once: true });
+
   core.time.firstFrame().then(async () => {
     // Engines often build the scene a little after their first frame (async
     // asset loading: Phaser's preload, a glTF loader, fonts). Freezing right
     // there would show — and list — nothing. So until an adapter answers with
     // at least one object, let the game run and look again; freeze as soon as
     // there is something to edit. studio.ready() from the game skips the wait
-    // (the game knows best), and after ~8 s we stop waiting and report.
+    // (the game knows best). How long, and when "not connected" is said: connect-wait.ts (decided 2026-11-05 — it
+    // used to be a fixed ~8 s, which a slow computer did not reach with three.js drawn).
     const hasObjects = (a: StudioAdapter | null) => {
       try {
         return !!a && a.list().length > 0;
@@ -496,22 +503,55 @@ export function startBridge(opts: BridgeOptions): void {
         return false;
       }
     };
+    const t0 = nativeNow();
+    const frames0 = core.time.gameFrames;
+    // three.js on the page but no scene drawn yet (the boot script saw THREE or a renderer): it is coming, slowly.
+    const engineHere = () => {
+      const boot = g.__studioThree as { renderers?: unknown[]; scenes?: unknown[] } | undefined;
+      return !!g.__THREE__ || !!boot?.renderers?.length || !!boot?.scenes?.length;
+    };
     let adapter = findAdapter();
+    const seen = (): ConnectSeen => {
+      const now = nativeNow();
+      return { ms: now - t0, sinceLoad: loadedAt === null ? null : now - loadedAt, frames: core.time.gameFrames - frames0,
+        adapter: !!adapter, objects: hasObjects(adapter), ready: core.time.readyCalled, engine: engineHere() };
+    };
     // The wait is the world's alone (a title shown before the 3D models load must not stop it early). One
-    // exception (UI stage 1): no world adapter at all but a UI — an HTML-only game — stops after ~1 s instead of 8.
+    // exception (UI stage 1): no world adapter at all but a UI — an HTML-only game — stops after ~1 s (uiOnlyMayOpen).
     let uiOnly: StudioAdapter | null = null;
-    for (let i = 0; !hasObjects(adapter) && !core.time.readyCalled && i < 55; i++) {
-      if (!adapter && i >= 6 && (uiOnly = findUi(null))) break;
-      post({ type: 'studio:core/wait', reason: adapter ? 'no-objects' : 'no-adapter' });
+    // "Not connected" was said (the self-check went to the shell): looking goes on, slower, without posting waits.
+    let reported = false;
+    for (;;) {
+      const s = seen();
+      const step = connectStep(s);
+      if (step === 'go') break;
+      if (!adapter && uiOnlyMayOpen(s) && (uiOnly = findUi(null))) break;
+      if (step === 'stop') {
+        // Looked for LATE_MS: as before, the game stays frozen with "not connected" on the editor (the AI was told).
+        core.time.freeze();
+        if (!reported) {
+          post({ type: 'studio:core/check', result: await runSelfCheck(null, core, win) });
+          post({ type: 'studio:core/wait', reason: 'no-adapter' });
+        }
+        return;
+      }
+      if (step === 'report' && !reported) {
+        reported = true;
+        // Report "no adapter" now; a found adapter is checked by the editor right after begin(), when 3D adapters
+        // have their edit camera. The look goes on: a game that connects later still opens the editor (the shell's
+        // core/ready replaces "not connected").
+        post({ type: 'studio:core/check', result: await runSelfCheck(null, core, win) });
+        post({ type: 'studio:core/wait', reason: 'no-adapter' });
+      }
+      if (!reported) post({ type: 'studio:core/wait', reason: waitReason(s) });
       core.time.thaw();
-      await new Promise((r) => nativeSetTimeout(r, 150));
+      await new Promise((r) => nativeSetTimeout(r, reported ? LATE_LOOK_MS : LOOK_MS));
       adapter = findAdapter();
     }
     core.time.freeze();
     const ui = adapter ? findUi(adapter) : uiOnly || findUi(null);
     if (!adapter && !ui) {
-      // Report "no adapter" now; a found adapter is checked by the editor
-      // right after begin(), when 3D adapters have their edit camera.
+      // studio.ready() with nothing to edit: as before, "no adapter" at once.
       post({ type: 'studio:core/check', result: await runSelfCheck(null, core, win) });
       post({ type: 'studio:core/wait', reason: 'no-adapter' });
       return;

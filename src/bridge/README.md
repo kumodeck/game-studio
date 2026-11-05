@@ -7,6 +7,7 @@ page) and talks to the shell with `studio:*` messages. See CONTRACT.md §1–2.
 
 - `main.ts` — entry: built-in probes + startBridge
 - `bridge.ts` — global API, adapter discovery, message routing
+- `connect-wait.ts` — how long the bridge waits for something to edit before "not connected", counted from load and in game frames, and the late look after it (decided 2026-11-05: a fixed ~8 s told slow computers a three.js game was not connected)
 - `editor.ts` — edit session: messages → adapter, draw loop, key/step runs
 - `early-press.ts` — a tap in the game while the editor is still getting ready: kept, and the editor picks what was under it when it begins (first-click pass, 2026-10-20)
 - `input.ts` — gestures (select, Shift/box selection, dragging the picked object, look around, pan, pinch, wheel), the tool strip's chosen tool (a button / M H T S chooses it, then a drag anywhere uses it; Option, right drag, Space or two fingers look around) and the outlines (cached `adapter.silhouette`)

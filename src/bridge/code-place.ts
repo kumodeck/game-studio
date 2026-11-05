@@ -898,6 +898,8 @@ text.hand { fill: ${SAND_TEXT}; }
       hoverId = null;
       drag = null;
       aloneNext = null;
+      // The four choices belong to the drag that just ended: out of editing / the world they are gone (decided 2026-11-05).
+      choices = false;
       moving = null;
       drawn = '';
       if (svg.firstChild) svg.replaceChildren();

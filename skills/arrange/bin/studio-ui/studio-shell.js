@@ -1,4 +1,4 @@
-/* KUMODeck Game Studio 0.1.80 — MIT License — built file, edit src/ instead */
+/* KUMODeck Game Studio 0.1.81 — MIT License — built file, edit src/ instead */
 (() => {
 const __defs = [];
 const __cache = [];
@@ -18389,6 +18389,7 @@ const en = {
   'save.fail': 'Couldn’t save: {error}',
   'status.loading': 'Opening your game…',
   'status.waiting': 'Waiting for the game to start…',
+  'status.connecting': 'Connecting the game to Game Studio… On a slower computer this can take a little while.',
   'status.noAdapter': 'This game isn’t connected to Game Studio yet.',
   'status.noAdapterHint': 'three.js games connect on their own. For other engines, ask {ai} to “write the Game Studio adapter for this game.”',
   'status.checkFail': '{Ai} has the details.',
@@ -19746,6 +19747,7 @@ const ja                               = {
   'save.fail': '保存できませんでした: {error}',
   'status.loading': 'ゲームを開いています…',
   'status.waiting': 'ゲームの起動を待っています…',
+  'status.connecting': 'ゲームを Game Studio につないでいます… 遅めのパソコンでは少し時間がかかります。',
   'status.noAdapter': 'このゲームはまだ Game Studio につながっていません。',
   'status.noAdapterHint': 'three.js のゲームは自動でつながります。ほかのエンジンは {ai}に「このゲームの Game Studio のつなぎを書いて」と頼んでください。',
   'status.checkFail': '詳しくは {ai}に伝えてあります。',
@@ -35986,6 +35988,8 @@ const { createClip } = __require(100);
 const { normalizeClipPrefs } = __require(57);
 
                                                                         
+/** "Waiting for the game to start…" becomes "Connecting the game to Game Studio…" after this long (status.connecting). */
+const WAIT_SLOW_MS = 3000;
 
 const VIEW_KEY = 'game-studio:view';
 const store = {
@@ -36028,6 +36032,10 @@ function start(host            ) {
   let gameUrl = '';
   let gameOrigin = location.origin;
   let bridgeAlive = false;
+  // When the game page said hello (studio:core/hello): "Waiting…" turns into "Connecting…" after WAIT_SLOW_MS
+  // (decided 2026-11-05) — on a slow computer the bridge now waits as long as the game needs (bridge/connect-wait.ts),
+  // and a still line for 10 s or more read as stuck.
+  let helloAt = 0;
   let editing = false;
   let dim      = '3d';
   // UI stage 1 (2026-10-19): the game's layers when it has a UI (core/ready `layers`; null = no UI — the editor is
@@ -40593,6 +40601,9 @@ function start(host            ) {
       case 'studio:core/hello':
         bridgeAlive = true;
         if (phase === 'loading') phase = 'waiting';
+        helloAt = Date.now();
+        // Before the game's first frame the bridge posts nothing: the line changes on its own after WAIT_SLOW_MS.
+        setTimeout(renderStatus, WAIT_SLOW_MS + 50);
         renderStatus();
         break;
       case 'studio:core/wait':
@@ -42483,7 +42494,7 @@ function start(host            ) {
         h('span', { text: ' ' + t('status.gameErrorHint') + ' ' }),
         h('button', { type: 'button', class: 'link', dataset: { action: 'reload-game' }, text: t('btn.reloadGame'), onclick: () => void confirmLoss('reload').then((go) => go && loadGame()) }));
     } else if (phase === 'loading') line('info', t('status.loading'));
-    else if (phase === 'waiting') line('info', t('status.waiting'));
+    else if (phase === 'waiting') line('info', t(Date.now() - helloAt >= WAIT_SLOW_MS ? 'status.connecting' : 'status.waiting'));
     else if (phase === 'ready' && !itemsSeen) line('info', t('status.items'));
     else if (phase === 'no-adapter') line('warn', h('strong', { text: t('status.noAdapter') }), h('span', { text: ' ' + t('status.noAdapterHint') }));
     else if (check && !check.ok) {
@@ -43263,6 +43274,9 @@ __defs[102] = function (__exports) {
 const { LOCAL_PATHS } = __require(0);
 
 const TYPES              = ['image', 'model', 'sound', 'atlas', 'font', 'other'];
+/** The AI's hands: "still on it" this often while a job runs. The same number as src/server/hands-relay.mjs HANDS_BEAT_MS
+ *  (that file is the server's, with node:crypto, so not imported here; src/server/server.test.mjs keeps the two equal). */
+const HANDS_BEAT_MS = 5000;
 
 /**
  * The optional KUMODeck sign-in (src/server/kumo.mjs). A refusal (422 { error, code }) comes back
@@ -43425,7 +43439,13 @@ function createLocalHost(base         = LOCAL_PATHS.api)             {
           return;
         }
         if (!job || typeof job.id !== 'string') return;
-        void onJob(job).then(
+        // "Still on it" (hands-relay.mjs beats, decided 2026-11-05): at once (the page has the job — also while it waits
+        // its turn behind another) and every HANDS_BEAT_MS until the answer, so a CLI on a slow computer waits for a job
+        // that takes longer than 20 s (the game read again, a page still opening) instead of saying "did not answer".
+        const beat = () => void call('POST', `hands/${encodeURIComponent(job.id)}`, JSON.stringify({ working: true }), 'application/json').catch(() => undefined);
+        beat();
+        const beats = setInterval(beat, HANDS_BEAT_MS);
+        void onJob(job).finally(() => clearInterval(beats)).then(
           (r) => call('POST', `hands/${encodeURIComponent(job.id)}`, JSON.stringify(r), 'application/json'),
           (e) => call('POST', `hands/${encodeURIComponent(job.id)}`, JSON.stringify({ results: [{ do: '?', ok: false, error: String((e         )?.message || e) }] }), 'application/json'),
         ).catch(() => undefined);
@@ -43473,6 +43493,7 @@ function createLocalHost(base         = LOCAL_PATHS.api)             {
   };
 }
 
+__def(__exports, "HANDS_BEAT_MS", () => HANDS_BEAT_MS);
 __def(__exports, "createLocalHost", () => createLocalHost);
 };
 __defs[103] = function (__exports) {

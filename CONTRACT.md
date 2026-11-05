@@ -231,11 +231,19 @@ three.js boot script) never stop the editor.
 
 Freezing: after the first frame the bridge looks for an adapter with at least
 one object; until there is one it lets the game run (async loading) and looks
-again, for up to ~8 s. `studio.ready()` skips the wait.
+again. `studio.ready()` skips the wait. "Not connected" (the self-check with no
+adapter) is said once the page has loaded and the game has run a while with
+nothing to edit — ~8 s after load and at least 40 game frames (a slow computer
+drawing a few frames a second is waited for), or at 30 s whatever happens. While
+three.js is on the page but has drawn no scene yet, only the 30 s applies. After
+that the bridge keeps looking, slower, up to 120 s in all: a game that connects
+late still opens the editor. The shell says "Connecting…" from 3 s on
+(`src/bridge/connect-wait.ts`, decided 2026-11-05: a fixed ~8 s told slow
+computers a three.js game was not connected).
 
 The wait is the world's alone: a title shown before the 3D models load does not
 stop it early. A game with no world adapter but a UI (HTML only) stops after
-~1 s. Holding `requestAnimationFrame` does not stop CSS animations (a blinking
+~1 s, once the page has loaded and when no 3D engine is on it. Holding `requestAnimationFrame` does not stop CSS animations (a blinking
 "Press start"): the UI adapter pauses the running `document.getAnimations()`
 while editing and plays them again at the end (`Port2D.pause` / `resume`).
 The built-in three.js adapter hides the game's own DOM next to its canvas while
@@ -1171,9 +1179,9 @@ except `.studio/adapter.js` through its own route).
 |---|---|---|
 | `GET /__studio/` | — | Shell page (built UI in `skills/arrange/bin/studio-ui/`) |
 | `POST /__studio/stop` | — (header `x-studio-stop: <secret from .studio/server.json>`, no cookie) | `{ok:true}`, then the editor stops. Used by `studio.mjs <folder> --stop`; a wrong or missing secret is 403 |
-| `POST /__studio/hands` | `{ ops, by? }` (header `x-studio-agent: <the same secret>`, no cookie) | The AI's `--do` (§3.6): `{ editor: false }` when no page is open; else the newest page does the ops and its answer comes back, `{ editor: true, results }`; 504 when the page did not answer in 20 s; 422 with `details` when the ops do not read |
+| `POST /__studio/hands` | `{ ops, by? }` (header `x-studio-agent: <the same secret>`, no cookie) | The AI's `--do` (§3.6): `{ editor: false }` when no page is open; else the newest page does the ops and its answer comes back, `{ editor: true, results }`; 504 when the page said nothing for 20 s, or was still on it at 120 s (`busy: true`); 422 with `details` when the ops do not read |
 | `GET /__studio/api/hands` | — | The editor page's event stream (`text/event-stream`): one `job` event `{ id, ops, by? }` per `--do` (§3.6) |
-| `POST /__studio/api/hands/:id` | `{ results }` | The page's answer to job `id`; 410 when no `--do` waits for it any more |
+| `POST /__studio/api/hands/:id` | `{ results }` or `{ working: true }` | The page's answer to job `id`, or "still on it" (sent at once and every 5 s while the job runs: each gives the CLI 20 s more, up to 120 s in all); 410 when no `--do` waits for it any more |
 | `GET /__studio/studio-edit.js` | — | Edit script |
 | `GET /__studio/game-adapter.js` | — | `<game>/.studio/adapter.js` (plain file only), or an empty script |
 | `GET /__studio/api/open` | — | `{ gameUrl, origin, lanUrl }`; the shell adds `?studio=edit` |
@@ -1717,7 +1725,7 @@ game's code (not on the timeline, fighting the editor's motion, "press Reload").
   (`src/schema/hands.mjs` applyHandsToFile), checks the result with the file's validator, and writes it (nothing when
   it would not be valid). What only the game knows is refused with the reason (Drop to floor, a blank New level,
   switching the level, `by` amounts for an object the file has no pose for).
-- **A page open that does not answer** in 20 s: nothing is written (the page may still do it); the CLI says so (exit 1).
+- **A page open that does not answer** in 20 s: nothing is written (the page may still do it); the CLI says so (exit 1). A page that has the job says "still on it" every 5 s, so a slow job (the game read again on a slow computer) is waited for, up to 120 s; past that the CLI says to run `--do list` before sending it again.
 
 stdout, one line per op: `studio: did <what it did> - in the editor (on screen now; ⌘Z there undoes it)` or
 `- in placement.json (…)`; `studio: do failed <op> - <why>` (the other ops are still done); `studio: list {…}` for

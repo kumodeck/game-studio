@@ -11,6 +11,7 @@ import { fileURLToPath } from 'node:url';
 import { startStudioServer } from './server.mjs';
 import { isLoaderCopy, mayBeLoaderCopy } from './loader-copy.mjs';
 import { injectEditScript, safeAssetName } from './files.mjs';
+import { createHandsRelay } from './hands-relay.mjs';
 
 const PKG = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 
@@ -812,4 +813,71 @@ test('● Clip: the videos folder per system', async () => {
   assert.deepEqual(clipPlace('darwin', path.join('x', 'home')), { dir: path.join('x', 'home', 'Movies', 'KUMODeck'), where: 'movies', reveal: 'finder' });
   assert.equal(clipPlace('linux', path.join('x', 'home')).dir, path.join('x', 'home', 'Videos', 'KUMODeck'));
   assert.equal(clipPlace('win32', path.join('x', 'home')).where, 'videos');
+});
+
+// The AI's hands relay (hands-relay.mjs; decided 2026-11-05): a page that has the job says "still on it", and each beat
+// gives it the quiet wait again, up to the job's most — before, a fixed 20 s ran out while a slow page was still working.
+function relayWithPage() {
+  const relay = createHandsRelay();
+  const sent = [];
+  const req = { on() {} };
+  const res = { writeHead() {}, write: (x) => sent.push(x), end() {} };
+  relay.open(req, res);
+  const jobId = () => {
+    const m = /"id":"([0-9a-f]{16})"/.exec(sent.filter((x) => x.startsWith('event: job')).pop() || '');
+    return m && m[1];
+  };
+  return { relay, jobId };
+}
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+
+test('hands relay: a silent page ends the wait after the quiet time (null)', async () => {
+  const { relay } = relayWithPage();
+  const t0 = Date.now();
+  assert.equal(await relay.send({ ops: [] }, 60, 1000), null);
+  assert.ok(Date.now() - t0 < 600);
+  relay.close();
+});
+
+test('hands relay: beats keep the CLI waiting past the quiet time, and the answer still arrives', async () => {
+  const { relay, jobId } = relayWithPage();
+  const p = relay.send({ ops: [] }, 80, 2000);
+  const id = jobId();
+  assert.ok(id);
+  // Four beats 50 ms apart = 200 ms in all, far past the 80 ms a silent page gets.
+  for (let i = 0; i < 4; i++) {
+    await wait(50);
+    assert.equal(relay.answer(id, { working: true }), true);
+  }
+  assert.equal(relay.answer(id, { results: [{ do: 'list', ok: true }] }), true);
+  assert.deepEqual(await p, { results: [{ do: 'list', ok: true }] });
+  // Late: nobody waits for it any more.
+  assert.equal(relay.answer(id, { working: true }), false);
+  relay.close();
+});
+
+test('hands relay: beats never go past the job\'s most — then { working: true }, not null', async () => {
+  const { relay, jobId } = relayWithPage();
+  const t0 = Date.now();
+  const p = relay.send({ ops: [] }, 80, 200);
+  const id = jobId();
+  const beating = setInterval(() => relay.answer(id, { working: true }), 30);
+  const r = await p;
+  clearInterval(beating);
+  assert.deepEqual(r, { working: true });
+  const took = Date.now() - t0;
+  assert.ok(took >= 180 && took < 600, `ended at the most (${took} ms)`);
+  relay.close();
+});
+
+test('hands: the page beats as often as the relay expects (host-local.ts HANDS_BEAT_MS = hands-relay.mjs)', async () => {
+  const { HANDS_BEAT_MS, HANDS_WAIT_MS, HANDS_MAX_MS } = await import('./hands-relay.mjs');
+  const shell = await fs.readFile(path.join(PKG, 'src/shell/host-local.ts'), 'utf8');
+  const m = /export const HANDS_BEAT_MS = (\d+);/.exec(shell);
+  assert.ok(m, 'host-local.ts has HANDS_BEAT_MS');
+  assert.equal(Number(m[1]), HANDS_BEAT_MS);
+  // A beat comes well inside the quiet wait (a late beat on a busy page must not end the wait), and the most is longer
+  // than the editor's own waits for one job (ai-hands.ts READY_WAIT_MS 12 s + main.ts reloadGame 15 s).
+  assert.ok(HANDS_BEAT_MS * 3 <= HANDS_WAIT_MS);
+  assert.ok(HANDS_MAX_MS >= 12_000 + 15_000 + HANDS_WAIT_MS);
 });

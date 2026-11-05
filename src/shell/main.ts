@@ -130,6 +130,8 @@ import { createClip } from './clip.ts';
 import { normalizeClipPrefs } from './clip-model.ts';
 
 type Phase = 'loading' | 'waiting' | 'no-adapter' | 'ready' | 'playing';
+/** "Waiting for the game to start…" becomes "Connecting the game to Game Studio…" after this long (status.connecting). */
+const WAIT_SLOW_MS = 3000;
 
 const VIEW_KEY = 'game-studio:view';
 const store = {
@@ -172,6 +174,10 @@ export function start(host: StudioHost) {
   let gameUrl = '';
   let gameOrigin = location.origin;
   let bridgeAlive = false;
+  // When the game page said hello (studio:core/hello): "Waiting…" turns into "Connecting…" after WAIT_SLOW_MS
+  // (decided 2026-11-05) — on a slow computer the bridge now waits as long as the game needs (bridge/connect-wait.ts),
+  // and a still line for 10 s or more read as stuck.
+  let helloAt = 0;
   let editing = false;
   let dim: Dim = '3d';
   // UI stage 1 (2026-10-19): the game's layers when it has a UI (core/ready `layers`; null = no UI — the editor is
@@ -4737,6 +4743,9 @@ export function start(host: StudioHost) {
       case 'studio:core/hello':
         bridgeAlive = true;
         if (phase === 'loading') phase = 'waiting';
+        helloAt = Date.now();
+        // Before the game's first frame the bridge posts nothing: the line changes on its own after WAIT_SLOW_MS.
+        setTimeout(renderStatus, WAIT_SLOW_MS + 50);
         renderStatus();
         break;
       case 'studio:core/wait':
@@ -6627,7 +6636,7 @@ export function start(host: StudioHost) {
         h('span', { text: ' ' + t('status.gameErrorHint') + ' ' }),
         h('button', { type: 'button', class: 'link', dataset: { action: 'reload-game' }, text: t('btn.reloadGame'), onclick: () => void confirmLoss('reload').then((go) => go && loadGame()) }));
     } else if (phase === 'loading') line('info', t('status.loading'));
-    else if (phase === 'waiting') line('info', t('status.waiting'));
+    else if (phase === 'waiting') line('info', t(Date.now() - helloAt >= WAIT_SLOW_MS ? 'status.connecting' : 'status.waiting'));
     else if (phase === 'ready' && !itemsSeen) line('info', t('status.items'));
     else if (phase === 'no-adapter') line('warn', h('strong', { text: t('status.noAdapter') }), h('span', { text: ' ' + t('status.noAdapterHint') }));
     else if (check && !check.ok) {

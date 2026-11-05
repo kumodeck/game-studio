@@ -1518,6 +1518,13 @@ export function createEditor(deps: EditorDeps): Editor {
         case 'studio:place/alone-next':
           if (state.editing && layer === 'world') codePlace.handle(msg);
           break;
+        case 'studio:place/choices':
+          // The four choices under a rule drag opened / closed in the editor page (decided 2026-11-05). This case was
+          // missing, so the flag never reached code-place.ts: with the game page focused (it is, right after the drag)
+          // 1-4 also switched the strip's tool (1 Move ... 4 Size, handles.ts TOOL_NUMBERS) and Esc also dropped the pick.
+          // Always passed on, not only while editing the world: a lost "off" would keep 1-4 / Esc from the tools.
+          codePlace.handle(msg);
+          break;
         case 'studio:place/avoid':
           if (state.editing && layer === 'world') keepOut.handle(msg);
           break;

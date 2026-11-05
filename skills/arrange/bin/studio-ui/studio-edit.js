@@ -1,4 +1,4 @@
-/* KUMODeck Game Studio 0.1.80 — MIT License — built file, edit src/ instead */
+/* KUMODeck Game Studio 0.1.81 — MIT License — built file, edit src/ instead */
 (() => {
 const __defs = [];
 const __cache = [];
@@ -17180,6 +17180,8 @@ text.hand { fill: ${SAND_TEXT}; }
       hoverId = null;
       drag = null;
       aloneNext = null;
+      // The four choices belong to the drag that just ended: out of editing / the world they are gone (decided 2026-11-05).
+      choices = false;
       moving = null;
       drawn = '';
       if (svg.firstChild) svg.replaceChildren();
@@ -24830,6 +24832,13 @@ function createEditor(deps            )         {
         case 'studio:place/alone-next':
           if (state.editing && layer === 'world') codePlace.handle(msg);
           break;
+        case 'studio:place/choices':
+          // The four choices under a rule drag opened / closed in the editor page (decided 2026-11-05). This case was
+          // missing, so the flag never reached code-place.ts: with the game page focused (it is, right after the drag)
+          // 1-4 also switched the strip's tool (1 Move ... 4 Size, handles.ts TOOL_NUMBERS) and Esc also dropped the pick.
+          // Always passed on, not only while editing the world: a lost "off" would keep 1-4 / Esc from the tools.
+          codePlace.handle(msg);
+          break;
         case 'studio:place/avoid':
           if (state.editing && layer === 'world') keepOut.handle(msg);
           break;
@@ -28115,6 +28124,105 @@ __def(__exports, "watchEarlyTaps", () => watchEarlyTaps);
 };
 __defs[69] = function (__exports) {
 'use strict';
+// connect-wait.ts
+
+// How long the bridge waits for the game to have something to edit before it opens the editor or says "this game isn't
+// connected to Game Studio yet" (bridge.ts, the look-again loop after the first frame). Pure: bridge.ts feeds it what
+// it sees each look, test/connect-wait.test.ts runs it with made-up looks.
+//
+// WHY (decided 2026-11-05): the loop used to look 55 times 150 ms apart (~8 s of wall time) and then report "no
+// adapter". On a slow or busy computer three.js had not drawn its first scene by then — the game's scripts were still
+// being read, or it drew a few frames a second — and a newcomer saw "not connected" for a game that connects on its own
+// (found by the screen tests on a machine under heavy load). Now:
+//   1. the clock starts at the page's load event, not at the first look (loading the game's files is not the game
+//      failing to connect);
+//   2. "not connected" also needs the game to have RUN: FRAMES_TO_KNOW frames drawn with no scene for the editor — a
+//      computer that draws 3 frames a second gets the time it needs, a fast one is told as quickly as before (~8 s);
+//   3. while the engine itself is on the page (three.js loaded, a renderer made) nothing is reported before
+//      SURE_MS — it is coming, only slowly;
+//   4. after the report the bridge keeps looking (LATE_MS in all), so a game that connects late still opens the editor
+//      (bridge.ts `late`); the shell says "Connecting…" while it waits long (main.ts status.connecting).
+// A game that never draws (no requestAnimationFrame, or stopped on an error) is still reported, at SURE_MS.
+
+/** What one look saw. Times are ms of the browser's own clock (native.ts), not the game's. */
+                              
+                                                                                   
+             
+                                                                                 
+                           
+                                                                     
+                 
+                                                    
+                   
+                                           
+                   
+                                                                        
+                 
+                                                                                                           
+                  
+ 
+
+/** Quiet time after load before "not connected" may be said (the old ~8 s, now counted from load). */
+const QUIET_MS = 8000;
+/** Frames the game must have drawn with nothing to edit before that (at 60 fps: under a second; at 3 fps: ~13 s). */
+const FRAMES_TO_KNOW = 40;
+/** Said anyway by now: a game that never draws, or an engine that never shows a scene. */
+const SURE_MS = 30_000;
+/** Looking goes on this long in all (after the report too, slower): a late game still connects. */
+const LATE_MS = 120_000;
+/** The look-again pause before the report (as before) and after it (a late look: the page is not busy for it). */
+const LOOK_MS = 150;
+const LATE_LOOK_MS = 500;
+
+/** The game ran long enough, after loading, to be sure nothing will come by itself. */
+const ranLongEnough = (s             ) => s.sinceLoad !== null && s.sinceLoad >= QUIET_MS && s.frames >= FRAMES_TO_KNOW;
+
+/**
+ * One look's decision.
+ * - 'go': open the editor now (with what the adapter lists — possibly nothing, as before, for a game that lists
+ *   nothing after running a while).
+ * - 'wait': look again in LOOK_MS (the game keeps running).
+ * - 'report': no adapter, and long enough: say "not connected" (the self-check), then keep looking late.
+ * - 'stop': looked for LATE_MS: freeze the game and stop looking.
+ */
+function connectStep(s             )                                    {
+  if (s.ready || s.objects) return 'go';
+  if (s.adapter) return ranLongEnough(s) || s.ms >= SURE_MS ? 'go' : 'wait';
+  if (s.ms >= LATE_MS) return 'stop';
+  if (s.ms >= SURE_MS) return 'report';
+  if (!s.engine && ranLongEnough(s)) return 'report';
+  return 'wait';
+}
+
+/**
+ * No world adapter but a UI: an HTML-only game opens with its UI alone (UI stage 1). Only after load, and not while an
+ * engine is on the page — a three.js game with an HTML HUD would otherwise open as "UI only" on a slow computer and
+ * never get its world (the old rule was "after ~0.9 s", which a slow machine reached before three.js drew).
+ */
+function uiOnlyMayOpen(s             )          {
+  if (s.adapter) return false;
+  if (s.ms >= SURE_MS) return true;
+  return s.ms >= 900 && s.sinceLoad !== null && !s.engine;
+}
+
+/** Why the bridge is waiting (studio:core/wait reason). */
+function waitReason(s             )                                           {
+  if (s.adapter) return 'no-objects';
+  return s.frames > 0 ? 'no-adapter' : 'no-frame';
+}
+
+__def(__exports, "QUIET_MS", () => QUIET_MS);
+__def(__exports, "FRAMES_TO_KNOW", () => FRAMES_TO_KNOW);
+__def(__exports, "SURE_MS", () => SURE_MS);
+__def(__exports, "LATE_MS", () => LATE_MS);
+__def(__exports, "LOOK_MS", () => LOOK_MS);
+__def(__exports, "LATE_LOOK_MS", () => LATE_LOOK_MS);
+__def(__exports, "connectStep", () => connectStep);
+__def(__exports, "uiOnlyMayOpen", () => uiOnlyMayOpen);
+__def(__exports, "waitReason", () => waitReason);
+};
+__defs[70] = function (__exports) {
+'use strict';
 // bridge.ts
 
 // The bridge: the studio's side inside the game page.
@@ -28142,7 +28250,8 @@ const { applyPlacement, placementForLevel } = __require(21);
 const { pickLevel } = __require(67);
 const { watchEarlyTaps } = __require(68);
                                                     
-const { nativeSetTimeout } = __require(0);
+const { nativeNow, nativeSetTimeout } = __require(0);
+const { connectStep, uiOnlyMayOpen, waitReason, LATE_LOOK_MS, LOOK_MS } = __require(69);
 
                                 
                            
@@ -28589,13 +28698,19 @@ function startBridge(opts               )       {
     capture: async () => null,
   });
 
+  // When the page's load event came (connect-wait.ts: the wait for "not connected" counts from there, not from the
+  // first look — reading the game's files on a slow computer is not the game failing to connect).
+  let loadedAt                = win.document.readyState === 'complete' ? nativeNow() : null;
+  if (loadedAt === null) win.addEventListener('load', () => (loadedAt = nativeNow()), { once: true });
+
   core.time.firstFrame().then(async () => {
     // Engines often build the scene a little after their first frame (async
     // asset loading: Phaser's preload, a glTF loader, fonts). Freezing right
     // there would show — and list — nothing. So until an adapter answers with
     // at least one object, let the game run and look again; freeze as soon as
     // there is something to edit. studio.ready() from the game skips the wait
-    // (the game knows best), and after ~8 s we stop waiting and report.
+    // (the game knows best). How long, and when "not connected" is said: connect-wait.ts (decided 2026-11-05 — it
+    // used to be a fixed ~8 s, which a slow computer did not reach with three.js drawn).
     const hasObjects = (a                      ) => {
       try {
         return !!a && a.list().length > 0;
@@ -28603,22 +28718,55 @@ function startBridge(opts               )       {
         return false;
       }
     };
+    const t0 = nativeNow();
+    const frames0 = core.time.gameFrames;
+    // three.js on the page but no scene drawn yet (the boot script saw THREE or a renderer): it is coming, slowly.
+    const engineHere = () => {
+      const boot = g.__studioThree                                                             ;
+      return !!g.__THREE__ || !!boot?.renderers?.length || !!boot?.scenes?.length;
+    };
     let adapter = findAdapter();
+    const seen = ()              => {
+      const now = nativeNow();
+      return { ms: now - t0, sinceLoad: loadedAt === null ? null : now - loadedAt, frames: core.time.gameFrames - frames0,
+        adapter: !!adapter, objects: hasObjects(adapter), ready: core.time.readyCalled, engine: engineHere() };
+    };
     // The wait is the world's alone (a title shown before the 3D models load must not stop it early). One
-    // exception (UI stage 1): no world adapter at all but a UI — an HTML-only game — stops after ~1 s instead of 8.
+    // exception (UI stage 1): no world adapter at all but a UI — an HTML-only game — stops after ~1 s (uiOnlyMayOpen).
     let uiOnly                       = null;
-    for (let i = 0; !hasObjects(adapter) && !core.time.readyCalled && i < 55; i++) {
-      if (!adapter && i >= 6 && (uiOnly = findUi(null))) break;
-      post({ type: 'studio:core/wait', reason: adapter ? 'no-objects' : 'no-adapter' });
+    // "Not connected" was said (the self-check went to the shell): looking goes on, slower, without posting waits.
+    let reported = false;
+    for (;;) {
+      const s = seen();
+      const step = connectStep(s);
+      if (step === 'go') break;
+      if (!adapter && uiOnlyMayOpen(s) && (uiOnly = findUi(null))) break;
+      if (step === 'stop') {
+        // Looked for LATE_MS: as before, the game stays frozen with "not connected" on the editor (the AI was told).
+        core.time.freeze();
+        if (!reported) {
+          post({ type: 'studio:core/check', result: await runSelfCheck(null, core, win) });
+          post({ type: 'studio:core/wait', reason: 'no-adapter' });
+        }
+        return;
+      }
+      if (step === 'report' && !reported) {
+        reported = true;
+        // Report "no adapter" now; a found adapter is checked by the editor right after begin(), when 3D adapters
+        // have their edit camera. The look goes on: a game that connects later still opens the editor (the shell's
+        // core/ready replaces "not connected").
+        post({ type: 'studio:core/check', result: await runSelfCheck(null, core, win) });
+        post({ type: 'studio:core/wait', reason: 'no-adapter' });
+      }
+      if (!reported) post({ type: 'studio:core/wait', reason: waitReason(s) });
       core.time.thaw();
-      await new Promise((r) => nativeSetTimeout(r, 150));
+      await new Promise((r) => nativeSetTimeout(r, reported ? LATE_LOOK_MS : LOOK_MS));
       adapter = findAdapter();
     }
     core.time.freeze();
     const ui = adapter ? findUi(adapter) : uiOnly || findUi(null);
     if (!adapter && !ui) {
-      // Report "no adapter" now; a found adapter is checked by the editor
-      // right after begin(), when 3D adapters have their edit camera.
+      // studio.ready() with nothing to edit: as before, "no adapter" at once.
       post({ type: 'studio:core/check', result: await runSelfCheck(null, core, win) });
       post({ type: 'studio:core/wait', reason: 'no-adapter' });
       return;
@@ -28653,7 +28801,7 @@ function startBridge(opts               )       {
 __def(__exports, "readEditParams", () => readEditParams);
 __def(__exports, "startBridge", () => startBridge);
 };
-__defs[70] = function (__exports) {
+__defs[71] = function (__exports) {
 'use strict';
 // main.ts
 
@@ -28672,11 +28820,11 @@ __require(0);
 // the three.js adapter: it installs __THREE_DEVTOOLS__ and wraps rAF/render.
 __require(1);
 const { threeProbe } = __require(13);
-const { startBridge } = __require(69);
+const { startBridge } = __require(70);
 
 startBridge({ builtins: [threeProbe] });
 
 
 };
-__require(70);
+__require(71);
 })();

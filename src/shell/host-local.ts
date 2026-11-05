@@ -28,6 +28,9 @@ import {
 } from '../contract.ts';
 
 const TYPES: AssetType[] = ['image', 'model', 'sound', 'atlas', 'font', 'other'];
+/** The AI's hands: "still on it" this often while a job runs. The same number as src/server/hands-relay.mjs HANDS_BEAT_MS
+ *  (that file is the server's, with node:crypto, so not imported here; src/server/server.test.mjs keeps the two equal). */
+export const HANDS_BEAT_MS = 5000;
 
 /**
  * The optional KUMODeck sign-in (src/server/kumo.mjs). A refusal (422 { error, code }) comes back
@@ -190,7 +193,13 @@ export function createLocalHost(base: string = LOCAL_PATHS.api): StudioHost {
           return;
         }
         if (!job || typeof job.id !== 'string') return;
-        void onJob(job).then(
+        // "Still on it" (hands-relay.mjs beats, decided 2026-11-05): at once (the page has the job — also while it waits
+        // its turn behind another) and every HANDS_BEAT_MS until the answer, so a CLI on a slow computer waits for a job
+        // that takes longer than 20 s (the game read again, a page still opening) instead of saying "did not answer".
+        const beat = () => void call('POST', `hands/${encodeURIComponent(job.id)}`, JSON.stringify({ working: true }), 'application/json').catch(() => undefined);
+        beat();
+        const beats = setInterval(beat, HANDS_BEAT_MS);
+        void onJob(job).finally(() => clearInterval(beats)).then(
           (r) => call('POST', `hands/${encodeURIComponent(job.id)}`, JSON.stringify(r), 'application/json'),
           (e) => call('POST', `hands/${encodeURIComponent(job.id)}`, JSON.stringify({ results: [{ do: '?', ok: false, error: String((e as Error)?.message || e) }] }), 'application/json'),
         ).catch(() => undefined);

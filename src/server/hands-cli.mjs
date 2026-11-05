@@ -21,6 +21,7 @@ import { applyHandsToFile, readHandsInput } from '../schema/hands.mjs';
 import { validateStudioFile } from '../schema/studio-files.mjs';
 import { readResultFile, writeResultFile } from './files.mjs';
 import { agentFromEnv } from './which-ai.mjs';
+import { HANDS_MAX_MS } from './hands-relay.mjs';
 
 /** The flags an op's fields come from after `--do <op>` (cli.mjs parseArgs). Booleans take no value. */
 export const HANDS_FLAG_FIELDS = Object.freeze(['key', 'name', 'to', 'by', 'len', 'repeat', 'when', 'until', 'points', 'keys', 'ease', 'id', 'level',
@@ -87,11 +88,12 @@ export async function askEditor(server, ops, by) {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'x-studio-agent': server.stopToken },
       body: JSON.stringify({ ops, ...(by ? { by } : {}) }),
-      signal: AbortSignal.timeout(30_000),
+      // Beyond the server's own most for one job (hands-relay.mjs HANDS_MAX_MS): the server always answers first.
+      signal: AbortSignal.timeout(HANDS_MAX_MS + 15_000),
     });
     const j = await r.json().catch(() => null);
     if (r.status === 422) return { error: (j?.details || [j?.error || 'ops were not read']).join('; ') };
-    if (!r.ok || !j) return { error: j?.error || `the editor answered ${r.status}`, editor: j?.editor };
+    if (!r.ok || !j) return { error: j?.error || `the editor answered ${r.status}`, editor: j?.editor, ...(j?.busy ? { busy: true } : {}) };
     return j;
   } catch (e) {
     return { error: `the editor could not be reached (${String(e && e.message).slice(0, 80)})` };
@@ -121,7 +123,10 @@ export async function handsCommand(root, args, { running, replyLine, out = (l) =
     if (r.editor || (r.error && r.editor !== false)) {
       // A page is open but did not answer, or the server could not be reached: writing the file now could be overwritten
       // by the page's own draft a moment later, so nothing is written. The AI tries again (or reads why).
-      out(`studio: do failed - ${r.error || 'the editor did not answer'}; nothing was changed. Run the same --do again`);
+      // busy: the page had the job and was still on it at the end (hands-relay.mjs beats) — it may still finish, so not
+      // "run it again" (that would do it twice); a look first (decided 2026-11-05).
+      if (r.busy) out(`studio: do failed - ${r.error}; nothing was written to the file. Run --do list to see what the editor has before sending it again`);
+      else out(`studio: do failed - ${r.error || 'the editor did not answer'}; nothing was changed. Run the same --do again`);
       return 1;
     }
   }

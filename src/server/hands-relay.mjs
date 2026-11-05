@@ -11,8 +11,22 @@
 // twice (two tabs) would do the op twice; the newest is the one the person just opened or reloaded.
 import crypto from 'node:crypto';
 
-/** How long a CLI waits for the page's answer (a copy waits for the game page; 20 s is far beyond a busy page). */
+/**
+ * How long a CLI waits for the page's answer while the page says nothing (a page that never got the job, or is gone).
+ * A page that has the job says "still on it" every HANDS_BEAT_MS (host-local.ts hands), and each beat gives it this
+ * long again, up to HANDS_MAX_MS in all.
+ *
+ * WHY beats (decided 2026-11-05): a fixed 20 s was shorter than the editor's own waits for one job — up to 12 s for the
+ * game to be listed (ai-hands.ts READY_WAIT_MS) and up to 15 s for the game read again (main.ts reloadGame: place.code
+ * of a codePlace the page does not list yet, motion.code, a fold) — so on a slow or busy computer the CLI said "did
+ * not answer; nothing was changed" while the page went on and did it a few seconds later (seen in the torule screen
+ * test under load 50+). A longer fixed number would only move the edge; the page knows when it is still working.
+ */
 export const HANDS_WAIT_MS = 20_000;
+/** The page's "still on it" beat (host-local.ts sends it this often while a job runs or waits its turn). */
+export const HANDS_BEAT_MS = 5000;
+/** The most a CLI waits for one job, beats or not: a page stuck inside a job still ends with an answer. */
+export const HANDS_MAX_MS = 120_000;
 /** A page whose stream just dropped (a reload, a blip) gets this long to come back before the CLI writes the file. */
 const HANDS_GRACE_MS = 6000;
 const HANDS_PING_MS = 15_000;
@@ -47,24 +61,42 @@ export function createHandsRelay() {
       while (!pages.length && Date.now() < end) await new Promise((r) => setTimeout(r, 200));
       return pages.length > 0;
     },
-    /** Send a job to the newest page; resolves to its answer, or null when it did not answer in `ms`. */
-    send(job, ms = HANDS_WAIT_MS) {
+    /**
+     * Send a job to the newest page; resolves to its answer, null when it said nothing for `ms`, or { working: true }
+     * when it was still on the job at `max`.
+     */
+    send(job, ms = HANDS_WAIT_MS, max = HANDS_MAX_MS) {
       const p = pages[pages.length - 1];
       if (!p) return Promise.resolve(null);
       const id = crypto.randomBytes(8).toString('hex');
       return new Promise((resolve) => {
-        const timer = setTimeout(() => {
+        const end = Date.now() + Math.max(ms, max);
+        const w = { resolve, timer: null, ms, end, beats: 0 };
+        w.timer = setTimeout(() => {
           waiting.delete(id);
           resolve(null);
         }, ms);
-        waiting.set(id, { resolve, timer });
+        waiting.set(id, w);
         p.res.write(`event: job\ndata: ${JSON.stringify({ ...job, id })}\n\n`);
       });
     },
-    /** POST /__studio/api/hands/<id> from the page: its answer. false = no CLI waits for it (late, or unknown). */
+    /**
+     * POST /__studio/api/hands/<id> from the page: its answer, or `{ working: true }` = "still on it" (the wait starts
+     * again, never past the job's end). false = no CLI waits for it (late, or unknown).
+     */
     answer(id, result) {
       const w = waiting.get(id);
       if (!w) return false;
+      if (result && result.working === true) {
+        clearTimeout(w.timer);
+        w.beats++;
+        // Past the job's end the page was still on it: { working: true } (server.mjs says so instead of "no answer").
+        w.timer = setTimeout(() => {
+          waiting.delete(id);
+          w.resolve({ working: true });
+        }, Math.max(0, Math.min(w.ms, w.end - Date.now())));
+        return true;
+      }
       clearTimeout(w.timer);
       waiting.delete(id);
       w.resolve(result);

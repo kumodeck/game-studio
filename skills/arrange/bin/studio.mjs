@@ -4672,8 +4672,22 @@ function whichAi(o) {
 // twice (two tabs) would do the op twice; the newest is the one the person just opened or reloaded.
 
 
-/** How long a CLI waits for the page's answer (a copy waits for the game page; 20 s is far beyond a busy page). */
+/**
+ * How long a CLI waits for the page's answer while the page says nothing (a page that never got the job, or is gone).
+ * A page that has the job says "still on it" every HANDS_BEAT_MS (host-local.ts hands), and each beat gives it this
+ * long again, up to HANDS_MAX_MS in all.
+ *
+ * WHY beats (decided 2026-11-05): a fixed 20 s was shorter than the editor's own waits for one job — up to 12 s for the
+ * game to be listed (ai-hands.ts READY_WAIT_MS) and up to 15 s for the game read again (main.ts reloadGame: place.code
+ * of a codePlace the page does not list yet, motion.code, a fold) — so on a slow or busy computer the CLI said "did
+ * not answer; nothing was changed" while the page went on and did it a few seconds later (seen in the torule screen
+ * test under load 50+). A longer fixed number would only move the edge; the page knows when it is still working.
+ */
 const HANDS_WAIT_MS = 20_000;
+/** The page's "still on it" beat (host-local.ts sends it this often while a job runs or waits its turn). */
+const HANDS_BEAT_MS = 5000;
+/** The most a CLI waits for one job, beats or not: a page stuck inside a job still ends with an answer. */
+const HANDS_MAX_MS = 120_000;
 /** A page whose stream just dropped (a reload, a blip) gets this long to come back before the CLI writes the file. */
 const HANDS_GRACE_MS = 6000;
 const HANDS_PING_MS = 15_000;
@@ -4708,24 +4722,42 @@ function createHandsRelay() {
       while (!pages.length && Date.now() < end) await new Promise((r) => setTimeout(r, 200));
       return pages.length > 0;
     },
-    /** Send a job to the newest page; resolves to its answer, or null when it did not answer in `ms`. */
-    send(job, ms = HANDS_WAIT_MS) {
+    /**
+     * Send a job to the newest page; resolves to its answer, null when it said nothing for `ms`, or { working: true }
+     * when it was still on the job at `max`.
+     */
+    send(job, ms = HANDS_WAIT_MS, max = HANDS_MAX_MS) {
       const p = pages[pages.length - 1];
       if (!p) return Promise.resolve(null);
       const id = crypto.randomBytes(8).toString('hex');
       return new Promise((resolve) => {
-        const timer = setTimeout(() => {
+        const end = Date.now() + Math.max(ms, max);
+        const w = { resolve, timer: null, ms, end, beats: 0 };
+        w.timer = setTimeout(() => {
           waiting.delete(id);
           resolve(null);
         }, ms);
-        waiting.set(id, { resolve, timer });
+        waiting.set(id, w);
         p.res.write(`event: job\ndata: ${JSON.stringify({ ...job, id })}\n\n`);
       });
     },
-    /** POST /__studio/api/hands/<id> from the page: its answer. false = no CLI waits for it (late, or unknown). */
+    /**
+     * POST /__studio/api/hands/<id> from the page: its answer, or `{ working: true }` = "still on it" (the wait starts
+     * again, never past the job's end). false = no CLI waits for it (late, or unknown).
+     */
     answer(id, result) {
       const w = waiting.get(id);
       if (!w) return false;
+      if (result && result.working === true) {
+        clearTimeout(w.timer);
+        w.beats++;
+        // Past the job's end the page was still on it: { working: true } (server.mjs says so instead of "no answer").
+        w.timer = setTimeout(() => {
+          waiting.delete(id);
+          w.resolve({ working: true });
+        }, Math.max(0, Math.min(w.ms, w.end - Date.now())));
+        return true;
+      }
       clearTimeout(w.timer);
       waiting.delete(id);
       w.resolve(result);
@@ -6445,8 +6477,12 @@ async function handsFromAgent(req, res, ctx) {
   if (!r.ok) return sendJson(res, 422, { error: 'ops were not read', details: r.errors });
   if (!(await ctx.hands.ready())) return sendJson(res, 200, { editor: false });
   const by = body.by === 'claude' || body.by === 'codex' ? body.by : undefined;
-  const answer = await ctx.hands.send({ ops: r.ops, ...(by ? { by } : {}) }, HANDS_WAIT_MS);
+  const answer = await ctx.hands.send({ ops: r.ops, ...(by ? { by } : {}) }, HANDS_WAIT_MS, HANDS_MAX_MS);
   if (!answer) return sendJson(res, 504, { editor: true, error: `the editor page did not answer in ${HANDS_WAIT_MS / 1000} s` });
+  // The page had the job and kept saying "still on it" (hands-relay.mjs beats) until the most a job may take.
+  if (answer.working === true && !Array.isArray(answer.results)) {
+    return sendJson(res, 504, { editor: true, busy: true, error: `the editor page was still doing it after ${HANDS_MAX_MS / 1000} s (look at the editor: the game may be stuck)` });
+  }
   const results = Array.isArray(answer.results) ? answer.results.slice(0, r.ops.length) : [];
   // The log keeps what the AI did in the editor (studio.log), one line each, like the requests' lines.
   for (const x of results) ctx.log(`studio: hands ${x && x.ok ? 'did' : 'failed'} ${String(x && x.do).slice(0, 40)}${x && (x.said || x.error) ? ' - ' + String(x.said || x.error).slice(0, 200) : ''}`);
@@ -8319,6 +8355,7 @@ function openLine(how, { opened = false, seen = false } = {}) {
 
 
 
+
 /** The flags an op's fields come from after `--do <op>` (cli.mjs parseArgs). Booleans take no value. */
 const HANDS_FLAG_FIELDS = Object.freeze(['key', 'name', 'to', 'by', 'len', 'repeat', 'when', 'until', 'points', 'keys', 'ease', 'id', 'level',
   // Code motions and layouts (studio-code-base): --code spiral, --knobs '{"gap":4}', --pin '{"key":"hex-3","p":[…]}',
@@ -8384,11 +8421,12 @@ async function askEditor(server, ops, by) {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'x-studio-agent': server.stopToken },
       body: JSON.stringify({ ops, ...(by ? { by } : {}) }),
-      signal: AbortSignal.timeout(30_000),
+      // Beyond the server's own most for one job (hands-relay.mjs HANDS_MAX_MS): the server always answers first.
+      signal: AbortSignal.timeout(HANDS_MAX_MS + 15_000),
     });
     const j = await r.json().catch(() => null);
     if (r.status === 422) return { error: (j?.details || [j?.error || 'ops were not read']).join('; ') };
-    if (!r.ok || !j) return { error: j?.error || `the editor answered ${r.status}`, editor: j?.editor };
+    if (!r.ok || !j) return { error: j?.error || `the editor answered ${r.status}`, editor: j?.editor, ...(j?.busy ? { busy: true } : {}) };
     return j;
   } catch (e) {
     return { error: `the editor could not be reached (${String(e && e.message).slice(0, 80)})` };
@@ -8418,7 +8456,10 @@ async function handsCommand(root, args, { running, replyLine, out = (l) => proce
     if (r.editor || (r.error && r.editor !== false)) {
       // A page is open but did not answer, or the server could not be reached: writing the file now could be overwritten
       // by the page's own draft a moment later, so nothing is written. The AI tries again (or reads why).
-      out(`studio: do failed - ${r.error || 'the editor did not answer'}; nothing was changed. Run the same --do again`);
+      // busy: the page had the job and was still on it at the end (hands-relay.mjs beats) — it may still finish, so not
+      // "run it again" (that would do it twice); a look first (decided 2026-11-05).
+      if (r.busy) out(`studio: do failed - ${r.error}; nothing was written to the file. Run --do list to see what the editor has before sending it again`);
+      else out(`studio: do failed - ${r.error || 'the editor did not answer'}; nothing was changed. Run the same --do again`);
       return 1;
     }
   }
