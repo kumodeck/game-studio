@@ -196,8 +196,17 @@ async function run(size, theme) {
     await select('crate');
     await sleep(600);
     // The row's "+" shows with Fine-tune open (studio-motion-line, plan step 4): open it, as a person does to link.
-    if (!BEFORE) await page.eval(`document.querySelector('[data-part=tl-fine]:not([hidden])') || document.querySelector('[data-part=tl-fine-btn]')?.click()`);
-    await sleep(500);
+    // The crate picked from the list sits under the open plate, which folds to its line (studio-fix-0143 ⑨ B, 2026-10-24 —
+    // after this test was written): there the first press of Fine-tune brings the rows back, the second opens it. This
+    // test pressed once and found no "+" (fixed 2026-11-05, studio-motion-fix-2: the test was older than the fold).
+    if (!BEFORE) {
+      for (let i = 0; i < 2; i++) {
+        if (await page.eval(`!!document.querySelector('[data-part=tl-fine]:not([hidden])')`)) break;
+        await page.eval(`document.querySelector('[data-part=tl-fine-btn]')?.click()`);
+        await sleep(500);
+      }
+    }
+    await sleep(300);
     const name = await j(`(() => { const n = document.querySelector('[data-part=timeline] .tl-name.picked'); const col = document.querySelector('[data-part=timeline] .tl-names-col'); if (!n || !col) return null; const o = n.querySelector('.tl-obj');
       return JSON.stringify({ name: o?.textContent, cut: o ? o.scrollWidth > o.clientWidth + 1 || o.scrollHeight > o.clientHeight + 1 : null, col: Math.round(col.getBoundingClientRect().width), plus: !!n.querySelector('[data-part=tl-link]'), linkRow: !!document.querySelector('[data-part=timeline] .tl-name.tl-link-name') }); })()`);
     await shot('5-name');

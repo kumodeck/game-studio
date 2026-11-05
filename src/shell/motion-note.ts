@@ -58,6 +58,26 @@ export function noteOf(s: NoteIn): Note {
   return { change, rec: s.rec, rule: !!s.here?.canRule && !s.rec };
 }
 
+/**
+ * The AI's finished reply carries this note (studio-motion-fix-2 △4, decided 2026-11-05). After ✦ Turn into a rule on a
+ * motion, three lines said one thing over the field: the editor's line of the AI's --do ("Claude turned “Ship motion” into
+ * a rule motion …"), this note ("Ship motion changed · Save puts it in the game") and the AI's reply, tucked as a cut chip
+ * left of the field ("✓ Turned the ship’s motion into…"). The keep-out shape of the same fix: ONE reply, the editor's
+ * words small under it — here its "Save puts it in the game" too, since that is the one step left — and the note comes
+ * back as its own line once the reply has faded.
+ * Only when the AI itself changed something in this reply (`told`: its --do), so a motion the person changed before an
+ * unrelated ask keeps its own line; only a change to the motion on screen ('here'), never while Rec motion is on (that
+ * line has a button to turn it off).
+ */
+export function noteUnderReply(n: Note, reply: { done: boolean; told: boolean; gone: boolean }): boolean {
+  return !!n?.change && n.change.where === 'here' && !n.rec && reply.done && reply.told && !reply.gone;
+}
+
+/** The note's words under the reply: the step left, as plain words (the top bar's Save rings in orange meanwhile). */
+export function noteUnderWords(t: (key: string, vars?: Record<string, string | number>) => string): string {
+  return t('mnext2.save', { save: t('btn.save') });
+}
+
 export interface MotionNoteDeps {
   t(key: string, vars?: Record<string, string | number>): string;
   /** ● pressed: Rec motion off (the plate's own ● in Fine-tune, timeline-wire acts.auto(false)). */

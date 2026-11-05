@@ -1,4 +1,4 @@
-/* KUMODeck Game Studio 0.1.78 — MIT License — built file, edit src/ instead */
+/* KUMODeck Game Studio 0.1.79 — MIT License — built file, edit src/ instead */
 (() => {
 const __defs = [];
 const __cache = [];
@@ -1204,6 +1204,12 @@ const MSG_PREFIX = 'studio:';
                                                                                                      
      
                                                  
+     
+                                                                                                                       
+                                                                                                                     
+                                                                                
+     
+                                                           
      
                                                                                                                     
                                                                                                                      
@@ -19331,6 +19337,8 @@ const en = {
   'rule.nth': 'No. {n}',
   'rule.knobTip': 'Drag left or right · click to type',
   'rule.individually': 'Convert to coordinates',
+  // studio-motion-fix-2 △9 (decided 2026-11-05): the long-press menu's way to what ⌥-drag does (a phone has no ⌥).
+  'rule.moveOne': 'Move just this one',
   'rule.individuallyTip': 'Turns the rule into coordinates: where the {n} are now, one by one, for you to move by hand',
   'rule.individuallyDone': 'Converted the {name} rule to coordinates',
   // Placed by hand (studio-hand-marks, 2026-10-24; the hand-marks plan §6, a play-test note of that day: "rule", "row",
@@ -20480,6 +20488,7 @@ const ja                               = {
   'rule.nth': '{n} 番目',
   'rule.knobTip': '左右にドラッグ · 押すと入力',
   'rule.individually': '座標にする',
+  'rule.moveOne': 'この 1 個だけ動かす',
   'rule.individuallyTip': 'ルールを座標にします。今の {n} 個の場所が 1 個ずつの座標になり、手で動かせる物になります',
   'rule.individuallyDone': '{name}のルールを座標にしました',
   'rule.pinned': '{name}のルールの外',
@@ -28272,6 +28281,26 @@ function noteOf(s        )       {
   return { change, rec: s.rec, rule: !!s.here?.canRule && !s.rec };
 }
 
+/**
+ * The AI's finished reply carries this note (studio-motion-fix-2 △4, decided 2026-11-05). After ✦ Turn into a rule on a
+ * motion, three lines said one thing over the field: the editor's line of the AI's --do ("Claude turned “Ship motion” into
+ * a rule motion …"), this note ("Ship motion changed · Save puts it in the game") and the AI's reply, tucked as a cut chip
+ * left of the field ("✓ Turned the ship’s motion into…"). The keep-out shape of the same fix: ONE reply, the editor's
+ * words small under it — here its "Save puts it in the game" too, since that is the one step left — and the note comes
+ * back as its own line once the reply has faded.
+ * Only when the AI itself changed something in this reply (`told`: its --do), so a motion the person changed before an
+ * unrelated ask keeps its own line; only a change to the motion on screen ('here'), never while Rec motion is on (that
+ * line has a button to turn it off).
+ */
+function noteUnderReply(n      , reply                                                 )          {
+  return !!n?.change && n.change.where === 'here' && !n.rec && reply.done && reply.told && !reply.gone;
+}
+
+/** The note's words under the reply: the step left, as plain words (the top bar's Save rings in orange meanwhile). */
+function noteUnderWords(t                                                                 )         {
+  return t('mnext2.save', { save: t('btn.save') });
+}
+
                                  
                                                                  
                                                                                                     
@@ -28335,6 +28364,8 @@ function createMotionNote(d                ) {
 }
 
 __def(__exports, "noteOf", () => noteOf);
+__def(__exports, "noteUnderReply", () => noteUnderReply);
+__def(__exports, "noteUnderWords", () => noteUnderWords);
 __def(__exports, "createMotionNote", () => createMotionNote);
 };
 __defs[68] = function (__exports) {
@@ -34983,7 +35014,7 @@ const { DEFAULT_UI, effectiveTheme, normalizeUi } = __require(57);
 const { dropTarget, hasLayer, layerTarget } = __require(32);
 const { chipFamily, createPlacementPanel, shortName } = __require(60);
 const { createTimeline } = __require(66);
-const { createMotionNote, noteOf } = __require(67);
+const { createMotionNote, noteOf, noteUnderReply, noteUnderWords } = __require(67);
 const { libCounted } = __require(24);
 const { createMotionAsk } = __require(68);
 const { CODE_LEN, motionLibrary } = __require(35);
@@ -35172,6 +35203,9 @@ function start(host            ) {
   let toastAt = 0;
   // The editor's line of the AI's last --do (△4: it goes under the AI's reply once that comes).
   let handsTold                                                     = null;
+  // The AI's finished reply carries the motion's note under it (studio-motion-fix-2 △4; motion-note.ts noteUnderReply):
+  // the note's own line is hidden and the reply is not tucked beside the field while this is so.
+  let noteUnder = false;
   const thumbs = new Map                ();
   // Pictures kept from the game page before a reload (▶ Play → Edit, the AI's change): still shown, asked for again,
   // and replaced when the new one comes (Ive review 3 ⑥, 2026-10-20 — the list showed empty squares after Edit until
@@ -37425,6 +37459,16 @@ function start(host            ) {
     // A code layout's object (studio-code-knobs): "Convert to coordinates" / "Reset to rule", in a group of their own before
     // the last group (Delete stays last).
     const rr = place === 'object' && its.length === 1 && editLayer === 'world' ? codePlaces.rows(its[0] .key) : [];
+    // "Move just this one" first in that group (studio-motion-fix-2 △9, decided 2026-11-05): a phone had no way to what
+    // ⌥-drag does on a PC (take this one out of its rule by hand) — the hint just lost its "⌥" part. The menu a long press
+    // opens (the same as right-click, 10/18) gets the row; the drag itself is unchanged: the next drag of this object is
+    // ⌥'s, once (bridge/code-place.ts aloneNext), and the line under the strip says so. Only while a drag would follow the
+    // rule (a rule's object not placed by hand: its rows offer "Convert to coordinates"). On a PC too — the same menu
+    // everywhere; ⌥ stays the quick way there.
+    if (rr.some((r) => r.id === 'rule-individually')) {
+      const k = its[0] .key;
+      rr.unshift({ id: 'rule-move-one', label: t('rule.moveOne'), run: () => send({ type: 'studio:place/alone-next', key: k }) });
+    }
     if (rr.length) {
       let at = entries.length;
       for (let i = entries.length - 1; i >= 0; i--) if ('sep' in entries[i] ) {
@@ -38158,6 +38202,8 @@ function start(host            ) {
     const focused = aiLine.contains(document.activeElement) ? (document.activeElement               ).dataset.action : undefined;
     aiLine.replaceChildren();
     aiLine.className = 'ai-line';
+    const wasUnder = noteUnder;
+    noteUnder = false;
     const ph = currentPhase();
     const busy = aiBusy(ph);
     // The violet light round the input (shell.css) follows this, and so does the AI dot.
@@ -38270,7 +38316,13 @@ function start(host            ) {
         toastEl.classList.remove('on');
         hideNews();
       }
-      two(s.note || count, pausedReply && ph === 'done' ? filesRow(s.files, second) : [told && s.note ? told.words : '', second].filter(Boolean).join(' · '));
+      // △4 for a motion (studio-motion-fix-2, decided 2026-11-05): when the AI's --do changed the motion on screen, its
+      // note ("Ship motion changed · Save puts it in the game") is the editor's words too — the step left goes small
+      // under the reply, and the note's own line waits until the reply fades (renderMotionNote).
+      noteUnder = !!told && !!s.note && noteReady && noteOn() && noteUnderReply(noteOf(timeline.noteIn()), { done: true, told: true,
+        gone: lineKey(ph, aiStatus?.at, aiStatus?.note, aiAfterTurn) === lineGone });
+      two(s.note || count, pausedReply && ph === 'done' ? filesRow(s.files, second)
+        : [told && s.note ? told.words : '', second, noteUnder ? noteUnderWords(t) : ''].filter(Boolean).join(' · '));
       // The paused moment's reply when the game's code changed (`--changed` > 0, or the files say so; fix 1 ✕6): Reload
       // right here. It was only on the line over the game after ▶ Resume, and the docs said "press Reload on the reply".
       // Reload leaves the moment for a new page of the game from its new code, still in Play (as the line over the game's
@@ -38345,7 +38397,9 @@ function start(host            ) {
     }
     aiLine.hidden = !aiLine.childNodes.length;
     fadeLine(ph);
+    if (aiLine.hidden) noteUnder = false;
     tuckAiLine(ph);
+    if (noteUnder !== wasUnder) renderMotionNote();
     if (focused && !aiLine.hidden) (aiLine.querySelector(`[data-action="${focused}"]`)                      )?.focus({ preventScroll: true });
     sendMarks();
     // The ask field becomes the answer field while the AI asks (and goes back after).
@@ -38391,7 +38445,10 @@ function start(host            ) {
   }
   /** ④ (studio-fix-0142): a finished line as a chip beside the ask field while the timeline is open on PC (`aiTuck` above). */
   function tuckAiLine(ph         ) {
-    const tuck = !phone() && app.dataset.timeline === 'open' && !aiLine.hidden && lineFades(ph) && !!lineShown && aiTuckOpen !== lineShown;
+    // Not while the reply carries the motion's note (△4, studio-motion-fix-2): the reply then stands where the note's own
+    // line stood (the same row over the field), so it covers no more of the game than the note did — and a chip cut to
+    // "✓ Turned the ship’s motion into…" beside the note was the third line saying the same thing.
+    const tuck = !phone() && app.dataset.timeline === 'open' && !aiLine.hidden && lineFades(ph) && !!lineShown && aiTuckOpen !== lineShown && !noteUnder;
     aiLine.classList.toggle('tucked', tuck);
     aiTuck.hidden = !tuck;
     if (!tuck) return;
@@ -41482,12 +41539,20 @@ function start(host            ) {
    * The ring: the top bar's Save in the line's orange while the line speaks of a change not saved — the review's "tie the
    * changes not saved to the Save button above" (B of the two ways; A, a Save in the line, would be a second Save).
    */
+  /** Where the motion's note is drawn at all: the Scene's world edited with Placement (not playing). */
+  function noteOn()          {
+    return editing && !playing && editLayer === 'world' && tool === 'placement' && page === 'tool';
+  }
   function renderMotionNote() {
     if (!noteReady) return;
     // The UI layer's line about UI not selectable yet (ui-missing.ts): only while the UI is edited.
     uiMissing.render(editing && !playing && editLayer === 'ui');
-    const on = editing && !playing && editLayer === 'world' && tool === 'placement' && page === 'tool';
-    const glow = motionNote.render(on ? noteOf(timeline.noteIn()) : null);
+    const n = noteOn() ? noteOf(timeline.noteIn()) : null;
+    // Under the AI's reply (△4, studio-motion-fix-2): no line of its own, but the Save still rings — it is still the step.
+    // The note changed under it (saved, another pick): the reply is drawn again without it (it then clears noteUnder).
+    if (noteUnder && !(n?.change?.where === 'here' && !n.rec)) queueMicrotask(() => renderAiLine());
+    const shown = motionNote.render(noteUnder ? null : n);
+    const glow = noteUnder ? !!n?.change : shown;
     for (const b of saveBtns) {
       if (glow && !b.hidden) b.dataset.glow = 'motion';
       else delete b.dataset.glow;

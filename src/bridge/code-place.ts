@@ -107,6 +107,8 @@ export const PLACE_WORDS: Record<Lang, {
   fixed: Record<PlaceWay, string>; pinned: (name: string) => string; hand: string;
   /** The chip when the knob is at the end of its range (studio-motion-fix △2): the drag stopped there, it did not jump. */
   lo: string; hi: string;
+  /** The line under the strip after "Move just this one" (studio-motion-fix-2 △9): what the next drag does. */
+  once: string;
 }> = {
   en: {
     head: (name, n) => `${name} ×${n} (rule): `,
@@ -119,6 +121,7 @@ export const PLACE_WORDS: Record<Lang, {
     hand: 'By hand',
     lo: ' · smallest',
     hi: ' · largest',
+    once: 'Next drag moves just this one · the rest stay on the rule',
   },
   ja: {
     head: (name, n) => `${name} ×${n}（ルール）: `,
@@ -131,6 +134,7 @@ export const PLACE_WORDS: Record<Lang, {
     hand: '手で置いた',
     lo: ' · いちばん小さい',
     hi: ' · いちばん大きい',
+    once: '次のドラッグはこの 1 個だけ · ほかはルールのまま',
   },
 };
 // studio-offsets (2026-10-24): the words of a drag that moves the whole rule (the chip while the finger is down, the line
@@ -167,6 +171,15 @@ export function placeNote(lang: Lang, name: string, n: number, labels: string | 
   const ls = labels === null ? [] : Array.isArray(labels) ? labels : [labels];
   const what = `${ls.length ? `${w.drag(ls)}${o.others ? ow.others : ''}` : ow.follow}${o.touch ? '' : w.alone}`;
   return o.narrow ? what : `${w.head(name, n)}${what}`;
+}
+/**
+ * The line under the strip after "Move just this one" (studio-motion-fix-2 △9, decided 2026-11-05): a phone has no ⌥, so
+ * the long-press menu's row makes the next drag what ⌥-drag is on a PC — and this says so where the finger goes next.
+ * `narrow` = no name (as placeNote).
+ */
+export function onceNote(lang: Lang, name: string, n: number, narrow: boolean): string {
+  const w = PLACE_WORDS[lang] ?? PLACE_WORDS.en;
+  return narrow ? w.once : `${w.head(name, n)}${w.once}`;
 }
 const SIGN = (v: number, dp: number) => `${v < 0 ? '−' : '+'}${Math.abs(v).toFixed(dp)}`;
 /**
@@ -473,6 +486,8 @@ text.hand { fill: ${SAND_TEXT}; }
     v: Record<string, number>; amount: OffsetAmount | null; how: OffsetHow; offs: PlaceOffset[] | undefined } | null = null;
   // The four choices under a drag are open in the editor page (studio:place/choices): its keys 1–4 and Esc.
   let choices = false;
+  // "Move just this one" pressed for this object (studio:place/alone-next, △9): its next drag is ⌥'s. null = none.
+  let aloneNext: string | null = null;
   // A keep-out box being drawn (studio-code-keepout): the layout and where its objects stood when it began.
   let moving: { id: string; before: Array<number[] | null> } | null = null;
   let drawn = '';
@@ -859,7 +874,12 @@ text.hand { fill: ${SAND_TEXT}; }
         pulse(fresh);
       } else if (msg.type === 'studio:place/choices') {
         choices = !!msg.on;
+      } else if (msg.type === 'studio:place/alone-next') {
+        aloneNext = msg.key;
+        d.markDirty();
       } else if (msg.type === 'studio:place/guide') {
+        // Another pick ends "Move just this one" (△9): it was for that object's next drag.
+        if (aloneNext && msg.sel !== aloneNext) aloneNext = null;
         guide = { ids: msg.ids.slice(), sel: msg.sel };
         lit = (msg.lit ?? []).slice(0, 50);
         const fresh = msg.places ? takePlaces(msg.places) : [];
@@ -877,6 +897,7 @@ text.hand { fill: ${SAND_TEXT}; }
       lit = [];
       hoverId = null;
       drag = null;
+      aloneNext = null;
       moving = null;
       drawn = '';
       if (svg.firstChild) svg.replaceChildren();
@@ -886,6 +907,9 @@ text.hand { fill: ${SAND_TEXT}; }
       const p = layoutOf(key);
       if (!p || entryOf(p.id).hand) return null;
       if (pinned(p, key)) return (PLACE_WORDS[d.lang()] ?? PLACE_WORDS.en).pinned(p.name);
+      // "Move just this one" pressed (△9): the line says what the next drag does now — not "Drag to adjust Gap", which
+      // would be wrong for that drag. It is the one line about it (no line over the field besides: the finger is here).
+      if (aloneNext === key) return onceNote(d.lang(), p.name, p.keys.length, win.innerWidth < NOTE_FULL_PX);
       const t = tool ?? 'move';
       const kn = dragKnobs(p);
       // Move of a row with a knob one way only: the other way moves them all (studio-offsets).
@@ -895,9 +919,12 @@ text.hand { fill: ${SAND_TEXT}; }
     },
     dragStart(key, alone, tool = 'move') {
       drag = null;
+      // "Move just this one" (△9) is for ONE drag: used here, or ended by a drag of anything else.
+      const once = aloneNext === key;
+      if (aloneNext) (aloneNext = null, d.markDirty());
       const p = layoutOf(key);
       if (!p || entryOf(p.id).hand || pinned(p, key)) return null;
-      if (alone) return 'free';
+      if (alone || once) return 'free';
       // Every way follows now (studio-offsets): a knob, or the rule's offsets. Which one is known at the first steps.
       const e0 = structuredClone(entryOf(p.id));
       drag = { id: p.id, key, i: Number(key.slice(p.id.length + 1)) - 1, tool, row: rowOf(p, key), e0,

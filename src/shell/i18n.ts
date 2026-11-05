@@ -1279,6 +1279,8 @@ const en = {
   'rule.nth': 'No. {n}',
   'rule.knobTip': 'Drag left or right · click to type',
   'rule.individually': 'Convert to coordinates',
+  // studio-motion-fix-2 △9 (decided 2026-11-05): the long-press menu's way to what ⌥-drag does (a phone has no ⌥).
+  'rule.moveOne': 'Move just this one',
   'rule.individuallyTip': 'Turns the rule into coordinates: where the {n} are now, one by one, for you to move by hand',
   'rule.individuallyDone': 'Converted the {name} rule to coordinates',
   // Placed by hand (studio-hand-marks, 2026-10-24; the hand-marks plan §6, a play-test note of that day: "rule", "row",
@@ -2428,6 +2430,7 @@ const ja: Partial<Record<Key, string>> = {
   'rule.nth': '{n} 番目',
   'rule.knobTip': '左右にドラッグ · 押すと入力',
   'rule.individually': '座標にする',
+  'rule.moveOne': 'この 1 個だけ動かす',
   'rule.individuallyTip': 'ルールを座標にします。今の {n} 個の場所が 1 個ずつの座標になり、手で動かせる物になります',
   'rule.individuallyDone': '{name}のルールを座標にしました',
   'rule.pinned': '{name}のルールの外',

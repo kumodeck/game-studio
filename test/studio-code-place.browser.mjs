@@ -613,6 +613,16 @@ async function toRule(theme) {
     await page.waitFor(`document.querySelectorAll('.obj').length > 0 && !!${GW}?.__gameStudio?._debug`, 90000);
     await sleep(1500);
     const lamps = ['lamp-1', 'lamp-2', 'lamp-3', 'lamp-4', 'lamp-5', 'lamp-6'];
+    // Read until `ok` says yes (at most `ms`), then the last read (2026-11-05, studio-motion-fix-2): a fixed sleep before
+    // a check was short on a busy machine (load 40–80 with other runs) — the check read the line or the card half-way
+    // through its redraw, and the words it printed a moment later were right.
+    const soon = async (read, ok, ms = 10000) => {
+      for (const end = Date.now() + ms; ;) {
+        const v = await read().catch(() => null);
+        if ((v != null && ok(v)) || Date.now() > end) return v;
+        await sleep(250);
+      }
+    };
 
     // ---- 1. the six hand lamps picked: ✦ Turn into a rule on their card → the draft in the chat box ----
     await page.eval(`studioShell.actions.selectMany(${JSON.stringify(lamps)}, 'lamp-1')`);
@@ -632,13 +642,26 @@ async function toRule(theme) {
     check(req?.objects?.find((o) => o.key === 'lamp-3')?.pose?.p?.[0] === -6.6, 'lamp-3\'s place as it stands (x -6.6)');
 
     // ---- 2. the stand-in AI: the rule in the code, then one --do (SKILL.md "Turn into a rule") ----
+    // As SKILL.md says an AI does: "working" on the request first, "done" after (fixed 2026-11-05, studio-motion-fix-2).
+    // Before, the stand-in said neither, so the editor took the request as a note nobody reads ("Kept as a note …") and
+    // read the changed game again at its next status poll (ai-flow.ts reloadDecision: nobody working = now) — somewhere
+    // in the checks below: about one run in three a check met the page half-way (`__lamps` not there yet, the card
+    // still the six lamps, or the --do waiting 20 s for the page). With "working" the editor waits for "done", and the
+    // checks start once the game read again at "done" (softReload('ai')) is up.
+    const CLI = join(PKG, 'skills/arrange/bin/studio.mjs');
+    spawnSync(process.execPath, [CLI, root, '--status', 'working', '--request', req.id, '--note', 'writing it in'], { encoding: 'utf8' });
     const html = readFileSync(join(root, 'index.html'), 'utf8').replace('    // @rules\n', TO_RULE);
     writeFileSync(join(root, 'index.html'), html);
     const r = await ai([{ do: 'place.code', id: 'lamp-row', replace: lamps }]);
     const said = r.results?.[0]?.said ?? r.results?.[0]?.error ?? JSON.stringify(r);
     check(/the largest gap is lamp-3 ↔ lamp-row-3, 0\.6 m \(6 of 6 compared\)/.test(said), `the AI's line has the editor's measure: "${said.slice(-90)}"`);
+    // The page the --do read; "done" reads the game once more as the AI's change (a new page: no __page mark).
+    await page.eval(`${GW}.__page = 1`).catch(() => {});
+    spawnSync(process.execPath, [CLI, root, '--status', 'done', '--request', req.id, '--changed', '6', '--note', 'Turned the 6 street lamps into a row 6 m apart'], { encoding: 'utf8' });
+    await page.waitFor(`!${GW}?.__page && !!${GW}?.__lamps && !!${GW}?.__gameStudio?._debug && document.querySelectorAll('.obj').length > 0`, 20000).catch(() => {});
     await sleep(2500);
-    check((await toast()).includes(T.max.replace(/^[^:]+: /, '')), `the line over the chat box: "${(await toast()).slice(0, 160)}"`);
+    const said1 = await soon(toast, (x) => x.includes(T.max.replace(/^[^:]+: /, '')));
+    check((said1 ?? '').includes(T.max.replace(/^[^:]+: /, '')), `the line over the chat box: "${(said1 ?? '').slice(0, 160)}"`);
     check((await shown()) === JSON.stringify([false, false, false, false, false, false]), `the hand lamps hidden (${await shown()})`);
     const handRows = () => page.eval(`document.querySelectorAll('.obj[data-key^="lamp-"]:not([data-key^="lamp-row"])').length`);
     check((await handRows()) === 0, `…and not in the list (${await handRows()} rows)`);
@@ -678,7 +701,8 @@ async function toRule(theme) {
     await sleep(2500);
     await page.eval(`studioShell.actions.select('lamp-row-3')`);
     await sleep(700);
-    check((await card()).includes(T.max), '⌘⇧Z: the swap and its comparison again');
+    const c5 = await soon(card, (x) => x.includes(T.max));
+    check((c5 ?? '').includes(T.max), `⌘⇧Z: the swap and its comparison again ("${(c5 ?? '').replace(/\n/g, ' / ').slice(0, 120)}")`);
 
     // ---- 5. the ship's motion: the row's ⋯ → Turn into a rule… → the stand-in AI's motion.code --replace ----
     await page.eval(`studioShell.actions.select('ship')`);

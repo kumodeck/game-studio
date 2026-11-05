@@ -1,4 +1,4 @@
-/* KUMODeck Game Studio 0.1.78 — MIT License — built file, edit src/ instead */
+/* KUMODeck Game Studio 0.1.79 — MIT License — built file, edit src/ instead */
 (() => {
 const __defs = [];
 const __cache = [];
@@ -5206,6 +5206,12 @@ const MSG_PREFIX = 'studio:';
                                                                                                      
      
                                                  
+     
+                                                                                                                       
+                                                                                                                     
+                                                                                
+     
+                                                           
      
                                                                                                                     
                                                                                                                      
@@ -16313,6 +16319,8 @@ const PLACE_WORDS
                                                                                   
                                                                                                                            
                          
+                                                                                                               
+               
    = {
   en: {
     head: (name, n) => `${name} ×${n} (rule): `,
@@ -16325,6 +16333,7 @@ const PLACE_WORDS
     hand: 'By hand',
     lo: ' · smallest',
     hi: ' · largest',
+    once: 'Next drag moves just this one · the rest stay on the rule',
   },
   ja: {
     head: (name, n) => `${name} ×${n}（ルール）: `,
@@ -16337,6 +16346,7 @@ const PLACE_WORDS
     hand: '手で置いた',
     lo: ' · いちばん小さい',
     hi: ' · いちばん大きい',
+    once: '次のドラッグはこの 1 個だけ · ほかはルールのまま',
   },
 };
 // studio-offsets (2026-10-24): the words of a drag that moves the whole rule (the chip while the finger is down, the line
@@ -16373,6 +16383,15 @@ function placeNote(lang      , name        , n        , labels                  
   const ls = labels === null ? [] : Array.isArray(labels) ? labels : [labels];
   const what = `${ls.length ? `${w.drag(ls)}${o.others ? ow.others : ''}` : ow.follow}${o.touch ? '' : w.alone}`;
   return o.narrow ? what : `${w.head(name, n)}${what}`;
+}
+/**
+ * The line under the strip after "Move just this one" (studio-motion-fix-2 △9, decided 2026-11-05): a phone has no ⌥, so
+ * the long-press menu's row makes the next drag what ⌥-drag is on a PC — and this says so where the finger goes next.
+ * `narrow` = no name (as placeNote).
+ */
+function onceNote(lang      , name        , n        , narrow         )         {
+  const w = PLACE_WORDS[lang] ?? PLACE_WORDS.en;
+  return narrow ? w.once : `${w.head(name, n)}${w.once}`;
 }
 const SIGN = (v        , dp        ) => `${v < 0 ? '−' : '+'}${Math.abs(v).toFixed(dp)}`;
 /**
@@ -16679,6 +16698,8 @@ text.hand { fill: ${SAND_TEXT}; }
                                                                                                                      = null;
   // The four choices under a drag are open in the editor page (studio:place/choices): its keys 1–4 and Esc.
   let choices = false;
+  // "Move just this one" pressed for this object (studio:place/alone-next, △9): its next drag is ⌥'s. null = none.
+  let aloneNext                = null;
   // A keep-out box being drawn (studio-code-keepout): the layout and where its objects stood when it began.
   let moving                                                        = null;
   let drawn = '';
@@ -17065,7 +17086,12 @@ text.hand { fill: ${SAND_TEXT}; }
         pulse(fresh);
       } else if (msg.type === 'studio:place/choices') {
         choices = !!msg.on;
+      } else if (msg.type === 'studio:place/alone-next') {
+        aloneNext = msg.key;
+        d.markDirty();
       } else if (msg.type === 'studio:place/guide') {
+        // Another pick ends "Move just this one" (△9): it was for that object's next drag.
+        if (aloneNext && msg.sel !== aloneNext) aloneNext = null;
         guide = { ids: msg.ids.slice(), sel: msg.sel };
         lit = (msg.lit ?? []).slice(0, 50);
         const fresh = msg.places ? takePlaces(msg.places) : [];
@@ -17083,6 +17109,7 @@ text.hand { fill: ${SAND_TEXT}; }
       lit = [];
       hoverId = null;
       drag = null;
+      aloneNext = null;
       moving = null;
       drawn = '';
       if (svg.firstChild) svg.replaceChildren();
@@ -17092,6 +17119,9 @@ text.hand { fill: ${SAND_TEXT}; }
       const p = layoutOf(key);
       if (!p || entryOf(p.id).hand) return null;
       if (pinned(p, key)) return (PLACE_WORDS[d.lang()] ?? PLACE_WORDS.en).pinned(p.name);
+      // "Move just this one" pressed (△9): the line says what the next drag does now — not "Drag to adjust Gap", which
+      // would be wrong for that drag. It is the one line about it (no line over the field besides: the finger is here).
+      if (aloneNext === key) return onceNote(d.lang(), p.name, p.keys.length, win.innerWidth < NOTE_FULL_PX);
       const t = tool ?? 'move';
       const kn = dragKnobs(p);
       // Move of a row with a knob one way only: the other way moves them all (studio-offsets).
@@ -17101,9 +17131,12 @@ text.hand { fill: ${SAND_TEXT}; }
     },
     dragStart(key, alone, tool = 'move') {
       drag = null;
+      // "Move just this one" (△9) is for ONE drag: used here, or ended by a drag of anything else.
+      const once = aloneNext === key;
+      if (aloneNext) (aloneNext = null, d.markDirty());
       const p = layoutOf(key);
       if (!p || entryOf(p.id).hand || pinned(p, key)) return null;
-      if (alone) return 'free';
+      if (alone || once) return 'free';
       // Every way follows now (studio-offsets): a knob, or the rule's offsets. Which one is known at the first steps.
       const e0 = structuredClone(entryOf(p.id));
       drag = { id: p.id, key, i: Number(key.slice(p.id.length + 1)) - 1, tool, row: rowOf(p, key), e0,
@@ -17281,6 +17314,7 @@ __def(__exports, "PLACE_WORDS", () => PLACE_WORDS);
 __def(__exports, "OFFSET_WORDS", () => OFFSET_WORDS);
 __def(__exports, "NOTE_FULL_PX", () => NOTE_FULL_PX);
 __def(__exports, "placeNote", () => placeNote);
+__def(__exports, "onceNote", () => onceNote);
 __def(__exports, "offsetChip", () => offsetChip);
 __def(__exports, "heldChip", () => heldChip);
 __def(__exports, "knobText", () => knobText);
@@ -24723,6 +24757,7 @@ function createEditor(deps            )         {
           break;
         case 'studio:place/layout':
         case 'studio:place/guide':
+        case 'studio:place/alone-next':
           if (state.editing && layer === 'world') codePlace.handle(msg);
           break;
         case 'studio:place/avoid':

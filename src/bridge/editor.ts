@@ -1515,6 +1515,7 @@ export function createEditor(deps: EditorDeps): Editor {
           break;
         case 'studio:place/layout':
         case 'studio:place/guide':
+        case 'studio:place/alone-next':
           if (state.editing && layer === 'world') codePlace.handle(msg);
           break;
         case 'studio:place/avoid':

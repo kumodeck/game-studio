@@ -2,7 +2,7 @@
 title: Play
 nav: Play
 order: 3
-written-for: 0.1.78
+written-for: 0.1.79
 description: Play your game in the editor, slow it down, pause it on the exact frame, edit that moment by hand or with your AI, and keep it as a checkpoint.
 ---
 

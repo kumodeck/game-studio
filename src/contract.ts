@@ -1189,6 +1189,12 @@ export type ShellToBridge =
    */
   | { type: 'studio:place/choices'; on: boolean }
   /**
+   * studio-motion-fix-2 △9 (decided 2026-11-05): "Move just this one" in the long-press / right-click menu of a rule's
+   * object — the next drag of `key` moves just it (what ⌥-drag does on a PC; a phone has no ⌥), then it is over (one
+   * drag; another object's drag or another pick ends it too). null = no longer.
+   */
+  | { type: 'studio:place/alone-next'; key: string | null }
+  /**
    * studio-code-keepout (2026-10-24; the plan's step 3): the keep-out areas of the picked object's rule layout `id`
    * painted on the ground (red hatching; a box's edge orange with its corners to drag, a code condition's violet and
    * dashed, its ◇ when it has a knob and a shape), with `entry` = the layout's `places` entry of the draft. `draw` = the
