@@ -1422,9 +1422,22 @@ export type ShellToBridge =
    * `lines` are drawn on its last second when `mark`, and the same last second is also encoded the other way (with ↔
    * without) so the editor can swap the end without recording again. `id` names this clip in every answer.
    */
-  | { type: 'studio:clip/start'; id: string; seconds: number; fps: number; w: number; h: number; codec: string; bitrate: number; mark: boolean; lines: string[] }
-  /** ● Clip pressed again: end one mark-second from now (clip-model.ts endAfterStop). */
-  | { type: 'studio:clip/stop'; id: string };
+  | { type: 'studio:clip/start'; id: string; seconds: number; fps: number; w: number; h: number; codec: string; bitrate: number; mark: boolean; lines: string[];
+      /**
+       * ● Clip Before / After (stage 2, decided 2026-11-05): the clip starts with `image` (the frame the person asked
+       * from, marks drawn on: PNG / JPEG bytes) held still for `ms`, with `label` ("Before") and the asked `words` drawn
+       * on it; the game's own picture follows, wiped in over `wipeMs`, with `after` ("After"). `seconds` is the whole
+       * clip (the still part included). `started` comes once the still part is encoded: the editor resumes the game then.
+       */
+      before?: { image: ArrayBuffer; ms: number; wipeMs: number; label: string; after: string; words?: string; stillFps: number } }
+  /**
+   * ● Clip pressed again: end one mark-second after the press. `at` (stage 2, decided 2026-11-05): when it was pressed,
+   * as performance.timeOrigin + performance.now() in the editor page (one clock for both pages). WHY: a busy game page
+   * takes the message late — up to seconds — and a clip that ended a second after it ARRIVED came out 4–6 s instead of
+   * 2; the frames recorded between the press and the message are dropped instead, so the clip is as long as pressed.
+   * Absent (an older editor) = now.
+   */
+  | { type: 'studio:clip/stop'; id: string; at?: number };
 
 /**
  * The one line over the game while playing (§3.5). `state`: looking = sent, the AI has it; fixing = it works on it;
@@ -1948,6 +1961,11 @@ export interface StudioRequestInput {
    */
   intent?: RequestIntent;
   /**
+   * `intent: 'clip-post'` only (● Clip stage 2): the clip the post is for — its length (s), shape, whether the mark (and
+   * so the address) is on, and for a Before / After the person's asked words.
+   */
+  clip?: { seconds: number; shape: 'wide' | 'tall'; mark: boolean; asked?: string };
+  /**
    * `intent: 'ui-code'` only (studio-canvas-ui stage 2, 2026-10-24: the line's "✦ Have Claude make this UI editable"):
    * where the person pressed on the game's screen, game page CSS px — the UI they mean is drawn there. The AI makes ALL
    * of the game's canvas UI selectable at once (codeUi + `--do ui.code`), not only this one; `found` and `shot` are its
@@ -2022,7 +2040,10 @@ export interface StudioRequestInput {
  * into the rule's own numbers (a knob in the game's words: "From the road"), names it in `drag`, and sends `place.code
  * --fold <way>`; the offset row becomes that knob on the card.
  */
-export type RequestIntent = 'avoid' | 'to-code' | 'to-knob' | 'ui-code' | 'moment-values' | 'moment-save' | 'moment-load' | 'moment-connect';
+export type RequestIntent = 'avoid' | 'to-code' | 'to-knob' | 'ui-code' | 'moment-values' | 'moment-save' | 'moment-load' | 'moment-connect' | 'clip-post';
+// 'clip-post' (● Clip stage 2, decided 2026-11-05): an "ask" from the saved clip's ✦ Rewrite — `text` is the X post as it
+// is, `clip` what the clip is; the AI answers with the rewritten post as its status note (SKILL.md "Clip post"), and the
+// editor checks it (X's 280, the address per the mark) before it replaces the post. No code, no files.
 // 'moment-values' (pause-edit stage 2, 2026-10-28; §1.14): a "play" + `paused` request from the moment's ✦ Have {ai} make
 // this moment editable — the game has no codeMoment() yet; the AI names its numbers (score, time left, health) once.
 // 'moment-save' (stage 3): ⚑'s ✦ Have {ai} let the game start from here — the game has no save() / load() yet (or its

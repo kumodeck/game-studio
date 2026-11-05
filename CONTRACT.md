@@ -1682,7 +1682,7 @@ game resumes. A second press ends the clip one second later.
   `paintPage`, again only when the page changed, ≤ 10 / s) with the canvases' live pictures between them, fitted into
   16:9 on black. Encoded with WebCodecs `VideoEncoder` (`avc1.42E01F`, AVC format), each chunk posted to the editor page.
   The editor's own parts (`data-studio-ui`, `game-studio-*`) are never drawn.
-- **Messages**: `studio:clip/start { id, seconds, fps, w, h, codec, bitrate, mark, lines }`, `studio:clip/stop { id }` →
+- **Messages**: `studio:clip/start { id, seconds, fps, w, h, codec, bitrate, mark, lines, before? }`, `studio:clip/stop { id, at? }` →
   `studio:clip/started { total }`, `config { avcc, alt? }`, `chunk { data, key, ts, dur, alt? }` (transferred),
   `progress { done, total }`, `done { frames, markFrom }`, or `error { why: webgpu | tainted | no-encoder | nothing |
   failed, msg? }`. A WebGPU canvas (seen through `getContext('webgpu')`) and a canvas the browser refuses to read
@@ -1697,7 +1697,32 @@ game resumes. A second press ends the clip one second later.
 - **Saved**: through `StudioHost.clips` (`POST /api/clips`, §3.2) in Movies › KUMODeck; the line says the name, the
   length, the place, Show in Finder, Remove mark, ✕, and the post (English, no AI, its X count) with Copy post. A host
   without `clips` (the web demo) gives the MP4 as a download. Nothing is sent anywhere.
-- Not in stage 1: Before / After clips, Tall (9:16), ✦ Rewrite of the post, a phone's Share…, sound, WebGPU.
+- Not yet: sound, WebGPU, "the last 10 seconds" (stage 3).
+
+**Stage 2 (decided 2026-11-05):**
+
+- **Stop is cut at the press.** `stop.at` = when ● Clip was pressed (the click's `Event.timeStamp`), as
+  `performance.timeOrigin + time` — one clock for both pages. The game page ends the clip one second after that
+  (`clip-model.ts cutAtPress`), and the frames it recorded between the press and the message (a busy page reads it
+  seconds late) are not posted; the mark's second starts on the next frame. A stop read after the mark's second has
+  started is ignored (the clip is nearly over).
+- **Tall** (Clip ⌄ Wide / Tall; a phone records Tall until the person chooses): `w × h` = 720×1280, and while recording
+  the editor gives the game a 9:16 window in the middle of the stage (shell.css `[data-clip-shape="tall"]`), so the
+  game lays itself out tall — not a crop. `prefs.json` `clip.shape` once chosen.
+- **● Clip Before / After**, from the paused ask's Before / After panel once its After is there (§3.5.1): `start.before
+  = { image, ms: 2000, wipeMs: 300, label: "Before", after: "After", words?, stillFps: 10 }`, `seconds` = 10. The game
+  page encodes the still part first (the asked frame with its marks, cut to fill a Tall frame; "Before"; the asked words
+  unless `prefs.json` `clip.words` is false), then says `started` — the editor resumes the Try's paused moment then —
+  and records the game's picture from the clip's 2 s on, the Before wiped off over its first 0.3 s, "After" in its
+  corner, the mark on the last second. Saved as `<game>-before-after-N.mp4`; its post: "Paused my game at 0:05, marked a
+  spot and told Claude “…”. It fixed the code. Before → After 👇 <address>" (within 280; `clip-model.ts beforeAfterPost`).
+- **✦ Rewrite** (only with an AI watching, never in the web demo): `request({ kind: 'ask', intent: 'clip-post', text:
+  <the post>, clip: { seconds, shape, mark, asked? } })` (§3.4); the watch line is `studio: request ask <file> "<post>"
+  (rewrite this X post for a clip …)`. The AI answers `--status done --note "<the post>"` (SKILL.md "Clip post"). The
+  editor keeps that status out of the AI line (a paused reply with ▶ Try / ↶ Undo stays as it was), and takes the note
+  only within 280 as X counts, the address put right for the mark (`checkRewrite`); else the person's post stays.
+- **A phone**: ● Clip in the bar while playing; the saved line has **Share…** (Web Share with the MP4 file and the post)
+  instead of Show in Finder, or **Save to this phone** (a download) where the browser cannot share files.
 
 ### 3.6 The AI's hands: editor work done by the AI (`--do`, 2026-10-24)
 

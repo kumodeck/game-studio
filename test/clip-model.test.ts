@@ -1,12 +1,14 @@
 // ● Clip, stage 1 (decided 2026-11-05; src/shell/clip-model.ts, src/shell/mp4.ts): the rules that need no browser —
 // lengths, frames, the early stop, the file's name, the post and its count, the mark's one switch, the prefs, and the
-// MP4 box written and read back. The recording itself: test/studio-clip.browser.mjs.
+// MP4 box written and read back. Stage 2 (decided 2026-11-05): Wide / Tall, the Before / After's name, words and post,
+// ✦ Rewrite's check of the AI's post. The recording itself: test/studio-clip.browser.mjs.
 // Run: node --experimental-strip-types --no-warnings --test test/clip-model.test.ts
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  CLIP_DEFAULT_LENGTH, CLIP_FPS, CLIP_LENGTHS, CLIP_MARK_DEFAULT, CLIP_MARK_LINES, CLIP_REPO_URL, X_LIMIT,
-  clipFrames, clipStem, downloadName, endAfterStop, markStartMs, normalizeClipPrefs, postText, recClock, xLength,
+  BA_AFTER_SECONDS, BA_BEFORE_MS, BA_WORDS_MAX, CLIP_DEFAULT_LENGTH, CLIP_FPS, CLIP_LENGTHS, CLIP_MARK_DEFAULT, CLIP_MARK_LINES, CLIP_REPO_URL, CLIP_TALL, CLIP_WIDE, X_LIMIT,
+  baWords, beforeAfterPost, beforeAfterStem, checkRewrite, clipFrames, cutAtPress, clipShapeFor, clipSize, clipStem, downloadName, endAfterStop, markStartMs,
+  normalizeClipPrefs, postText, recClock, withAddress, xLength,
 } from '../src/shell/clip-model.ts';
 import { mp4Info, muxMp4, sampleTicks, type Mp4Sample } from '../src/shell/mp4.ts';
 import { translate } from '../src/shell/i18n.ts';
@@ -64,9 +66,12 @@ test('the mark: on by default, two English lines, and the prefs keep what the pe
   assert.equal(CLIP_MARK_DEFAULT, true);
   assert.deepEqual([...CLIP_MARK_LINES], ['Made with KUMODeck Game Studio', 'github.com/kumodeck/game-studio']);
   assert.ok(CLIP_REPO_URL.endsWith(CLIP_MARK_LINES[1]));
-  assert.deepEqual(normalizeClipPrefs(undefined), { seconds: 8, mark: CLIP_MARK_DEFAULT });
-  assert.deepEqual(normalizeClipPrefs({ seconds: 12, mark: false }), { seconds: 12, mark: false });
-  assert.deepEqual(normalizeClipPrefs({ seconds: 9, mark: 'no' }), { seconds: 8, mark: CLIP_MARK_DEFAULT });
+  assert.deepEqual(normalizeClipPrefs(undefined), { seconds: 8, mark: CLIP_MARK_DEFAULT, words: true });
+  assert.deepEqual(normalizeClipPrefs({ seconds: 12, mark: false }), { seconds: 12, mark: false, words: true });
+  assert.deepEqual(normalizeClipPrefs({ seconds: 9, mark: 'no' }), { seconds: 8, mark: CLIP_MARK_DEFAULT, words: true });
+  // Stage 2: the shape once chosen, the words on Before / After (on unless turned off); an odd shape reads as not chosen.
+  assert.deepEqual(normalizeClipPrefs({ seconds: 6, mark: true, shape: 'tall', words: false }), { seconds: 6, mark: true, words: false, shape: 'tall' });
+  assert.equal('shape' in normalizeClipPrefs({ shape: 'square' }), false);
 });
 
 test('the clock on the button', () => {
@@ -78,13 +83,92 @@ test('the clock on the button', () => {
 test('the words: English and Japanese for the button, the line and the refusals', () => {
   for (const lang of ['en', 'ja'] as const) {
     for (const k of ['clip.btn', 'clip.tip', 'clip.stop', 'clip.saved', 'clip.downloaded', 'clip.where', 'clip.finder', 'clip.copy', 'clip.copied',
-      'clip.mark', 'clip.length', 'clip.local', 'clip.webgpu', 'clip.tainted', 'clip.noEncoder', 'clip.failed', 'clip.saveFailed', 'clip.markOff', 'clip.markOn']) {
+      'clip.mark', 'clip.length', 'clip.local', 'clip.webgpu', 'clip.tainted', 'clip.noEncoder', 'clip.failed', 'clip.saveFailed', 'clip.markOff', 'clip.markOn',
+      'clip.shape', 'clip.shape.wide', 'clip.shape.tall', 'clip.words', 'clip.ba', 'clip.baTip', 'clip.share', 'clip.saveHere', 'clip.shareFailed',
+      'clip.rewrite', 'clip.rewriteTip', 'clip.rewriting', 'clip.rewritten', 'clip.rewriteLong', 'clip.rewriteEmpty', 'clip.rewriteNone']) {
       const s = translate(lang, k, { n: 8, name: 'neon-run-clip-1.mp4', dir: 'Movies › KUMODeck', t: '0:03', s: 8 });
       assert.ok(s && s !== k, `${lang} ${k}`);
     }
   }
   assert.equal(translate('en', 'clip.local', {}), 'Nothing leaves this computer.');
   assert.equal(translate('en', 'clip.webgpu', {}), 'Clip needs WebGL for now. This game draws with WebGPU.');
+  // Stage 2: the line names the shape it was recorded in.
+  assert.equal(translate('en', 'clip.where', { s: 8, shape: translate('en', 'clip.shape.tall', {}), dir: 'Movies › KUMODeck' }), '8 s · Tall 720×1280 · Movies › KUMODeck');
+  assert.equal(translate('ja', 'clip.where', { s: 8, shape: translate('ja', 'clip.shape.wide', {}), dir: 'ムービー › KUMODeck' }), '8 秒 · 横 1280×720 · ムービー › KUMODeck');
+});
+
+test('stage 2 · Wide / Tall: 1280×720 and 720×1280 (one H.264 level holds both); a phone records Tall until the person chooses', () => {
+  assert.deepEqual(clipSize('wide'), CLIP_WIDE);
+  assert.deepEqual(clipSize('tall'), CLIP_TALL);
+  assert.deepEqual(CLIP_TALL, { w: 720, h: 1280 });
+  // Level 3.1 = at most 3600 macroblocks (16×16) a frame: both shapes are exactly that.
+  for (const { w, h } of [CLIP_WIDE, CLIP_TALL]) assert.equal((w / 16) * (h / 16), 3600);
+  assert.equal(clipShapeFor({}, false), 'wide');
+  assert.equal(clipShapeFor({}, true), 'tall');
+  assert.equal(clipShapeFor({ shape: 'wide' }, true), 'wide');
+  assert.equal(clipShapeFor({ shape: 'tall' }, false), 'tall');
+});
+
+test('stage 2 · the late stop: the clip ends one second after the PRESS, however late the game page reads it', () => {
+  // Pressed 1.0 s in: 2.033 s (on the 1/30 s grid), whether the message came at 1.1 s or 5 s — play-clip.ts gives
+  // endAfterStop the press's time and drops the frames recorded after it.
+  // On time (read 20 ms after the press, the last frame at slot 30 = 1.0 s): ends at 2.0 s, nothing dropped.
+  const onTime = cutAtPress({ nowMs: 1020, pressMs: 1000, liveFrom: 0, slot: 30, endMs: 8000 });
+  assert.ok(Math.abs(onTime.endMs - 2000) < 1e-6 && onTime.tailSlot === 30 && onTime.drop === 1, JSON.stringify(onTime));
+  // Read 4 s late (a busy page; frames up to slot 150 = 5.0 s taken): still 2.0 s, the 121 frames after the press dropped.
+  const late = cutAtPress({ nowMs: 5000, pressMs: 1000, liveFrom: 0, slot: 150, endMs: 8000 });
+  assert.ok(Math.abs(late.endMs - 2000) < 1e-6 && late.drop === 121, JSON.stringify(late));
+  // A press "in the future" (clocks a little apart) is now; one before the game's picture started is its first frame.
+  assert.equal(cutAtPress({ nowMs: 1000, pressMs: 1500, liveFrom: 0, slot: 30, endMs: 8000 }).pressed, 1000);
+  assert.ok(Math.abs(cutAtPress({ nowMs: 2500, pressMs: 100, liveFrom: 2000, slot: 75, endMs: 10000 }).pressed - 2033.333) < 0.01);
+  // A press within the last second (the mark's second has started) ends where it was going to.
+  assert.equal(cutAtPress({ nowMs: 7600, pressMs: 7500, liveFrom: 0, slot: 228, endMs: 8000 }).endMs, 8000);
+  // The Before / After's whole length: 2 s still + 8 s of the After = 10 s, its mark on the last second.
+  assert.equal(BA_BEFORE_MS / 1000 + BA_AFTER_SECONDS, 10);
+  assert.equal(markStartMs(10000), 9000);
+});
+
+test('stage 2 · Before / After: its file name, the words on the Before, the post (within 280, words optional)', () => {
+  assert.equal(beforeAfterStem('Neon Run'), 'neon-run-before-after');
+  assert.equal(beforeAfterStem('ネオン'), 'game-before-after');
+  assert.equal(baWords('  “Bring the boss in\n from here.” '), 'Bring the boss in from here.');
+  assert.equal(baWords(''), '');
+  const long = baWords('w'.repeat(300));
+  assert.equal(long.length, BA_WORDS_MAX);
+  assert.ok(long.endsWith('…'));
+  const post = beforeAfterPost({ time: 5.02, asked: 'Bring the boss in from here.', mark: true, words: true, marked: true, ai: 'Claude' });
+  assert.equal(post, `Paused my game at 0:05, marked a spot and told Claude “bring the boss in from here”. It fixed the code. Before → After 👇 ${CLIP_REPO_URL}`);
+  // The plan's own count of this post: 146 / 280 (launch/count-x.mjs).
+  assert.equal(xLength(post), 146);
+  // Words off: no words of theirs at all; the mark off: no address.
+  const plain = beforeAfterPost({ time: 65, asked: 'secret words', mark: false, words: false, marked: false, ai: 'Codex' });
+  assert.equal(plain, 'Paused my game at 1:05 and asked Codex for a fix. It fixed the code. Before → After 👇');
+  // Long words are cut so the whole post fits.
+  const cut = beforeAfterPost({ time: 3, asked: 'make the boss '.repeat(40), mark: true, words: true, marked: false, ai: 'Claude' });
+  assert.ok(xLength(cut) <= X_LIMIT, String(xLength(cut)));
+  assert.match(cut, /…”/);
+  assert.ok(cut.endsWith(CLIP_REPO_URL));
+});
+
+test('stage 2 · ✦ Rewrite: the AI\'s post is taken only within 280, and the address follows the mark whatever it wrote', () => {
+  const ok = checkRewrite('"Paused my game, told Claude to bring the boss in — fixed 👇 github.com/kumodeck/game-studio"', true);
+  assert.ok(ok.ok);
+  assert.equal(ok.ok && ok.text, `Paused my game, told Claude to bring the boss in — fixed 👇 ${CLIP_REPO_URL}`);
+  // Mark off: the address the AI kept is taken out.
+  const off = checkRewrite(`My boss fight, fixed 👇 ${CLIP_REPO_URL}`, false);
+  assert.ok(off.ok && off.text === 'My boss fight, fixed 👇', JSON.stringify(off));
+  // Mark on, the AI left it out: put back at the end.
+  const on = checkRewrite('My boss fight, fixed 👇', true);
+  assert.ok(on.ok && on.text === `My boss fight, fixed 👇 ${CLIP_REPO_URL}`);
+  // Too long for X: the person's post stays (the line says how long it was).
+  const long = checkRewrite('a'.repeat(270), true);
+  assert.deepEqual(long, { ok: false, why: 'long', n: 270 + 1 + 23 });
+  // A note cut by the status's 300 characters ("…"): too long.
+  assert.equal(checkRewrite('b'.repeat(299) + '…', false).ok, false);
+  assert.deepEqual(checkRewrite('', true), { ok: false, why: 'empty', n: 0 });
+  assert.equal(checkRewrite(CLIP_REPO_URL, true).ok, false);
+  assert.equal(withAddress(`x ${CLIP_REPO_URL} y`, false), 'x y');
+  assert.equal(withAddress('x', true), `x ${CLIP_REPO_URL}`);
 });
 
 // A fake H.264 stream: the box does not look inside the samples.

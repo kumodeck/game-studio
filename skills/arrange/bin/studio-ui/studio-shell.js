@@ -1,4 +1,4 @@
-/* KUMODeck Game Studio 0.1.81 — MIT License — built file, edit src/ instead */
+/* KUMODeck Game Studio 0.1.82 — MIT License — built file, edit src/ instead */
 (() => {
 const __defs = [];
 const __cache = [];
@@ -1438,9 +1438,22 @@ const MSG_PREFIX = 'studio:';
                                                                                                                      
                                                                                                            
      
-                                                                                                                                                                 
-                                                                                         
-                                             
+                                                                                                                                                                
+         
+                                                                                                                      
+                                                                                                                         
+                                                                                                                      
+                                                                                                                          
+         
+                                                                                                                                   
+     
+                                                                                                                        
+                                                                                                                       
+                                                                                                                       
+                                                                                                                     
+                                    
+     
+                                                          
 
 /**
  * The one line over the game while playing (§3.5). `state`: looking = sent, the AI has it; fixing = it works on it;
@@ -1964,6 +1977,11 @@ function isStudioMessage(x         )                     {
      
                          
      
+                                                                                                                         
+                                                                              
+     
+                                                                                    
+     
                                                                                                                        
                                                                                                                         
                                                                                                                         
@@ -2038,7 +2056,10 @@ function isStudioMessage(x         )                     {
  * into the rule's own numbers (a knob in the game's words: "From the road"), names it in `drag`, and sends `place.code
  * --fold <way>`; the offset row becomes that knob on the card.
  */
-                                                                                                                                             
+                                                                                                                                                           
+// 'clip-post' (● Clip stage 2, decided 2026-11-05): an "ask" from the saved clip's ✦ Rewrite — `text` is the X post as it
+// is, `clip` what the clip is; the AI answers with the rewritten post as its status note (SKILL.md "Clip post"), and the
+// editor checks it (X's 280, the address per the mark) before it replaces the post. No code, no files.
 // 'moment-values' (pause-edit stage 2, 2026-10-28; §1.14): a "play" + `paused` request from the moment's ✦ Have {ai} make
 // this moment editable — the game has no codeMoment() yet; the AI names its numbers (score, time left, health) once.
 // 'moment-save' (stage 3): ⚑'s ✦ Have {ai} let the game start from here — the game has no save() / load() yet (or its
@@ -18656,7 +18677,25 @@ const en = {
   'clip.stopTip': 'Stop now (the clip ends one second later)',
   'clip.saved': 'Clip saved · {name}',
   'clip.downloaded': 'Clip downloaded · {name}',
-  'clip.where': '{s} s · Wide 1280×720 · {dir}',
+  'clip.where': '{s} s · {shape} · {dir}',
+  // ● Clip stage 2 (decided 2026-11-05): Wide / Tall in ⌄ (a phone records Tall until chosen), Before / After from the
+  // paused ask's panel, ✦ Rewrite (the AI rewrites the post; only with an AI there), a phone's Share….
+  'clip.shape': 'Shape',
+  'clip.shape.wide': 'Wide 1280×720',
+  'clip.shape.tall': 'Tall 720×1280',
+  'clip.words': 'Show my words on Before / After',
+  'clip.ba': 'Clip Before / After',
+  'clip.baTip': 'Make a 10-second video: the frame you asked from, then the new code from the same moment',
+  'clip.share': 'Share…',
+  'clip.saveHere': 'Save to this phone',
+  'clip.shareFailed': 'Couldn’t share the clip: {msg}',
+  'clip.rewrite': 'Rewrite',
+  'clip.rewriteTip': 'Have {ai} rewrite this post',
+  'clip.rewriting': 'Rewriting…',
+  'clip.rewritten': '{Ai} rewrote the post. Copy post copies the new one.',
+  'clip.rewriteLong': '{Ai}’s post was {n} / 280, too long for X. Your post stays.',
+  'clip.rewriteEmpty': '{Ai} sent back no post. Your post stays.',
+  'clip.rewriteNone': 'No answer from {ai}. Your post stays.',
   'clip.dir.movies': 'Movies › KUMODeck',
   'clip.dir.videos': 'Videos › KUMODeck',
   'clip.dir.downloads': 'your Downloads',
@@ -19945,7 +19984,23 @@ const ja                               = {
   'clip.stopTip': '今止める（動画は 1 秒後に終わります）',
   'clip.saved': 'クリップを保存しました · {name}',
   'clip.downloaded': 'クリップをダウンロードしました · {name}',
-  'clip.where': '{s} 秒 · 横 1280×720 · {dir}',
+  'clip.where': '{s} 秒 · {shape} · {dir}',
+  'clip.shape': '形',
+  'clip.shape.wide': '横 1280×720',
+  'clip.shape.tall': '縦 720×1280',
+  'clip.words': 'Before / After に頼んだ言葉を出す',
+  'clip.ba': 'Before / After をクリップに',
+  'clip.baTip': '10 秒の動画にする: 頼んだ時の 1 コマ → 同じ瞬間から新しいコード',
+  'clip.share': '共有…',
+  'clip.saveHere': 'この端末に保存',
+  'clip.shareFailed': 'クリップを共有できませんでした: {msg}',
+  'clip.rewrite': '書き直す',
+  'clip.rewriteTip': '{ai}にこの投稿の文を書き直してもらう',
+  'clip.rewriting': '書き直し中…',
+  'clip.rewritten': '{ai}が投稿の文を書き直しました。コピーすると新しい文になります。',
+  'clip.rewriteLong': '{ai}の文は {n} / 280 で X には長すぎました。元の文のままです。',
+  'clip.rewriteEmpty': '{ai}から文が返ってきませんでした。元の文のままです。',
+  'clip.rewriteNone': '{ai}から返事がありません。元の文のままです。',
   'clip.dir.movies': 'ムービー › KUMODeck',
   'clip.dir.videos': 'ビデオ › KUMODeck',
   'clip.dir.downloads': 'ダウンロード',
@@ -21075,6 +21130,21 @@ function normalizeRequestInput(input) {
   // "ask" only: what a button said the words are for ('avoid': a keep-out area for `places`; 'to-code': the plan's step 4;
   // 'to-knob': ✦ Write into the rule — that way of `places` into the rule as a number of its own, studio-writeback).
   if (kind === 'ask' && (r.intent === 'avoid' || r.intent === 'to-code' || r.intent === 'to-knob' || r.intent === 'ui-code')) out.intent = r.intent;
+  // 'clip-post' (● Clip stage 2, decided 2026-11-05: the saved clip's ✦ Rewrite): `text` is the X post as it is; `clip` says
+  // what the clip is. Hints only: a bad part is dropped, never an error.
+  if (kind === 'ask' && r.intent === 'clip-post') {
+    out.intent = 'clip-post';
+    const c = r.clip && typeof r.clip === 'object' ? r.clip : null;
+    if (c) {
+      const clip = {};
+      if (isFin(c.seconds) && c.seconds > 0 && c.seconds <= 60) clip.seconds = Math.round(c.seconds * 10) / 10;
+      if (c.shape === 'wide' || c.shape === 'tall') clip.shape = c.shape;
+      if (typeof c.mark === 'boolean') clip.mark = c.mark;
+      const asked = oneLine(c.asked, HANDOFF_LIMITS.maxText);
+      if (asked) clip.asked = asked;
+      if (Object.keys(clip).length) out.clip = clip;
+    }
+  }
   // 'ui-code' (studio-canvas-ui stage 2, 2026-10-24: the line's "✦ Ask Claude to make this UI editable"): where the person
   // pressed on the game's screen, the dotted frames the editor showed, and the picture round the press. Hints like
   // `places`: a bad part is dropped, never an error — except a picture that is not a picture (the host writes it to a file).
@@ -23421,6 +23491,8 @@ function tryWords(exact         , already         , made         , drift = 0)   
                                                                                                       
                                                                    
                                         
+                                                                                                            
+                                                     
                                        
                 
  
@@ -23465,6 +23537,11 @@ function createMomentCompare()                {
       if (o.undo) {
         const u = o.undo;
         foot.append(h('button', { type: 'button', class: 'btn', dataset: { action: 'compare-undo' }, onclick: () => u.run() }, icon('undo'), h('span', { text: u.label })));
+      }
+      if (o.clip) {
+        const c = o.clip;
+        foot.append(h('button', { type: 'button', class: 'btn clip-ba', dataset: { action: 'compare-clip' }, title: c.tip, onclick: () => c.run() },
+          h('span', { class: 'rec-dot', 'aria-hidden': 'true' }), h('span', { text: c.label })));
       }
       foot.append(h('button', { type: 'button', class: 'btn primary', dataset: { action: 'compare-keep' }, onclick: () => o.keep.run() }, h('span', { text: o.keep.label })));
       el.replaceChildren(
@@ -23842,8 +23919,28 @@ const CLIP_DEFAULT_LENGTH             = 8;
 
 /** Frames per second recorded: X plays 30 and 60; 30 keeps the encoder well ahead of real time on a laptop without a GPU. */
 const CLIP_FPS = 30;
-/** Wide only in stage 1 (Tall, a 9:16 window given to the game while recording, is stage 2). */
+/** Wide: 16:9, 1280×720 (stage 1). */
 const CLIP_WIDE = { w: 1280, h: 720 }         ;
+/**
+ * Tall (stage 2, decided 2026-11-05): 9:16, 720×1280 — what a phone shows full screen. Not a crop of the wide picture:
+ * while it records, the editor gives the game a 9:16 window (shell.css [data-clip-shape="tall"]), so a game that lays
+ * itself out to its window draws tall. 720×1280 and not 1080×1920: level 3.1 (CLIP_CODEC) holds exactly 3600
+ * macroblocks a frame = 720×1280, so the same encoder setup serves both shapes, and the software encoder keeps up.
+ */
+const CLIP_TALL = { w: 720, h: 1280 }         ;
+                                        
+const CLIP_SHAPES                       = ['wide', 'tall'];
+/** The frame size of a shape. */
+function clipSize(shape           )                           {
+  return shape === 'tall' ? CLIP_TALL : CLIP_WIDE;
+}
+/**
+ * The shape a press records: the person's choice in Clip ⌄, else Tall on a phone (its window is tall already, and a
+ * phone's clip is watched on a phone) and Wide elsewhere (decided 2026-11-05).
+ */
+function clipShapeFor(p                          , phone         )            {
+  return p.shape ?? (phone ? 'tall' : 'wide');
+}
 /** H.264 bits per second: ~6 MB for 12 s, far under X's limit (512 MB), sharp enough for small HUD text at 720p. */
 const CLIP_BITRATE = 4_000_000;
 /**
@@ -23877,6 +23974,14 @@ const X_LIMIT = 280;
                             
                       
                 
+                                                                                            
+                    
+     
+                                                                                                                  
+                                                                                                                      
+                                    
+     
+                 
  
 
 /** A hand-edited or older prefs file reads as the defaults for anything it does not say right. */
@@ -23884,7 +23989,8 @@ function normalizeClipPrefs(raw         )            {
   const r = (raw && typeof raw === 'object' ? raw : {})                           ;
   const seconds = CLIP_LENGTHS.includes(r.seconds              ) ? (r.seconds              ) : CLIP_DEFAULT_LENGTH;
   const mark = typeof r.mark === 'boolean' ? r.mark : CLIP_MARK_DEFAULT;
-  return { seconds, mark };
+  const words = typeof r.words === 'boolean' ? r.words : true;
+  return { seconds, mark, words, ...(r.shape === 'wide' || r.shape === 'tall' ? { shape: r.shape } : {}) };
 }
 
 /** Frames in a clip of `seconds` (whole frames). */
@@ -23900,6 +24006,26 @@ function clipFrames(seconds        , fps = CLIP_FPS)         {
 function endAfterStop(elapsedMs        , endMs        , fps = CLIP_FPS)         {
   const dt = 1000 / fps;
   return Math.min(endMs, Math.ceil((Math.max(elapsedMs, dt) + CLIP_MARK_SECONDS * 1000) / dt) * dt);
+}
+
+/**
+ * A stop cut at the PRESS (stage 2, decided 2026-11-05; bridge/play-clip.ts). `nowMs` = the clip's time when the game
+ * page reads the stop, `pressMs` = the clip's time of the press (the editor's clock), `liveFrom` = when the game's
+ * picture started in the clip (a Before / After's still part comes first), `slot` = the grid slot of the last frame taken.
+ * Returns the new end and mark-second, and `drop` = how many frames already taken are past the mark-second's start —
+ * those are left out, and the next frame starts the mark's second. WHY: a busy game page took the message seconds late,
+ * and a clip ended a second after the MESSAGE (2 s pressed, 4–6 s saved; the screen test failed at a load of 60–75).
+ * Only before the mark's second has started (the bridge ignores a stop after that: the clip is nearly over, and its
+ * last second is already encoded both ways).
+ */
+function cutAtPress(o                                                                                                 ) {
+  const fps = o.fps ?? CLIP_FPS;
+  const dt = 1000 / fps;
+  const pressed = Math.min(o.nowMs, Math.max(o.liveFrom + dt, Number.isFinite(o.pressMs) ? o.pressMs : o.nowMs));
+  const endMs = endAfterStop(pressed, o.endMs, fps);
+  const tailMs = markStartMs(endMs);
+  const tailSlot = Math.round(tailMs / dt);
+  return { pressed, endMs, tailMs, tailSlot, drop: Math.max(0, o.slot - tailSlot + 1) };
 }
 
 /** When the mark's second starts (ms): one second before the end (a key frame there, so the ends can be swapped). */
@@ -23961,6 +24087,89 @@ function xLength(text        )         {
   return n;
 }
 
+// ----- ● Clip Before / After (stage 2, decided 2026-11-05) -----
+// After a fix asked from a paused moment (pause-ask stage 3: Before / After, ▶ Try from 0:05.02), one press makes the
+// video of it: the frame the person asked from, still, with their mark and their words (Before) → a wipe → the same
+// moment with the new code, played (After) → the mark on the last second. Three words at most on screen: "Before",
+// "After" and what was asked — a phone's small screen reads that much while it plays.
+
+/** The Before: the asked frame held this long (ms). */
+const BA_BEFORE_MS = 2000;
+/** The wipe from Before to After, over the After's first frames (ms). */
+const BA_WIPE_MS = 300;
+/** The After (s): 7 s of the new code playing, then the mark's second (still playing) — with the Before, 10 s in all. */
+const BA_AFTER_SECONDS = 8;
+/** The Before's still frames are encoded at this rate (fps): nothing moves, so 10 a second is plenty and quick. */
+const BA_STILL_FPS = 10;
+/** The longest asked words drawn on the Before (characters, then "…"): one or two lines on a phone. */
+const BA_WORDS_MAX = 90;
+
+/** "neon-run-before-after" (the server adds "-1", "-2"…). */
+function beforeAfterStem(game        )         {
+  return clipStem(game).replace(/-clip$/, '-before-after');
+}
+
+/** The asked words as drawn on the Before: one line, quotes of their own taken off, cut at BA_WORDS_MAX with "…". */
+function baWords(asked        )         {
+  const one = asked.replace(/\s+/g, ' ').trim().replace(/^["“”'‘’「]+|["“”'‘’」]+$/g, '').trim();
+  if (!one) return '';
+  return one.length > BA_WORDS_MAX ? `${one.slice(0, BA_WORDS_MAX - 1).trimEnd()}…` : one;
+}
+
+/**
+ * The post that goes with a Before / After (English, no AI): "Paused my game at 0:05, marked a spot and told Claude
+ * “bring the boss in from here”. It fixed the code. Before → After 👇 <address>" (the plan's §1). The asked words are
+ * cut so the whole post stays within X's 280; `words: false` (the person turned their words off) leaves them out.
+ * `marked`: the Before had a mark of theirs. `ai`: the AI's name as the editor says it ("Claude", "Codex", "my AI").
+ */
+function beforeAfterPost(o                                                                                             )         {
+  const s = Math.max(0, Math.floor(o.time));
+  const at = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+  const tail = `It fixed the code. Before → After 👇${o.mark ? ` ${CLIP_REPO_URL}` : ''}`;
+  const head = `Paused my game at ${at}${o.marked ? ', marked a spot' : ''}`;
+  const plain = `${head} and asked ${o.ai} for a fix. ${tail}`;
+  const w = o.words ? baWords(o.asked) : '';
+  if (!w) return plain;
+  // The words in “ ”, lower-case first letter when it reads as a sentence going on ("told Claude “bring…”").
+  let words = w.replace(/[.!。]+$/, '');
+  if (/^[A-Z][a-z]/.test(words)) words = words[0] .toLowerCase() + words.slice(1);
+  for (;;) {
+    const post = `${head} and told ${o.ai} “${words}”. ${tail}`;
+    if (xLength(post) <= X_LIMIT || words.length <= 8) return xLength(post) <= X_LIMIT ? post : plain;
+    words = `${words.slice(0, Math.max(1, words.length - 12)).trimEnd()}…`;
+  }
+}
+
+// ----- ✦ Rewrite (stage 2, decided 2026-11-05) -----
+// The post's words rewritten by the person's AI (a small request, `intent: 'clip-post'`; SKILL.md "Clip post"). The
+// AI's reply is checked here before it replaces the post: one line, within X's 280 as X counts, and the address follows
+// the mark's one switch whatever the AI wrote (never a post without the mark but with the address, or the other way).
+
+/** The post with the address put right for `mark`: every github.com/kumodeck/game-studio taken out, then one at the end when on. */
+function withAddress(text        , mark         )         {
+  const bare = text
+    .replace(/https?:\/\/(www\.)?github\.com\/kumodeck\/game-studio\/?/gi, ' ')
+    .replace(/(^|\s)(www\.)?github\.com\/kumodeck\/game-studio\/?/gi, ' ')
+    .replace(/[ \t]+/g, ' ')
+    .replace(/\s+([.,!?])/g, '$1')
+    .trim();
+  return mark ? `${bare} ${CLIP_REPO_URL}` : bare;
+}
+
+                                                                                                                   
+
+/** The AI's rewrite, checked: quotes round it taken off, one line, the address per `mark`, at most 280 (X's count). */
+function checkRewrite(reply                           , mark         )               {
+  const raw = String(reply ?? '');
+  // The status note is cut at 300 characters with "…" (src/schema/handoff.mjs maxNote): a reply cut there was too long.
+  if (raw.length >= 299 && raw.endsWith('…')) return { ok: false, why: 'long', n: xLength(raw) };
+  const one = raw.replace(/\s+/g, ' ').trim().replace(/^["“”]+(.*?)["“”]+$/, '$1').trim();
+  if (!one || one.replace(/https?:\/\/\S+/g, '').trim().length < 3) return { ok: false, why: 'empty', n: 0 };
+  const text = withAddress(one, mark);
+  const n = xLength(text);
+  return n > X_LIMIT ? { ok: false, why: 'long', n } : { ok: true, text, n };
+}
+
 /** Why a clip could not be made, as the bridge says it (one line each in the editor's words). */
                                                                                      
 
@@ -23974,6 +24183,10 @@ __def(__exports, "CLIP_LENGTHS", () => CLIP_LENGTHS);
 __def(__exports, "CLIP_DEFAULT_LENGTH", () => CLIP_DEFAULT_LENGTH);
 __def(__exports, "CLIP_FPS", () => CLIP_FPS);
 __def(__exports, "CLIP_WIDE", () => CLIP_WIDE);
+__def(__exports, "CLIP_TALL", () => CLIP_TALL);
+__def(__exports, "CLIP_SHAPES", () => CLIP_SHAPES);
+__def(__exports, "clipSize", () => clipSize);
+__def(__exports, "clipShapeFor", () => clipShapeFor);
 __def(__exports, "CLIP_BITRATE", () => CLIP_BITRATE);
 __def(__exports, "CLIP_CODEC", () => CLIP_CODEC);
 __def(__exports, "CLIP_MARK_DEFAULT", () => CLIP_MARK_DEFAULT);
@@ -23984,11 +24197,22 @@ __def(__exports, "X_LIMIT", () => X_LIMIT);
 __def(__exports, "normalizeClipPrefs", () => normalizeClipPrefs);
 __def(__exports, "clipFrames", () => clipFrames);
 __def(__exports, "endAfterStop", () => endAfterStop);
+__def(__exports, "cutAtPress", () => cutAtPress);
 __def(__exports, "markStartMs", () => markStartMs);
 __def(__exports, "clipStem", () => clipStem);
 __def(__exports, "downloadName", () => downloadName);
 __def(__exports, "postText", () => postText);
 __def(__exports, "xLength", () => xLength);
+__def(__exports, "BA_BEFORE_MS", () => BA_BEFORE_MS);
+__def(__exports, "BA_WIPE_MS", () => BA_WIPE_MS);
+__def(__exports, "BA_AFTER_SECONDS", () => BA_AFTER_SECONDS);
+__def(__exports, "BA_STILL_FPS", () => BA_STILL_FPS);
+__def(__exports, "BA_WORDS_MAX", () => BA_WORDS_MAX);
+__def(__exports, "beforeAfterStem", () => beforeAfterStem);
+__def(__exports, "baWords", () => baWords);
+__def(__exports, "beforeAfterPost", () => beforeAfterPost);
+__def(__exports, "withAddress", () => withAddress);
+__def(__exports, "checkRewrite", () => checkRewrite);
 __def(__exports, "recClock", () => recClock);
 };
 __defs[58] = function (__exports) {
@@ -35549,17 +35773,29 @@ __defs[100] = function (__exports) {
 'use strict';
 // clip.ts
 
-// ● Clip, stage 1 (decided 2026-11-05): the button in the top bar, Clip ⌄, and the line when the clip is saved. The rules
-// are in clip-model.ts, the recording in the game page (bridge/play-clip.ts), the MP4 box in mp4.ts, the folder in
-// src/server/clips.mjs. main.ts places the parts and forwards the game page's `studio:clip/*` messages.
+// ● Clip (stage 1 decided 2026-11-05, stage 2 decided 2026-11-05): the button in the top bar, Clip ⌄, the Before / After
+// clip, and the line when the clip is saved. The rules are in clip-model.ts, the recording in the game page
+// (bridge/play-clip.ts), the MP4 box in mp4.ts, the folder in src/server/clips.mjs. main.ts places the parts, forwards
+// the game page's `studio:clip/*` messages, gives the game its tall window (shell.css [data-clip-shape]) and carries ✦
+// Rewrite's small request to the AI.
 //
 // The flow (one press):
 //   ● Clip → Play first if in Edit (a paused game resumes) → the next 8 s (6 / 8 / 12 in ⌄) are recorded: the button is red
 //   "0:03 · Stop", the game has a red frame (only what is inside it is in the clip) and a thin bar of the time left. A
-//   second press stops early (one more second for the mark). Then the line, where the AI's line is:
+//   second press stops early (one more second for the mark, cut at the press: play-clip.ts). Then the line, where the
+//   AI's line is:
 //     row 1: ✓ Clip saved · neon-run-clip-1.mp4 / 8 s · Wide 1280×720 · Movies › KUMODeck · Show in Finder · Remove mark · ✕
-//     row 2: the post (English, the same words with no AI) · 102 / 280 · Copy post
+//     row 2: the post (English, the same words with no AI) · 102 / 280 · Copy post · ✦ Rewrite
 //   The web demo has no folder: the clip is a download, and its line says so.
+// Stage 2:
+//   - ● Clip Before / After, from the paused ask's Before / After panel (moment-try.ts; main.ts openCompare): the asked
+//     frame still for 2 s ("Before", the asked words) → a wipe → the same moment with the new code, played 7 s ("After")
+//     → the mark's second. The game is the Try's, paused at the moment: it resumes once the still part is encoded.
+//   - Wide / Tall in ⌄ (a phone records Tall until the person chooses): Tall gives the game a 9:16 window while recording.
+//   - ✦ Rewrite: the post rewritten by the person's AI (a small `clip-post` request), checked (X's count, the address
+//     per the mark) before it replaces the post. Not there when no AI is connected (the web demo, nobody watching).
+//   - A phone: Share… (the system's share sheet with the MP4, Web Share) instead of Show in Finder — the MP4 is on the
+//     computer, the person is on the phone; a phone that cannot share files gets Save (a download) instead.
 // WHY no key (⌘K lists it instead): while playing, the keys are the game's (keymap.ts); a letter would fight its controls.
 // WHY the next seconds, not the last ones: recording all through ▶ Play costs heat and battery, and a clip that only
 // starts on a press never records what the person did not mean to show.
@@ -35567,8 +35803,17 @@ __defs[100] = function (__exports) {
 const { h } = __require(16);
 const { icon } = __require(21);
                                                    
-const { CLIP_BITRATE, CLIP_CODEC, CLIP_FPS, CLIP_LENGTHS, CLIP_MARK_LINES, CLIP_WIDE, X_LIMIT, clipStem, downloadName, postText, recClock, xLength } = __require(57);
+const { BA_AFTER_SECONDS, BA_BEFORE_MS, BA_STILL_FPS, BA_WIPE_MS, CLIP_BITRATE, CLIP_CODEC, CLIP_FPS, CLIP_LENGTHS, CLIP_MARK_LINES, CLIP_SHAPES, X_LIMIT, baWords, beforeAfterPost, beforeAfterStem, checkRewrite, clipShapeFor, clipSize, clipStem, downloadName, postText, recClock, withAddress, xLength } = __require(57);
 const { muxMp4 } = __require(99);
+
+/** What ✦ Rewrite tells the AI with the post (StudioRequestInput.clip). */
+                                  
+                  
+                   
+                
+                                                                                       
+                 
+ 
 
                            
                                                                  
@@ -35584,23 +35829,49 @@ const { muxMp4 } = __require(99);
                                
                                                  
                                          
-                                                                                
-                                  
+                                                                                                 
+                                                    
+                                                                              
+                   
+                                                                                                   
+                     
+                                                                                               
+                   
+                                                                                                                       
+                                                                      
  
 
                                                                
 
-/** What was saved, kept for the line's buttons (Show in Finder, the swap). */
+/** A Before / After to make (main.ts openCompare): the asked frame, the words, the ask's second. */
+                                   
+                                                      
+                 
+                
+                                          
+               
+                                           
+                  
+ 
+
+/** What was saved, kept for the line's buttons (Show in Finder, the swap, Share…, ✦ Rewrite). */
                  
                
                                                                            
                 
                                
                   
+                   
                 
                                                                                                              
                            
                    
+                                                                                                                                     
+               
+                                     
+                     
+                     
+                       
  
 
 function createClip(d          ) {
@@ -35611,6 +35882,9 @@ function createClip(d          ) {
   let clock                    ;
   let total = 0;
   let wanted            = d.prefs();
+  let shape            = clipShapeFor(wanted, false);
+  /** The clip being made is a Before / After (its words and post), else null. */
+  let ba                          = null;
   let main              = [];
   let alt              = [];
   let avcc                    = null;
@@ -35623,7 +35897,7 @@ function createClip(d          ) {
 
   // ----- the button: ● Clip | ⌄ (one capsule, like ▶ Play ⌄) -----
   const label = h('span', { class: 'clip-label' });
-  const btn = h('button', { type: 'button', class: 'clip-btn', dataset: { action: 'clip', part: 'clip' }, onclick: () => void press() },
+  const btn = h('button', { type: 'button', class: 'clip-btn', dataset: { action: 'clip', part: 'clip' }, onclick: (e            ) => void press(e.timeStamp) },
     h('span', { class: 'rec-dot', 'aria-hidden': 'true' }), label);
   const more = h('button', { type: 'button', class: 'clip-more', dataset: { action: 'clip-more', part: 'clip-more' }, 'aria-haspopup': 'menu', onclick: () => openMenu() });
   more.append(icon('chevronDown'));
@@ -35636,7 +35910,7 @@ function createClip(d          ) {
 
   function setState(s           ) {
     state = s;
-    d.changed(s);
+    d.changed(s, shape);
     render();
   }
 
@@ -35656,20 +35930,48 @@ function createClip(d          ) {
   function openMenu() {
     const p = d.prefs();
     const dir = d.host.clips ? t(placeKey(navigator.platform)) : t('clip.dir.downloads');
-    const rows              = [{ head: t('clip.length') }];
+    const now = clipShapeFor(p, d.phone());
+    const rows              = [{ head: t('clip.shape') }];
+    for (const sh of CLIP_SHAPES) {
+      rows.push({ id: `clip-${sh}`, label: t(`clip.shape.${sh}`), checked: now === sh, run: () => (d.setPrefs({ ...d.prefs(), shape: sh }), (wanted = d.prefs()), render()) });
+    }
+    rows.push({ sep: true }, { head: t('clip.length') });
     for (const s of CLIP_LENGTHS) {
       rows.push({ id: `clip-${s}`, label: t('clip.lengthRow', { s }), checked: p.seconds === s, run: () => (d.setPrefs({ ...d.prefs(), seconds: s }), (wanted = d.prefs()), render()) });
     }
     rows.push({ sep: true },
       { id: 'clip-mark', label: t('clip.mark'), checked: p.mark, run: () => (d.setPrefs({ ...d.prefs(), mark: !d.prefs().mark }), (wanted = d.prefs())) },
+      { id: 'clip-words', label: t('clip.words'), checked: p.words, run: () => (d.setPrefs({ ...d.prefs(), words: !d.prefs().words }), (wanted = d.prefs())) },
       { sep: true }, { note: `${t('clip.saveTo', { dir })} ${t('clip.local')}` });
     d.menu(more, rows);
   }
 
-  /** ● Clip pressed (the button, ⌘K). */
-  async function press() {
+  /**
+   * The game's window takes its new shape (Tall) before the first frame: its resize and a few of its frames. A timer
+   * only — WHY not this page's requestAnimationFrame: it stops in a tab that is not in front (a screen test's second
+   * page waited 20 s), and the frames that matter are the game page's, not this one's.
+   */
+  const settle = () => new Promise      ((ok) => window.setTimeout(ok, 500));
+
+  function reset() {
+    id = `clip-${Date.now().toString(36)}`;
+    main = [];
+    alt = [];
+    avcc = null;
+    altAvcc = null;
+  }
+
+  /**
+   * ● Clip pressed (the button, ⌘K). `pressedAt`: the click's own time (Event.timeStamp, this page's clock), when there
+   * is one — WHY not performance.now() here: on a busy machine the editor page and a same-site game share one thread, so
+   * this handler itself runs late (the web demo's 1 s press came out 3.9 s); the event is stamped when the click happened.
+   */
+  async function press(pressedAt         ) {
     if (state === 'rec') {
-      d.post({ type: 'studio:clip/stop', id });
+      // `at`: the press on the clock both pages share (see contract studio:clip/stop) — the clip is cut here, however
+      // late the busy game page reads it.
+      const at = typeof pressedAt === 'number' && pressedAt > 0 && pressedAt <= performance.now() ? pressedAt : performance.now();
+      d.post({ type: 'studio:clip/stop', id, at: performance.timeOrigin + at });
       return;
     }
     if (state !== 'idle') return;
@@ -35677,24 +35979,65 @@ function createClip(d          ) {
       d.toast(t('clip.noEncoder'), 7000);
       return;
     }
+    wanted = d.prefs();
+    shape = clipShapeFor(wanted, d.phone());
+    ba = null;
     setState('starting');
     if (!d.playing() && !(await d.play())) {
       setState('idle');
       return;
     }
     if (d.paused()) d.resume();
-    wanted = d.prefs();
-    id = `clip-${Date.now().toString(36)}`;
-    main = [];
-    alt = [];
-    avcc = null;
-    altAvcc = null;
-    d.post({ type: 'studio:clip/start', id, seconds: wanted.seconds, fps: CLIP_FPS, w: CLIP_WIDE.w, h: CLIP_WIDE.h, codec: CLIP_CODEC, bitrate: CLIP_BITRATE,
+    if (shape === 'tall') await settle();
+    if (state !== 'starting') return;
+    reset();
+    const { w, h: hh } = clipSize(shape);
+    d.post({ type: 'studio:clip/start', id, seconds: wanted.seconds, fps: CLIP_FPS, w, h: hh, codec: CLIP_CODEC, bitrate: CLIP_BITRATE,
       mark: wanted.mark, lines: [...CLIP_MARK_LINES] });
-    // Nothing back from the game page (an old bridge, a page that went): give up after a while.
+    waitStarted(5000);
+  }
+
+  /**
+   * ● Clip Before / After (stage 2): from the Before / After panel, the game paused at the Try's moment. The still part
+   * is encoded first by the game page; it says `started` then, and the game resumes (startedNow).
+   */
+  async function beforeAfter(o                  ) {
+    if (state !== 'idle' || !d.playing()) return;
+    if (typeof (window                              ).VideoEncoder === 'undefined') {
+      d.toast(t('clip.noEncoder'), 7000);
+      return;
+    }
+    wanted = d.prefs();
+    shape = clipShapeFor(wanted, d.phone());
+    ba = o;
+    setState('starting');
+    let image             ;
+    try {
+      image = await (await fetch(o.before)).arrayBuffer();
+    } catch (e) {
+      ba = null;
+      setState('idle');
+      d.toast(t('clip.failed', { msg: (e         ).message }), 6000);
+      return;
+    }
+    if (shape === 'tall') await settle();
+    if (state !== 'starting') return;
+    reset();
+    const { w, h: hh } = clipSize(shape);
+    const words = wanted.words ? baWords(o.asked) : '';
+    d.post({ type: 'studio:clip/start', id, seconds: BA_BEFORE_MS / 1000 + BA_AFTER_SECONDS, fps: CLIP_FPS, w, h: hh, codec: CLIP_CODEC, bitrate: CLIP_BITRATE,
+      mark: wanted.mark, lines: [...CLIP_MARK_LINES],
+      // "Before" / "After" in English whatever the editor's language: the video goes to X (as the mark's lines).
+      before: { image, ms: BA_BEFORE_MS, wipeMs: BA_WIPE_MS, label: 'Before', after: 'After', stillFps: BA_STILL_FPS, ...(words ? { words } : {}) } });
+    // The still part is encoded before `started`: on a slow machine that is a few seconds.
+    waitStarted(20000);
+  }
+
+  /** Nothing back from the game page (an old bridge, a page that went): give up after a while. */
+  function waitStarted(ms        ) {
     clock = window.setTimeout(() => {
       if (state === 'starting') (setState('idle'), d.toast(t('clip.failed', { msg: 'no answer from the game' }), 6000));
-    }, 5000);
+    }, ms);
   }
 
   /** A `studio:clip/*` message from the game page; true when it was one. */
@@ -35708,6 +36051,8 @@ function createClip(d          ) {
         total = m.total;
         startedAt = performance.now();
         setState('rec');
+        // A Before / After: the Try's paused moment goes on now (its still part is in the clip already).
+        if (ba && d.paused()) d.resume();
         clock = window.setInterval(() => {
           label.textContent = t('clip.stop', { t: recClock(performance.now() - startedAt) });
           if (performance.now() - heard > SILENT_MS) {
@@ -35755,6 +36100,7 @@ function createClip(d          ) {
   async function finish(length        , markAt        ) {
     setState('saving');
     const seconds = Math.round(length * 10) / 10;
+    const { w, h: hh } = clipSize(shape);
     let file            ;
     let other                    = null;
     try {
@@ -35762,12 +36108,12 @@ function createClip(d          ) {
       alt.sort((a, b) => a.ts - b.ts);
       if (!avcc || !main.length) throw new Error('no video');
       const endUs = Math.round(length * 1e6);
-      file = muxMp4({ width: CLIP_WIDE.w, height: CLIP_WIDE.h, avcc, samples: main, endUs });
+      file = muxMp4({ width: w, height: hh, avcc, samples: main, endUs });
       // The other end: the frames before the mark's second, then the second encoder's. Only when both encoders set up
       // the same way (the same SPS / PPS), so one MP4 header describes both — nearly always in one browser, checked.
       const cut = markAt - 1;
       if (altAvcc && sameBytes(altAvcc, avcc) && alt.length && alt[0] .key) {
-        other = muxMp4({ width: CLIP_WIDE.w, height: CLIP_WIDE.h, avcc, samples: [...main.filter((s) => s.ts < cut), ...alt], endUs });
+        other = muxMp4({ width: w, height: hh, avcc, samples: [...main.filter((s) => s.ts < cut), ...alt], endUs });
       }
     } catch (e) {
       setState('idle');
@@ -35776,26 +36122,30 @@ function createClip(d          ) {
     }
     main = [];
     alt = [];
-    const ok = await store(file, null);
+    const made = ba;
+    ba = null;
+    const stem = made ? beforeAfterStem(d.game()) : clipStem(d.game());
+    const ok = await store(file, null, stem);
     if (!ok) return setState('idle');
-    saved = { ...ok, seconds, mark: wanted.mark, other, file };
+    const words = wanted.words;
+    const postFor = made
+      ? (mk         ) => beforeAfterPost({ time: made.time, asked: made.asked, mark: mk, words, marked: made.marked, ai: d.aiName() })
+      : (mk         ) => postText({ game: d.game(), seconds, mark: mk });
+    const ctx                  = { seconds, shape, mark: wanted.mark, ...(made && words ? { asked: baWords(made.asked) } : {}) };
+    saved = { ...ok, seconds, shape, mark: wanted.mark, other, file, post: postFor(wanted.mark), postFor, rewritten: false, rewriting: false, ctx };
     setState('idle');
     showLine();
   }
 
   /** Save (the server's folder) or download (the web demo). `replace` = the name of the clip saved before. */
-  async function store(file            , replace               )                                                                                {
+  async function store(file            , replace               , stem        )                                                                                {
     const blob = new Blob([file            ], { type: 'video/mp4' });
     if (!d.host.clips) {
-      const name = replace ?? downloadName(d.game(), new Date());
-      const a = h('a', { href: URL.createObjectURL(blob), download: name, hidden: true });
-      document.body.append(a);
-      a.click();
-      a.remove();
-      window.setTimeout(() => URL.revokeObjectURL(a.href), 60_000);
+      const name = replace ?? downloadName(d.game(), new Date()).replace(/-clip-/, stem.endsWith('-before-after') ? '-before-after-' : '-clip-');
+      download(blob, name);
       return { name, where: 'downloads' };
     }
-    const r = await d.host.clips.save(blob, replace ? { replace } : { stem: clipStem(d.game()) });
+    const r = await d.host.clips.save(blob, replace ? { replace } : { stem });
     if (!r.ok) {
       d.toast(t('clip.saveFailed', { msg: r.error }), 8000);
       return null;
@@ -35803,16 +36153,47 @@ function createClip(d          ) {
     return { name: r.name, where: r.where, reveal: r.reveal };
   }
 
+  function download(blob      , name        ) {
+    const a = h('a', { href: URL.createObjectURL(blob), download: name, hidden: true });
+    document.body.append(a);
+    a.click();
+    a.remove();
+    window.setTimeout(() => URL.revokeObjectURL(a.href), 60_000);
+  }
+
+  /** The saved clip as a File, for Share… (Web Share takes files). */
+  const asFile = (s       ) => new File([s.file            ], s.name, { type: 'video/mp4' });
+  /** Can this browser hand a video file to the system's share sheet? (Phones: Safari, Chrome on Android.) */
+  function canShare(s       )          {
+    const n = navigator                                                        ;
+    if (typeof n.share !== 'function' || typeof n.canShare !== 'function') return false;
+    try {
+      return n.canShare({ files: [asFile(s)] });
+    } catch {
+      return false;
+    }
+  }
+
   function showLine() {
     if (!saved) return;
     const s = saved;
-    const post = postText({ game: d.game(), seconds: s.seconds, mark: s.mark });
+    const post = s.post;
     const n = xLength(post);
     const where = t(`clip.dir.${s.where}`);
     const head = h('div', { class: 'clip-row' },
       h('span', { class: 'clip-head' }, icon('check'), h('strong', { text: t(s.where === 'downloads' ? 'clip.downloaded' : 'clip.saved', { name: s.name }) })),
-      h('span', { class: 'clip-where', text: t('clip.where', { s: s.seconds, dir: where }) }));
-    if (s.reveal && d.host.clips) {
+      h('span', { class: 'clip-where', text: t('clip.where', { s: s.seconds, shape: t(`clip.shape.${s.shape}`), dir: where }) }));
+    // A phone (stage 2): the clip is on the computer (or a download), the person on the phone — Share… hands the MP4 to
+    // the phone's share sheet (X's app is in it); a phone that cannot share files saves it (a download) instead. Show in
+    // Finder would open a window on the computer, out of sight.
+    if (d.phone()) {
+      if (canShare(s)) {
+        head.append(h('button', { type: 'button', class: 'link primary', dataset: { action: 'clip-share' }, text: t('clip.share'), onclick: () => void share(s) }));
+      } else if (s.where !== 'downloads') {
+        head.append(h('button', { type: 'button', class: 'link', dataset: { action: 'clip-save' }, text: t('clip.saveHere'),
+          onclick: () => download(new Blob([s.file            ], { type: 'video/mp4' }), s.name) }));
+      }
+    } else if (s.reveal && d.host.clips) {
       head.append(h('button', { type: 'button', class: 'link', dataset: { action: 'clip-reveal' }, text: t(s.reveal === 'finder' ? 'clip.finder' : 'clip.folder'),
         onclick: () => void d.host.clips .reveal(s.name).then((r) => !r.ok && d.toast(t('clip.saveFailed', { msg: r.error || '?' }), 6000)) }));
     }
@@ -35821,12 +36202,17 @@ function createClip(d          ) {
     }
     head.append(h('button', { type: 'button', class: 'icon-only link clip-x', dataset: { action: 'clip-close' }, title: t('clip.close'), 'aria-label': t('clip.close'),
       onclick: () => ((line.hidden = true), (saved = null)) }, icon('close')));
-    const copyBtn = h('button', { type: 'button', class: 'link', dataset: { action: 'clip-copy' }, text: t('clip.copy'), onclick: () => void copy(post, copyBtn) });
+    const copyBtn = h('button', { type: 'button', class: 'link', dataset: { action: 'clip-copy' }, text: t('clip.copy'), onclick: () => void copy(s.post, copyBtn) });
     const draft = h('div', { class: 'clip-row clip-post' },
       h('span', { class: 'clip-x-mark', 'aria-hidden': 'true', text: '𝕏' }),
-      h('span', { class: 'clip-text', dataset: { part: 'clip-post' }, text: post }),
+      h('span', { class: 'clip-text', dataset: { part: 'clip-post' }, title: post, text: post }),
       h('span', { class: `clip-count${n > X_LIMIT ? ' over' : ''}`, dataset: { part: 'clip-count' }, text: t('clip.count', { n }) }),
       copyBtn);
+    // ✦ Rewrite (stage 2): only with an AI to ask (the plan: "not shown when no AI is connected").
+    if (d.aiReady() || s.rewriting) {
+      draft.append(h('button', { type: 'button', class: 'link spark', dataset: { action: 'clip-rewrite' }, disabled: s.rewriting, title: t('clip.rewriteTip'),
+        onclick: () => void rewrite() }, icon('spark'), h('span', { text: t(s.rewriting ? 'clip.rewriting' : 'clip.rewrite') })));
+    }
     line.replaceChildren(head, draft);
     line.hidden = false;
   }
@@ -35836,13 +36222,42 @@ function createClip(d          ) {
     if (!saved?.other) return;
     const s = saved;
     const next = !s.mark;
-    const ok = await store(s.other, s.name);
+    const ok = await store(s.other, s.name, '');
     if (!ok) return;
-    saved = { ...s, name: ok.name, mark: next, file: s.other, other: s.file };
+    // The post follows the mark: written again (the editor's words), or the AI's words with the address put right.
+    const post = s.rewritten ? withAddress(s.post, next) : s.postFor(next);
+    saved = { ...s, name: ok.name, mark: next, file: s.other, other: s.file, post, ctx: { ...s.ctx, mark: next } };
     d.setPrefs({ ...d.prefs(), mark: next });
     wanted = d.prefs();
     showLine();
     d.toast(t(next ? 'clip.markOn' : 'clip.markOff'), 5000);
+  }
+
+  /** ✦ Rewrite: the AI's version of the post, checked (X's count, the address per the mark) before it is shown. */
+  async function rewrite() {
+    const s = saved;
+    if (!s || s.rewriting) return;
+    s.rewriting = true;
+    showLine();
+    const reply = await d.rewrite(s.post, { ...s.ctx, mark: s.mark }).catch(() => null);
+    s.rewriting = false;
+    if (saved !== s) return; // closed, or another clip since
+    const c = checkRewrite(reply, s.mark);
+    if (c.ok) {
+      s.post = c.text;
+      s.rewritten = true;
+      d.toast(t('clip.rewritten'), 4000);
+    } else d.toast(t(reply == null ? 'clip.rewriteNone' : c.why === 'long' ? 'clip.rewriteLong' : 'clip.rewriteEmpty', { n: c.n }), 7000);
+    showLine();
+  }
+
+  async function share(s       ) {
+    try {
+      await navigator.share({ files: [asFile(s)], text: s.post });
+    } catch (e) {
+      // Closed by the person (AbortError): nothing to say. Anything else: the one line, and they can Save instead.
+      if ((e         )?.name !== 'AbortError') d.toast(t('clip.shareFailed', { msg: (e         )?.message || '?' }), 6000);
+    }
   }
 
   async function copy(text        , b                   ) {
@@ -35869,16 +36284,28 @@ function createClip(d          ) {
     }
   }
 
+  let wasReady = false;
   render();
   return {
     el,
     bar,
     line,
     press: () => void press(),
+    beforeAfter: (o                  ) => void beforeAfter(o),
     onMessage,
     render,
+    /** The AI came or went (main.ts's status poll): the line's ✦ Rewrite with it. */
+    aiChanged() {
+      const r = d.aiReady();
+      if (r === wasReady) return;
+      wasReady = r;
+      if (saved && !line.hidden) showLine();
+    },
     get state() {
       return state;
+    },
+    get shape() {
+      return shape;
     },
     /** For tests: the last saved clip's bytes. */
     _last: () => saved?.file ?? null,
@@ -36698,7 +37125,8 @@ function start(host            ) {
   // clip is made while playing.
   // ● Clip ⌄ (stage 1, decided 2026-11-05; clip.ts; `clipper`, as `clip` is the ⌘C copy list): left of the ▶ Play group, right of Undo / Redo — the plan's "between
   // ↶ ↷ and the AI". One press records the game's next seconds as an MP4 (Movies › KUMODeck, a download in the web demo).
-  // PC only in stage 1 (shell.css hides it in the phone layout; a phone's Share… is stage 2).
+  // Stage 2 (2026-11-05): on a phone too, while playing (shell.css), Tall there until the person chooses; ● Clip Before /
+  // After from the paused ask's Before / After panel (openCompare); ✦ Rewrite through clipRewrite.
   const clipper = createClip({
     t: (k, v) => t(k, v),
     host,
@@ -36717,11 +37145,46 @@ function start(host            ) {
       ctxMenu.el.style.left = `${Math.max(8, Math.round(r.right - mm.width))}px`;
     },
     toast: (text, ms) => showToast(text, ms),
-    changed: (st) => {
+    changed: (st, shape) => {
       if (st === 'idle') delete app.dataset.clip;
       else app.dataset.clip = st;
+      // Tall (stage 2): while it records, the game gets a 9:16 window in the middle of the stage (shell.css), and the red
+      // frame goes round that window — its inset from the stage's sides, in px, as the stage is now.
+      if (st === 'idle' || shape !== 'tall') {
+        delete app.dataset.clipShape;
+        stage.style.removeProperty('--clip-side');
+      } else {
+        app.dataset.clipShape = shape;
+        const r = stage.getBoundingClientRect();
+        stage.style.setProperty('--clip-side', `${Math.max(0, Math.round((r.width - (r.height * 9) / 16) / 2))}px`);
+      }
     },
+    phone: () => phone(),
+    aiReady: () => !host.offline && aiWatching === true,
+    aiName: () => (aiAgent === 'claude' ? 'Claude' : aiAgent === 'codex' ? 'Codex' : 'my AI'),
+    rewrite: (text, ctx) => clipRewrite(text, ctx),
   });
+  /**
+   * ✦ Rewrite (● Clip stage 2, decided 2026-11-05): the post to the AI as its own small request (`intent: 'clip-post'`,
+   * SKILL.md "Clip post"); the AI answers with `--status done --note "<the post>"`. That status is the clip's alone: the
+   * status poll hands it here and leaves the AI line as it was (a paused ask's reply with ▶ Try / Before / After / ↶ Undo
+   * stays) — never handedOver(), which would start a new turn of the line and drop the last change's Undo.
+   */
+  const clipAsks = new Set        ();
+  const clipWaits = new Map                                       ();
+  async function clipRewrite(text        , ctx                 )                         {
+    if (host.offline) return null;
+    const res = await host.request({ kind: 'ask', intent: 'clip-post', text, lang, clip: ctx }).catch(() => null);
+    if (!res?.ok || !res.id) return null;
+    const rid = res.id;
+    clipAsks.add(rid);
+    return new Promise               ((resolve) => {
+      // An AI that never answers: the person's post stays (the line says so) after two minutes.
+      const timer = window.setTimeout(() => (clipWaits.delete(rid), resolve(null)), 120_000);
+      clipWaits.set(rid, (note) => (window.clearTimeout(timer), resolve(note)));
+      pollSoon();
+    });
+  }
   /** ● Clip pressed in Edit: ▶ Play (its own choice window and all), then the game page's hello says it is playing. */
   const clipWaiters                               = [];
   async function clipPlay()                   {
@@ -40110,7 +40573,8 @@ function start(host            ) {
       const madeKey = objKeys.find((k) => momentObjectInfo(k).kind === 'made');
       const madeIt = madeKey ? items.find((i) => i.key === madeKey) : undefined;
       const out = madeIt ? shortName(displayName(madeIt, t)) : [...momentAsks].reverse().map((id) => askBacks.get(id)?.out).find(Boolean);
-      if (back) askBacks.set(pending.id, { time: back.time, exact: back.moment !== undefined, asked: text, ...((marked ?? momentAsk?.shot) ? { before: (marked ?? momentAsk?.shot)  } : {}), ...(out ? { out } : {}), late: momentLate });
+      // `marked` (● Clip stage 2): the Before had the person's marks — the Before / After post says "marked a spot".
+      if (back) askBacks.set(pending.id, { time: back.time, exact: back.moment !== undefined, asked: text, ...((marked ?? momentAsk?.shot) ? { before: (marked ?? momentAsk?.shot)  } : {}), ...(out ? { out } : {}), late: momentLate, ...(marked ? { marked: true } : {}) });
     }
     momentTalk = { turns: [...momentTalk.turns, { who: 'you', text }], awaiting: true, live: null };
     momentHere = null;
@@ -40177,6 +40641,12 @@ function start(host            ) {
       before: { src: ab.before ?? null, label: t('cmp.before'), sub: t('cmp.beforeSub', { t: at }) },
       after: { src: have?.after ?? null, label: t('cmp.after'), sub: t(have && !have.exact ? 'cmp.afterSameRun' : 'cmp.afterSub', { t: at }) },
       ...(canUndo ? { undo: { label: t('cmp.undo', aiVars()), run: () => (momentCompare.close(), void momentUndo(id)) } } : {}),
+      // ● Clip Before / After (stage 2, decided 2026-11-05; README picture pc-3): once the After is there (the Try paused
+      // at the moment), one press makes the video of this fix — the asked frame, then the new code from the same moment.
+      ...(have && ab.before && clipper.state === 'idle' ? { clip: { label: t('clip.ba'), tip: t('clip.baTip'), run: () => {
+        momentCompare.close();
+        clipper.beforeAfter({ before: ab.before , asked: ab.asked, time: ab.time, marked: !!ab.marked });
+      } } } : {}),
       keep: { label: t('cmp.keep'), run: resume } });
     // Not tried yet (or the picture is of another moment): Try first; the panel gets its After when the Try pauses.
     if (!have) void tryMoment(id, true);
@@ -40375,13 +40845,26 @@ function start(host            ) {
     clearTimeout(pollTimer);
     if (document.visibilityState !== 'hidden') {
       const r = await host.status().catch(() => null);
+      // ✦ Rewrite's status (clipRewrite): the clip's, not the line's.
+      const clipReq = r?.status?.request && clipAsks.has(r.status.request) ? r.status.request : null;
+      if (r && clipReq) {
+        const w = clipWaits.get(clipReq);
+        const st = r.status .state;
+        if (w && (st === 'done' || st === 'failed' || st === 'asking')) {
+          clipWaits.delete(clipReq);
+          w(st === 'done' ? r.status .note ?? null : null);
+        }
+      }
       if (r) {
-        aiStatus = r.status;
-        aiTime = r.time;
+        if (!clipReq) {
+          aiStatus = r.status;
+          aiTime = r.time;
+        }
         if (r.watching !== undefined) aiWatching = r.watching;
         if (aiWatching) lastWatching = Date.now();
         if (r.seen) aiSeen = r.seen;
         aiAgent = r.agent;
+        clipper.aiChanged();
         // Every string's {ai} (i18n.ts setAiName): the AI's own name once the status says who it is.
         setAiName(aiNameKey(aiAgent));
         if (r.code !== code) {
@@ -41580,7 +42063,7 @@ function start(host            ) {
   // `out`: what the game made that the ask was about (fix ✕2; tryWordsOf). `from`: the AI-undo snapshot taken for this
   // ask (fix △6: ↶ Undo puts back THIS ask's change, one at a time).
   // `late` (fix △7): the asking run's PlayClock.late at the pause (s), to compare with the Try's new run.
-  const askBacks = new Map                                                                                                       ();
+  const askBacks = new Map                                                                                                                         ();
   let tryOpening                                                        = null;
   let tryRun                                                      = null;
   let tryKeep                                                                                                  = null;

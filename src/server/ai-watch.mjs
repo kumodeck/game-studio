@@ -158,6 +158,13 @@ export function handoffLine(rec, relPath) {
     const bits = ['make the canvas UI editable', Array.isArray(v.pressed) ? `pressed ${v.pressed.join(',')}` : '', Array.isArray(v.found) && v.found.length ? `${v.found.length} not selectable yet` : '', v.shot ? `picture ${v.shot}` : ''].filter(Boolean);
     return `studio: request ask ${relPath} ${JSON.stringify((v.text || '').length > 120 ? v.text.slice(0, 119) + '…' : v.text || '')} (${bits.join(', ')})`;
   }
+  // ● Clip's ✦ Rewrite (stage 2, decided 2026-11-05): no code, no files — the post back as the note, within X's count.
+  if (v.kind === 'ask' && v.intent === 'clip-post') {
+    const c = v.clip && typeof v.clip === 'object' ? v.clip : {};
+    const what = [c.seconds ? `${c.seconds} s` : '', c.shape || '', c.asked ? 'Before / After' : ''].filter(Boolean).join(' ');
+    const addr = c.mark === false ? 'no address' : 'keep the address';
+    return `studio: request ask ${relPath} ${JSON.stringify(v.text || '')} (rewrite this X post for a clip${what ? ` (${what})` : ''}: reply --status done --note "<the post>", at most 280 as X counts, English, ${addr}, change no files, SKILL.md "Clip post")`;
+  }
   if (v.kind === 'next-step' && (KUMODECK_STEP_IDS.includes(v.step) || FILE_STEP_IDS.includes(v.step))) {
     return `studio: next-step ${v.step} ${(v.files && v.files[0]) || '.studio/next-step.md'}`;
   }

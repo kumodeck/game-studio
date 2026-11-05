@@ -2589,8 +2589,7 @@ li.obj[aria-selected="true"] .hand-mark .hand-tag { padding: 0 4px; }
    One capsule like ▶ Play ⌄: "● Clip" + ⌄, quiet (the desk's raise) until it records. Recording uses the record red
    (--danger) — the one place it is not "danger": a red dot and frame are what every recorder shows, and the plan's
    pictures were checked with it. While recording: the button "0:03 · Stop", a red frame inside the game's plate (only
-   what is inside it is in the clip), a thin bar of the time left at its foot. PC only in stage 1 (a phone's Share… is
-   stage 2): hidden in the phone layout, where the bar has no room. */
+   what is inside it is in the clip), a thin bar of the time left at its foot. */
 .clip-split { display: inline-flex; align-items: stretch; flex: none; }
 .clip-split > button { background: var(--raise); color: var(--text); }
 .clip-split > button:hover:not(:disabled) { background: var(--raise-2); }
@@ -2607,12 +2606,29 @@ li.obj[aria-selected="true"] .hand-mark .hand-tag { padding: 0 4px; }
 .clip-btn.on .rec-dot { background: #fff; animation: clip-blink 1s steps(2, start) infinite; }
 @keyframes clip-blink { to { opacity: .35; } }
 @media (prefers-reduced-motion: reduce) { .clip-btn.on .rec-dot { animation: none; } }
-.shell[data-layout="phone"] .clip-split { display: none; }
+/* Stage 2 (decided 2026-11-05): on a phone too, but only while playing (a clip is made while playing; in Edit the
+   phone's bar has no room for it). */
+.shell[data-layout="phone"]:not([data-playing="on"]) .clip-split { display: none; }
+/* The phone's bar is full (time, speed, ✦, ❚❚, Edit): "● Clip ⌄" overflowed it and lay UNDER ✦, so a tap on it asked
+   the AI instead (found by the screen test, 2026-11-05). On a phone it is the red dot alone, round; its words are its
+   name (aria-label / title), recording shows in the dot's blink, the red frame and the time bar. No ⌄ there: a phone
+   records Tall, with the length last chosen. */
+.shell[data-layout="phone"] .clip-split > .clip-more { display: none; }
+.shell[data-layout="phone"] .clip-split > .clip-btn { padding: 0; width: 36px; justify-content: center; border-radius: 999px; }
+.shell[data-layout="phone"] .clip-split .clip-label { display: none; }
+/* Tall (stage 2): while it records, the game gets a 9:16 window in the middle of the stage — not a crop: the game lays
+   itself out to it (a resize), as a phone would. The red frame goes round that window (--clip-side, set by main.ts from
+   the stage's size). */
+.shell[data-clip-shape="tall"]:is([data-clip="rec"], [data-clip="starting"]) .stage > .game { left: var(--clip-side, 0); right: auto;
+  width: calc(100% - 2 * var(--clip-side, 0px)); }
+.shell[data-clip-shape="tall"]:is([data-clip="rec"], [data-clip="starting"]) .stage::after { left: var(--clip-side, 0); right: var(--clip-side, 0); }
 .stage .clip-time { position: absolute; left: 0; right: 0; bottom: 0; height: 3px; z-index: 6; pointer-events: none; }
 .stage .clip-time[hidden] { display: none; }
 .stage .clip-time > span { display: block; height: 100%; width: 0; background: var(--danger); transition: width .3s linear; }
 .shell:is([data-clip="rec"], [data-clip="starting"]) .stage::after { content: ""; position: absolute; inset: 0; z-index: 6; pointer-events: none;
   border-radius: inherit; box-shadow: inset 0 0 0 2px var(--danger); }
+/* ● Clip Before / After in the paused ask's Before / After panel (stage 2; moment-try.ts): the record dot, beside Keep. */
+.moment-compare-foot .btn.clip-ba .rec-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--danger); flex: none; }
 /* The line once saved: one card of the glass at the game's foot, in Edit and in Play (the dock, where the AI's line is, is
    put away while playing — and a clip is made while playing). Two rows: where it is · Show in Finder · Remove mark · ✕ /
    the post · count · Copy post. Over the dock in Edit, like the AI's line; ✕ puts it away. */
@@ -2637,4 +2653,12 @@ li.obj[aria-selected="true"] .hand-mark .hand-tag { padding: 0 4px; }
 .clip-line .clip-text { flex: 1 1 auto; min-width: 0; font-size: var(--fs-s); overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 .clip-line .clip-count { flex: none; font-size: var(--fs-s); color: var(--text-3); font-variant-numeric: tabular-nums; }
 .clip-line .clip-count.over { color: var(--danger); }
+/* ✦ Rewrite (the AI's violet, as every ✦) and a phone's Share… (the one thing to do there: the solid button). */
+.clip-line .link.spark { color: var(--ai); }
+.clip-line .link.spark .icon { width: 13px; height: 13px; }
+.clip-line .link.spark:disabled { opacity: .6; }
+.clip-line .link.primary { background: var(--solid); color: var(--solid-fg); }
+.shell[data-layout="phone"] .stage > .clip-line { width: calc(100% - 16px); bottom: 8px; padding: 8px; }
+.shell[data-layout="phone"] .clip-line .clip-row { flex-wrap: wrap; gap: 6px; }
+.shell[data-layout="phone"] .clip-line .clip-where { flex-basis: 100%; }
 .clip-copy-src { position: fixed; left: -9999px; top: 0; }

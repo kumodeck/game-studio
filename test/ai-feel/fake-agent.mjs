@@ -113,8 +113,11 @@ function edit(file, from, to) {
  * codeMoment values and save / load. As SKILL.md asks, with a change from a paused moment whose `back` kept no moment
  * (the game had no save / load: decided 2026-11-02), `connect` runs first, with the fix; after any change it runs
  * `--check-moment <back>` (the line is in the log as `check …`) and replies with `--files`.
+ * ● Clip stage 2 (2026-11-05; SKILL.md "Clip post"): an `ask` with `intent: "clip-post"` (✦ Rewrite) changes no files and
+ * answers with the post as the note — `clipPost(rec)`'s, else a plain rewrite of its own (with the address when the
+ * clip's mark is on).
  */
-export function startFakeAgent(folder, { slow = false, onEvent = () => {}, plan: given = null, madeCode = false, fix = null, connect = null } = {}) {
+export function startFakeAgent(folder, { slow = false, onEvent = () => {}, plan: given = null, madeCode = false, fix = null, connect = null, clipPost = null } = {}) {
   const t0 = Date.now();
   const log = [];
   const note = (what) => {
@@ -145,6 +148,21 @@ export function startFakeAgent(folder, { slow = false, onEvent = () => {}, plan:
           lang = JSON.parse(readFileSync(join(folder, ask[1]), 'utf8')).lang || 'en';
         } catch {
           /* moved already: English */
+        }
+        let rec = {};
+        try {
+          rec = JSON.parse(readFileSync(join(folder, ask[1]), 'utf8'));
+        } catch {
+          /* moved already */
+        }
+        if (rec.intent === 'clip-post') {
+          await sleep(gap.wake);
+          status('received', '--request', ask[2]);
+          await sleep(gap.read);
+          const post = clipPost ? clipPost(rec) : `Fixed my web game from a paused moment, then filmed it 👇${rec.clip?.mark === false ? '' : ' https://github.com/kumodeck/game-studio'}`;
+          status('done', '--request', ask[2], '--changed', '0', '--note', post);
+          note('rewrote the post');
+          return;
         }
         // `plan`: a change of the test's own (studio-play-after-ai: another object's colour), else the game's usual one.
         const plan = given || planFor(folder, lang);

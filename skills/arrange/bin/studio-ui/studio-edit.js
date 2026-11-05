@@ -1,4 +1,4 @@
-/* KUMODeck Game Studio 0.1.81 — MIT License — built file, edit src/ instead */
+/* KUMODeck Game Studio 0.1.82 — MIT License — built file, edit src/ instead */
 (() => {
 const __defs = [];
 const __cache = [];
@@ -5440,9 +5440,22 @@ const MSG_PREFIX = 'studio:';
                                                                                                                      
                                                                                                            
      
-                                                                                                                                                                 
-                                                                                         
-                                             
+                                                                                                                                                                
+         
+                                                                                                                      
+                                                                                                                         
+                                                                                                                      
+                                                                                                                          
+         
+                                                                                                                                   
+     
+                                                                                                                        
+                                                                                                                       
+                                                                                                                       
+                                                                                                                     
+                                    
+     
+                                                          
 
 /**
  * The one line over the game while playing (§3.5). `state`: looking = sent, the AI has it; fixing = it works on it;
@@ -5966,6 +5979,11 @@ function isStudioMessage(x         )                     {
      
                          
      
+                                                                                                                         
+                                                                              
+     
+                                                                                    
+     
                                                                                                                        
                                                                                                                         
                                                                                                                         
@@ -6040,7 +6058,10 @@ function isStudioMessage(x         )                     {
  * into the rule's own numbers (a knob in the game's words: "From the road"), names it in `drag`, and sends `place.code
  * --fold <way>`; the offset row becomes that knob on the card.
  */
-                                                                                                                                             
+                                                                                                                                                           
+// 'clip-post' (● Clip stage 2, decided 2026-11-05): an "ask" from the saved clip's ✦ Rewrite — `text` is the X post as it
+// is, `clip` what the clip is; the AI answers with the rewritten post as its status note (SKILL.md "Clip post"), and the
+// editor checks it (X's 280, the address per the mark) before it replaces the post. No code, no files.
 // 'moment-values' (pause-edit stage 2, 2026-10-28; §1.14): a "play" + `paused` request from the moment's ✦ Have {ai} make
 // this moment editable — the game has no codeMoment() yet; the AI names its numbers (score, time left, health) once.
 // 'moment-save' (stage 3): ⚑'s ✦ Have {ai} let the game start from here — the game has no save() / load() yet (or its
@@ -26920,8 +26941,28 @@ const CLIP_DEFAULT_LENGTH             = 8;
 
 /** Frames per second recorded: X plays 30 and 60; 30 keeps the encoder well ahead of real time on a laptop without a GPU. */
 const CLIP_FPS = 30;
-/** Wide only in stage 1 (Tall, a 9:16 window given to the game while recording, is stage 2). */
+/** Wide: 16:9, 1280×720 (stage 1). */
 const CLIP_WIDE = { w: 1280, h: 720 }         ;
+/**
+ * Tall (stage 2, decided 2026-11-05): 9:16, 720×1280 — what a phone shows full screen. Not a crop of the wide picture:
+ * while it records, the editor gives the game a 9:16 window (shell.css [data-clip-shape="tall"]), so a game that lays
+ * itself out to its window draws tall. 720×1280 and not 1080×1920: level 3.1 (CLIP_CODEC) holds exactly 3600
+ * macroblocks a frame = 720×1280, so the same encoder setup serves both shapes, and the software encoder keeps up.
+ */
+const CLIP_TALL = { w: 720, h: 1280 }         ;
+                                        
+const CLIP_SHAPES                       = ['wide', 'tall'];
+/** The frame size of a shape. */
+function clipSize(shape           )                           {
+  return shape === 'tall' ? CLIP_TALL : CLIP_WIDE;
+}
+/**
+ * The shape a press records: the person's choice in Clip ⌄, else Tall on a phone (its window is tall already, and a
+ * phone's clip is watched on a phone) and Wide elsewhere (decided 2026-11-05).
+ */
+function clipShapeFor(p                          , phone         )            {
+  return p.shape ?? (phone ? 'tall' : 'wide');
+}
 /** H.264 bits per second: ~6 MB for 12 s, far under X's limit (512 MB), sharp enough for small HUD text at 720p. */
 const CLIP_BITRATE = 4_000_000;
 /**
@@ -26955,6 +26996,14 @@ const X_LIMIT = 280;
                             
                       
                 
+                                                                                            
+                    
+     
+                                                                                                                  
+                                                                                                                      
+                                    
+     
+                 
  
 
 /** A hand-edited or older prefs file reads as the defaults for anything it does not say right. */
@@ -26962,7 +27011,8 @@ function normalizeClipPrefs(raw         )            {
   const r = (raw && typeof raw === 'object' ? raw : {})                           ;
   const seconds = CLIP_LENGTHS.includes(r.seconds              ) ? (r.seconds              ) : CLIP_DEFAULT_LENGTH;
   const mark = typeof r.mark === 'boolean' ? r.mark : CLIP_MARK_DEFAULT;
-  return { seconds, mark };
+  const words = typeof r.words === 'boolean' ? r.words : true;
+  return { seconds, mark, words, ...(r.shape === 'wide' || r.shape === 'tall' ? { shape: r.shape } : {}) };
 }
 
 /** Frames in a clip of `seconds` (whole frames). */
@@ -26978,6 +27028,26 @@ function clipFrames(seconds        , fps = CLIP_FPS)         {
 function endAfterStop(elapsedMs        , endMs        , fps = CLIP_FPS)         {
   const dt = 1000 / fps;
   return Math.min(endMs, Math.ceil((Math.max(elapsedMs, dt) + CLIP_MARK_SECONDS * 1000) / dt) * dt);
+}
+
+/**
+ * A stop cut at the PRESS (stage 2, decided 2026-11-05; bridge/play-clip.ts). `nowMs` = the clip's time when the game
+ * page reads the stop, `pressMs` = the clip's time of the press (the editor's clock), `liveFrom` = when the game's
+ * picture started in the clip (a Before / After's still part comes first), `slot` = the grid slot of the last frame taken.
+ * Returns the new end and mark-second, and `drop` = how many frames already taken are past the mark-second's start —
+ * those are left out, and the next frame starts the mark's second. WHY: a busy game page took the message seconds late,
+ * and a clip ended a second after the MESSAGE (2 s pressed, 4–6 s saved; the screen test failed at a load of 60–75).
+ * Only before the mark's second has started (the bridge ignores a stop after that: the clip is nearly over, and its
+ * last second is already encoded both ways).
+ */
+function cutAtPress(o                                                                                                 ) {
+  const fps = o.fps ?? CLIP_FPS;
+  const dt = 1000 / fps;
+  const pressed = Math.min(o.nowMs, Math.max(o.liveFrom + dt, Number.isFinite(o.pressMs) ? o.pressMs : o.nowMs));
+  const endMs = endAfterStop(pressed, o.endMs, fps);
+  const tailMs = markStartMs(endMs);
+  const tailSlot = Math.round(tailMs / dt);
+  return { pressed, endMs, tailMs, tailSlot, drop: Math.max(0, o.slot - tailSlot + 1) };
 }
 
 /** When the mark's second starts (ms): one second before the end (a key frame there, so the ends can be swapped). */
@@ -27039,6 +27109,89 @@ function xLength(text        )         {
   return n;
 }
 
+// ----- ● Clip Before / After (stage 2, decided 2026-11-05) -----
+// After a fix asked from a paused moment (pause-ask stage 3: Before / After, ▶ Try from 0:05.02), one press makes the
+// video of it: the frame the person asked from, still, with their mark and their words (Before) → a wipe → the same
+// moment with the new code, played (After) → the mark on the last second. Three words at most on screen: "Before",
+// "After" and what was asked — a phone's small screen reads that much while it plays.
+
+/** The Before: the asked frame held this long (ms). */
+const BA_BEFORE_MS = 2000;
+/** The wipe from Before to After, over the After's first frames (ms). */
+const BA_WIPE_MS = 300;
+/** The After (s): 7 s of the new code playing, then the mark's second (still playing) — with the Before, 10 s in all. */
+const BA_AFTER_SECONDS = 8;
+/** The Before's still frames are encoded at this rate (fps): nothing moves, so 10 a second is plenty and quick. */
+const BA_STILL_FPS = 10;
+/** The longest asked words drawn on the Before (characters, then "…"): one or two lines on a phone. */
+const BA_WORDS_MAX = 90;
+
+/** "neon-run-before-after" (the server adds "-1", "-2"…). */
+function beforeAfterStem(game        )         {
+  return clipStem(game).replace(/-clip$/, '-before-after');
+}
+
+/** The asked words as drawn on the Before: one line, quotes of their own taken off, cut at BA_WORDS_MAX with "…". */
+function baWords(asked        )         {
+  const one = asked.replace(/\s+/g, ' ').trim().replace(/^["“”'‘’「]+|["“”'‘’」]+$/g, '').trim();
+  if (!one) return '';
+  return one.length > BA_WORDS_MAX ? `${one.slice(0, BA_WORDS_MAX - 1).trimEnd()}…` : one;
+}
+
+/**
+ * The post that goes with a Before / After (English, no AI): "Paused my game at 0:05, marked a spot and told Claude
+ * “bring the boss in from here”. It fixed the code. Before → After 👇 <address>" (the plan's §1). The asked words are
+ * cut so the whole post stays within X's 280; `words: false` (the person turned their words off) leaves them out.
+ * `marked`: the Before had a mark of theirs. `ai`: the AI's name as the editor says it ("Claude", "Codex", "my AI").
+ */
+function beforeAfterPost(o                                                                                             )         {
+  const s = Math.max(0, Math.floor(o.time));
+  const at = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+  const tail = `It fixed the code. Before → After 👇${o.mark ? ` ${CLIP_REPO_URL}` : ''}`;
+  const head = `Paused my game at ${at}${o.marked ? ', marked a spot' : ''}`;
+  const plain = `${head} and asked ${o.ai} for a fix. ${tail}`;
+  const w = o.words ? baWords(o.asked) : '';
+  if (!w) return plain;
+  // The words in “ ”, lower-case first letter when it reads as a sentence going on ("told Claude “bring…”").
+  let words = w.replace(/[.!。]+$/, '');
+  if (/^[A-Z][a-z]/.test(words)) words = words[0] .toLowerCase() + words.slice(1);
+  for (;;) {
+    const post = `${head} and told ${o.ai} “${words}”. ${tail}`;
+    if (xLength(post) <= X_LIMIT || words.length <= 8) return xLength(post) <= X_LIMIT ? post : plain;
+    words = `${words.slice(0, Math.max(1, words.length - 12)).trimEnd()}…`;
+  }
+}
+
+// ----- ✦ Rewrite (stage 2, decided 2026-11-05) -----
+// The post's words rewritten by the person's AI (a small request, `intent: 'clip-post'`; SKILL.md "Clip post"). The
+// AI's reply is checked here before it replaces the post: one line, within X's 280 as X counts, and the address follows
+// the mark's one switch whatever the AI wrote (never a post without the mark but with the address, or the other way).
+
+/** The post with the address put right for `mark`: every github.com/kumodeck/game-studio taken out, then one at the end when on. */
+function withAddress(text        , mark         )         {
+  const bare = text
+    .replace(/https?:\/\/(www\.)?github\.com\/kumodeck\/game-studio\/?/gi, ' ')
+    .replace(/(^|\s)(www\.)?github\.com\/kumodeck\/game-studio\/?/gi, ' ')
+    .replace(/[ \t]+/g, ' ')
+    .replace(/\s+([.,!?])/g, '$1')
+    .trim();
+  return mark ? `${bare} ${CLIP_REPO_URL}` : bare;
+}
+
+                                                                                                                   
+
+/** The AI's rewrite, checked: quotes round it taken off, one line, the address per `mark`, at most 280 (X's count). */
+function checkRewrite(reply                           , mark         )               {
+  const raw = String(reply ?? '');
+  // The status note is cut at 300 characters with "…" (src/schema/handoff.mjs maxNote): a reply cut there was too long.
+  if (raw.length >= 299 && raw.endsWith('…')) return { ok: false, why: 'long', n: xLength(raw) };
+  const one = raw.replace(/\s+/g, ' ').trim().replace(/^["“”]+(.*?)["“”]+$/, '$1').trim();
+  if (!one || one.replace(/https?:\/\/\S+/g, '').trim().length < 3) return { ok: false, why: 'empty', n: 0 };
+  const text = withAddress(one, mark);
+  const n = xLength(text);
+  return n > X_LIMIT ? { ok: false, why: 'long', n } : { ok: true, text, n };
+}
+
 /** Why a clip could not be made, as the bridge says it (one line each in the editor's words). */
                                                                                      
 
@@ -27052,6 +27205,10 @@ __def(__exports, "CLIP_LENGTHS", () => CLIP_LENGTHS);
 __def(__exports, "CLIP_DEFAULT_LENGTH", () => CLIP_DEFAULT_LENGTH);
 __def(__exports, "CLIP_FPS", () => CLIP_FPS);
 __def(__exports, "CLIP_WIDE", () => CLIP_WIDE);
+__def(__exports, "CLIP_TALL", () => CLIP_TALL);
+__def(__exports, "CLIP_SHAPES", () => CLIP_SHAPES);
+__def(__exports, "clipSize", () => clipSize);
+__def(__exports, "clipShapeFor", () => clipShapeFor);
 __def(__exports, "CLIP_BITRATE", () => CLIP_BITRATE);
 __def(__exports, "CLIP_CODEC", () => CLIP_CODEC);
 __def(__exports, "CLIP_MARK_DEFAULT", () => CLIP_MARK_DEFAULT);
@@ -27062,11 +27219,22 @@ __def(__exports, "X_LIMIT", () => X_LIMIT);
 __def(__exports, "normalizeClipPrefs", () => normalizeClipPrefs);
 __def(__exports, "clipFrames", () => clipFrames);
 __def(__exports, "endAfterStop", () => endAfterStop);
+__def(__exports, "cutAtPress", () => cutAtPress);
 __def(__exports, "markStartMs", () => markStartMs);
 __def(__exports, "clipStem", () => clipStem);
 __def(__exports, "downloadName", () => downloadName);
 __def(__exports, "postText", () => postText);
 __def(__exports, "xLength", () => xLength);
+__def(__exports, "BA_BEFORE_MS", () => BA_BEFORE_MS);
+__def(__exports, "BA_WIPE_MS", () => BA_WIPE_MS);
+__def(__exports, "BA_AFTER_SECONDS", () => BA_AFTER_SECONDS);
+__def(__exports, "BA_STILL_FPS", () => BA_STILL_FPS);
+__def(__exports, "BA_WORDS_MAX", () => BA_WORDS_MAX);
+__def(__exports, "beforeAfterStem", () => beforeAfterStem);
+__def(__exports, "baWords", () => baWords);
+__def(__exports, "beforeAfterPost", () => beforeAfterPost);
+__def(__exports, "withAddress", () => withAddress);
+__def(__exports, "checkRewrite", () => checkRewrite);
 __def(__exports, "recClock", () => recClock);
 };
 __defs[64] = function (__exports) {
@@ -27092,6 +27260,20 @@ __defs[64] = function (__exports) {
 //      can swap the end of the clip ("Remove mark" in its line) without recording again;
 //   4. new VideoFrame(composite) → VideoEncoder → each chunk posted (`studio:clip/chunk`, transferred, not copied).
 //
+// Stage 2 (decided 2026-11-05):
+//   - Stop is cut at the PRESS, not at the message: the editor says when ● Clip was pressed (`at`, one clock for both
+//     pages: performance.timeOrigin + now). A busy game page takes the message late (seconds, at a load of 60–75), and
+//     the clip used to end a second after the message came — 2 s pressed, 4–6 s saved. Now the frames recorded between
+//     the press and the message are dropped (their encoded samples are not posted) and the mark's second starts on the
+//     next frame, stamped as if right after the press: the clip is exactly as long as pressed, a little of the game
+//     after the press left out.
+//   - ● Clip Before / After (`before` in the start): the asked frame, still, with "Before" and the asked words, is
+//     encoded first (BA_STILL_FPS, no waiting: its frames are stamped, not timed), then `started` — the editor resumes
+//     the paused Try then — and the game's picture follows on the clip's clock from there, with the Before wiped off
+//     over its first `wipeMs` and "After" in its corner.
+//   - Tall (720×1280): only the size changes here; the editor gives the game a 9:16 window while recording, so the page
+//     fills the frame. The asked frame (taken in the wide window) is cut to fill a tall frame (cover), never squeezed.
+//
 // Said in one line instead of recording (`studio:clip/error`):
 //   - webgpu: a canvas drawing with WebGPU — its picture is readable only inside its own frame callback (no equivalent of
 //     WebGL's preserveDrawingBuffer, which play-ask.ts turns on for WebGL), so it would come out black. Later stage;
@@ -27102,7 +27284,7 @@ __defs[64] = function (__exports) {
                                                                    
 const { isStudioMessage } = __require(14);
 const { nativeCancelRaf, nativeClearTimeout, nativeNow, nativeRaf, nativeSetTimeout } = __require(0);
-const { endAfterStop, markStartMs } = __require(63);
+const { cutAtPress, markStartMs } = __require(63);
 const { paintPage } = __require(26);
 
                                       
@@ -27161,13 +27343,14 @@ function startPlayClip(o                 ) {
     if (m.type === 'studio:clip/start') {
       rec?.abort();
       rec = record(win, m, skip, post, () => (rec = null));
-    } else if (m.type === 'studio:clip/stop' && rec?.id === m.id) rec.stop();
+    } else if (m.type === 'studio:clip/stop' && rec?.id === m.id) rec.stop(m.at);
   });
 }
 
                      
              
-               
+                                                                                                       
+                          
                 
  
 
@@ -27182,9 +27365,22 @@ function record(win     , m       , skip                          , post        
   // and its "8 s" clip played back in half a second.)
   let endMs = Math.max(dt, m.seconds * 1000);
   let tailMs = markStartMs(endMs);
-  /** Frames encoded; the grid slot of the last one (-1 = none yet); is the tail (the mark's second) under way. */
+  // Before / After: the still part's length (ms) — the game's picture starts at this time of the clip. 0 = a plain clip.
+  const before = m.before ?? null;
+  const base = before ? Math.max(0, Math.min(endMs - dt, before.ms)) : 0;
+  let beforeImg                     = null;
+  /**
+   * Frames encoded (the still ones too); live ones (the game's picture); the grid slot of the last one in the CLIP's
+   * time (slot × dt = its time from the clip's 0:00; -1 = none yet); is the tail (the mark's second) under way.
+   */
   let i = 0;
+  let live = 0;
   let slot = -1;
+  // Late stop (stage 2): main-encoder outputs with an index below `dropBelow` and a timestamp at or past `dropFromUs`
+  // were recorded after the press — not posted. `outMain` counts the main encoder's outputs (one per frame, in order).
+  let dropBelow = 0;
+  let dropFromUs = Infinity;
+  let outMain = 0;
   let tailStarted = false;
   let over = false;
   let timer                    ;
@@ -27195,8 +27391,12 @@ function record(win     , m       , skip                          , post        
   let main                      = null;
   let other                      = null;
   let flushing = false;
-  /** The clip's 0:00 — reset to the first frame actually taken (a slow page's first frame can come a second late). */
+  /**
+   * The game picture's 0:00 (at clip time `base`) — reset to the first live frame actually taken (a slow page's first
+   * frame can come a second late), and moved on a late stop (see stop()).
+   */
   let t0 = nativeNow();
+  const origin = (win.performance && win.performance.timeOrigin) || 0;
   const fail = (why                                                              , msg         ) => {
     if (over) return;
     over = true;
@@ -27206,12 +27406,28 @@ function record(win     , m       , skip                          , post        
   };
   const handle            = {
     id,
-    stop() {
+    stop(at         ) {
       if (over || tailStarted) return;
-      endMs = endAfterStop(nativeNow() - t0, endMs, fps);
-      tailMs = markStartMs(endMs);
-      stats.stoppedAt = Math.round(nativeNow() - t0);
+      const now = nativeNow();
+      // The clip's time now, and at the press (the editor's clock: both pages share timeOrigin + now). Never before the
+      // game's picture started, never later than now.
+      const nowMs = live ? base + (now - t0) : base;
+      const pressMs = typeof at === 'number' && Number.isFinite(at) && origin && live ? base + (at - origin - t0) : nowMs;
+      const c = cutAtPress({ nowMs, pressMs, liveFrom: base, slot, endMs, fps });
+      endMs = c.endMs;
+      tailMs = c.tailMs;
+      stats.stoppedAt = Math.round(c.pressed);
+      stats.late = Math.round(nowMs - c.pressed);
       stats.endMs = Math.round(endMs);
+      // Frames already taken at or past the mark's second's slot (the message came after it): dropped, and the clock
+      // put back so the next frame is the mark's second's first — the clip ends exactly one second after the press.
+      if (c.drop > 0) {
+        dropBelow = i;
+        dropFromUs = Math.round(c.tailSlot * usPerFrame);
+        stats.dropped = c.drop;
+        t0 = now - (c.tailSlot * dt - base);
+        slot = c.tailSlot - 1;
+      }
     },
     abort() {
       if (over) return;
@@ -27364,6 +27580,8 @@ function record(win     , m       , skip                          , post        
     return new W_.VideoEncoder ({
       output: (chunk, meta) => {
         if (over && !flushing) return;
+        // Recorded after the press of a late stop (see stop()): left out of the clip.
+        if (!alt && outMain++ < dropBelow && chunk.timestamp >= dropFromUs) return;
         const desc = meta?.decoderConfig?.description;
         if (desc && !told) {
           told = true;
@@ -27402,7 +27620,11 @@ function record(win     , m       , skip                          , post        
 
   // Where the time goes (ms, summed), for the screen test and for anyone checking a slow machine:
   // window.__studioClipStats in the game page (not enumerable, nothing reads it).
-  const stats = { frames: 0, paints: 0, paint: 0, compose: 0, encode: 0, waits: 0, started: t0, stoppedAt: -1, endMs: Math.round(endMs), chunks: 0 };
+  // stoppedAt / late / dropped (stage 2): the press in the clip's time, how late the message came after it (ms), and how
+  // many recorded frames that dropped.
+  const stats = { frames: 0, paints: 0, paint: 0, compose: 0, encode: 0, waits: 0, started: t0, stoppedAt: -1, late: 0, dropped: 0, endMs: Math.round(endMs), chunks: 0,
+    /** The game picture's 0:00 on the shared clock (timeOrigin + now): a test checks the press against its own clock. */
+    t0Wall: 0 };
   try {
     Object.defineProperty(win, '__studioClipStats', { value: stats, configurable: true, enumerable: false });
   } catch {
@@ -27416,7 +27638,8 @@ function record(win     , m       , skip                          , post        
   const next = () => {
     if (over) return;
     nativeClearTimeout(timer);
-    const due = t0 + (slot + 1) * dt;
+    // The next slot's time on this page's clock (slots are in the clip's time; the game's picture starts at `base`).
+    const due = t0 + (slot + 1) * dt - base;
     raf = nativeRaf(() => {
       raf = undefined;
       if (over) return;
@@ -27438,11 +27661,14 @@ function record(win     , m       , skip                          , post        
     }
     compose();
     const e0 = nativeNow();
-    if (i === 0 && !drewSomething && !pieces.some((p) => 'canvas' in p)) return fail('nothing');
+    if (live === 0 && !drewSomething && !pieces.some((p) => 'canvas' in p)) return fail('nothing');
     // This frame's slot on the grid: the time it is taken, never before the last one's next slot.
-    if (i === 0) t0 = nativeNow();
+    if (live === 0) {
+      t0 = nativeNow();
+      stats.t0Wall = origin + t0;
+    }
     const lastSlot = slot;
-    slot = Math.max(slot + 1, Math.round((nativeNow() - t0) / dt));
+    slot = Math.max(slot + 1, Math.round((base + nativeNow() - t0) / dt));
     let inTail = slot * dt >= tailMs - 0.5;
     // The mark's second starts exactly on its time (a key frame there): a late frame that jumped past it is put on it.
     if (inTail && !tailStarted) slot = Math.max(lastSlot + 1, Math.round(tailMs / dt));
@@ -27456,10 +27682,12 @@ function record(win     , m       , skip                          , post        
     const dur = last ? Math.max(1, Math.round(endMs * 1000) - ts) : usPerFrame;
     const frameOf = (t        ) => new W_.VideoFrame (out, { timestamp: t, duration: dur });
     const keySecond = Math.floor(slot / fps) !== Math.floor(lastSlot / fps);
+    // Before / After: the wipe and "After" on the game's picture (under the mark, which drawMark puts on top).
+    if (before) drawAfter(slot * dt - base);
     try {
       if (!inTail) {
         const f = frameOf(ts);
-        main .encode(f, { keyFrame: i === 0 || keySecond });
+        main .encode(f, { keyFrame: i === 0 || live === 0 || keySecond });
         f.close();
       } else {
         // The last second, both ways: the person's choice to the main encoder, the other way to the second one (which
@@ -27485,6 +27713,7 @@ function record(win     , m       , skip                          , post        
     }
     stats.encode += nativeNow() - e0;
     i++;
+    live++;
     stats.frames = i;
     // Every frame: the editor's bar moves, and it knows the game page is still there however slowly it draws.
     post({ type: 'studio:clip/progress', id, done: Math.round(Math.min(endMs, (slot + 1) * dt)), total: Math.round(endMs) });
@@ -27508,8 +27737,133 @@ function record(win     , m       , skip                          , post        
     ended();
   };
 
-  post({ type: 'studio:clip/started', id, total: Math.round(endMs) });
-  next();
+  // ----- Before / After: the still part, the wipe, the words (stage 2) -----
+  const pill = (text        , x        , y        , f        , bg        , align                  ) => {
+    g.font = `700 ${f}px system-ui, -apple-system, "Segoe UI", sans-serif`;
+    const w = g.measureText(text).width + f * 1.2, hgt = f * 1.7;
+    const left = align === 'right' ? x - w : x;
+    g.fillStyle = bg;
+    g.beginPath();
+    if (typeof g.roundRect === 'function') g.roundRect(left, y, w, hgt, Math.round(hgt / 4));
+    else g.rect(left, y, w, hgt);
+    g.fill();
+    g.fillStyle = '#fff';
+    g.textBaseline = 'middle';
+    g.fillText(text, left + f * 0.6, y + hgt / 2);
+  };
+  const labelSize = () => Math.round(Math.min(W, H) * 0.045);
+  /** The asked frame over the whole picture: fitted (wide) or cut to fill (tall: it was taken in the wide window). */
+  const drawBeforeImage = (clipX = 0) => {
+    if (!beforeImg) return;
+    const iw = beforeImg.width || 1, ih = beforeImg.height || 1;
+    const k = H > W ? Math.max(W / iw, H / ih) : Math.min(W / iw, H / ih);
+    const dw = iw * k, dh = ih * k;
+    g.save();
+    g.beginPath();
+    g.rect(clipX, 0, W - clipX, H);
+    g.clip();
+    if (clipX <= 0) {
+      g.fillStyle = '#000';
+      g.fillRect(0, 0, W, H);
+    }
+    g.drawImage(beforeImg, (W - dw) / 2, (H - dh) / 2, dw, dh);
+    g.restore();
+  };
+  const drawWords = (text        ) => {
+    const f = Math.round(Math.min(W, H) * 0.04);
+    g.font = `600 ${f}px system-ui, -apple-system, "Segoe UI", sans-serif`;
+    const maxW = W * 0.84;
+    // Two lines at most (the words were cut at BA_WORDS_MAX already): split where the first line fills up.
+    const quoted = `“${text}”`;
+    const lines           = [];
+    let cur = '';
+    for (const word of quoted.split(' ')) {
+      const tryLine = cur ? `${cur} ${word}` : word;
+      if (g.measureText(tryLine).width > maxW && cur && lines.length < 1) {
+        lines.push(cur);
+        cur = word;
+      } else cur = tryLine;
+    }
+    lines.push(cur);
+    const lh = f * 1.3;
+    const bw = Math.min(W * 0.9, Math.max(...lines.map((l) => g.measureText(l).width)) + f * 1.4);
+    const bh = lines.length * lh + f * 0.8;
+    const x = (W - bw) / 2, y = H - bh - Math.round(H * 0.06);
+    g.fillStyle = 'rgba(0, 0, 0, 0.66)';
+    g.beginPath();
+    if (typeof g.roundRect === 'function') g.roundRect(x, y, bw, bh, Math.round(f / 2));
+    else g.rect(x, y, bw, bh);
+    g.fill();
+    g.fillStyle = '#fff';
+    g.textBaseline = 'middle';
+    g.textAlign = 'center';
+    lines.forEach((l, k) => g.fillText(l, W / 2, y + f * 0.4 + lh * (k + 0.5), maxW));
+    g.textAlign = 'left';
+  };
+  const AFTER_BG = 'rgba(124, 77, 255, 0.92)';
+  const BEFORE_BG = 'rgba(0, 0, 0, 0.72)';
+  /** One still frame of the Before: the asked frame, "Before", the words. */
+  const drawBefore = () => {
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    g.globalAlpha = 1;
+    drawBeforeImage(0);
+    const f = labelSize(), pad = Math.round(Math.min(W, H) * 0.035);
+    pill(before .label, W - pad, pad, f, BEFORE_BG, 'right');
+    if (before .words) drawWords(before .words);
+  };
+  /** On a game frame `ms` after the After began: the Before wiped off (left to right) at first, then "After". */
+  function drawAfter(ms        ) {
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    g.globalAlpha = 1;
+    if (ms < before .wipeMs && beforeImg) {
+      const p = Math.max(0, ms) / Math.max(1, before .wipeMs);
+      const edge = Math.round(W * (1 - (1 - p) * (1 - p)));
+      drawBeforeImage(edge);
+      g.fillStyle = '#fff';
+      g.fillRect(edge - 2, 0, 4, H);
+    }
+    const f = labelSize(), pad = Math.round(Math.min(W, H) * 0.035);
+    pill(before .after, W - pad, pad, f, AFTER_BG, 'right');
+  }
+  /** Encode the still part (as fast as the encoder takes it: its frames are stamped, not timed), then the live clock. */
+  const still = async () => {
+    try {
+      const W2 = win                                                               ;
+      if (W2.createImageBitmap) beforeImg = await W2.createImageBitmap(new Blob([before .image]));
+    } catch {
+      beforeImg = null; // a picture that will not decode: the Before is black with its words
+    }
+    if (over) return;
+    const sfps = Math.max(1, before .stillFps || 10);
+    const n = Math.max(1, Math.round((base / 1000) * sfps));
+    const usStill = 1e6 / sfps;
+    drawBefore();
+    for (let k = 0; k < n && !over; k++) {
+      while (main .encodeQueueSize > QUEUE_MAX && !over) await new Promise((r) => nativeSetTimeout(r, 5));
+      const tsK = Math.round(k * usStill);
+      const durK = k === n - 1 ? Math.max(1, Math.round(base * 1000) - tsK) : Math.round(usStill);
+      try {
+        const f = new W_.VideoFrame (out, { timestamp: tsK, duration: durK });
+        main .encode(f, { keyFrame: k === 0 || k % sfps === 0 });
+        f.close();
+      } catch (e) {
+        const name = (e         )?.name;
+        return fail(name === 'SecurityError' ? 'tainted' : 'failed', String((e         )?.message || e));
+      }
+      i++;
+    }
+    if (over) return;
+    // The game's picture starts on the grid slot of the still part's end.
+    slot = Math.round(base / dt) - 1;
+    post({ type: 'studio:clip/started', id, total: Math.round(endMs) });
+    next();
+  };
+
+  if (before) void still();
+  else {
+    post({ type: 'studio:clip/started', id, total: Math.round(endMs) });
+    next();
+  }
   return handle;
 }
 

@@ -114,6 +114,8 @@ export interface CompareOpen {
   /** Under the After (fix ✕2): "Already out at this moment: the boss…" and its ▶ Resume to see it. */
   note?: { text: string; resume?: { label: string; run(): void } };
   undo?: { label: string; run(): void };
+  /** ● Clip Before / After (● Clip stage 2, 2026-11-05): the video of this fix, when the After is there. */
+  clip?: { label: string; tip: string; run(): void };
   keep: { label: string; run(): void };
   close: string;
 }
@@ -158,6 +160,11 @@ export function createMomentCompare(): MomentCompare {
       if (o.undo) {
         const u = o.undo;
         foot.append(h('button', { type: 'button', class: 'btn', dataset: { action: 'compare-undo' }, onclick: () => u.run() }, icon('undo'), h('span', { text: u.label })));
+      }
+      if (o.clip) {
+        const c = o.clip;
+        foot.append(h('button', { type: 'button', class: 'btn clip-ba', dataset: { action: 'compare-clip' }, title: c.tip, onclick: () => c.run() },
+          h('span', { class: 'rec-dot', 'aria-hidden': 'true' }), h('span', { text: c.label })));
       }
       foot.append(h('button', { type: 'button', class: 'btn primary', dataset: { action: 'compare-keep' }, onclick: () => o.keep.run() }, h('span', { text: o.keep.label })));
       el.replaceChildren(

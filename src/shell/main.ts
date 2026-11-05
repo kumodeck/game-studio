@@ -126,7 +126,7 @@ import { uiAsPlacement, uiEntries, withUi } from './ui-layer.ts';
 import { createUiWire } from './ui-wire.ts';
 import { createUiMissing } from './ui-missing.ts';
 import { barPress, FOLD_DRAG, gripEnd, readFold, writeFold } from './sheet-fold.ts';
-import { createClip } from './clip.ts';
+import { createClip, type ClipPostContext } from './clip.ts';
 import { normalizeClipPrefs } from './clip-model.ts';
 
 type Phase = 'loading' | 'waiting' | 'no-adapter' | 'ready' | 'playing';
@@ -840,7 +840,8 @@ export function start(host: StudioHost) {
   // clip is made while playing.
   // ● Clip ⌄ (stage 1, decided 2026-11-05; clip.ts; `clipper`, as `clip` is the ⌘C copy list): left of the ▶ Play group, right of Undo / Redo — the plan's "between
   // ↶ ↷ and the AI". One press records the game's next seconds as an MP4 (Movies › KUMODeck, a download in the web demo).
-  // PC only in stage 1 (shell.css hides it in the phone layout; a phone's Share… is stage 2).
+  // Stage 2 (2026-11-05): on a phone too, while playing (shell.css), Tall there until the person chooses; ● Clip Before /
+  // After from the paused ask's Before / After panel (openCompare); ✦ Rewrite through clipRewrite.
   const clipper = createClip({
     t: (k, v) => t(k, v),
     host,
@@ -859,11 +860,46 @@ export function start(host: StudioHost) {
       ctxMenu.el.style.left = `${Math.max(8, Math.round(r.right - mm.width))}px`;
     },
     toast: (text, ms) => showToast(text, ms),
-    changed: (st) => {
+    changed: (st, shape) => {
       if (st === 'idle') delete app.dataset.clip;
       else app.dataset.clip = st;
+      // Tall (stage 2): while it records, the game gets a 9:16 window in the middle of the stage (shell.css), and the red
+      // frame goes round that window — its inset from the stage's sides, in px, as the stage is now.
+      if (st === 'idle' || shape !== 'tall') {
+        delete app.dataset.clipShape;
+        stage.style.removeProperty('--clip-side');
+      } else {
+        app.dataset.clipShape = shape;
+        const r = stage.getBoundingClientRect();
+        stage.style.setProperty('--clip-side', `${Math.max(0, Math.round((r.width - (r.height * 9) / 16) / 2))}px`);
+      }
     },
+    phone: () => phone(),
+    aiReady: () => !host.offline && aiWatching === true,
+    aiName: () => (aiAgent === 'claude' ? 'Claude' : aiAgent === 'codex' ? 'Codex' : 'my AI'),
+    rewrite: (text, ctx) => clipRewrite(text, ctx),
   });
+  /**
+   * ✦ Rewrite (● Clip stage 2, decided 2026-11-05): the post to the AI as its own small request (`intent: 'clip-post'`,
+   * SKILL.md "Clip post"); the AI answers with `--status done --note "<the post>"`. That status is the clip's alone: the
+   * status poll hands it here and leaves the AI line as it was (a paused ask's reply with ▶ Try / Before / After / ↶ Undo
+   * stays) — never handedOver(), which would start a new turn of the line and drop the last change's Undo.
+   */
+  const clipAsks = new Set<string>();
+  const clipWaits = new Map<string, (note: string | null) => void>();
+  async function clipRewrite(text: string, ctx: ClipPostContext): Promise<string | null> {
+    if (host.offline) return null;
+    const res = await host.request({ kind: 'ask', intent: 'clip-post', text, lang, clip: ctx }).catch(() => null);
+    if (!res?.ok || !res.id) return null;
+    const rid = res.id;
+    clipAsks.add(rid);
+    return new Promise<string | null>((resolve) => {
+      // An AI that never answers: the person's post stays (the line says so) after two minutes.
+      const timer = window.setTimeout(() => (clipWaits.delete(rid), resolve(null)), 120_000);
+      clipWaits.set(rid, (note) => (window.clearTimeout(timer), resolve(note)));
+      pollSoon();
+    });
+  }
   /** ● Clip pressed in Edit: ▶ Play (its own choice window and all), then the game page's hello says it is playing. */
   const clipWaiters: Array<(ok: boolean) => void> = [];
   async function clipPlay(): Promise<boolean> {
@@ -4252,7 +4288,8 @@ export function start(host: StudioHost) {
       const madeKey = objKeys.find((k) => momentObjectInfo(k).kind === 'made');
       const madeIt = madeKey ? items.find((i) => i.key === madeKey) : undefined;
       const out = madeIt ? shortName(displayName(madeIt, t)) : [...momentAsks].reverse().map((id) => askBacks.get(id)?.out).find(Boolean);
-      if (back) askBacks.set(pending.id, { time: back.time, exact: back.moment !== undefined, asked: text, ...((marked ?? momentAsk?.shot) ? { before: (marked ?? momentAsk?.shot)! } : {}), ...(out ? { out } : {}), late: momentLate });
+      // `marked` (● Clip stage 2): the Before had the person's marks — the Before / After post says "marked a spot".
+      if (back) askBacks.set(pending.id, { time: back.time, exact: back.moment !== undefined, asked: text, ...((marked ?? momentAsk?.shot) ? { before: (marked ?? momentAsk?.shot)! } : {}), ...(out ? { out } : {}), late: momentLate, ...(marked ? { marked: true } : {}) });
     }
     momentTalk = { turns: [...momentTalk.turns, { who: 'you', text }], awaiting: true, live: null };
     momentHere = null;
@@ -4319,6 +4356,12 @@ export function start(host: StudioHost) {
       before: { src: ab.before ?? null, label: t('cmp.before'), sub: t('cmp.beforeSub', { t: at }) },
       after: { src: have?.after ?? null, label: t('cmp.after'), sub: t(have && !have.exact ? 'cmp.afterSameRun' : 'cmp.afterSub', { t: at }) },
       ...(canUndo ? { undo: { label: t('cmp.undo', aiVars()), run: () => (momentCompare.close(), void momentUndo(id)) } } : {}),
+      // ● Clip Before / After (stage 2, decided 2026-11-05; README picture pc-3): once the After is there (the Try paused
+      // at the moment), one press makes the video of this fix — the asked frame, then the new code from the same moment.
+      ...(have && ab.before && clipper.state === 'idle' ? { clip: { label: t('clip.ba'), tip: t('clip.baTip'), run: () => {
+        momentCompare.close();
+        clipper.beforeAfter({ before: ab.before!, asked: ab.asked, time: ab.time, marked: !!ab.marked });
+      } } } : {}),
       keep: { label: t('cmp.keep'), run: resume } });
     // Not tried yet (or the picture is of another moment): Try first; the panel gets its After when the Try pauses.
     if (!have) void tryMoment(id, true);
@@ -4517,13 +4560,26 @@ export function start(host: StudioHost) {
     clearTimeout(pollTimer);
     if (document.visibilityState !== 'hidden') {
       const r = await host.status().catch(() => null);
+      // ✦ Rewrite's status (clipRewrite): the clip's, not the line's.
+      const clipReq = r?.status?.request && clipAsks.has(r.status.request) ? r.status.request : null;
+      if (r && clipReq) {
+        const w = clipWaits.get(clipReq);
+        const st = r.status!.state;
+        if (w && (st === 'done' || st === 'failed' || st === 'asking')) {
+          clipWaits.delete(clipReq);
+          w(st === 'done' ? r.status!.note ?? null : null);
+        }
+      }
       if (r) {
-        aiStatus = r.status;
-        aiTime = r.time;
+        if (!clipReq) {
+          aiStatus = r.status;
+          aiTime = r.time;
+        }
         if (r.watching !== undefined) aiWatching = r.watching;
         if (aiWatching) lastWatching = Date.now();
         if (r.seen) aiSeen = r.seen;
         aiAgent = r.agent;
+        clipper.aiChanged();
         // Every string's {ai} (i18n.ts setAiName): the AI's own name once the status says who it is.
         setAiName(aiNameKey(aiAgent));
         if (r.code !== code) {
@@ -5722,7 +5778,7 @@ export function start(host: StudioHost) {
   // `out`: what the game made that the ask was about (fix ✕2; tryWordsOf). `from`: the AI-undo snapshot taken for this
   // ask (fix △6: ↶ Undo puts back THIS ask's change, one at a time).
   // `late` (fix △7): the asking run's PlayClock.late at the pause (s), to compare with the Try's new run.
-  const askBacks = new Map<string, { time: number; exact: boolean; before?: string; asked: string; out?: string; late?: number }>();
+  const askBacks = new Map<string, { time: number; exact: boolean; before?: string; asked: string; out?: string; late?: number; marked?: boolean }>();
   let tryOpening: { id: string; time: number; moment?: unknown } | null = null;
   let tryRun: { id: string; time: number; exact: boolean } | null = null;
   let tryKeep: { chat: string; talk: ChatModel; marks: MomentMark[]; asks: string[]; compare: boolean } | null = null;

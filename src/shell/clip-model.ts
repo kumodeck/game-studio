@@ -14,8 +14,28 @@ export const CLIP_DEFAULT_LENGTH: ClipLength = 8;
 
 /** Frames per second recorded: X plays 30 and 60; 30 keeps the encoder well ahead of real time on a laptop without a GPU. */
 export const CLIP_FPS = 30;
-/** Wide only in stage 1 (Tall, a 9:16 window given to the game while recording, is stage 2). */
+/** Wide: 16:9, 1280×720 (stage 1). */
 export const CLIP_WIDE = { w: 1280, h: 720 } as const;
+/**
+ * Tall (stage 2, decided 2026-11-05): 9:16, 720×1280 — what a phone shows full screen. Not a crop of the wide picture:
+ * while it records, the editor gives the game a 9:16 window (shell.css [data-clip-shape="tall"]), so a game that lays
+ * itself out to its window draws tall. 720×1280 and not 1080×1920: level 3.1 (CLIP_CODEC) holds exactly 3600
+ * macroblocks a frame = 720×1280, so the same encoder setup serves both shapes, and the software encoder keeps up.
+ */
+export const CLIP_TALL = { w: 720, h: 1280 } as const;
+export type ClipShape = 'wide' | 'tall';
+export const CLIP_SHAPES: readonly ClipShape[] = ['wide', 'tall'];
+/** The frame size of a shape. */
+export function clipSize(shape: ClipShape): { w: number; h: number } {
+  return shape === 'tall' ? CLIP_TALL : CLIP_WIDE;
+}
+/**
+ * The shape a press records: the person's choice in Clip ⌄, else Tall on a phone (its window is tall already, and a
+ * phone's clip is watched on a phone) and Wide elsewhere (decided 2026-11-05).
+ */
+export function clipShapeFor(p: Pick<ClipPrefs, 'shape'>, phone: boolean): ClipShape {
+  return p.shape ?? (phone ? 'tall' : 'wide');
+}
 /** H.264 bits per second: ~6 MB for 12 s, far under X's limit (512 MB), sharp enough for small HUD text at 720p. */
 export const CLIP_BITRATE = 4_000_000;
 /**
@@ -49,6 +69,14 @@ export const X_LIMIT = 280;
 export interface ClipPrefs {
   seconds: ClipLength;
   mark: boolean;
+  /** Wide / Tall once chosen in Clip ⌄ (stage 2); absent = by the device (clipShapeFor). */
+  shape?: ClipShape;
+  /**
+   * ● Clip Before / After: the person's own words ("Bring the boss in from here.") on the Before (stage 2). On by
+   * default — they say what was asked; off for someone who does not want their words in a video (the plan: "the asked
+   * words can be turned off in ⌄").
+   */
+  words: boolean;
 }
 
 /** A hand-edited or older prefs file reads as the defaults for anything it does not say right. */
@@ -56,7 +84,8 @@ export function normalizeClipPrefs(raw: unknown): ClipPrefs {
   const r = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
   const seconds = CLIP_LENGTHS.includes(r.seconds as ClipLength) ? (r.seconds as ClipLength) : CLIP_DEFAULT_LENGTH;
   const mark = typeof r.mark === 'boolean' ? r.mark : CLIP_MARK_DEFAULT;
-  return { seconds, mark };
+  const words = typeof r.words === 'boolean' ? r.words : true;
+  return { seconds, mark, words, ...(r.shape === 'wide' || r.shape === 'tall' ? { shape: r.shape } : {}) };
 }
 
 /** Frames in a clip of `seconds` (whole frames). */
@@ -72,6 +101,26 @@ export function clipFrames(seconds: number, fps = CLIP_FPS): number {
 export function endAfterStop(elapsedMs: number, endMs: number, fps = CLIP_FPS): number {
   const dt = 1000 / fps;
   return Math.min(endMs, Math.ceil((Math.max(elapsedMs, dt) + CLIP_MARK_SECONDS * 1000) / dt) * dt);
+}
+
+/**
+ * A stop cut at the PRESS (stage 2, decided 2026-11-05; bridge/play-clip.ts). `nowMs` = the clip's time when the game
+ * page reads the stop, `pressMs` = the clip's time of the press (the editor's clock), `liveFrom` = when the game's
+ * picture started in the clip (a Before / After's still part comes first), `slot` = the grid slot of the last frame taken.
+ * Returns the new end and mark-second, and `drop` = how many frames already taken are past the mark-second's start —
+ * those are left out, and the next frame starts the mark's second. WHY: a busy game page took the message seconds late,
+ * and a clip ended a second after the MESSAGE (2 s pressed, 4–6 s saved; the screen test failed at a load of 60–75).
+ * Only before the mark's second has started (the bridge ignores a stop after that: the clip is nearly over, and its
+ * last second is already encoded both ways).
+ */
+export function cutAtPress(o: { nowMs: number; pressMs: number; liveFrom: number; slot: number; endMs: number; fps?: number }) {
+  const fps = o.fps ?? CLIP_FPS;
+  const dt = 1000 / fps;
+  const pressed = Math.min(o.nowMs, Math.max(o.liveFrom + dt, Number.isFinite(o.pressMs) ? o.pressMs : o.nowMs));
+  const endMs = endAfterStop(pressed, o.endMs, fps);
+  const tailMs = markStartMs(endMs);
+  const tailSlot = Math.round(tailMs / dt);
+  return { pressed, endMs, tailMs, tailSlot, drop: Math.max(0, o.slot - tailSlot + 1) };
 }
 
 /** When the mark's second starts (ms): one second before the end (a key frame there, so the ends can be swapped). */
@@ -131,6 +180,89 @@ export function xLength(text: string): number {
     n += WEIGHT1.some(([a, b]) => c >= a && c <= b) ? 1 : 2;
   }
   return n;
+}
+
+// ----- ● Clip Before / After (stage 2, decided 2026-11-05) -----
+// After a fix asked from a paused moment (pause-ask stage 3: Before / After, ▶ Try from 0:05.02), one press makes the
+// video of it: the frame the person asked from, still, with their mark and their words (Before) → a wipe → the same
+// moment with the new code, played (After) → the mark on the last second. Three words at most on screen: "Before",
+// "After" and what was asked — a phone's small screen reads that much while it plays.
+
+/** The Before: the asked frame held this long (ms). */
+export const BA_BEFORE_MS = 2000;
+/** The wipe from Before to After, over the After's first frames (ms). */
+export const BA_WIPE_MS = 300;
+/** The After (s): 7 s of the new code playing, then the mark's second (still playing) — with the Before, 10 s in all. */
+export const BA_AFTER_SECONDS = 8;
+/** The Before's still frames are encoded at this rate (fps): nothing moves, so 10 a second is plenty and quick. */
+export const BA_STILL_FPS = 10;
+/** The longest asked words drawn on the Before (characters, then "…"): one or two lines on a phone. */
+export const BA_WORDS_MAX = 90;
+
+/** "neon-run-before-after" (the server adds "-1", "-2"…). */
+export function beforeAfterStem(game: string): string {
+  return clipStem(game).replace(/-clip$/, '-before-after');
+}
+
+/** The asked words as drawn on the Before: one line, quotes of their own taken off, cut at BA_WORDS_MAX with "…". */
+export function baWords(asked: string): string {
+  const one = asked.replace(/\s+/g, ' ').trim().replace(/^["“”'‘’「]+|["“”'‘’」]+$/g, '').trim();
+  if (!one) return '';
+  return one.length > BA_WORDS_MAX ? `${one.slice(0, BA_WORDS_MAX - 1).trimEnd()}…` : one;
+}
+
+/**
+ * The post that goes with a Before / After (English, no AI): "Paused my game at 0:05, marked a spot and told Claude
+ * “bring the boss in from here”. It fixed the code. Before → After 👇 <address>" (the plan's §1). The asked words are
+ * cut so the whole post stays within X's 280; `words: false` (the person turned their words off) leaves them out.
+ * `marked`: the Before had a mark of theirs. `ai`: the AI's name as the editor says it ("Claude", "Codex", "my AI").
+ */
+export function beforeAfterPost(o: { time: number; asked: string; mark: boolean; words: boolean; marked: boolean; ai: string }): string {
+  const s = Math.max(0, Math.floor(o.time));
+  const at = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+  const tail = `It fixed the code. Before → After 👇${o.mark ? ` ${CLIP_REPO_URL}` : ''}`;
+  const head = `Paused my game at ${at}${o.marked ? ', marked a spot' : ''}`;
+  const plain = `${head} and asked ${o.ai} for a fix. ${tail}`;
+  const w = o.words ? baWords(o.asked) : '';
+  if (!w) return plain;
+  // The words in “ ”, lower-case first letter when it reads as a sentence going on ("told Claude “bring…”").
+  let words = w.replace(/[.!。]+$/, '');
+  if (/^[A-Z][a-z]/.test(words)) words = words[0]!.toLowerCase() + words.slice(1);
+  for (;;) {
+    const post = `${head} and told ${o.ai} “${words}”. ${tail}`;
+    if (xLength(post) <= X_LIMIT || words.length <= 8) return xLength(post) <= X_LIMIT ? post : plain;
+    words = `${words.slice(0, Math.max(1, words.length - 12)).trimEnd()}…`;
+  }
+}
+
+// ----- ✦ Rewrite (stage 2, decided 2026-11-05) -----
+// The post's words rewritten by the person's AI (a small request, `intent: 'clip-post'`; SKILL.md "Clip post"). The
+// AI's reply is checked here before it replaces the post: one line, within X's 280 as X counts, and the address follows
+// the mark's one switch whatever the AI wrote (never a post without the mark but with the address, or the other way).
+
+/** The post with the address put right for `mark`: every github.com/kumodeck/game-studio taken out, then one at the end when on. */
+export function withAddress(text: string, mark: boolean): string {
+  const bare = text
+    .replace(/https?:\/\/(www\.)?github\.com\/kumodeck\/game-studio\/?/gi, ' ')
+    .replace(/(^|\s)(www\.)?github\.com\/kumodeck\/game-studio\/?/gi, ' ')
+    .replace(/[ \t]+/g, ' ')
+    .replace(/\s+([.,!?])/g, '$1')
+    .trim();
+  return mark ? `${bare} ${CLIP_REPO_URL}` : bare;
+}
+
+export type RewriteCheck = { ok: true; text: string; n: number } | { ok: false; why: 'empty' | 'long'; n: number };
+
+/** The AI's rewrite, checked: quotes round it taken off, one line, the address per `mark`, at most 280 (X's count). */
+export function checkRewrite(reply: string | null | undefined, mark: boolean): RewriteCheck {
+  const raw = String(reply ?? '');
+  // The status note is cut at 300 characters with "…" (src/schema/handoff.mjs maxNote): a reply cut there was too long.
+  if (raw.length >= 299 && raw.endsWith('…')) return { ok: false, why: 'long', n: xLength(raw) };
+  const one = raw.replace(/\s+/g, ' ').trim().replace(/^["“”]+(.*?)["“”]+$/, '$1').trim();
+  if (!one || one.replace(/https?:\/\/\S+/g, '').trim().length < 3) return { ok: false, why: 'empty', n: 0 };
+  const text = withAddress(one, mark);
+  const n = xLength(text);
+  return n > X_LIMIT ? { ok: false, why: 'long', n } : { ok: true, text, n };
 }
 
 /** Why a clip could not be made, as the bridge says it (one line each in the editor's words). */

@@ -169,3 +169,17 @@ test('motions as assets (studio-motion-triggers, 2026-10-22): an ask carries the
   assert.deepEqual(r.value.motions, [{ name: 'Hop', len: 0.6, on: [{ key: 'barrel', when: { on: 'key', key: 'KeyE' } }] }], 'a hint: bad entries dropped');
   assert.match(handoffLine({ ...r.value, kind: 'ask' }, '.studio/requests/a.json'), /\(crate, motion Hop\)/);
 });
+
+test('● Clip stage 2 (2026-11-05): ✦ Rewrite is an ask with intent "clip-post" — the post, what the clip is; its line says how to reply', () => {
+  const post = 'Neon Run: an 8-second clip from my web game, made with KUMODeck Game Studio 👇 https://github.com/kumodeck/game-studio';
+  const r = normalizeRequestInput({ kind: 'ask', intent: 'clip-post', text: post, clip: { seconds: 10, shape: 'tall', mark: true, asked: 'Bring the boss in from here.' } });
+  assert.ok(r.ok);
+  assert.deepEqual(r.value, { kind: 'ask', text: post, intent: 'clip-post', clip: { seconds: 10, shape: 'tall', mark: true, asked: 'Bring the boss in from here.' } });
+  // Hints: a bad part is dropped, never an error.
+  assert.deepEqual(normalizeRequestInput({ kind: 'ask', intent: 'clip-post', text: 'x', clip: { seconds: -1, shape: 'square', mark: 'yes' } }).value, { kind: 'ask', text: 'x', intent: 'clip-post' });
+  // Not on other kinds.
+  assert.equal(normalizeRequestInput({ kind: 'play', intent: 'clip-post', text: 'x' }).value?.intent, undefined);
+  const line = handoffLine(r.value, '.studio/requests/c.json');
+  assert.match(line, /^studio: request ask \.studio\/requests\/c\.json ".*" \(rewrite this X post for a clip \(10 s tall Before \/ After\): reply --status done --note "<the post>", at most 280 as X counts, English, keep the address, change no files, SKILL\.md "Clip post"\)$/);
+  assert.match(handoffLine({ kind: 'ask', intent: 'clip-post', text: 'x', clip: { mark: false } }, 'c.json'), /no address/);
+});

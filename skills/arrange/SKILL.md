@@ -556,6 +556,22 @@ a conversation, not a bug report:
 - `--do` while they are paused works on the moment (CONTRACT.md §3.6): `list` has what the game made too, and the
   moment's values (`moment`).
 
+### 3.1.2 Clip post (`intent: "clip-post"`)
+
+The person saved a clip (● Clip: an MP4 of their game for X) and pressed **✦ Rewrite** on its post. The line says
+`studio: request ask … "<the post>" (rewrite this X post for a clip …)`; the request's `text` is the post as it is, and
+`clip` says what the clip is (`seconds`, `shape`, `mark`, and `asked`: their own words for a Before / After of a fix).
+
+- Write a better post for **this** clip: what the game is and what the clip shows, in the person's voice ("I", "my
+  game"), plain and concrete, English (the post goes to X), one line, at most one emoji. No hashtags unless the post had
+  them. Read the game's code or README if you need its name or what happens in it; change **no files**.
+- **At most 280 as X counts** (a link counts 23, an emoji 2, Japanese and Chinese characters 2 each). The editor checks
+  and keeps the old post when the new one is longer.
+- `mark: true`: keep `https://github.com/kumodeck/game-studio` at the end. `mark: false`: no address (the person took
+  the mark off; the editor takes any address out anyway). Never a file path, a folder name or the editor's address.
+- Reply with `--status done --request <id> --changed 0 --note "<the new post>"` — the note **is** the post (no
+  quotes, nothing else in it). The editor puts it in the clip's line; its AI line is not changed.
+
 ### 3.2 Objects without a name: offer once, at the start
 
 When the first `studio: unnamed` line appears (or `--requests` / the editor list shows `path:` keys), and the user

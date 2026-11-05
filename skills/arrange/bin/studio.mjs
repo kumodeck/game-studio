@@ -2320,6 +2320,21 @@ function normalizeRequestInput(input) {
   // "ask" only: what a button said the words are for ('avoid': a keep-out area for `places`; 'to-code': the plan's step 4;
   // 'to-knob': ✦ Write into the rule — that way of `places` into the rule as a number of its own, studio-writeback).
   if (kind === 'ask' && (r.intent === 'avoid' || r.intent === 'to-code' || r.intent === 'to-knob' || r.intent === 'ui-code')) out.intent = r.intent;
+  // 'clip-post' (● Clip stage 2, decided 2026-11-05: the saved clip's ✦ Rewrite): `text` is the X post as it is; `clip` says
+  // what the clip is. Hints only: a bad part is dropped, never an error.
+  if (kind === 'ask' && r.intent === 'clip-post') {
+    out.intent = 'clip-post';
+    const c = r.clip && typeof r.clip === 'object' ? r.clip : null;
+    if (c) {
+      const clip = {};
+      if (isFin(c.seconds) && c.seconds > 0 && c.seconds <= 60) clip.seconds = Math.round(c.seconds * 10) / 10;
+      if (c.shape === 'wide' || c.shape === 'tall') clip.shape = c.shape;
+      if (typeof c.mark === 'boolean') clip.mark = c.mark;
+      const asked = oneLine(c.asked, HANDOFF_LIMITS.maxText);
+      if (asked) clip.asked = asked;
+      if (Object.keys(clip).length) out.clip = clip;
+    }
+  }
   // 'ui-code' (studio-canvas-ui stage 2, 2026-10-24: the line's "✦ Ask Claude to make this UI editable"): where the person
   // pressed on the game's screen, the dotted frames the editor showed, and the picture round the press. Hints like
   // `places`: a bad part is dropped, never an error — except a picture that is not a picture (the host writes it to a file).
@@ -4532,6 +4547,13 @@ function handoffLine(rec, relPath) {
   if (v.kind === 'ask' && v.intent === 'ui-code') {
     const bits = ['make the canvas UI editable', Array.isArray(v.pressed) ? `pressed ${v.pressed.join(',')}` : '', Array.isArray(v.found) && v.found.length ? `${v.found.length} not selectable yet` : '', v.shot ? `picture ${v.shot}` : ''].filter(Boolean);
     return `studio: request ask ${relPath} ${JSON.stringify((v.text || '').length > 120 ? v.text.slice(0, 119) + '…' : v.text || '')} (${bits.join(', ')})`;
+  }
+  // ● Clip's ✦ Rewrite (stage 2, decided 2026-11-05): no code, no files — the post back as the note, within X's count.
+  if (v.kind === 'ask' && v.intent === 'clip-post') {
+    const c = v.clip && typeof v.clip === 'object' ? v.clip : {};
+    const what = [c.seconds ? `${c.seconds} s` : '', c.shape || '', c.asked ? 'Before / After' : ''].filter(Boolean).join(' ');
+    const addr = c.mark === false ? 'no address' : 'keep the address';
+    return `studio: request ask ${relPath} ${JSON.stringify(v.text || '')} (rewrite this X post for a clip${what ? ` (${what})` : ''}: reply --status done --note "<the post>", at most 280 as X counts, English, ${addr}, change no files, SKILL.md "Clip post")`;
   }
   if (v.kind === 'next-step' && (KUMODECK_STEP_IDS.includes(v.step) || FILE_STEP_IDS.includes(v.step))) {
     return `studio: next-step ${v.step} ${(v.files && v.files[0]) || '.studio/next-step.md'}`;

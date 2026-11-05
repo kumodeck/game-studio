@@ -1,7 +1,7 @@
 // ● Clip, stage 1 (decided 2026-11-05; src/shell/clip.ts, src/bridge/play-clip.ts, src/shell/mp4.ts, src/server/clips.mjs) in
 // a headless browser: the real local server, the built editor, examples/three-neon-boss (three.js + an HTML HUD).
 //
-//   node test/studio-clip.browser.mjs [--only local,demo] [--shots <dir>] [--lang en|ja] [--keep <dir>]
+//   node test/studio-clip.browser.mjs [--only local,demo,tall,phone] [--shots <dir>] [--lang en|ja] [--keep <dir>]
 //
 // local  PC 1280×800, the local editor:
 //   1. In Edit, "● Clip ⌄" in the top bar right of Undo / Redo; ⌄ lists 6 / 8 / 12 s (8 checked), the mark (checked),
@@ -16,8 +16,17 @@
 //      in the page's <video> when this browser can play H.264 (its length and size read back).
 //   5. Remove mark: the same file written again with the other end, the post without the address, the choice kept in
 //      .studio/ui/prefs.json (clip.mark false).
+//   6. (stage 2) The length is cut at the PRESS: the clip ends one second after the moment ● Clip was pressed again
+//      (the game page's own count of it, __studioClipStats, against this test's clock), however late the busy game page
+//      read the message — on a loaded machine it was 4–6 s for a 2 s press.
+//   7. (stage 2) ✦ Rewrite (a stand-in AI is watching): the post replaced by the AI's, its count, the address kept;
+//      the AI line over the field does not show that reply.
 // demo   the offline web demo (no server folder): ● Clip downloads the MP4 (the browser's download, checked on disk), the
-//        line says "Clip downloaded", no Show in Finder.
+//        line says "Clip downloaded", no Show in Finder, no ✦ Rewrite (no AI there).
+// tall   (stage 2) Clip ⌄ → Tall 720×1280: while recording the game's window is 9:16 in the middle of the stage, the
+//        line says "Tall 720×1280", the MP4 is 720×1280; ⌄ remembers it (prefs.json clip.shape).
+// phone  (stage 2) a phone 390×844: ● Clip in the bar while playing, Tall by default, the line has Share… (or "Save to
+//        this phone" where the browser cannot share files) and no Show in Finder.
 // --shots: clip-*.png (the docs' clip / clip-saved pictures). --keep: copies the saved MP4 there (a sample to look at).
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
@@ -27,6 +36,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { startStudioServer } from '../src/server/server.mjs';
 import { launch, newPage } from './adapters-2d/cdp.mjs';
+import { startFakeAgent } from './ai-feel/fake-agent.mjs';
 import { startHost } from './web-demo-host.mjs';
 
 const PKG = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -36,7 +46,7 @@ const take = (flag, d = null) => {
   const i = args.indexOf(flag);
   return i >= 0 ? args[i + 1] : d;
 };
-const ONLY = (take('--only') || 'local,demo').split(',');
+const ONLY = (take('--only') || 'local,demo,tall,phone').split(',');
 const SHOTS = take('--shots') ? resolve(take('--shots')) : null;
 const KEEP = take('--keep') ? resolve(take('--keep')) : null;
 const LANG = take('--lang', 'en');
@@ -86,12 +96,32 @@ const STATE = `(() => {
     line: line && !line.hidden ? { text: line.innerText.replace(/\\s+/g, ' ').trim(), post: line.querySelector('[data-part=clip-post]')?.textContent || '',
       count: line.querySelector('[data-part=clip-count]')?.textContent || '', where: line.querySelector('.clip-where')?.textContent || '',
       reveal: box(line.querySelector('[data-action=clip-reveal]')), mark: box(line.querySelector('[data-action=clip-mark]')),
+      rewrite: box(line.querySelector('[data-action=clip-rewrite]')), share: box(line.querySelector('[data-action=clip-share]')), save: box(line.querySelector('[data-action=clip-save]')),
       copy: box(line.querySelector('[data-action=clip-copy]')), close: box(line.querySelector('[data-action=clip-close]')) } : null,
     toast: [...document.querySelectorAll('.toast.on')].map((e) => e.textContent).join(' '),
+    aiLine: (() => { const l = document.querySelector('.ai-line'); return l && !l.hidden && l.offsetParent ? l.textContent : ''; })(),
+    game: (() => { const f = document.querySelector('iframe.game:not(.leaving)'); if (!f) return null; const r = f.getBoundingClientRect(); return { w: r.width, h: r.height, l: r.left }; })(),
+    shape: document.querySelector('.shell').dataset.clipShape || '',
     menu: (() => { const m = document.querySelector('[data-part=context-menu]:not([hidden])'); return m && m.getBoundingClientRect().width ? m.innerText.replace(/\\s+/g, ' ').trim() : ''; })(),
   });
 })()`;
 
+// The game page's own count of the clip (bridge/play-clip.ts, not enumerable): the press in the clip's time, how late
+// the message came, how many frames that dropped, and the clip's 0:00 on the shared clock (timeOrigin + now).
+const STATS = `JSON.stringify((() => { const f = document.querySelector('iframe.game:not(.leaving)'); const s = f && f.contentWindow.__studioClipStats; return s ? { ...s } : null; })())`;
+/** clip-model.ts endAfterStop (this file runs on plain Node, without types): one second after the press, on the 1/30 s grid. */
+const endAfterStop = (ms, endMs = 8000) => Math.min(endMs, (Math.ceil((Math.max(ms, 1000 / 30) + 1000) / (1000 / 30)) * 1000) / 30);
+const j = async (page, expr) => JSON.parse((await page.eval(expr)) || 'null');
+/** Wait until `fn(state)` holds (null after `ms`). */
+async function untilOn(state, fn, ms = 20000) {
+  const t0 = Date.now();
+  while (Date.now() - t0 < ms) {
+    const s = await state();
+    if (fn(s)) return s;
+    await sleep(150);
+  }
+  return null;
+}
 let browser = null;
 let failed = 0;
 const check = (ok, what) => {
@@ -107,7 +137,9 @@ async function local() {
   mkdirSync(join(root, '.studio/ui'), { recursive: true });
   writeFileSync(join(root, '.studio/ui/prefs.json'), JSON.stringify({ version: 1, lang: LANG }));
   const reveals = [];
-  const srv = await startStudioServer({ root, uiDir: UI, log: () => {}, clips: { dir: clips, where: 'movies', reveal: 'finder', run: (c, a) => reveals.push([c, ...a]) } });
+  const srv = await startStudioServer({ root, uiDir: UI, log: () => {}, env: { CLAUDECODE: '1' }, clips: { dir: clips, where: 'movies', reveal: 'finder', run: (c, a) => reveals.push([c, ...a]) } });
+  // Stage 2: an AI watching (the stand-in), so the line has ✦ Rewrite.
+  const agent = startFakeAgent(root, { clipPost: (rec) => `Neon Run's boss fight in ${rec.clip?.seconds ?? '?'} seconds. Made it in my browser 👇` });
   browser ??= await launch();
   const page = await newPage(browser, { width: 1280, height: 800 });
   const state = async () => JSON.parse(await page.eval(STATE));
@@ -156,6 +188,8 @@ async function local() {
     check(s.clipOn && /inset/.test(s.frame) && !!s.time, `red button (${s.clip?.bg}), red frame on the game, the bar of the time left`);
     await shot('recording');
     const pressed = Date.now();
+    // The press on the clock both pages share (the editor's performance.timeOrigin + now), just before the click.
+    const pressWall = await page.eval('performance.timeOrigin + performance.now()');
     await page.click(s.clip.x, s.clip.y);
     s = await until((x) => !!x.line, 60000);
     console.log(`  saved ${Date.now() - pressed} ms after Stop`);
@@ -187,8 +221,33 @@ async function local() {
     check(info.samples >= 2 && info.samples <= Math.round(info.seconds * 30) + 1, `${info.samples} frames: at most 30 a second`);
     const saidS = parseFloat(s.line.where);
     check(Math.abs(saidS - info.seconds) < 0.051, `the line says its length (${saidS} s, the file ${info.seconds.toFixed(3)} s)`);
+    // 6. Cut at the press (stage 2): the game page's own record of the press matches this test's clock, and the clip is
+    // one second after it however late the message was read.
+    const st = await j(page, STATS);
+    if (!st || !st.t0Wall) check(false, `the game page's count of the clip (${JSON.stringify(st)})`);
+    else {
+      const pressMs = pressWall - st.t0Wall;
+      console.log(`  press at ${pressMs.toFixed(0)} ms of the clip, read ${st.late} ms late, ${st.dropped} frame(s) after it dropped`);
+      check(Math.abs(st.stoppedAt - pressMs) < 60, `the game page knows when Stop was pressed (${st.stoppedAt} ms, this test ${pressMs.toFixed(0)} ms)`);
+      check(Math.abs(info.seconds * 1000 - endAfterStop(pressMs)) < 45, `the clip ends one second after the press: ${info.seconds.toFixed(3)} s for a press at ${(pressMs / 1000).toFixed(3)} s`);
+    }
     check(info.keys >= 2, `key frames at the start and at the mark's second (${info.keys})`);
     if (KEEP) copyFileSync(join(clips, files[0]), join(KEEP, `clip-sample-${ja ? 'ja' : 'en'}.mp4`));
+    // 7. ✦ Rewrite (stage 2): the stand-in's post, the address put back (the mark is on), the AI line left as it was.
+    check(!!s.line.rewrite, '✦ Rewrite on the post\'s row (an AI is watching)');
+    if (s.line.rewrite) {
+      const aiBefore = s.aiLine;
+      await page.click(s.line.rewrite.x, s.line.rewrite.y);
+      const r = await until((x) => /boss fight/.test(x.line?.post || ''), 30000);
+      check(!!r, `the post rewritten by the AI ("${r?.line?.post}")`);
+      if (r) {
+        check(r.line.post.endsWith('https://github.com/kumodeck/game-studio'), 'the address kept (the mark is on), though the AI left it out');
+        check(/^\d+ \/ 280$/.test(r.line.count) && Number(r.line.count.split(' ')[0]) <= 280, `its count (${r.line.count})`);
+        check(!/boss fight/.test(r.aiLine) && r.aiLine === aiBefore, `the AI line does not show the post ("${r.aiLine}")`);
+        await shot('rewritten');
+      }
+      s = await state();
+    }
     // Does it play here? (headless shells may have no H.264 decoder: then only said.)
     const b64 = file.toString('base64');
     const played = await page.eval(`(async () => {
@@ -230,6 +289,7 @@ async function local() {
     check(prefs.clip && prefs.clip.mark === false, `remembered: prefs.json clip ${JSON.stringify(prefs.clip)}`);
     await shot('mark-removed');
   } finally {
+    await agent.stop();
     await srv.close();
     rmSync(root, { recursive: true, force: true });
     rmSync(clips, { recursive: true, force: true });
@@ -259,17 +319,26 @@ async function demo() {
     while (Date.now() - t0 < 20000 && (await state()).state !== 'rec') await sleep(150);
     await sleep(1000);
     s = await state();
+    const pressWall = await page.eval('performance.timeOrigin + performance.now()');
     await page.click(s.clip.x, s.clip.y);
     let line = null;
     for (const t1 = Date.now(); Date.now() - t1 < 20000 && !line; await sleep(200)) line = (await state()).line;
     check(!!line && (ja ? /クリップをダウンロードしました/ : /Clip downloaded · neon/).test(line.text), `the line says downloaded ("${line?.text}")`);
     check(!!line && !line.reveal, 'no Show in Finder in the demo');
+    check(!!line && !line.rewrite, 'no ✦ Rewrite in the demo (no AI)');
     let got = [];
     for (const t2 = Date.now(); Date.now() - t2 < 8000 && !got.length; await sleep(250)) got = readdirSync(downloads).filter((f) => f.endsWith('.mp4'));
     check(got.length === 1, `the browser downloaded it (${got.join(', ')})`);
     if (got.length) {
       const info = mp4Info(readFileSync(join(downloads, got[0])));
-      check(info.codec === 'avc1' && info.samples >= 2 && info.seconds >= 1.5 && info.seconds <= 3.5, `the download is the MP4 (${info.samples} frames, ${info.seconds?.toFixed(3)} s)`);
+      check(info.codec === 'avc1' && info.samples >= 2 && info.seconds >= 1.5, `the download is the MP4 (${info.samples} frames, ${info.seconds?.toFixed(3)} s)`);
+      // Cut at the press (stage 2), as in the local run: one second after it, however busy the page was.
+      const st = await j(page, STATS).catch(() => null);
+      if (st && st.t0Wall) {
+        const pressMs = pressWall - st.t0Wall;
+        console.log(`  press at ${pressMs.toFixed(0)} ms of the clip, read ${st.late} ms late, ${st.dropped} frame(s) dropped`);
+        check(Math.abs(info.seconds * 1000 - endAfterStop(pressMs)) < 45, `the clip ends one second after the press: ${info.seconds.toFixed(3)} s for a press at ${(pressMs / 1000).toFixed(3)} s`);
+      } else check(info.seconds <= 3.5, `stopped about a second after the press (${info.seconds?.toFixed(3)} s)`);
     }
     if (SHOTS) writeFileSync(join(SHOTS, `clip-${ja ? 'ja' : 'en'}-demo-downloaded.png`), await page.screenshot());
   } finally {
@@ -278,9 +347,125 @@ async function demo() {
   }
 }
 
+/** Tall (stage 2): Clip ⌄ → Tall, the game's 9:16 window while recording, a 720×1280 MP4, remembered. */
+async function tall() {
+  console.log('tall: Clip ⌄ → Tall 720×1280, PC 1280×800');
+  const root = mkdtempSync(join(tmpdir(), 'studio-clip-'));
+  const clips = mkdtempSync(join(tmpdir(), 'studio-clip-movies-'));
+  cpSync(join(PKG, 'examples/three-neon-boss'), root, { recursive: true, filter: (p) => !p.includes('/.studio/') && !p.endsWith('/.studio') });
+  mkdirSync(join(root, '.studio/ui'), { recursive: true });
+  writeFileSync(join(root, '.studio/ui/prefs.json'), JSON.stringify({ version: 1, lang: LANG }));
+  const srv = await startStudioServer({ root, uiDir: UI, log: () => {}, clips: { dir: clips, where: 'movies', reveal: 'finder', run: () => {} } });
+  browser ??= await launch();
+  const page = await newPage(browser, { width: 1280, height: 800 });
+  const state = async () => JSON.parse(await page.eval(STATE));
+  const until = (fn, ms) => untilOn(state, fn, ms);
+  try {
+    await page.goto(srv.url);
+    await page.waitFor(`document.querySelectorAll('.obj').length > 0`, 90000);
+    await sleep(1200);
+    let s = await state();
+    await page.click(s.more.x, s.more.y);
+    await page.waitFor(`!!document.querySelector('[data-action="ctx-clip-tall"]')`, 3000);
+    const menu = (await state()).menu;
+    check((ja ? /形.*横 1280×720.*縦 720×1280/ : /Shape.*Wide 1280×720.*Tall 720×1280/).test(menu), `⌄ has the shape: ${menu}`);
+    check((ja ? /頼んだ言葉/ : /my words on Before \/ After/).test(menu), '⌄ has the words on Before / After');
+    if (SHOTS) writeFileSync(join(SHOTS, `clip-${ja ? 'ja' : 'en'}-06-menu-shape.png`), await page.screenshot());
+    await page.eval(`document.querySelector('[data-action="ctx-clip-tall"]').click()`);
+    await sleep(300);
+    s = await state();
+    await page.click(s.clip.x, s.clip.y);
+    s = await until((x) => x.state === 'rec', 20000);
+    check(!!s && s.shape === 'tall', 'recording Tall');
+    await sleep(900);
+    s = await state();
+    check(!!s.game && Math.abs(s.game.w / s.game.h - 9 / 16) < 0.02, `the game's window is 9:16 while recording (${s.game?.w}×${s.game?.h})`);
+    if (SHOTS) writeFileSync(join(SHOTS, `clip-${ja ? 'ja' : 'en'}-07-recording-tall.png`), await page.screenshot());
+    await page.click(s.clip.x, s.clip.y);
+    s = await until((x) => !!x.line, 60000);
+    check(!!s, 'the line came');
+    if (!s) return;
+    check((ja ? /縦 720×1280/ : /Tall 720×1280/).test(s.line.where), `the line says Tall (${s.line.where})`);
+    check(!!s.game && s.game.w / s.game.h > 1.2, 'the game\'s window is back to the stage\'s shape');
+    const files = readdirSync(clips);
+    const info = mp4Info(readFileSync(join(clips, files[0])));
+    check(info.width === 720 && info.height === 1280 && info.codec === 'avc1', `a 720×1280 MP4 (${info.width}×${info.height})`);
+    const prefs = JSON.parse(readFileSync(join(root, '.studio/ui/prefs.json'), 'utf8'));
+    check(prefs.clip && prefs.clip.shape === 'tall', `remembered: ${JSON.stringify(prefs.clip)}`);
+    if (SHOTS) writeFileSync(join(SHOTS, `clip-${ja ? 'ja' : 'en'}-08-saved-tall.png`), await page.screenshot());
+    if (KEEP) copyFileSync(join(clips, files[0]), join(KEEP, `clip-sample-tall-${ja ? 'ja' : 'en'}.mp4`));
+  } finally {
+    await srv.close();
+    rmSync(root, { recursive: true, force: true });
+    rmSync(clips, { recursive: true, force: true });
+  }
+}
+
+/** A phone (stage 2): ● Clip while playing, Tall by default, Share… (or Save to this phone), no Show in Finder. */
+async function phone() {
+  console.log('phone: 390×844, the local editor');
+  const root = mkdtempSync(join(tmpdir(), 'studio-clip-'));
+  const clips = mkdtempSync(join(tmpdir(), 'studio-clip-movies-'));
+  cpSync(join(PKG, 'examples/three-neon-boss'), root, { recursive: true, filter: (p) => !p.includes('/.studio/') && !p.endsWith('/.studio') });
+  mkdirSync(join(root, '.studio/ui'), { recursive: true });
+  writeFileSync(join(root, '.studio/ui/prefs.json'), JSON.stringify({ version: 1, lang: LANG }));
+  const srv = await startStudioServer({ root, uiDir: UI, log: () => {}, clips: { dir: clips, where: 'movies', reveal: 'finder', run: () => {} } });
+  browser ??= await launch();
+  const page = await newPage(browser, { width: 390, height: 844, mobile: true });
+  const state = async () => JSON.parse(await page.eval(STATE));
+  const until = (fn, ms) => untilOn(state, fn, ms);
+  try {
+    await page.goto(srv.url);
+    await page.waitFor(`document.querySelectorAll('.obj').length > 0`, 90000);
+    await sleep(1200);
+    let s = await state();
+    check(!s.clip, 'no ● Clip in Edit on a phone (the bar has no room; a clip is made while playing)');
+    await page.eval(`document.querySelector('button.play').click()`);
+    s = await until((x) => x.playing && !!x.clip, 30000);
+    check(!!s, '● Clip in the bar while playing');
+    if (!s) return;
+    await sleep(800);
+    // Measured again now: the bar settles after Play starts (✦ and ❚❚ come in), and the first box was a stale place.
+    s = await state();
+    const t0 = Date.now();
+    // What is really under the finger there (2026-11-05: "● Clip ⌄" overflowed the phone's bar and lay under ✦).
+    const hit = await page.eval(`(() => { const e = document.elementFromPoint(${s.clip.x}, ${s.clip.y}); return e?.closest('[data-action]')?.dataset.action || ''; })()`);
+    check(hit === 'clip', `the tap lands on ● Clip, nothing over it (${hit})`);
+    const bar = await page.eval(`JSON.stringify([...document.querySelectorAll('.top button')].filter((b) => b.offsetParent).map((b) => b.getBoundingClientRect()).filter((r) => r.width).map((r) => [Math.round(r.left), Math.round(r.right)]))`);
+    console.log(`  the bar's buttons (left, right): ${bar}`);
+    await page.tap(s.clip.x, s.clip.y);
+    const seen = [];
+    s = await until((x) => (seen.push(`${Date.now() - t0}:${x.state}/${x.shape}`), x.state === 'rec'), 20000);
+    check(!!s && s.shape === 'tall', `a phone records Tall until the person chooses (${s ? s.shape : `not recording after the tap: ${seen.slice(-1)}`})`);
+    await sleep(900);
+    s = (await state()) || s;
+    if (SHOTS) writeFileSync(join(SHOTS, `clip-${ja ? 'ja' : 'en'}-phone-1-recording.png`), await page.screenshot());
+    if (s?.clip) await page.tap(s.clip.x, s.clip.y);
+    s = await until((x) => !!x.line, 60000);
+    check(!!s, 'the line came');
+    if (!s) return;
+    console.log(`  line: ${s.line.text}`);
+    check(!s.line.reveal, 'no Show in Finder on a phone');
+    check(!!s.line.share || !!s.line.save, `Share… (or Save to this phone where files can't be shared): ${s.line.share ? 'Share…' : s.line.save ? 'Save' : 'none'}`);
+    check((ja ? /縦 720×1280/ : /Tall 720×1280/).test(s.line.where), `Tall (${s.line.where})`);
+    const pf = readdirSync(clips);
+    const pinfo = pf.length ? mp4Info(readFileSync(join(clips, pf[0]))) : {};
+    check(pinfo.width === 720 && pinfo.height === 1280, `a phone's clip is Tall: ${pinfo.width}×${pinfo.height}`);
+    const r = s.line.share || s.line.save;
+    check(!!r && r.l >= 0 && r.r <= 390, 'its button on screen');
+    if (SHOTS) writeFileSync(join(SHOTS, `clip-${ja ? 'ja' : 'en'}-phone-2-saved.png`), await page.screenshot());
+  } finally {
+    await srv.close();
+    rmSync(root, { recursive: true, force: true });
+    rmSync(clips, { recursive: true, force: true });
+  }
+}
+
 try {
   if (ONLY.includes('local')) await local();
   if (ONLY.includes('demo')) await demo();
+  if (ONLY.includes('tall')) await tall();
+  if (ONLY.includes('phone')) await phone();
 } catch (e) {
   console.error(e);
   failed++;

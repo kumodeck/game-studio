@@ -2,7 +2,7 @@
 title: Play
 nav: Play
 order: 3
-written-for: 0.1.81
+written-for: 0.1.82
 description: Play your game in the editor, slow it down, pause it on the exact frame, edit that moment by hand or with your AI, and keep it as a checkpoint.
 ---
 
@@ -157,9 +157,10 @@ Want to show what you made or fixed? Press **● Clip** in the top bar, right of
 ![Recording: the button is red and says the time and Stop, and a red frame goes round the game](media/clip-recording.webp)
 
 - While it records, the button is red and says the time (**0:03 · Stop**). A red frame goes round the game: only what’s inside it is in the video. Your game’s picture and its HTML (the score, the health bar) are in it. The editor, the address and your folder names aren’t.
-- Press it again to stop early. The video ends one second later.
+- Press it again to stop early. The video ends one second after your press, even when the computer is busy.
 - In Edit, **● Clip** starts Play first. A paused game goes on.
-- **⌄** picks the length (6, 8 or 12 seconds) and whether the last second says **Made with KUMODeck Game Studio**. It remembers what you pick.
+- **⌄** picks the shape (**Wide 1280×720**, or **Tall 720×1280** for a phone screen), the length (6, 8 or 12 seconds) and whether the last second says **Made with KUMODeck Game Studio**. It remembers what you pick.
+- **Tall** isn’t a crop. While it records, the editor gives your game a tall window, so a game that fits itself to its window lays out tall. On a phone, clips are Tall unless you pick Wide.
 
 When it’s done, one line shows where it went and the post to go with it:
 
@@ -167,11 +168,24 @@ When it’s done, one line shows where it went and the post to go with it:
 
 - **Clip saved · neon-run-clip-1.mp4**, in **Movies › KUMODeck** (Windows and Linux: **Videos › KUMODeck**). It’s never put in your game’s folder. **Show in Finder** opens it.
 - The post under it is ready to paste, with its length as X counts it (**102 / 280**). **Copy post** copies it. Open X, paste it, and drag the video in.
+- **✦ Rewrite** asks your AI for a better post. Its post replaces yours only if it fits X’s 280. You only see **✦ Rewrite** when an AI is connected.
+- On a phone, **Share…** opens the phone’s share sheet with the video, so you can pick X there. A phone that can’t share videos shows **Save to this phone** instead.
 - The last second of the video says **Made with KUMODeck Game Studio** and the address, small, in the corner, and so does the post. **Remove mark** takes both off this clip, and new clips leave them off until you turn the mark back on in **⌄**.
 - Nothing leaves your computer. The editor doesn’t post anything; you do.
 
 It’s a 1280 × 720 MP4 (H.264) at 30 frames a second, with no sound. A few things don’t record yet: a game that draws with WebGPU (**Clip needs WebGL for now**), and a game that draws images from another site (ask your AI to put them in the game’s folder). The HTML over your game is drawn the same way as the picture your AI gets: boxes, text and images, without shadows or gradients.
 
 In the web demo, the video downloads instead (**Clip downloaded**).
+
+### Clip a fix: Before / After
+
+You paused, asked your AI for a fix, and it fixed the code ([Ask about this moment](#ask-about-this-moment)). Open **Before / After** on its reply. Once the After is there, press **● Clip Before / After**:
+
+![Before / After with Clip Before / After at its foot, beside Keep · Resume](media/clip-before-after.webp)
+
+- You get a 10-second video. First the frame you asked from, with your marks and your words, for 2 seconds (**Before**). Then a wipe, and the same moment with the new code, playing for 8 seconds (**After**). The last second has the mark.
+- The video shows three bits of text at most: **Before**, **After** and what you asked. To leave your words out, turn off **Show my words on Before / After** in **⌄**.
+- The post is written for you: “Paused my game at 0:05, marked a spot and told Claude “bring the boss in from here”. It fixed the code. Before → After 👇”. **✦ Rewrite** works here too.
+- You can steer during the After. If you don’t, the game just goes on.
 
 Next: [Motion](motion.md).

@@ -237,6 +237,21 @@ export function normalizeRequestInput(input) {
   // "ask" only: what a button said the words are for ('avoid': a keep-out area for `places`; 'to-code': the plan's step 4;
   // 'to-knob': ✦ Write into the rule — that way of `places` into the rule as a number of its own, studio-writeback).
   if (kind === 'ask' && (r.intent === 'avoid' || r.intent === 'to-code' || r.intent === 'to-knob' || r.intent === 'ui-code')) out.intent = r.intent;
+  // 'clip-post' (● Clip stage 2, decided 2026-11-05: the saved clip's ✦ Rewrite): `text` is the X post as it is; `clip` says
+  // what the clip is. Hints only: a bad part is dropped, never an error.
+  if (kind === 'ask' && r.intent === 'clip-post') {
+    out.intent = 'clip-post';
+    const c = r.clip && typeof r.clip === 'object' ? r.clip : null;
+    if (c) {
+      const clip = {};
+      if (isFin(c.seconds) && c.seconds > 0 && c.seconds <= 60) clip.seconds = Math.round(c.seconds * 10) / 10;
+      if (c.shape === 'wide' || c.shape === 'tall') clip.shape = c.shape;
+      if (typeof c.mark === 'boolean') clip.mark = c.mark;
+      const asked = oneLine(c.asked, HANDOFF_LIMITS.maxText);
+      if (asked) clip.asked = asked;
+      if (Object.keys(clip).length) out.clip = clip;
+    }
+  }
   // 'ui-code' (studio-canvas-ui stage 2, 2026-10-24: the line's "✦ Ask Claude to make this UI editable"): where the person
   // pressed on the game's screen, the dotted frames the editor showed, and the picture round the press. Hints like
   // `places`: a bad part is dropped, never an error — except a picture that is not a picture (the host writes it to a file).

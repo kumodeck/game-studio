@@ -286,3 +286,7 @@ and the line once saved (where it went, Show in Finder, Remove mark, ✕ / the p
 at the game's foot (the dock is put away while playing); `clip-model.ts` — the pure rules (lengths, frames, the early stop, file names, the post, X's count, the
 mark's default `CLIP_MARK_DEFAULT` in one line); `mp4.ts` — the MP4 box written by hand (no dependency). The recording is
 the game page's (`bridge/play-clip.ts`). `test/clip-model.test.ts`, `test/studio-clip.browser.mjs`.
+Stage 2 (decided 2026-11-05): Wide / Tall in ⌄ (the game's 9:16 window while recording: shell.css `[data-clip-shape]`), the stop cut at
+the click's own time, ● Clip Before / After from the paused ask's panel (`moment-try.ts` `clip`, main.ts openCompare), ✦ Rewrite
+(main.ts `clipRewrite`: a `clip-post` request whose status stays out of the AI line; `clip-model.ts checkRewrite`), a phone's
+Share… / Save to this phone. `test/studio-clip-ba.browser.mjs`.
