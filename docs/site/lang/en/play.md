@@ -2,7 +2,7 @@
 title: Play
 nav: Play
 order: 3
-written-for: 0.1.83
+written-for: 0.1.84
 description: Play your game in the editor, slow it down, pause it on the exact frame, edit that moment by hand or with your AI, and keep it as a checkpoint.
 ---
 
@@ -58,7 +58,7 @@ At the top of the list, **This moment** shows your game’s own numbers on the f
 - **Ask for it too.** “Give me 5 seconds left” in the ask box: your AI sets it in This moment for you, and <kbd>⌘</kbd><kbd>Z</kbd> undoes it.
 - A number in gray is one you can see but not change here.
 
-Your AI connects the moment to your game once: these numbers and the checkpoints, in one go. Until it does, the list says **Numbers like the score, and starting from here, aren’t ready for this game yet.** Press **✦ Have Claude connect this moment to the game**: the ask box gets **Show this moment’s numbers and let the game start from here** with the chip **This moment**. Send it. When Claude is done, press **▶ Try from …** on its reply. Claude also connects it by itself the first time it fixes something you asked about from a paused moment. In the web demo, **Neon Run** already has them; a game there without numbers shows no **This moment**.
+Your AI connects the moment to your game once: these numbers and the checkpoints, in one go. Until it does, the list starts with a quiet **✦ More with Claude ›**. Open it to see **Numbers like the score, and starting from here, aren’t ready for this game yet.** and press **✦ Have Claude connect this moment to the game**: the ask box gets **Show this moment’s numbers and let the game start from here** with the chip **This moment**. Send it. When Claude is done, press **▶ Try from …** on its reply. Claude also connects it by itself the first time it fixes something you asked about from a paused moment. In the web demo, **Neon Run** already has them; a game there without numbers shows no **This moment**.
 
 ### Ask about this moment
 
@@ -72,7 +72,7 @@ Changed your mind? Press <kbd>P</kbd> right away and the game goes on: until you
 
 #### Point at the frame
 
-To say “here,” press **◎ Mark** in the ask box (or <kbd>N</kbd>). Click the game to mark a spot, or drag to circle an area. Each mark gets a number on the frame and a chip in the box, like **① here** and **② area**, so you can write “bring the boss in from ①.” Press **×** on a chip or <kbd>⌘</kbd><kbd>Z</kbd> to take a mark away; the others are numbered again. Press **◎ Mark** or <kbd>N</kbd> again (or <kbd>Esc</kbd>) to stop marking; sending your words stops it too. The marks stay until you resume. On a phone, **◎** shows its name until you’ve used it once.
+To say “here,” press **◎ Mark** in the ask box (or <kbd>N</kbd>). Click the game to mark a spot, or drag to circle an area. Each mark gets a number on the frame and a chip in the box, like **① here** and **② area**, so you can write “bring the boss in from ①.” Press **×** on a chip or <kbd>⌘</kbd><kbd>Z</kbd> to take a mark away; the others are numbered again. Press **◎ Mark** or <kbd>N</kbd> again (or <kbd>Esc</kbd>) to stop marking; sending your words stops it too. Once you send, the marks fold into **+ same mark**, so your next words go without them. Press it to send the same marks again (“a bit more to the left of ①”); a new mark starts again at ①. On a phone, **◎** shows its name until you’ve used it once.
 
 ![Two marks on the paused frame, ① an area and ② a spot, with their chips in the ask box](media/pause-mark.webp)
 
@@ -86,13 +86,13 @@ Click the small picture in the ask box to see what goes with your words: the fra
 
 When your AI changes the game, its reply is one line: what it did, and under it, small, the files it changed. Next to it:
 
-- **▶ Try from 0:05.02** opens the game again with the new code, at the moment you asked from, and stays paused there. Your talk and your marks are still there, so you can say “a bit more to the left” right away. The editor never reloads by itself: you choose when to try.
-- **Before / After** puts the frame you asked from (with your marks) next to the same moment with the new code. If you haven’t tried it yet, it tries it first. **Keep · Resume** plays on from there; **Undo Claude’s change** puts the code back.
+- **▶ Try from 0:05.02** opens the game again with the new code, at the moment you asked from, and stays paused there. Your talk is still there (and your marks, behind **+ same mark**), so you can say “a bit more to the left” right away. The editor never reloads by itself: you choose when to try.
+- **Before / After** puts the frame you asked from (with your marks) next to the same moment with the new code. If you haven’t tried it yet, it tries it first. **Keep · Resume** plays on from there; **Undo Claude’s change** puts the code back. On a phone, Undo gets its own row under the other two.
 - **↶ Undo** puts the game’s files back to before your AI’s change, right away, and you stay in the paused moment. Press **▶ Try from …** to see it. It takes back the change of that reply only: after “a bit more to the left,” Undo goes back to the first fix, not to the game before both.
 
 ![Claude’s reply over the ask box: one line, game.js under it, ▶ Try from 0:05.35, Before / After, Undo](media/pause-try.webp)
 
-The same moment means the same state: the score, the time left and what the game made are as they were. So a change to where the game makes something (a boss already on screen) shows from the next one on, after you resume. **▶ Try** says so, like **Already out: boss, so your change shows from the next one.**, and so does **Before / After** under the After, with **▶ Resume to see it**. If your game can’t start mid-run yet, **▶ Try** plays from the start and stops at the same time, and says **Same time, new run**. Your AI adds what’s needed to start mid-run along with its first fix from a paused moment, so the next try opens the very moment.
+The same moment means the same state: the score, the time left and what the game made are as they were. So a change to where the game makes something (a boss already on screen) shows from the next one on, after you resume. **▶ Try** says so, like **Already out: boss, so your change shows from the next one.**, and so does **Before / After** under the After, with **▶ Resume to see it**. If your game can’t start from the middle yet, **▶ Try** plays the new code from the start and stops at the same time, and says **New code, played from the start to 0:05.02**. Your AI adds what’s needed to start from the middle along with its first fix from a paused moment, so the next try opens the very moment.
 
 ![Before / After at 0:05.61: the frame you asked from with your marks, and the same moment with the new code](media/pause-compare.webp)
 
@@ -159,24 +159,24 @@ Want to show what you made or fixed? Press **● Clip** in the top bar, right of
 - While it records, the button is red and says the time left (**0:05 left · Stop**). On a phone, the round **●** shows the seconds left. A red frame goes round the game: only what’s inside it is in the video. Your game’s picture and its HTML (the score, the health bar) are in it. The editor, the address and your folder names aren’t.
 - Press it again to stop early. The video ends one second after your press, even when the computer is busy. The button says **Ending…**, then **Saving…**.
 - In Edit, **● Clip** starts Play first. A paused game goes on.
-- **⌄** picks the shape (**Wide 1280×720**, or **Tall 720×1280** for a phone screen), the length (6, 8 or 12 seconds) and whether the last second says **Made with KUMODeck Game Studio**. It remembers what you pick. On a phone, there’s no **⌄**: hold **●** instead.
+- **⌄** picks the shape (**Wide 1280×720**, or **Tall 720×1280** for a phone screen), the length (6, 8 or 12 seconds; a Before / After adds 2) and whether the last second says **Made with KUMODeck Game Studio**. It remembers what you pick. On a phone, there’s no **⌄**: hold **●** instead.
 - **Tall** isn’t a crop. While it records, the editor gives your game a tall window, so a game that fits itself to its window lays out tall. On a phone, clips are Tall unless you pick Wide.
 
 When it’s done, one line shows where it went and the post to go with it:
 
-![The line once saved: the clip’s name, length and folder with Show in Finder and Remove mark, then the post with its count, Post on X… and Copy post](media/clip-saved.webp)
+![The line once saved: where it went, its length and shape, with Show in Finder and Remove “Made with”, then the post with its count, Post on X… and Copy post](media/clip-saved.webp)
 
-- **Clip saved · neon-run-clip-1.mp4**, in **Movies › KUMODeck** (Windows and Linux: **Videos › KUMODeck**). It’s never put in your game’s folder. **Show in Finder** opens it.
-- The post under it is ready, with its length as X counts it (**102 / 280**). **Post on X…** opens X with the post written and shows the video in its folder: drag it in and post. **Copy post** copies the post if you’d rather paste it yourself.
+- **Saved to Movies › KUMODeck** (Windows and Linux: **Videos › KUMODeck**). Point at it to see the file’s name, like neon-run-clip-1.mp4. It’s never put in your game’s folder. **Show in Finder** opens it.
+- The post under it is ready, in the editor’s language, with its length as X counts it (**102 / 280**). **Post on X…** opens X with the post written and shows the video in its folder: drag it in and post. **Copy post** copies the post if you’d rather paste it yourself.
 - The length and shape (**8 s · Wide 1280×720 ⌄**) open the same choices as **⌄**, for your next clip.
 - **✦ Rewrite** asks your AI for a better post. Its post replaces yours only if it fits X’s 280. You only see **✦ Rewrite** when an AI is connected.
 - On a phone, **Share…** opens the phone’s share sheet with the video, so you can pick X there. A phone that can’t share videos shows **Save to this phone** instead.
-- The last second of the video says **Made with KUMODeck Game Studio** and the address, small, in the corner, and so does the post. **Remove mark** takes both off this clip, and new clips leave them off until you turn the mark back on in **⌄**.
+- The last second of the video says **Made with KUMODeck Game Studio** and the address, small, in the corner, and so does the post. **Remove “Made with”** takes both off this clip, and new clips leave them off until you turn the mark back on in **⌄**.
 - Nothing leaves your computer. The editor doesn’t post anything; you do.
 
 It’s a 1280 × 720 MP4 (H.264) at 30 frames a second, with no sound. A few things don’t record yet: a game that draws with WebGPU, and a game that draws images from another site. Clip says so over the game, with **✦ Ask Claude**: it pauses the game and puts the request in the field (switch to WebGL, or move the images into the game’s folder). You send it. The HTML over your game is drawn the same way as the picture your AI gets: boxes, text and images, without shadows or gradients.
 
-In the web demo, the video downloads instead (**Clip downloaded**).
+In the web demo, the video downloads instead (**Downloaded to your Downloads**).
 
 ### Clip a fix: Before / After
 
@@ -184,7 +184,7 @@ You paused, asked your AI for a fix, and it fixed the code ([Ask about this mome
 
 ![Before / After with Clip Before / After at its foot, beside Keep · Resume](media/clip-before-after.webp)
 
-- You get a 10-second video. First the frame you asked from, with your marks and your words, for 2 seconds (**Before**). Then a wipe, and the same moment with the new code, playing for 8 seconds (**After**). The last second has the mark.
+- You get a 10-second video (with the 8-second length; the Before adds 2 seconds to the length you picked). First the frame you asked from, with your marks and your words, for 2 seconds (**Before**). Then a wipe, and the same moment with the new code, playing for the length you picked (**After**). The last second has the mark.
 - The video shows three bits of text at most: **Before**, **After** and what you asked. To leave your words out, turn off **Show my words on Before / After** in **⌄**.
 - The post is written for you: “Paused my game at 0:05, marked a spot and told Claude “bring the boss in from here”. It fixed the code. Before → After 👇”. **✦ Rewrite** works here too.
 - You can steer during the After. If you don’t, the game just goes on.

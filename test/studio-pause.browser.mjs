@@ -82,6 +82,7 @@ import { startStudioServer } from '../src/server/server.mjs';
 import { launch, newPage } from './adapters-2d/cdp.mjs';
 import { startFakeAgent } from './ai-feel/fake-agent.mjs';
 import { startHost } from './web-demo-host.mjs';
+import { translate } from '../src/shell/i18n.ts';
 import { askEditor } from '../src/server/hands-cli.mjs';
 
 const PKG = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -97,6 +98,9 @@ const LANG = take('--lang') || 'en';
 const BEFORE = take('--before');
 if (SHOTS) mkdirSync(SHOTS, { recursive: true });
 const ja = LANG === 'ja';
+// A new run's flash, in the run's language (walk 2 △7, 2026-11-06: "New code, played from the start to 0:04.11…" —
+// it was "Same time, new run"): the words before the time.
+const SAME_RUN = translate(LANG, 'try.sameRun', { t: '\u0000' }).split('\u0000')[0];
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const FR = `document.querySelector('iframe.game:not(.leaving)')`;
@@ -984,8 +988,11 @@ async function tryFromTheMoment(g, agent, rec, boss1, shipped, tag) {
   const head = await j(page, `(() => { const e = document.querySelector('.ai-line.moment-reply .ai-head'); if (!e) return null; const r = e.getBoundingClientRect();
     const b = document.querySelector('.ai-line [data-action=moment-try]').getBoundingClientRect(); return JSON.stringify({ cut: e.scrollHeight > e.clientHeight + 1 || e.scrollWidth > e.clientWidth + 1, below: b.top >= r.bottom - 1 }); })()`);
   assert.ok(head && !head.cut && head.below, `the reply's words whole, the buttons under them ${JSON.stringify(head)}`);
-  // △4: sent → ◎ marking off (the marks stay).
+  // △4: sent → ◎ marking off. Walk 2 △16 (decided 2026-11-06): the marks fold to "+ same mark" — no chips, no pins.
   assert.equal(await page.eval(`document.querySelector('[data-action=moment-mark]')?.getAttribute('aria-pressed') ?? 'false'`), 'false', '◎ off after the send');
+  assert.equal(await page.eval(`document.querySelectorAll('[data-part=mark-chip]').length`), 0, 'no mark chips after the send');
+  assert.equal(await page.eval(`document.querySelector('[data-part=mark-again]')?.textContent || ''`), translate(LANG, 'mark.again', { n: rec.marks.length }), '"+ same mark" in their place');
+  assert.equal(await page.eval(`document.querySelectorAll('.mark-pins > *').length`), 0, 'no pins on the frame');
   assert.ok(agent.log.some((e) => e.what === 'wrote the moment hooks'), 'the stand-in wrote save / load with its first fix (Q2)');
   const check1 = agent.log.find((e) => e.what.startsWith('check '))?.what ?? '';
   assert.match(check1, /moment check ok — same time, new run/, `its --check-moment <back> (the ask kept no moment): ${check1}`);
@@ -995,7 +1002,7 @@ async function tryFromTheMoment(g, agent, rec, boss1, shipped, tag) {
   await shot(tag, 'fixed-try');
   // 2. ▶ Try (same time, new run).
   await press(page, tryBtn);
-  await until(async () => (await page.eval(IN.moment)) && /Same time, new run|同じ時刻・新しい遊び/.test(await flashText(page)), 60000, 'the Try held at the ask\'s second')
+  await until(async () => (await page.eval(IN.moment)) && (await flashText(page)).includes(SAME_RUN), 60000, 'the Try held at the ask\'s second')
     .catch(async (e) => { throw new Error(`${e.message} ${await page.eval(TRY_STATE)}`); });
   const t1 = await page.eval(`${M}.seconds()`);
   assert.ok(Math.abs(t1 - rec.time) <= 0.25, `held at the same second (${t1.toFixed(2)} for ${rec.time})`);
@@ -1022,7 +1029,8 @@ async function tryFromTheMoment(g, agent, rec, boss1, shipped, tag) {
   // 4. Before / After (Try first: the After is the new code at that very moment).
   await press(page, await j(page, box('[data-action=moment-compare]')));
   await page.waitFor(`!!document.querySelector('[data-part=moment-compare]:not([hidden]) [data-part=compare-before] img')`, 5000);
-  await until(async () => (await page.eval(IN.moment)) && /New code · same moment|新しいコード・同じ瞬間/.test(await flashText(page)), 60000, 'the Try at the same moment');
+  // The Try held at the moment: its picture in the After. (Walk 2 △7: no flash under the panel — the After says it.)
+  await until(async () => (await page.eval(IN.moment)) && (await page.eval(`!!document.querySelector('[data-part=moment-compare]:not([hidden]) [data-part=compare-after] img')`)), 60000, 'the Try at the same moment');
   const t2 = await page.eval(`${M}.seconds()`);
   assert.ok(Math.abs(t2 - rec2.time) <= 0.05, `the same moment: the clock is the ask's (${t2.toFixed(3)} for ${rec2.time})`);
   await page.waitFor(`!!document.querySelector('[data-part=moment-compare]:not([hidden]) [data-part=compare-after] img')`, 10000);
@@ -1037,8 +1045,8 @@ async function tryFromTheMoment(g, agent, rec, boss1, shipped, tag) {
     `the boss where it was at the ask (${bossAsk2.p.map((v) => v.toFixed(2))} → ${bossNow.p.map((v) => v.toFixed(2))})`);
   // ✕2 (plan A): the boss was out at that moment — the flash and the After say so, with ▶ Resume to see it.
   // (The flash goes after 9 s; on a busy machine the After can take longer than that: checked while it is there.)
-  const fl2 = await flashText(page);
-  if (fl2) assert.match(fl2, ja ? /bossはもう出ていた/ : /Already out: boss, so your change shows from the next one/, 'the Try says the boss was already out');
+  // Walk 2 △7 (decided 2026-11-06): not ALSO in a flash under the panel (a third line of the same thing).
+  assert.equal(await flashText(page), '', 'no flash under Before / After');
   const note = await j(page, box('[data-part=compare-note]'));
   assert.ok(note && (ja ? /もう出ていました/ : /Already out at this moment: boss/).test(note.text) && !!(await j(page, box('[data-action=compare-resume]'))), `under the After: ${JSON.stringify(note)}`);
   assert.ok(note.bottom <= 800, 'the note on screen');
@@ -1234,19 +1242,27 @@ async function tryOnPhone(g, layout, agent) {
   }
   await shot(tag, 'fixed');
   await press(page, await j(page, box('[data-action=moment-try]')), true);
-  await until(async () => (await page.eval(IN.moment)) && /Same time, new run|同じ時刻・新しい遊び/.test(await flashText(page)), 60000, 'the Try held at the ask\'s second');
+  await until(async () => (await page.eval(IN.moment)) && (await flashText(page)).includes(SAME_RUN), 60000, 'the Try held at the ask\'s second');
   const t1 = await page.eval(`${M}.seconds()`);
   assert.ok(Math.abs(t1 - rec.time) <= 0.25, `held at the same second (${t1.toFixed(2)} for ${rec.time})`);
   // pause-ask fix ✕3: the line wraps inside the screen (it ran off both edges), two lines at most, nothing cut.
   const fl = await j(page, `(() => { const f = document.querySelector('[data-part=play-flash]:not([hidden])'); if (!f) return null; const r = f.getBoundingClientRect(); const sp = f.querySelector('span');
     return JSON.stringify({ left: r.left, right: r.right, cut: !!sp && sp.scrollHeight > sp.clientHeight + 1 }); })()`);
-  assert.ok(fl && fl.left >= 0 && fl.right <= layout.width && !fl.cut, `"Same time, new run" whole on the phone ${JSON.stringify(fl)}`);
+  assert.ok(fl && fl.left >= 0 && fl.right <= layout.width && !fl.cut, `"${SAME_RUN}…" whole on the phone ${JSON.stringify(fl)}`);
   await shot(tag, 'tried');
   await until(async () => !!(await j(page, box('[data-action=moment-compare]'))), 10000, 'Before / After after the Try');
   await press(page, await j(page, box('[data-action=moment-compare]')), true);
   await page.waitFor(`!!document.querySelector('[data-part=moment-compare]:not([hidden]) [data-part=compare-after] img')`, 60000);
   const cb = await j(page, box('[data-part=moment-compare]'));
   assert.ok(cb && cb.left >= 0 && cb.right <= layout.width && cb.top >= 0 && cb.bottom <= layout.height, `Before / After on screen ${JSON.stringify(cb)}`);
+  // Walk 2 ✕3 (decided 2026-11-06): the foot's buttons each whole inside the panel — "Undo Claude’s change" ran off its
+  // left edge on a phone ("’s change"). Undo gets the row under the other two.
+  const foot = await j(page, `JSON.stringify((() => { const p = document.querySelector('[data-part=moment-compare]').getBoundingClientRect();
+    return [...document.querySelectorAll('[data-part=moment-compare] .moment-compare-foot .btn')].map((b) => { const r = b.getBoundingClientRect();
+      return { a: b.dataset.action, inside: r.left >= p.left - 0.5 && r.right <= p.right + 0.5, cut: b.scrollWidth > b.clientWidth + 1, top: r.top }; }); })())`);
+  assert.ok(foot.length >= 2 && foot.every((b) => b.inside && !b.cut), `the foot's buttons whole ${JSON.stringify(foot)}`);
+  const undoRow = foot.find((b) => b.a === 'compare-undo');
+  if (undoRow) assert.ok(foot.filter((b) => b.a !== 'compare-undo').every((b) => b.top < undoRow.top), `Undo on the row under ${JSON.stringify(foot)}`);
   await shot(tag, 'compare');
   await press(page, await j(page, box('[data-action=compare-close]')), true);
   await sleep(300);
@@ -1861,7 +1877,14 @@ async function values(theme = 'light') {
     const { page, root, shot } = h;
     await sleep(1200);
     await pauseP(page, [640, 120]);
-    const none = (await until(() => page.eval(`document.querySelector('[data-part=moment-none]')?.textContent || ''`), 4000, 'the one line')).replace(/\u200b/g, '');
+    // Walk 2 △8 (decided 2026-11-06): folded under one quiet row "✦ More with Claude ›" — the list's first words are not
+    // about what does not work. Opened, the line and ✦ as before.
+    const more = await until(() => j(page, box('[data-part=moment-more]')), 4000, '✦ More with Claude');
+    assert.equal(more.text.replace(/\u200b/g, '').trim(), translate(LANG, 'moment.more', { ai: 'Claude', Ai: 'Claude' }).replace(/\u200b/g, ''));
+    assert.equal(await page.eval(`!!document.querySelector('[data-part=moment-none]')?.offsetParent`), false, 'the "not ready" line folded');
+    await press(page, more);
+    await sleep(200);
+    const none = (await until(() => page.eval(`document.querySelector('[data-part=moment-none]')?.offsetParent ? document.querySelector('[data-part=moment-none]').textContent : ''`), 4000, 'the one line')).replace(/\u200b/g, '');
     // Inside the floating list: the line and ✦ wrap to its width (they were cut at its edge once).
     const sideBox = await j(page, box('.side'));
     for (const sel of ['[data-part=moment-none]', '[data-part=moment-values-ask]']) {

@@ -183,7 +183,8 @@ async function run() {
     });
     const clipBtn = await until(() => j(page, box('[data-part=moment-compare]:not([hidden]) [data-action=compare-clip]')), 10000, 'the clip button');
     check(!early, 'no clip button before the After was there (nothing to film yet)');
-    check((ja ? /Before \/ After をクリップに/ : /Clip Before \/ After/).test(clipBtn.text), `the panel's "${clipBtn.text}"`);
+    // ja uses one word for Before / After everywhere since 2026-11-06.
+    check((ja ? /前 \/ 後をクリップに/ : /Clip Before \/ After/).test(clipBtn.text), `the panel's "${clipBtn.text}"`);
     await shot('panel');
     // 3. Pressed.
     const t0 = Date.now();
@@ -210,7 +211,10 @@ async function run() {
     check(files.length === 1 && /^neon-run-a-boss-comes-in-before-after-1\.mp4$/.test(files[0]), `the file's name (${files.join(', ')})`);
     check((ja ? /10 秒 · (横 1280×720|縦 720×1280)/ : /10 s · (Wide 1280×720|Tall 720×1280)/).test(line.where), `10 s and its shape (${line.where})`);
     const post = line.post;
-    check(/^Paused my game at \d:\d\d, marked a spot and told Claude “.+”\. It fixed the code\. Before → After 👇 https:\/\/github\.com\/kumodeck\/game-studio$/.test(post), `the post ("${post}")`);
+    // The post is written in the screen's language since 2026-11-06 (a ja post mixed English with the ask).
+    check((ja
+      ? /^\d:\d\d で止めて印を付け、Claude に「.+」と頼んだら、コードを直してくれた。前 → 後 👇 https:\/\/github\.com\/kumodeck\/game-studio$/
+      : /^Paused my game at \d:\d\d, marked a spot and told Claude “.+”\. It fixed the code\. Before → After 👇 https:\/\/github\.com\/kumodeck\/game-studio$/).test(post), `the post ("${post}")`);
     await shot('saved');
     // 4. The file.
     const fileP = join(clips, files[0]);

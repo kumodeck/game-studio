@@ -127,7 +127,7 @@ import { createUiWire } from './ui-wire.ts';
 import { createUiMissing } from './ui-missing.ts';
 import { barPress, FOLD_DRAG, gripEnd, readFold, writeFold } from './sheet-fold.ts';
 import { createClip, type ClipPostContext } from './clip.ts';
-import { normalizeClipPrefs } from './clip-model.ts';
+import { baSeconds, normalizeClipPrefs } from './clip-model.ts';
 
 type Phase = 'loading' | 'waiting' | 'no-adapter' | 'ready' | 'playing';
 /** "Waiting for the game to start…" becomes "Connecting the game to Game Studio…" after this long (status.connecting). */
@@ -887,7 +887,10 @@ export function start(host: StudioHost) {
     },
     phone: () => phone(),
     aiReady: () => !host.offline && aiWatching === true,
-    aiName: () => (aiAgent === 'claude' ? 'Claude' : aiAgent === 'codex' ? 'Codex' : 'my AI'),
+    // "my AI" is the English post's; another language's post says it its own way (clip.post.ai).
+    aiName: () => (aiAgent === 'claude' ? 'Claude' : aiAgent === 'codex' ? 'Codex' : lang === 'en' ? 'my AI' : t('clip.post.ai')),
+    // The post in the editor's language (walk 2 △11, decided 2026-11-06): English is written by clip-model.ts itself.
+    postSay: () => (lang === 'en' ? null : (k, v) => t(k, v)),
     rewrite: (text, ctx) => clipRewrite(text, ctx),
   });
   /**
@@ -3896,13 +3899,16 @@ export function start(host: StudioHost) {
     momentChat = k.chat;
     momentTalk = k.talk;
     for (const id of k.asks) momentAsks.add(id);
-    if (k.marks.length) momentMarks.restore(k.marks);
+    if (k.marks.length || k.folded?.length) momentMarks.restore(k.marks, k.folded);
     tried = { id: tryRun.id, time: tryRun.time, exact: tryRun.exact, ...(m.ask?.shot ? { after: m.ask.shot } : {}) };
     const at = clockText(tryRun.time, 2);
     // fix ✕2 (plan A): a saved moment says what was already out stays where it was; longer words, a little longer.
     const w = tryWordsOf(tryRun.id, tryRun.exact, m.late ?? 0);
     tried.late = m.late ?? 0;
-    momentBar.flash(t(w.flash, { t: at, ...(w.name ? { name: w.name } : {}), ...(w.s ? { s: w.s } : {}) }), 'play', w.note ? 9000 : 6000);
+    // Not under Before / After (walk 2 △7, decided 2026-11-06): the panel's After already says it ("new code · played
+    // from the start to 0:04.11", and its note when the run may be off) — the flash made a third line of the same thing
+    // under the panel, over the AI's reply.
+    if (!k.compare) momentBar.flash(t(w.flash, { t: at, ...(w.name ? { name: w.name } : {}), ...(w.s ? { s: w.s } : {}) }), 'play', w.note ? 9000 : 6000);
     tryKeep = null;
     tryRun = null;
     renderMomentEarlier();
@@ -4345,9 +4351,10 @@ export function start(host: StudioHost) {
     if (!ok) return false;
     momentConnectAsk = false;
     cpAsk = null;
-    // Sent (fix △4): ◎ marking goes off (the marks stay: "no, here ②" next), and the card closes — it covered the reply's
-    // ▶ Try when left open while waiting.
-    momentMarks.set(false);
+    // Sent (fix △4): ◎ marking goes off, and the card closes — it covered the reply's ▶ Try when left open while waiting.
+    // The marks fold to "+ same mark" (walk 2 △16, decided 2026-11-06; they stayed as chips, and the next words' reach
+    // was unclear): pressed, they go with the next words again.
+    momentMarks.fold();
     momentGets.close();
     if (first && pending?.id) momentChat = pending.id;
     if (pending?.id) {
@@ -4391,7 +4398,7 @@ export function start(host: StudioHost) {
       showToast(t('try.gone'), 6000);
       return;
     }
-    tryKeep = { chat: momentChat, talk: momentTalk, marks: momentMarks.list(), asks: [...momentAsks], compare };
+    tryKeep = { chat: momentChat, talk: momentTalk, marks: momentMarks.list(), folded: momentMarks.folded(), asks: [...momentAsks], compare };
     tryOpening = { id, time: a.time, ...(a.moment !== undefined ? { moment: a.moment } : {}) };
     tried = null;
     loadGame();
@@ -4410,6 +4417,8 @@ export function start(host: StudioHost) {
     const ab = askBacks.get(id);
     if (!ab) return;
     momentGets.close();
+    // A flash still up (a ▶ Try's "New code, played from the start…") goes: the panel says it (walk 2 △7).
+    momentBar.note.hidden = true;
     const at = clockText(ab.time, 2);
     const have = tried && tried.id === id && tried.after && playPaused ? tried : null;
     const canUndo = momentCanUndo(id);
@@ -4428,7 +4437,7 @@ export function start(host: StudioHost) {
       ...(canUndo ? { undo: { label: t('cmp.undo', aiVars()), run: () => (momentCompare.close(), void momentUndo(id)) } } : {}),
       // ● Clip Before / After (stage 2, decided 2026-11-05; README picture pc-3): once the After is there (the Try paused
       // at the moment), one press makes the video of this fix — the asked frame, then the new code from the same moment.
-      ...(have && ab.before && clipper.state === 'idle' ? { clip: { label: t('clip.ba'), tip: t('clip.baTip'), run: () => {
+      ...(have && ab.before && clipper.state === 'idle' ? { clip: { label: t('clip.ba'), tip: t('clip.baTip', { s: baSeconds((uiPrefs.clip ?? normalizeClipPrefs(undefined)).seconds) }), run: () => {
         momentCompare.close();
         clipper.beforeAfter({ before: ab.before!, asked: ab.asked, time: ab.time, marked: !!ab.marked });
       } } } : {}),
@@ -5863,7 +5872,7 @@ export function start(host: StudioHost) {
   /** The Try's pause waiting for the held clock's exact second (tryPaused), else null. */
   let tryPending: Extract<BridgeToShell, { type: 'studio:play/paused' }> | null = null;
   let tryRun: { id: string; time: number; exact: boolean } | null = null;
-  let tryKeep: { chat: string; talk: ChatModel; marks: MomentMark[]; asks: string[]; compare: boolean } | null = null;
+  let tryKeep: { chat: string; talk: ChatModel; marks: MomentMark[]; folded?: MomentMark[]; asks: string[]; compare: boolean } | null = null;
   // `late` (fix △7): the Try page's PlayClock.late at its pause, s.
   let tried: { id: string; time: number; exact: boolean; after?: string; late?: number } | null = null;
   let cpFailed: { id: string; name: string; error: string; logs: PlayLog[] } | null = null;
@@ -6955,6 +6964,9 @@ export function start(host: StudioHost) {
     const sceneWord = (id: ToolId) => (id === 'placement' && editLayer === 'ui' ? t('uiLayer.ui') : t('tool.' + id));
     (header.querySelector('.here') as HTMLElement).textContent = playing ? t('status.playingShort') : page === 'settings' ? t('btn.settings') : page === 'next' ? t('btn.next') : sceneWord(tool);
     renderLevelCrumb();
+    // ● Clip's words with the rest (walk 2 ✕4, decided 2026-11-06): a person whose prefs say Japanese saw "Clip" and
+    // "Clip options" in English until their first clip — clip.ts drew its button once, before the prefs were read.
+    clipper.render();
     // (Playing with changes not saved: v0.1.7–0.1.8 had a quiet "· unsaved changes" after "Playing" here. Since the
     // second look of 2026-10-21 (B) the orange Save beside Play, and ▶ Play asks first — Save and play / Try without
     // saving — so nothing more is said once playing: togglePlay, save-loud.ts.)

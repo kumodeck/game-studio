@@ -288,6 +288,11 @@ img.thumb:not([src]) { content: url("data:image/gif;base64,R0lGODlhAQABAIAAAAAAA
 .mark-chip-n { margin-right: 3px; }
 .mark-chip-x { width: 18px; height: 18px; margin-left: 2px; padding: 0; border: 0; border-radius: 50%; background: none; color: inherit; font: inherit; line-height: 1; cursor: pointer; }
 .mark-chip-x:hover { background: color-mix(in srgb, var(--you) 22%, transparent); }
+/* "+ same mark" (walk 2 △16, decided 2026-11-06): the marks folded after a send — quiet, dashed, not the orange of a
+   mark that WILL go with the words; pressed, the chips come back. */
+.mark-again { flex: none; height: 20px; padding: 0 8px; border: 1px dashed color-mix(in srgb, var(--you) 55%, transparent); border-radius: 999px; background: none;
+  color: var(--text-2); font: inherit; font-size: 12px; font-weight: 600; white-space: nowrap; cursor: pointer; }
+.mark-again:hover { color: var(--you-text); background: var(--you-soft); }
 /* The layer over the game: the pins always (pointer-free), the whole frame takes the pointer only while marking. */
 .mark-layer { position: absolute; inset: 0; z-index: 3; pointer-events: none; }
 .mark-layer[hidden] { display: none; }
@@ -376,7 +381,13 @@ img.thumb:not([src]) { content: url("data:image/gif;base64,R0lGODlhAQABAIAAAAAAA
 .shell[data-layout="phone"] .moment-compare-pic img, .shell[data-fit="side"] .moment-compare-pic img { max-height: 58vh; }
 .shell[data-layout="phone"] .moment-compare-pic, .shell[data-fit="side"] .moment-compare-pic { aspect-ratio: 9 / 16; }
 .shell[data-layout="phone"] .moment-compare-asked, .shell[data-fit="side"] .moment-compare-asked { display: none; }
-.shell[data-layout="phone"] .moment-compare-foot, .shell[data-fit="side"] .moment-compare-foot { justify-content: flex-end; }
+.shell[data-layout="phone"] .moment-compare-foot, .shell[data-fit="side"] .moment-compare-foot { justify-content: flex-end; flex-wrap: wrap; }
+/* walk 2 ✕3 (decided 2026-11-06): on a phone the three buttons did not fit one row, and the row ran off the LEFT edge —
+   "Undo Claude’s change" showed as "’s change", the way back from the AI's change half hidden. Narrow: they wrap, the
+   video and Keep · Resume on the first row (what most people press), Undo on the row under them, whole; a button wider
+   than the panel wraps its words instead of running out. */
+.shell[data-layout="phone"] .moment-compare-foot .btn, .shell[data-fit="side"] .moment-compare-foot .btn { max-width: 100%; white-space: normal; text-align: start; }
+.shell[data-layout="phone"] .moment-compare-foot [data-action="compare-undo"], .shell[data-fit="side"] .moment-compare-foot [data-action="compare-undo"] { order: 3; }
 /* The moment's line over the field on a phone (fix 1 ✕5; main.ts momentLine): the card's ✦ chip, under the words. */
 .moment-line.has-appear { flex-direction: column; gap: 4px; }
 .moment-line .moment-appear { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; min-height: 28px; padding: 2px 10px; border: 0; border-radius: 8px;
@@ -2359,6 +2370,13 @@ button.shelf-file.to:hover { background: var(--raise-2); }
 .mv-row.off { color: var(--text-3); cursor: default; }
 .mv-row.off .knob-l { flex: 1; color: var(--text-3); }
 .mv-row.off .mv-v { min-width: 72px; padding: 0 8px; text-align: center; font-size: 12px; }
+/* walk 2 △8 (decided 2026-11-06; moment-values.ts): a game without values — one quiet row "✦ More with Claude ›" over the
+   moment's objects; the "not ready yet" line and its ✦ under it only once opened. */
+.mv-more { display: inline-flex; align-items: center; justify-self: start; gap: 6px; min-height: 26px; max-width: 100%; padding: 2px 6px; margin-left: -6px;
+  border: 0; border-radius: 6px; background: none; color: var(--ai); font: inherit; font-size: var(--fs-s); font-weight: 600; cursor: pointer; text-align: start; }
+.mv-more:hover { background: var(--raise-2); }
+.mv-more .icon { width: 12px; height: 12px; flex: none; }
+.mv-none[hidden], .mv-ask[hidden] { display: none; }
 /* Japanese words kept whole (keep-all), broken at the words' own \u200b (i18n.ts); anywhere only when one cannot fit. */
 .mv-none { margin: 2px 0 4px; font-size: var(--fs-s); line-height: 1.45; word-break: keep-all; overflow-wrap: anywhere; }
 /* ✦ the card's ✦ "appear here" look (the AI's violet, outlined: it only puts a draft in the field). */
@@ -2659,7 +2677,7 @@ li.obj[aria-selected="true"] .hand-mark .hand-tag { padding: 0 4px; }
 /* ● Clip Before / After in the paused ask's Before / After panel (stage 2; moment-try.ts): the record dot, beside Keep. */
 .moment-compare-foot .btn.clip-ba .rec-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--danger); flex: none; }
 /* The line once saved: one card of the glass at the game's foot, in Edit and in Play (the dock, where the AI's line is, is
-   put away while playing — and a clip is made while playing). Two rows: where it is · Show in Finder · Remove mark · ✕ /
+   put away while playing — and a clip is made while playing). Two rows: where it is · Show in Finder · Remove “Made with” · ✕ /
    the post · count · Copy post. Over the dock in Edit, like the AI's line; ✕ puts it away. */
 /* Centred with margins, not a transform: the rise animation sets transform and pushed it off the game's right edge. */
 .stage > .clip-line { position: absolute; z-index: 7; left: 0; right: 0; margin-inline: auto; bottom: 16px; width: min(760px, calc(100% - 32px));
@@ -2687,6 +2705,10 @@ li.obj[aria-selected="true"] .hand-mark .hand-tag { padding: 0 4px; }
 .clip-line .clip-post { color: var(--text-2); }
 .clip-line .clip-x-mark { flex: none; font-weight: 700; color: var(--text); }
 .clip-line .clip-text { flex: 1 1 auto; min-width: 0; font-size: var(--fs-s); overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+/* walk 2 △9 (decided 2026-11-06): the post is what goes to X — in the text colour, not the small grey of a footnote.
+   "✓ Saved to Movies › KUMODeck" keeps its whole width (where to look); the shape and length give way first. */
+.clip-line .clip-post .clip-text { color: var(--text); }
+.clip-line .clip-head { flex: 0 0 auto; max-width: 62%; }
 .clip-line .clip-count { flex: none; font-size: var(--fs-s); color: var(--text-3); font-variant-numeric: tabular-nums; }
 .clip-line .clip-count.over { color: var(--danger); }
 /* ✦ Rewrite (the AI's violet, as every ✦) and a phone's Share… (the one thing to do there: the solid button). */

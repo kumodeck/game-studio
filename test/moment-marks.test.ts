@@ -3,7 +3,7 @@
 // Run: node --experimental-strip-types --no-warnings --test test/moment-marks.test.ts
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { markBox, markChip, markFromPress, markNumber, renumber, MARKS_MAX } from '../src/shell/moment-marks.ts';
+import { foldOnSend, markAdded, markBox, markChip, markFromPress, markNumber, renumber, unfoldMarks, MARKS_MAX } from '../src/shell/moment-marks.ts';
 import { getsRows, orderMarked } from '../src/shell/moment-gets.ts';
 import { translate } from '../src/shell/i18n.ts';
 import { normalizeRequestInput, HANDOFF_LIMITS } from '../src/schema/handoff.mjs';
@@ -133,4 +133,18 @@ test('fix △2: a mark with nothing under it is still named — a spot on the gr
   assert.equal(area.title, '① an area of the frame');
   assert.equal(area.sub, 'Where you marked it in the picture');
   assert.notEqual(ground.title, t('gets.nothing'));
+});
+
+test('walk 2 △16: sent, the marks fold to "+ same mark"; pressed, they come back; a new mark starts again at ①', () => {
+  const one: MomentMark = { n: 1, kind: 'point', screen: [0.5, 0.4] };
+  const sent = foldOnSend({ live: [one], folded: [] });
+  assert.deepEqual(sent, { live: [], folded: [one] }, 'nothing goes with the next words until asked');
+  assert.deepEqual(foldOnSend(sent), sent, 'a send with no marks keeps what was folded');
+  assert.deepEqual(unfoldMarks(sent), { live: [one], folded: [] }, '+ same mark: back for the next words');
+  const fresh = markAdded(sent, { kind: 'area', screen: [0, 0, 0.2, 0.2] });
+  assert.deepEqual(fresh.folded, [], 'a new mark drops the folded ones');
+  assert.deepEqual(fresh.live.map((m) => m.n), [1], '…and is ① again');
+  assert.equal(translate('en', 'mark.again', { n: 1 }), '+ same mark');
+  assert.equal(translate('en', 'mark.again', { n: 2 }), '+ same 2 marks');
+  assert.notEqual(translate('ja', 'mark.again', { n: 2 }), 'mark.again');
 });

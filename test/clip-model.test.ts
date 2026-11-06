@@ -6,8 +6,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  BA_AFTER_SECONDS, BA_BEFORE_MS, BA_WORDS_MAX, CLIP_DEFAULT_LENGTH, CLIP_FPS, CLIP_LENGTHS, CLIP_MARK_DEFAULT, CLIP_MARK_LINES, CLIP_REPO_URL, CLIP_TALL, CLIP_WIDE, X_LIMIT,
-  baWords, beforeAfterPost, beforeAfterStem, checkRewrite, clipFrames, cutAtPress, clipShapeFor, clipSize, clipStem, downloadName, endAfterStop, markStartMs,
+  BA_ADDS_SECONDS, BA_AFTER_SECONDS, BA_BEFORE_MS, BA_WORDS_MAX, CLIP_DEFAULT_LENGTH, CLIP_FPS, CLIP_LENGTHS, CLIP_MARK_DEFAULT, CLIP_MARK_LINES, CLIP_REPO_URL, CLIP_TALL, CLIP_WIDE, X_LIMIT,
+  baSeconds, baWords, beforeAfterPost, beforeAfterStem, checkRewrite, clipFrames, cutAtPress, clipShapeFor, clipSize, clipStem, downloadName, endAfterStop, markStartMs,
   normalizeClipPrefs, postText, recClock, withAddress, xLength,
 } from '../src/shell/clip-model.ts';
 import { mp4Info, muxMp4, sampleTicks, type Mp4Sample } from '../src/shell/mp4.ts';
@@ -88,7 +88,10 @@ test('the words: English and Japanese for the button, the line and the refusals'
       'clip.rewrite', 'clip.rewriteTip', 'clip.rewriting', 'clip.rewritten', 'clip.rewriteLong', 'clip.rewriteEmpty', 'clip.rewriteNone',
       // studio-clip-3 (2026-11-06)
       'clip.ending', 'clip.saving', 'clip.holdTip', 'clip.whereTip', 'clip.postX', 'clip.postXTip', 'clip.postXOpened',
-      'clip.askAi', 'clip.askWebgpu', 'clip.askTainted']) {
+      'clip.askAi', 'clip.askWebgpu', 'clip.askTainted',
+      // walk 2 (2026-11-06)
+      'clip.baAdds', 'clip.markAdd', 'clip.markRemove', 'clip.post.clip', 'clip.post.clipBare', 'clip.post.clipMade', 'clip.post.clipPlain', 'clip.post.ba',
+      'clip.post.baPlain', 'clip.post.baMarked', 'clip.post.ai']) {
       const s = translate(lang, k, { n: 8, name: 'neon-run-clip-1.mp4', dir: 'Movies › KUMODeck', t: '0:03', s: 8 });
       assert.ok(s && s !== k, `${lang} ${k}`);
     }
@@ -100,8 +103,12 @@ test('the words: English and Japanese for the button, the line and the refusals'
   assert.equal(translate('en', 'clip.stop', { t: '0:05' }), '0:05 left · Stop');
   assert.equal(translate('ja', 'clip.stop', { t: '0:05' }), '残り 0:05 · 止める');
   // Stage 2: the line names the shape it was recorded in.
-  assert.equal(translate('en', 'clip.where', { s: 8, shape: translate('en', 'clip.shape.tall', {}), dir: 'Movies › KUMODeck' }), '8 s · Tall 720×1280 · Movies › KUMODeck');
-  assert.equal(translate('ja', 'clip.where', { s: 8, shape: translate('ja', 'clip.shape.wide', {}), dir: 'ムービー › KUMODeck' }), '8 秒 · 横 1280×720 · ムービー › KUMODeck');
+  // Walk 2 △9 (decided 2026-11-06): the folder is the head ("Saved to Movies › KUMODeck", whole), the shape and length
+  // the button after it — the folder is said once, not cut at the row's end.
+  assert.equal(translate('en', 'clip.where', { s: 8, shape: translate('en', 'clip.shape.tall', {}) }), '8 s · Tall 720×1280');
+  assert.equal(translate('en', 'clip.saved', { dir: translate('en', 'clip.dir.movies', {}) }), 'Saved to Movies › KUMODeck');
+  assert.ok(translate('ja', 'clip.saved', { dir: 'X' }).includes('X'));
+  assert.ok(!translate('ja', 'clip.where', { s: 8, shape: 'S' }).includes('KUMODeck'));
 });
 
 test('stage 2 · Wide / Tall: 1280×720 and 720×1280 (one H.264 level holds both); a phone records Tall until the person chooses', () => {
@@ -132,6 +139,13 @@ test('stage 2 · the late stop: the clip ends one second after the PRESS, howeve
   assert.equal(cutAtPress({ nowMs: 7600, pressMs: 7500, liveFrom: 0, slot: 228, endMs: 8000 }).endMs, 8000);
   // The Before / After's whole length: 2 s still + 8 s of the After = 10 s, its mark on the last second.
   assert.equal(BA_BEFORE_MS / 1000 + BA_AFTER_SECONDS, 10);
+  // Walk 2 △10 (decided 2026-11-06): the After follows the length chosen (it was a fixed 8 s whatever was chosen), and
+  // Clip options says what the Before adds — so "8 seconds ✓" and a 10 s Before / After agree.
+  assert.equal(baSeconds(CLIP_DEFAULT_LENGTH), 10);
+  assert.deepEqual(CLIP_LENGTHS.map(baSeconds), [8, 10, 14]);
+  assert.equal(BA_ADDS_SECONDS, 2);
+  assert.equal(translate('en', 'clip.baAdds', { s: BA_ADDS_SECONDS }), 'Before / After adds 2 s: the frame you asked from');
+  assert.equal(translate('en', 'clip.baTip', { s: baSeconds(12) }), 'Make a 14-second video: the frame you asked from, then the new code from the same moment');
   assert.equal(markStartMs(10000), 9000);
 });
 
@@ -155,6 +169,27 @@ test('stage 2 · Before / After: its file name, the words on the Before, the pos
   assert.ok(xLength(cut) <= X_LIMIT, String(xLength(cut)));
   assert.match(cut, /…”/);
   assert.ok(cut.endsWith(CLIP_REPO_URL));
+});
+
+test('walk 2 △11 · a post in the editor\'s language: the table\'s words, the same rules (280, the address with the mark)', () => {
+  const say = (k: string, v: Record<string, string | number>) => translate('ja', k, v);
+  const ai = translate('ja', 'clip.post.ai', {});
+  const ba = beforeAfterPost({ time: 4.11, asked: 'Bring the boss in from here.', mark: true, words: true, marked: true, ai: 'Claude', say });
+  assert.equal(ba, `${translate('ja', 'clip.post.ba', { at: '0:04', marked: translate('ja', 'clip.post.baMarked', {}), ai: 'Claude', words: 'Bring the boss in from here' })} ${CLIP_REPO_URL}`);
+  // No English sentence around the words (the walk: "Paused my game at 0:04 … told Claude “<their words>”").
+  assert.doesNotMatch(ba, /Paused my game|It fixed the code/);
+  const off = beforeAfterPost({ time: 65, asked: 'x', mark: false, words: false, marked: false, ai, say });
+  assert.equal(off, translate('ja', 'clip.post.baPlain', { at: '1:05', marked: '', ai }));
+  assert.ok(!off.includes('github.com'), 'the mark off: no address');
+  // Long words (each counted 2 by X) are cut so the whole post fits.
+  const long = beforeAfterPost({ time: 3, asked: translate('ja', 'clip.post.baMarked', {}).repeat(80), mark: true, words: true, marked: false, ai: 'Claude', say });
+  assert.ok(xLength(long) <= X_LIMIT, String(xLength(long)));
+  assert.ok(long.endsWith(CLIP_REPO_URL));
+  // A plain clip's post.
+  assert.equal(postText({ game: 'Neon Run', seconds: 8, mark: false, say }), translate('ja', 'clip.post.clipPlain', { what: translate('ja', 'clip.post.clip', { game: 'Neon Run', s: 8 }) }));
+  assert.ok(postText({ game: '', seconds: 6, mark: true, say }).endsWith(CLIP_REPO_URL));
+  // No `say` = English, as before.
+  assert.match(postText({ game: 'Neon Run', seconds: 8, mark: false }), /^Neon Run: an 8-second clip/);
 });
 
 test('stage 2 · ✦ Rewrite: the AI\'s post is taken only within 280, and the address follows the mark whatever it wrote', () => {

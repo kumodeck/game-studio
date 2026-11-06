@@ -1,4 +1,4 @@
-/* KUMODeck Game Studio 0.1.83 — MIT License — built file, edit src/ instead */
+/* KUMODeck Game Studio 0.1.84 — MIT License — built file, edit src/ instead */
 (() => {
 const __defs = [];
 const __cache = [];
@@ -18675,6 +18675,8 @@ const en = {
   'mark.hint': 'Click to mark a spot · drag to circle an area',
   'mark.hintTouch': 'Tap to mark a spot · drag to circle an area',
   'mark.remove': 'Delete mark',
+  'mark.again': '{n:+ same mark|+ same # marks}',
+  'mark.againTip': 'Your last words went with these marks. Press to send them again with your next words',
   // pause-ask stage 2 (moment-gets.ts): the four lines under the moment's picture — what goes to the AI with the words.
   'moment.shotOpen': 'See what {Ai} gets',
   'gets.title': '{Ai} gets this with your words',
@@ -18719,6 +18721,15 @@ const en = {
   // ● Clip (stage 1, decided 2026-11-05; clip.ts): one press records the next few seconds of the game (its picture and HTML
   // UI, never the editor) as an MP4 X takes, saved on this computer, with a post to paste.
   'clip.btn': 'Clip',
+  // The post's words in this language (walk 2 △11): clip-model.ts writes English itself; these are the same posts.
+  'clip.post.clip': '{game}: a {s}-second clip from my web game',
+  'clip.post.clipBare': 'A {s}-second clip from my web game',
+  'clip.post.clipMade': '{what}, made with KUMODeck Game Studio 👇 {url}',
+  'clip.post.clipPlain': '{what} 👇',
+  'clip.post.ba': 'Paused my game at {at}{marked} and told {ai} “{words}”. It fixed the code. Before → After 👇',
+  'clip.post.baPlain': 'Paused my game at {at}{marked} and asked {ai} for a fix. It fixed the code. Before → After 👇',
+  'clip.post.baMarked': ', marked a spot',
+  'clip.post.ai': 'my AI',
   'clip.tip': 'Record the next {s} seconds of the game as a video',
   'clip.more': 'Clip options',
   // studio-clip-3 (decided 2026-11-06): the time LEFT, not the time so far — the person wants to know when it ends.
@@ -18735,9 +18746,9 @@ const en = {
   'clip.askAi': '✦ Ask {ai}',
   'clip.askWebgpu': 'Draw the game with WebGL instead of WebGPU, so ● Clip can record it.',
   'clip.askTainted': 'Put the images this game loads from other sites into the game’s folder, so ● Clip can record it.',
-  'clip.saved': 'Clip saved · {name}',
-  'clip.downloaded': 'Clip downloaded · {name}',
-  'clip.where': '{s} s · {shape} · {dir}',
+  'clip.saved': 'Saved to {dir}',
+  'clip.downloaded': 'Downloaded to {dir}',
+  'clip.where': '{s} s · {shape}',
   // ● Clip stage 2 (decided 2026-11-05): Wide / Tall in ⌄ (a phone records Tall until chosen), Before / After from the
   // paused ask's panel, ✦ Rewrite (the AI rewrites the post; only with an AI there), a phone's Share….
   'clip.shape': 'Shape',
@@ -18745,7 +18756,8 @@ const en = {
   'clip.shape.tall': 'Tall 720×1280',
   'clip.words': 'Show my words on Before / After',
   'clip.ba': 'Clip Before / After',
-  'clip.baTip': 'Make a 10-second video: the frame you asked from, then the new code from the same moment',
+  'clip.baTip': 'Make a {s}-second video: the frame you asked from, then the new code from the same moment',
+  'clip.baAdds': 'Before / After adds {s} s: the frame you asked from',
   'clip.share': 'Share…',
   'clip.saveHere': 'Save to this phone',
   'clip.shareFailed': 'Couldn’t share the clip: {msg}',
@@ -18768,10 +18780,10 @@ const en = {
   'clip.length': 'Length',
   'clip.lengthRow': '{s} seconds',
   'clip.mark': '“Made with KUMODeck” at the end',
-  'clip.markRemove': 'Remove mark',
-  'clip.markAdd': 'Add mark',
-  'clip.markOff': 'Mark removed from this clip and the post. New clips leave it off too.',
-  'clip.markOn': 'Mark added to this clip and the post. New clips have it too.',
+  'clip.markRemove': 'Remove “Made with”',
+  'clip.markAdd': 'Add “Made with”',
+  'clip.markOff': '“Made with KUMODeck” removed from this clip and the post. New clips leave it off too.',
+  'clip.markOn': '“Made with KUMODeck” added to this clip and the post. New clips have it too.',
   'clip.saveTo': 'Saved to {dir}.',
   'clip.local': 'Nothing leaves this computer.',
   'clip.palette': 'Record a clip',
@@ -18792,11 +18804,11 @@ const en = {
   // A game without save / load (decided 2026-11-02: the AI adds them with its first fix from a pause): until then.
   // The ask kept the time only: true of the game WHEN asked (the AI may have added save / load with this very fix).
   // fix ✕3 (2026-11-02): shorter (a phone cut it at both ends); "when you asked" read as "when?".
-  'try.sameRun': 'Same time, new run · {t}. This game couldn’t start mid-run yet.',
+  'try.sameRun': 'New code, played from the start to {t}. This game can’t start from the middle yet.',
   // fix △7 (2026-11-02): a new run that loaded at another speed than the asking run — a game that cuts long frames is
   // then behind (or ahead of) the editor's clock, and the boss may not be out yet at "the same time". {s}: seconds.
-  'try.sameRunBehind': 'Same time, new run · {t}. This run loaded slower: the game may be {s} s behind.',
-  'try.sameRunAhead': 'Same time, new run · {t}. This run loaded faster: the game may be {s} s ahead.',
+  'try.sameRunBehind': 'New code, played from the start to {t}. It loaded slower this time: the game may be {s} s behind.',
+  'try.sameRunAhead': 'New code, played from the start to {t}. It loaded faster this time: the game may be {s} s ahead.',
   'try.gone': 'This moment isn’t kept any more. Play from the start to try the fix.',
   'try.failed': 'This moment didn’t open with the new code, so the game started from the beginning.',
   'cmp.btn': 'Before / After',
@@ -18806,7 +18818,7 @@ const en = {
   'cmp.after': 'After',
   'cmp.beforeSub': 'when you asked · {t}',
   'cmp.afterSub': 'new code · {t}',
-  'cmp.afterSameRun': 'new code · same time, new run · {t}',
+  'cmp.afterSameRun': 'new code · played from the start to {t}',
   'cmp.opening': 'Opening the same moment with the new code…',
   // fix ✕2 plan A: under the After when it is the saved moment, with ▶ Resume to see it.
   'cmp.out': 'Already out at this moment: {name}. It stays where it was; your change shows from the next one.',
@@ -19443,6 +19455,8 @@ const en = {
   // ⚑ row (✕11) and what a checkpoint keeps (△12). The word list's "This moment" rows (plan/04-words.md).
   'moment.noneBoth': 'Numbers like the score, and starting from here, aren’t ready for this game yet.',
   'moment.connectAsk': 'Have {ai} connect this moment to the game',
+  'moment.more': 'More with {Ai}',
+  'moment.moreTip': 'What {Ai} can add to this moment: the score and other numbers, starting from here',
   'moment.connectDraft': 'Show this moment’s numbers and let the game start from here',
   'moment.unfold': 'Show this moment’s numbers',
   'checkpoint.short': 'Checkpoint',
@@ -20014,6 +20028,8 @@ const ja                               = {
   'mark.hint': 'クリックで点・ドラッグで範囲を囲む',
   'mark.hintTouch': 'タップで点・ドラッグで範囲を囲む',
   'mark.remove': '印を消す',
+  'mark.again': '+ 前の印（{n}）',
+  'mark.againTip': 'さっきの言葉はこの印と送りました。押すと次の言葉にも付けます',
   'moment.shotOpen': '{ai}に届くものを見る',
   'gets.title': '言葉と一緒に {ai}に届くもの',
   'gets.frame': '{t} のこの 1 コマ',
@@ -20046,6 +20062,14 @@ const ja                               = {
   'gets.keptNoneTitle': '試し版では残しません',
   'gets.keptNone': 'Claude Code や Codex なら、ここから直しを確かめられます',
   'clip.btn': 'クリップ',
+  'clip.post.clip': '{game}: ウェブゲームの {s} 秒のクリップ',
+  'clip.post.clipBare': 'ウェブゲームの {s} 秒のクリップ',
+  'clip.post.clipMade': '{what}。KUMODeck Game Studio で作りました 👇 {url}',
+  'clip.post.clipPlain': '{what} 👇',
+  'clip.post.ba': '{at} で止めて{marked}{ai} に「{words}」と頼んだら、コードを直してくれた。前 → 後 👇',
+  'clip.post.baPlain': '{at} で止めて{marked}{ai} に直してと頼んだら、コードを直してくれた。前 → 後 👇',
+  'clip.post.baMarked': '印を付け、',
+  'clip.post.ai': 'AI',
   'clip.tip': 'ゲームのこの先 {s} 秒を動画にする',
   'clip.more': 'クリップの設定',
   'clip.stop': '残り {t} · 止める',
@@ -20060,15 +20084,16 @@ const ja                               = {
   'clip.askAi': '✦ {ai}に頼む',
   'clip.askWebgpu': '● クリップで録れるように、ゲームを WebGPU ではなく WebGL で描くようにして。',
   'clip.askTainted': '● クリップで録れるように、別のサイトから読んでいる画像をゲームのフォルダに置いて。',
-  'clip.saved': 'クリップを保存しました · {name}',
-  'clip.downloaded': 'クリップをダウンロードしました · {name}',
-  'clip.where': '{s} 秒 · {shape} · {dir}',
+  'clip.saved': '{dir} に保存しました',
+  'clip.downloaded': '{dir} に保存しました',
+  'clip.where': '{s} 秒 · {shape}',
   'clip.shape': '形',
   'clip.shape.wide': '横 1280×720',
   'clip.shape.tall': '縦 720×1280',
-  'clip.words': 'Before / After に頼んだ言葉を出す',
-  'clip.ba': 'Before / After をクリップに',
-  'clip.baTip': '10 秒の動画にする: 頼んだ時の 1 コマ → 同じ瞬間から新しいコード',
+  'clip.words': '前 / 後に頼んだ言葉を出す',
+  'clip.ba': '前 / 後をクリップに',
+  'clip.baTip': '{s} 秒の動画にする: 頼んだ時の 1 コマ → 同じ瞬間から新しいコード',
+  'clip.baAdds': '前 / 後は頼んだ時の 1 コマの分 {s} 秒長くなります',
   'clip.share': '共有…',
   'clip.saveHere': 'この端末に保存',
   'clip.shareFailed': 'クリップを共有できませんでした: {msg}',
@@ -20091,10 +20116,10 @@ const ja                               = {
   'clip.length': '長さ',
   'clip.lengthRow': '{s} 秒',
   'clip.mark': '最後に「Made with KUMODeck」',
-  'clip.markRemove': '印を外す',
-  'clip.markAdd': '印を付ける',
-  'clip.markOff': 'このクリップと投稿の文から印を外しました。次のクリップも外したままです。',
-  'clip.markOn': 'このクリップと投稿の文に印を付けました。次のクリップにも付きます。',
+  'clip.markRemove': '最後のロゴを外す',
+  'clip.markAdd': '最後のロゴを付ける',
+  'clip.markOff': 'このクリップと投稿の文から最後のロゴを外しました。次のクリップも外したままです。',
+  'clip.markOn': 'このクリップと投稿の文に最後のロゴを付けました。次のクリップにも付きます。',
   'clip.saveTo': '保存先: {dir}。',
   'clip.local': 'このパソコンの外には何も送りません。',
   'clip.palette': 'クリップを録る',
@@ -20109,9 +20134,9 @@ const ja                               = {
   'try.opened': '新しいコード・同じ瞬間 {t}',
   'try.openedOut': '新しいコード・同じ瞬間 {t}。{name}はもう出ていたので、直しは次から見えます。',
   'try.openedStay': '新しいコード・同じ瞬間 {t}。もう出ていた物は前の位置のままです。',
-  'try.sameRun': '同じ時刻・新しい遊び {t}。このゲームはまだ途中から始められません。',
-  'try.sameRunBehind': '同じ時刻・新しい遊び {t}。今回は読み込みが遅く、ゲームは {s} 秒遅れているかもしれません。',
-  'try.sameRunAhead': '同じ時刻・新しい遊び {t}。今回は読み込みが速く、ゲームは {s} 秒進んでいるかもしれません。',
+  'try.sameRun': '新しいコードで最初から {t} まで遊び直しました。このゲームはまだ途中から始められません。',
+  'try.sameRunBehind': '新しいコードで最初から {t} まで遊び直しました。今回は読み込みが遅く、ゲームは {s} 秒遅れているかもしれません。',
+  'try.sameRunAhead': '新しいコードで最初から {t} まで遊び直しました。今回は読み込みが速く、ゲームは {s} 秒進んでいるかもしれません。',
   'try.gone': 'この瞬間はもう残っていません。最初から遊んで確かめてください。',
   'try.failed': 'この瞬間が新しいコードで開けなかったので、最初から始めました。',
   'cmp.btn': '前 / 後',
@@ -20121,7 +20146,7 @@ const ja                               = {
   'cmp.after': '後',
   'cmp.beforeSub': '頼んだ時 · {t}',
   'cmp.afterSub': '新しいコード · {t}',
-  'cmp.afterSameRun': '新しいコード・同じ時刻の新しい遊び · {t}',
+  'cmp.afterSameRun': '新しいコード · 最初から {t} まで遊び直し',
   'cmp.opening': '新しいコードで同じ瞬間を開いています…',
   'cmp.out': 'この瞬間、{name}はもう出ていました。前の位置のままで、直しは次から見えます。',
   'cmp.stay': 'もう出ていた物は前の位置のままです。直しはこの後に出てくる物から見えます。',
@@ -20669,6 +20694,8 @@ const ja                               = {
   'checkpoint.close': '閉じる',
   'moment.noneBoth': 'スコアなどの\u200b数を見る・\u200bここから\u200b始める、は\u200bこのゲームでは\u200bまだ\u200b使えません。',
   'moment.connectAsk': '{ai}に\u200bこの瞬間を\u200bゲームと\u200bつないでもらう',
+  'moment.more': '{ai}で\u200bできること',
+  'moment.moreTip': 'この瞬間に{ai}が足せる物: スコアなどの数、ここから始める',
   'moment.connectDraft': 'この瞬間の数を出して、ここから始められるようにして',
   'moment.unfold': 'この瞬間の数を開く',
   'checkpoint.short': 'チェックポイント',
@@ -22821,6 +22848,11 @@ __defs[51] = function (__exports) {
 //     with ⚑ at its right; a press opens the knobs. Three 44 px boxes filled the low sheet and left the list one row.
 //   - ✕8: numbers have their thousands' "," (13,100), as a HUD prints them.
 //
+// walk 2 △8 (decided 2026-11-06; a first-time person's walk of the whole editor): a game without values opened its
+// paused list with "Numbers like the score, and starting from here, aren't ready for this game yet." — the first words
+// read on pausing were about what does NOT work. That line and its ✦ are folded under one quiet row, "✦ More with
+// Claude ›" (a press opens them, and it stays open for this page); what the person reads first is the moment's objects.
+//
 // Pure of the editor's state: main.ts gives it the values (`studio:moment/values`) and does what a change means.
                                                   
 const { h } = __require(16);
@@ -22905,6 +22937,8 @@ function createMomentValues(d                  )                    {
   // Narrow: folded until opened, and opened stays opened for this page (a person who turns numbers on a phone wants them
   // there at the next pause too).
   let open = false;
+  // A game without values: "More with {Ai} ›" opened (walk 2 △8). Kept for this page, like `open`.
+  let moreOpen = false;
   // What the last drawing was for (the language, the width): the editor's every render asks again (main.ts renderAll),
   // and drawing the rows again then would take a number being typed out from under the person's keys.
   let drawnFor = '';
@@ -22963,14 +22997,21 @@ function createMomentValues(d                  )                    {
       return;
     }
     if (!has) {
-      // The game has no codeMoment values (decision 13; ✕2: one line and one ✦ for the values and the checkpoints).
+      // The game has no codeMoment values (decision 13; ✕2: one line and one ✦ for the values and the checkpoints),
+      // folded under "✦ More with {Ai} ›" (walk 2 △8). The line and ✦ stay in the page while folded (hidden): ⚑'s line
+      // reads the ✦'s words from it, and the words are there to be found.
       const text = canKeep ? d.t('moment.noValues') : d.t('moment.noneBoth');
-      const line = h('p', { class: 'mv-none muted', dataset: { part: 'moment-none' }, text });
+      const more = h('button', { type: 'button', class: 'mv-more', dataset: { action: 'moment-more', part: 'moment-more' }, 'aria-expanded': String(moreOpen),
+        title: d.t('moment.moreTip', d.aiVars()), onclick: () => ((moreOpen = !moreOpen), render()) },
+        h('span', { class: 'ai-spark', 'aria-hidden': 'true' }, icon('spark')), h('span', { class: 'label', text: d.t('moment.more', d.aiVars()) }),
+        icon(moreOpen ? 'chevronDown' : 'chevronRight'));
+      const line = h('p', { class: 'mv-none muted', dataset: { part: 'moment-none' }, text, hidden: !moreOpen });
       // The card's ✦ buttons' look (placement-panel.ts aiButton: violet = the AI), its words in a span.
       const ask = h('button', { type: 'button', class: 'link-btn mv-ask ai', dataset: { action: 'moment-connect-ask', part: 'moment-values-ask' },
         title: d.t('moment.connectAsk', d.aiVars()), onclick: () => d.ask() },
         h('span', { class: 'ai-spark', 'aria-hidden': 'true' }, icon('spark')), h('span', { class: 'label', text: d.t('moment.connectAsk', d.aiVars()) }));
-      body.replaceChildren(line, ask);
+      ask.hidden = !moreOpen;
+      body.replaceChildren(more, line, ask);
       return;
     }
     body.replaceChildren(...(folds && !open ? [] : v .map(row)));
@@ -23033,6 +23074,11 @@ __defs[52] = function (__exports) {
 //     paused (a drag looks around); then the pins no longer sit on what they marked — the picture the AI gets is the
 //     paused one, which they DO match. Kept simple on purpose (stage 2); a pin that follows the world would need the
 //     game page to project every frame.
+//   - Sent (walk 2 △16, decided 2026-11-06): the marks FOLD. The chips "① here ×" stayed in the field after the
+//     request, and a first-time person could not tell whether their next words would carry the same mark again. Now
+//     they go (and so do their pins), and one small chip "+ same mark" takes their place: pressed, they come back for the
+//     next words ("no, a bit more to the left" about the same spot); a new mark instead starts again at ①. The words
+//     sent and the marked picture already went with the request, so nothing the AI got is lost.
 // Pure parts: test/moment-marks.test.ts. The screen: test/studio-pause.browser.mjs (moment, momentphone).
                                                  
 const { h } = __require(16);
@@ -23074,6 +23120,27 @@ function markBox(m            )                                                 
   const p = (v        ) => Math.round(v * 10000) / 100;
   const [a = 0, b = 0, c = 0, d = 0] = m.screen;
   return m.kind === 'point' ? { left: p(a), top: p(b) } : { left: p(a), top: p(b), width: p(c - a), height: p(d - b) };
+}
+
+/**
+ * The marks in the field and the ones folded by a send (walk 2 △16): `live` go with the next words (chips, pins),
+ * `folded` wait behind "+ same mark". Pure, for the unit tests; createMomentMarks keeps one of these.
+ */
+                          
+                     
+                       
+ 
+/** Sent: the live marks fold (an empty send keeps what was folded before). */
+function foldOnSend(m         )          {
+  return m.live.length ? { live: [], folded: m.live } : m;
+}
+/** "+ same mark": the folded marks back for the next words. */
+function unfoldMarks(m         )          {
+  return m.folded.length ? { live: m.folded, folded: [] } : m;
+}
+/** A new mark: the folded ones were the last words' — it starts again at ①. */
+function markAdded(m         , mark                                     )          {
+  return { live: [...m.live, { n: m.live.length + 1, ...mark }], folded: [] };
 }
 
 /** The marks' colour on the frame and in the marked picture: the pick's orange (the mock's pins; README pc-1). */
@@ -23179,13 +23246,21 @@ async function markedShot(shot                    , marks              )        
                                                                                                                           
                                                                                                                    
      
-                                    
+                                                           
+                                                                                                                     
+               
+                                                                          
+                 
+                                                                        
+                         
                                                                                
                  
  
 
 function createMomentMarks(d                 )              {
   let marks               = [];
+  /** Folded by a send (walk 2 △16): "+ same mark" brings them back. Empty once marks are back or a new one is made. */
+  let kept               = [];
   let on = false;
   const hint = h('div', { class: 'mark-hint', dataset: { part: 'mark-hint' }, hidden: true });
   const pins = h('div', { class: 'mark-pins' });
@@ -23236,8 +23311,11 @@ function createMomentMarks(d                 )              {
 
   function add(m                                     , w        , hgt        ) {
     if (marks.length >= MARKS_MAX) return;
-    const mark             = { n: marks.length + 1, ...m };
-    marks = [...marks, mark];
+    // A new mark after a send starts again at ①: the folded ones were the last words' (walk 2 △16).
+    const next = markAdded({ live: marks, folded: kept }, m);
+    const mark = next.live[next.live.length - 1] ;
+    marks = next.live;
+    kept = next.folded;
     render();
     d.changed();
     // What is under it: asked once, filled in when it comes (the request waits for nothing: a mark without it is fine).
@@ -23278,7 +23356,12 @@ function createMomentMarks(d                 )              {
     button.title = d.t('mark.tip');
     button.setAttribute('aria-label', d.t('mark.tip'));
     button.replaceChildren(h('span', { class: 'ask-mark-ring', 'aria-hidden': 'true' }), h('span', { class: 'ask-mark-word', text: d.t('mark.btn') }));
-    chips.hidden = !marks.length;
+    chips.hidden = !marks.length && !kept.length;
+    if (!marks.length && kept.length) {
+      chips.replaceChildren(h('button', { type: 'button', class: 'mark-again', dataset: { action: 'mark-again', part: 'mark-again' }, title: d.t('mark.againTip'),
+        onpointerdown: (e       ) => e.preventDefault(), onclick: () => api.unfold() }, d.t('mark.again', { n: kept.length })));
+      return;
+    }
     chips.replaceChildren(...marks.map((m) => h('span', { class: 'mark-chip', dataset: { part: 'mark-chip', n: String(m.n) } },
       h('span', { class: 'mark-chip-n', text: markNumber(m.n) }), h('span', { text: ` ${m.kind === 'point' ? words().here : words().area}` }),
       h('button', { type: 'button', class: 'mark-chip-x', dataset: { action: 'mark-remove' }, title: d.t('mark.remove'), 'aria-label': `${d.t('mark.remove')} ${markChip(m, words())}`,
@@ -23309,13 +23392,28 @@ function createMomentMarks(d                 )              {
       render();
       d.changed();
     },
-    restore(list) {
+    restore(list, folded = []) {
       marks = renumber(list.slice(0, MARKS_MAX).map((m) => ({ ...m })));
+      kept = marks.length ? [] : renumber(folded.slice(0, MARKS_MAX).map((m) => ({ ...m })));
+      render();
+      d.changed();
+    },
+    fold() {
+      on = false;
+      ({ live: marks, folded: kept } = foldOnSend({ live: marks, folded: kept }));
+      render();
+      d.changed();
+    },
+    folded: () => kept.slice(),
+    unfold() {
+      if (!kept.length) return;
+      ({ live: marks, folded: kept } = unfoldMarks({ live: marks, folded: kept }));
       render();
       d.changed();
     },
     clear() {
-      if (!marks.length && !on) return;
+      if (!marks.length && !on && !kept.length) return;
+      kept = [];
       marks = [];
       on = false;
       press = null;
@@ -23336,6 +23434,9 @@ __def(__exports, "markFromPress", () => markFromPress);
 __def(__exports, "renumber", () => renumber);
 __def(__exports, "markChip", () => markChip);
 __def(__exports, "markBox", () => markBox);
+__def(__exports, "foldOnSend", () => foldOnSend);
+__def(__exports, "unfoldMarks", () => unfoldMarks);
+__def(__exports, "markAdded", () => markAdded);
 __def(__exports, "drawMarks", () => drawMarks);
 __def(__exports, "markedShot", () => markedShot);
 __def(__exports, "createMomentMarks", () => createMomentMarks);
@@ -23503,7 +23604,7 @@ __defs[54] = function (__exports) {
 //   - one line (what the AI did; small under it, the files it touched — `--files`) and three buttons:
 //   - ▶ Try from 0:05.02: the game again with the NEW code, opened at the ask's moment (`back`: load(moment) before its
 //     first frame) and held there, paused — the field, the talk and the marks stay. A game without codeMoment save /
-//     load: a new run held at the same second, and the flash says so ("Same time, new run");
+//     load: a new run held at the same second, and the flash says so ("New code, played from the start to …"; walk 2 △7);
 //   - Before / After: the frame the person asked from (with its marks) beside the same moment with the new code (the
 //     frame Try paused on; Try runs first when it has not yet);
 //   - ↶ Undo: the game's files back to before the AI's change, right here (no reload: the moment stays as it is; Try
@@ -24195,8 +24296,13 @@ function downloadName(game        , at      )         {
  * one switch: never a clip without the mark but with the address, or the other way round). No file place, no folder
  * name, no pass: nothing of this computer.
  */
-function postText(o                                                  )         {
+function postText(o                                                                 )         {
   const game = o.game.trim().replace(/\s+/g, ' ').slice(0, 60);
+  // Another language (walk 2 △11, decided 2026-11-06): its own words from the editor's table (i18n.ts clip.post.*).
+  if (o.say) {
+    const what = o.say(game ? 'clip.post.clip' : 'clip.post.clipBare', { game, s: o.seconds });
+    return o.mark ? o.say('clip.post.clipMade', { what, url: CLIP_REPO_URL }) : o.say('clip.post.clipPlain', { what });
+  }
   // "an 8-second", "a 6-second" (said as "eight", "six").
   const a = /^(8|11|18)(\D|$)/.test(String(o.seconds)) ? 'an' : 'a';
   const what = game ? `${game}: ${a} ${o.seconds}-second clip from my web game` : `${a === 'an' ? 'An' : 'A'} ${o.seconds}-second clip from my web game`;
@@ -24230,8 +24336,18 @@ function xLength(text        )         {
 const BA_BEFORE_MS = 2000;
 /** The wipe from Before to After, over the After's first frames (ms). */
 const BA_WIPE_MS = 300;
-/** The After (s): 7 s of the new code playing, then the mark's second (still playing) — with the Before, 10 s in all. */
+/**
+ * The After (s) at the default length: 7 s of the new code playing, then the mark's second — with the Before, 10 s.
+ * Since walk 2 (△10, decided 2026-11-06) the After follows the length chosen in Clip options (baSeconds): it was a
+ * fixed 8, so the menu said "8 seconds ✓" while the Before / After just made was 10 s and picking 12 changed nothing.
+ */
 const BA_AFTER_SECONDS = 8;
+/** What the Before adds to a Before / After (s): said beside the length in Clip options ("Before / After adds 2 s"). */
+const BA_ADDS_SECONDS = BA_BEFORE_MS / 1000;
+/** A Before / After's whole length (s) for the length chosen: the 2 s Before, then that length of the After. */
+function baSeconds(length        )         {
+  return BA_ADDS_SECONDS + length;
+}
 /** The Before's still frames are encoded at this rate (fps): nothing moves, so 10 a second is plenty and quick. */
 const BA_STILL_FPS = 10;
 /** The longest asked words drawn on the Before (characters, then "…"): one or two lines on a phone. */
@@ -24255,9 +24371,10 @@ function baWords(asked        )         {
  * cut so the whole post stays within X's 280; `words: false` (the person turned their words off) leaves them out.
  * `marked`: the Before had a mark of theirs. `ai`: the AI's name as the editor says it ("Claude", "Codex", "my AI").
  */
-function beforeAfterPost(o                                                                                             )         {
+function beforeAfterPost(o                                                                                                            )         {
   const s = Math.max(0, Math.floor(o.time));
   const at = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+  if (o.say) return beforeAfterPostSaid({ ...o, at, say: o.say });
   const tail = `It fixed the code. Before → After 👇${o.mark ? ` ${CLIP_REPO_URL}` : ''}`;
   const head = `Paused my game at ${at}${o.marked ? ', marked a spot' : ''}`;
   const plain = `${head} and asked ${o.ai} for a fix. ${tail}`;
@@ -24270,6 +24387,33 @@ function beforeAfterPost(o                                                      
     const post = `${head} and told ${o.ai} “${words}”. ${tail}`;
     if (xLength(post) <= X_LIMIT || words.length <= 8) return xLength(post) <= X_LIMIT ? post : plain;
     words = `${words.slice(0, Math.max(1, words.length - 12)).trimEnd()}…`;
+  }
+}
+
+/**
+ * The words of a post in a language other than English (walk 2 △11, decided 2026-11-06): the editor's translate() for
+ * the `clip.post.*` keys of its table. Absent = English, written here (the web demo, the tests, an editor in English).
+ * WHY: on a Japanese screen the post was English with only the asked words in Japanese ("…told Claude “<their words>”.
+ * It fixed the code."); posted as it was, it read as two languages mixed. A person posts in the language they read.
+ */
+                                                                                     
+
+/**
+ * The Before / After post from the table's words: `clip.post.ba` (with the asked words) or `clip.post.baPlain`, `clip.post.baMarked`
+ * for "marked a spot", the address after them with the mark. The same rules as English: the words cut to fit X's 280
+ * (most non-Latin characters count 2 there), never the address without the mark.
+ */
+function beforeAfterPostSaid(o                                                                                                         )         {
+  const vars = { at: o.at, ai: o.ai, marked: o.marked ? o.say('clip.post.baMarked', {}) : '' };
+  const end = (post        ) => (o.mark ? `${post} ${CLIP_REPO_URL}` : post);
+  const plain = end(o.say('clip.post.baPlain', vars));
+  const w = o.words ? baWords(o.asked) : '';
+  if (!w) return plain;
+  let words = w.replace(/[.!\u3002\uff01]+$/u, '');
+  for (;;) {
+    const post = end(o.say('clip.post.ba', { ...vars, words }));
+    if (xLength(post) <= X_LIMIT || words.length <= 4) return xLength(post) <= X_LIMIT ? post : plain;
+    words = `${words.slice(0, Math.max(1, words.length - 6)).trimEnd()}…`;
   }
 }
 
@@ -24372,6 +24516,8 @@ __def(__exports, "xLength", () => xLength);
 __def(__exports, "BA_BEFORE_MS", () => BA_BEFORE_MS);
 __def(__exports, "BA_WIPE_MS", () => BA_WIPE_MS);
 __def(__exports, "BA_AFTER_SECONDS", () => BA_AFTER_SECONDS);
+__def(__exports, "BA_ADDS_SECONDS", () => BA_ADDS_SECONDS);
+__def(__exports, "baSeconds", () => baSeconds);
 __def(__exports, "BA_STILL_FPS", () => BA_STILL_FPS);
 __def(__exports, "BA_WORDS_MAX", () => BA_WORDS_MAX);
 __def(__exports, "beforeAfterStem", () => beforeAfterStem);
@@ -35999,8 +36145,9 @@ __defs[100] = function (__exports) {
 //   "0:05 left · Stop" (studio-clip-3; it counted up before), the game has a red frame (only what is inside it is in the clip) and a thin bar of the time left. A
 //   second press stops early (one more second for the mark, cut at the press: play-clip.ts). Then the line, where the
 //   AI's line is:
-//     row 1: ✓ Clip saved · neon-run-clip-1.mp4 / 8 s · Wide 1280×720 · Movies › KUMODeck · Show in Finder · Remove mark · ✕
-//     row 2: the post (English, the same words with no AI) · 102 / 280 · Copy post · ✦ Rewrite
+//     row 1: ✓ Saved to Movies › KUMODeck (the file's name in its tooltip) / 8 s · Wide 1280×720 ⌄ · Show in Finder ·
+//            Remove “Made with” · ✕   (walk 2 △9, decided 2026-11-06: was "Clip saved · <name>", both cut)
+//     row 2: the post (the editor's language since walk 2 △11; no AI) · 102 / 280 · Copy post · ✦ Rewrite
 //   The web demo has no folder: the clip is a download, and its line says so.
 // Stage 2:
 //   - ● Clip Before / After, from the paused ask's Before / After panel (moment-try.ts; main.ts openCompare): the asked
@@ -36027,7 +36174,7 @@ __defs[100] = function (__exports) {
 const { h } = __require(16);
 const { icon } = __require(21);
                                                    
-const { BA_AFTER_SECONDS, BA_BEFORE_MS, BA_STILL_FPS, BA_WIPE_MS, CLIP_BITRATE, CLIP_CODEC, CLIP_FPS, CLIP_HOLD_MS, CLIP_LENGTHS, CLIP_MARK_LINES, CLIP_SHAPES, X_LIMIT, baWords, beforeAfterPost, beforeAfterStem, checkRewrite, clipShapeFor, clipSize, clipStem, downloadName, leftClock, postText, recLeftMs, withAddress, xComposeUrl, xLength } = __require(57);
+const { BA_ADDS_SECONDS, BA_BEFORE_MS, BA_STILL_FPS, BA_WIPE_MS, CLIP_BITRATE, CLIP_CODEC, CLIP_FPS, CLIP_HOLD_MS, CLIP_LENGTHS, CLIP_MARK_LINES, CLIP_SHAPES, X_LIMIT, baSeconds, baWords, beforeAfterPost, beforeAfterStem, checkRewrite, clipShapeFor, clipSize, clipStem, downloadName, leftClock, postText, recLeftMs, withAddress, xComposeUrl, xLength } = __require(57);
 const { muxMp4 } = __require(99);
 
 /** What ✦ Rewrite tells the AI with the post (StudioRequestInput.clip). */
@@ -36060,8 +36207,13 @@ const { muxMp4 } = __require(99);
                    
                                                                                                    
                      
-                                                                                               
+                                                                                                 
                    
+     
+                                                                                                                      
+                                                                                                                       
+     
+                             
                                                                                                                        
                                                                       
  
@@ -36234,6 +36386,9 @@ function createClip(d          ) {
     for (const s of CLIP_LENGTHS) {
       rows.push({ id: `clip-${s}`, label: t('clip.lengthRow', { s }), checked: p.seconds === s, run: () => (d.setPrefs({ ...d.prefs(), seconds: s }), (wanted = d.prefs()), render()) });
     }
+    // Before / After is the length chosen plus its 2 s still (walk 2 △10, decided 2026-11-06): said here, under the
+    // lengths, because the menu said "8 seconds ✓" right after a Before / After whose line said 10 s.
+    rows.push({ note: t('clip.baAdds', { s: BA_ADDS_SECONDS }) });
     rows.push({ sep: true },
       { id: 'clip-mark', label: t('clip.mark'), checked: p.mark, run: () => (d.setPrefs({ ...d.prefs(), mark: !d.prefs().mark }), (wanted = d.prefs())) },
       { id: 'clip-words', label: t('clip.words'), checked: p.words, run: () => (d.setPrefs({ ...d.prefs(), words: !d.prefs().words }), (wanted = d.prefs())) },
@@ -36323,12 +36478,14 @@ function createClip(d          ) {
     if (shape === 'tall') await settle();
     if (state !== 'starting') return;
     reset();
-    lengthMs = BA_BEFORE_MS + BA_AFTER_SECONDS * 1000;
+    // The After plays the length chosen in Clip options (walk 2 △10): it was a fixed 8 s whatever was chosen.
+    const total = baSeconds(wanted.seconds);
+    lengthMs = total * 1000;
     stillMs = BA_BEFORE_MS;
     render();
     const { w, h: hh } = clipSize(shape);
     const words = wanted.words ? baWords(o.asked) : '';
-    d.post({ type: 'studio:clip/start', id, seconds: BA_BEFORE_MS / 1000 + BA_AFTER_SECONDS, fps: CLIP_FPS, w, h: hh, codec: CLIP_CODEC, bitrate: CLIP_BITRATE,
+    d.post({ type: 'studio:clip/start', id, seconds: total, fps: CLIP_FPS, w, h: hh, codec: CLIP_CODEC, bitrate: CLIP_BITRATE,
       mark: wanted.mark, lines: [...CLIP_MARK_LINES],
       // "Before" / "After" in English whatever the editor's language: the video goes to X (as the mark's lines).
       before: { image, ms: BA_BEFORE_MS, wipeMs: BA_WIPE_MS, label: 'Before', after: 'After', stillFps: BA_STILL_FPS, ...(words ? { words } : {}) } });
@@ -36439,9 +36596,10 @@ function createClip(d          ) {
     const ok = await store(file, null, stem);
     if (!ok) return setState('idle');
     const words = wanted.words;
+    const say = d.postSay?.() ?? undefined;
     const postFor = made
-      ? (mk         ) => beforeAfterPost({ time: made.time, asked: made.asked, mark: mk, words, marked: made.marked, ai: d.aiName() })
-      : (mk         ) => postText({ game: d.game(), seconds, mark: mk });
+      ? (mk         ) => beforeAfterPost({ time: made.time, asked: made.asked, mark: mk, words, marked: made.marked, ai: d.aiName(), say })
+      : (mk         ) => postText({ game: d.game(), seconds, mark: mk, say });
     const ctx                  = { seconds, shape, mark: wanted.mark, ...(made && words ? { asked: baWords(made.asked) } : {}) };
     saved = { ...ok, seconds, shape, mark: wanted.mark, other, file, post: postFor(wanted.mark), postFor, rewritten: false, rewriting: false, ctx };
     setState('idle');
@@ -36491,13 +36649,15 @@ function createClip(d          ) {
     const post = s.post;
     const n = xLength(post);
     const where = t(`clip.dir.${s.where}`);
+    // "✓ Saved to Movies › KUMODeck" (walk 2 △9, decided 2026-11-06): where to look, whole. The row said "Clip saved ·
+    // neon-run-a-boss-comes-in…" and "… · Movies…", the name and the folder both cut; the name is the tooltip now.
     const head = h('div', { class: 'clip-row' },
-      h('span', { class: 'clip-head' }, icon('check'), h('strong', { text: t(s.where === 'downloads' ? 'clip.downloaded' : 'clip.saved', { name: s.name }) })),
+      h('span', { class: 'clip-head', title: s.name }, icon('check'), h('strong', { dataset: { part: 'clip-saved' }, text: t(s.where === 'downloads' ? 'clip.downloaded' : 'clip.saved', { dir: where }) })),
       // The shape and length as a button (studio-clip-3): Clip options for the next clip — a phone's way to them (its ●
       // has no ⌄), and on a computer the place the person is looking at right after a clip.
       h('button', { type: 'button', class: 'clip-where', dataset: { action: 'clip-options' }, 'aria-haspopup': 'menu', title: t('clip.whereTip'),
         onclick: (e            ) => openMenu(e.currentTarget               ) },
-      h('span', { text: t('clip.where', { s: s.seconds, shape: t(`clip.shape.${s.shape}`), dir: where }) }), icon('chevronDown')));
+      h('span', { text: t('clip.where', { s: s.seconds, shape: t(`clip.shape.${s.shape}`) }) }), icon('chevronDown')));
     // A phone (stage 2): the clip is on the computer (or a download), the person on the phone — Share… hands the MP4 to
     // the phone's share sheet (X's app is in it); a phone that cannot share files saves it (a download) instead. Show in
     // Finder would open a window on the computer, out of sight.
@@ -36512,8 +36672,10 @@ function createClip(d          ) {
       head.append(h('button', { type: 'button', class: 'link', dataset: { action: 'clip-reveal' }, text: t(s.reveal === 'finder' ? 'clip.finder' : 'clip.folder'),
         onclick: () => void d.host.clips .reveal(s.name).then((r) => !r.ok && say(t('clip.saveFailed', { msg: r.error || '?' }), 6000)) }));
     }
+    // Remove “Made with” (walk 2 △9): it said "Remove mark", and a person who had just put ◎ marks on the frame read it
+    // as those (in Japanese both were the same word). It is the "Made with KUMODeck" at the clip's end and the address.
     if (s.other) {
-      head.append(h('button', { type: 'button', class: 'link', dataset: { action: 'clip-mark' }, text: t(s.mark ? 'clip.markRemove' : 'clip.markAdd'), onclick: () => void swap() }));
+      head.append(h('button', { type: 'button', class: 'link', dataset: { action: 'clip-mark' }, title: t('clip.mark'), text: t(s.mark ? 'clip.markRemove' : 'clip.markAdd'), onclick: () => void swap() }));
     }
     head.append(h('button', { type: 'button', class: 'icon-only link clip-x', dataset: { action: 'clip-close' }, title: t('clip.close'), 'aria-label': t('clip.close'),
       onclick: () => ((line.hidden = true), (saved = null), (note.hidden = true)) }, icon('close')));
@@ -36537,7 +36699,7 @@ function createClip(d          ) {
     line.hidden = false;
   }
 
-  /** "Remove mark" / "Add mark": the other end swapped in, saved over the same clip, and remembered for the next ones. */
+  /** Remove “Made with” / Add “Made with” (the mark): the other end swapped in, saved over the same clip, and remembered for the next ones. */
   async function swap() {
     if (!saved?.other) return;
     const s = saved;
@@ -36747,7 +36909,7 @@ const { createUiWire } = __require(96);
 const { createUiMissing } = __require(97);
 const { barPress, FOLD_DRAG, gripEnd, readFold, writeFold } = __require(98);
 const { createClip } = __require(100);
-const { normalizeClipPrefs } = __require(57);
+const { baSeconds, normalizeClipPrefs } = __require(57);
 
                                                                         
 /** "Waiting for the game to start…" becomes "Connecting the game to Game Studio…" after this long (status.connecting). */
@@ -37507,7 +37669,10 @@ function start(host            ) {
     },
     phone: () => phone(),
     aiReady: () => !host.offline && aiWatching === true,
-    aiName: () => (aiAgent === 'claude' ? 'Claude' : aiAgent === 'codex' ? 'Codex' : 'my AI'),
+    // "my AI" is the English post's; another language's post says it its own way (clip.post.ai).
+    aiName: () => (aiAgent === 'claude' ? 'Claude' : aiAgent === 'codex' ? 'Codex' : lang === 'en' ? 'my AI' : t('clip.post.ai')),
+    // The post in the editor's language (walk 2 △11, decided 2026-11-06): English is written by clip-model.ts itself.
+    postSay: () => (lang === 'en' ? null : (k, v) => t(k, v)),
     rewrite: (text, ctx) => clipRewrite(text, ctx),
   });
   /**
@@ -40516,13 +40681,16 @@ function start(host            ) {
     momentChat = k.chat;
     momentTalk = k.talk;
     for (const id of k.asks) momentAsks.add(id);
-    if (k.marks.length) momentMarks.restore(k.marks);
+    if (k.marks.length || k.folded?.length) momentMarks.restore(k.marks, k.folded);
     tried = { id: tryRun.id, time: tryRun.time, exact: tryRun.exact, ...(m.ask?.shot ? { after: m.ask.shot } : {}) };
     const at = clockText(tryRun.time, 2);
     // fix ✕2 (plan A): a saved moment says what was already out stays where it was; longer words, a little longer.
     const w = tryWordsOf(tryRun.id, tryRun.exact, m.late ?? 0);
     tried.late = m.late ?? 0;
-    momentBar.flash(t(w.flash, { t: at, ...(w.name ? { name: w.name } : {}), ...(w.s ? { s: w.s } : {}) }), 'play', w.note ? 9000 : 6000);
+    // Not under Before / After (walk 2 △7, decided 2026-11-06): the panel's After already says it ("new code · played
+    // from the start to 0:04.11", and its note when the run may be off) — the flash made a third line of the same thing
+    // under the panel, over the AI's reply.
+    if (!k.compare) momentBar.flash(t(w.flash, { t: at, ...(w.name ? { name: w.name } : {}), ...(w.s ? { s: w.s } : {}) }), 'play', w.note ? 9000 : 6000);
     tryKeep = null;
     tryRun = null;
     renderMomentEarlier();
@@ -40965,9 +41133,10 @@ function start(host            ) {
     if (!ok) return false;
     momentConnectAsk = false;
     cpAsk = null;
-    // Sent (fix △4): ◎ marking goes off (the marks stay: "no, here ②" next), and the card closes — it covered the reply's
-    // ▶ Try when left open while waiting.
-    momentMarks.set(false);
+    // Sent (fix △4): ◎ marking goes off, and the card closes — it covered the reply's ▶ Try when left open while waiting.
+    // The marks fold to "+ same mark" (walk 2 △16, decided 2026-11-06; they stayed as chips, and the next words' reach
+    // was unclear): pressed, they go with the next words again.
+    momentMarks.fold();
     momentGets.close();
     if (first && pending?.id) momentChat = pending.id;
     if (pending?.id) {
@@ -41011,7 +41180,7 @@ function start(host            ) {
       showToast(t('try.gone'), 6000);
       return;
     }
-    tryKeep = { chat: momentChat, talk: momentTalk, marks: momentMarks.list(), asks: [...momentAsks], compare };
+    tryKeep = { chat: momentChat, talk: momentTalk, marks: momentMarks.list(), folded: momentMarks.folded(), asks: [...momentAsks], compare };
     tryOpening = { id, time: a.time, ...(a.moment !== undefined ? { moment: a.moment } : {}) };
     tried = null;
     loadGame();
@@ -41030,6 +41199,8 @@ function start(host            ) {
     const ab = askBacks.get(id);
     if (!ab) return;
     momentGets.close();
+    // A flash still up (a ▶ Try's "New code, played from the start…") goes: the panel says it (walk 2 △7).
+    momentBar.note.hidden = true;
     const at = clockText(ab.time, 2);
     const have = tried && tried.id === id && tried.after && playPaused ? tried : null;
     const canUndo = momentCanUndo(id);
@@ -41048,7 +41219,7 @@ function start(host            ) {
       ...(canUndo ? { undo: { label: t('cmp.undo', aiVars()), run: () => (momentCompare.close(), void momentUndo(id)) } } : {}),
       // ● Clip Before / After (stage 2, decided 2026-11-05; README picture pc-3): once the After is there (the Try paused
       // at the moment), one press makes the video of this fix — the asked frame, then the new code from the same moment.
-      ...(have && ab.before && clipper.state === 'idle' ? { clip: { label: t('clip.ba'), tip: t('clip.baTip'), run: () => {
+      ...(have && ab.before && clipper.state === 'idle' ? { clip: { label: t('clip.ba'), tip: t('clip.baTip', { s: baSeconds((uiPrefs.clip ?? normalizeClipPrefs(undefined)).seconds) }), run: () => {
         momentCompare.close();
         clipper.beforeAfter({ before: ab.before , asked: ab.asked, time: ab.time, marked: !!ab.marked });
       } } } : {}),
@@ -42483,7 +42654,7 @@ function start(host            ) {
   /** The Try's pause waiting for the held clock's exact second (tryPaused), else null. */
   let tryPending                                                                = null;
   let tryRun                                                      = null;
-  let tryKeep                                                                                                  = null;
+  let tryKeep                                                                                                                         = null;
   // `late` (fix △7): the Try page's PlayClock.late at its pause, s.
   let tried                                                                                     = null;
   let cpFailed                                                                      = null;
@@ -43575,6 +43746,9 @@ function start(host            ) {
     const sceneWord = (id        ) => (id === 'placement' && editLayer === 'ui' ? t('uiLayer.ui') : t('tool.' + id));
     (header.querySelector('.here')               ).textContent = playing ? t('status.playingShort') : page === 'settings' ? t('btn.settings') : page === 'next' ? t('btn.next') : sceneWord(tool);
     renderLevelCrumb();
+    // ● Clip's words with the rest (walk 2 ✕4, decided 2026-11-06): a person whose prefs say Japanese saw "Clip" and
+    // "Clip options" in English until their first clip — clip.ts drew its button once, before the prefs were read.
+    clipper.render();
     // (Playing with changes not saved: v0.1.7–0.1.8 had a quiet "· unsaved changes" after "Playing" here. Since the
     // second look of 2026-10-21 (B) the orange Save beside Play, and ▶ Play asks first — Save and play / Try without
     // saving — so nothing more is said once playing: togglePlay, save-loud.ts.)

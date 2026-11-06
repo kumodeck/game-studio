@@ -14,7 +14,7 @@
 //   2. each frame is the layers with the canvases' live pictures between them, the game's page fitted into 16:9 on black;
 //   3. the last second also gets the mark (clip-model.ts CLIP_MARK_LINES) when the person keeps it on, and that second is
 //      encoded a second time the other way (with ↔ without) by a second encoder starting on a key frame, so the editor
-//      can swap the end of the clip ("Remove mark" in its line) without recording again;
+//      can swap the end of the clip ("Remove “Made with”" in its line) without recording again;
 //   4. new VideoFrame(composite) → VideoEncoder → each chunk posted (`studio:clip/chunk`, transferred, not copied).
 //
 // Stage 2 (decided 2026-11-05):

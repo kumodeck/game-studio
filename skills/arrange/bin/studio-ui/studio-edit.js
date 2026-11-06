@@ -1,4 +1,4 @@
-/* KUMODeck Game Studio 0.1.83 — MIT License — built file, edit src/ instead */
+/* KUMODeck Game Studio 0.1.84 — MIT License — built file, edit src/ instead */
 (() => {
 const __defs = [];
 const __cache = [];
@@ -27362,8 +27362,13 @@ function downloadName(game        , at      )         {
  * one switch: never a clip without the mark but with the address, or the other way round). No file place, no folder
  * name, no pass: nothing of this computer.
  */
-function postText(o                                                  )         {
+function postText(o                                                                 )         {
   const game = o.game.trim().replace(/\s+/g, ' ').slice(0, 60);
+  // Another language (walk 2 △11, decided 2026-11-06): its own words from the editor's table (i18n.ts clip.post.*).
+  if (o.say) {
+    const what = o.say(game ? 'clip.post.clip' : 'clip.post.clipBare', { game, s: o.seconds });
+    return o.mark ? o.say('clip.post.clipMade', { what, url: CLIP_REPO_URL }) : o.say('clip.post.clipPlain', { what });
+  }
   // "an 8-second", "a 6-second" (said as "eight", "six").
   const a = /^(8|11|18)(\D|$)/.test(String(o.seconds)) ? 'an' : 'a';
   const what = game ? `${game}: ${a} ${o.seconds}-second clip from my web game` : `${a === 'an' ? 'An' : 'A'} ${o.seconds}-second clip from my web game`;
@@ -27397,8 +27402,18 @@ function xLength(text        )         {
 const BA_BEFORE_MS = 2000;
 /** The wipe from Before to After, over the After's first frames (ms). */
 const BA_WIPE_MS = 300;
-/** The After (s): 7 s of the new code playing, then the mark's second (still playing) — with the Before, 10 s in all. */
+/**
+ * The After (s) at the default length: 7 s of the new code playing, then the mark's second — with the Before, 10 s.
+ * Since walk 2 (△10, decided 2026-11-06) the After follows the length chosen in Clip options (baSeconds): it was a
+ * fixed 8, so the menu said "8 seconds ✓" while the Before / After just made was 10 s and picking 12 changed nothing.
+ */
 const BA_AFTER_SECONDS = 8;
+/** What the Before adds to a Before / After (s): said beside the length in Clip options ("Before / After adds 2 s"). */
+const BA_ADDS_SECONDS = BA_BEFORE_MS / 1000;
+/** A Before / After's whole length (s) for the length chosen: the 2 s Before, then that length of the After. */
+function baSeconds(length        )         {
+  return BA_ADDS_SECONDS + length;
+}
 /** The Before's still frames are encoded at this rate (fps): nothing moves, so 10 a second is plenty and quick. */
 const BA_STILL_FPS = 10;
 /** The longest asked words drawn on the Before (characters, then "…"): one or two lines on a phone. */
@@ -27422,9 +27437,10 @@ function baWords(asked        )         {
  * cut so the whole post stays within X's 280; `words: false` (the person turned their words off) leaves them out.
  * `marked`: the Before had a mark of theirs. `ai`: the AI's name as the editor says it ("Claude", "Codex", "my AI").
  */
-function beforeAfterPost(o                                                                                             )         {
+function beforeAfterPost(o                                                                                                            )         {
   const s = Math.max(0, Math.floor(o.time));
   const at = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+  if (o.say) return beforeAfterPostSaid({ ...o, at, say: o.say });
   const tail = `It fixed the code. Before → After 👇${o.mark ? ` ${CLIP_REPO_URL}` : ''}`;
   const head = `Paused my game at ${at}${o.marked ? ', marked a spot' : ''}`;
   const plain = `${head} and asked ${o.ai} for a fix. ${tail}`;
@@ -27437,6 +27453,33 @@ function beforeAfterPost(o                                                      
     const post = `${head} and told ${o.ai} “${words}”. ${tail}`;
     if (xLength(post) <= X_LIMIT || words.length <= 8) return xLength(post) <= X_LIMIT ? post : plain;
     words = `${words.slice(0, Math.max(1, words.length - 12)).trimEnd()}…`;
+  }
+}
+
+/**
+ * The words of a post in a language other than English (walk 2 △11, decided 2026-11-06): the editor's translate() for
+ * the `clip.post.*` keys of its table. Absent = English, written here (the web demo, the tests, an editor in English).
+ * WHY: on a Japanese screen the post was English with only the asked words in Japanese ("…told Claude “<their words>”.
+ * It fixed the code."); posted as it was, it read as two languages mixed. A person posts in the language they read.
+ */
+                                                                                     
+
+/**
+ * The Before / After post from the table's words: `clip.post.ba` (with the asked words) or `clip.post.baPlain`, `clip.post.baMarked`
+ * for "marked a spot", the address after them with the mark. The same rules as English: the words cut to fit X's 280
+ * (most non-Latin characters count 2 there), never the address without the mark.
+ */
+function beforeAfterPostSaid(o                                                                                                         )         {
+  const vars = { at: o.at, ai: o.ai, marked: o.marked ? o.say('clip.post.baMarked', {}) : '' };
+  const end = (post        ) => (o.mark ? `${post} ${CLIP_REPO_URL}` : post);
+  const plain = end(o.say('clip.post.baPlain', vars));
+  const w = o.words ? baWords(o.asked) : '';
+  if (!w) return plain;
+  let words = w.replace(/[.!\u3002\uff01]+$/u, '');
+  for (;;) {
+    const post = end(o.say('clip.post.ba', { ...vars, words }));
+    if (xLength(post) <= X_LIMIT || words.length <= 4) return xLength(post) <= X_LIMIT ? post : plain;
+    words = `${words.slice(0, Math.max(1, words.length - 6)).trimEnd()}…`;
   }
 }
 
@@ -27539,6 +27582,8 @@ __def(__exports, "xLength", () => xLength);
 __def(__exports, "BA_BEFORE_MS", () => BA_BEFORE_MS);
 __def(__exports, "BA_WIPE_MS", () => BA_WIPE_MS);
 __def(__exports, "BA_AFTER_SECONDS", () => BA_AFTER_SECONDS);
+__def(__exports, "BA_ADDS_SECONDS", () => BA_ADDS_SECONDS);
+__def(__exports, "baSeconds", () => baSeconds);
 __def(__exports, "BA_STILL_FPS", () => BA_STILL_FPS);
 __def(__exports, "BA_WORDS_MAX", () => BA_WORDS_MAX);
 __def(__exports, "beforeAfterStem", () => beforeAfterStem);
@@ -27573,7 +27618,7 @@ __defs[66] = function (__exports) {
 //   2. each frame is the layers with the canvases' live pictures between them, the game's page fitted into 16:9 on black;
 //   3. the last second also gets the mark (clip-model.ts CLIP_MARK_LINES) when the person keeps it on, and that second is
 //      encoded a second time the other way (with ↔ without) by a second encoder starting on a key frame, so the editor
-//      can swap the end of the clip ("Remove mark" in its line) without recording again;
+//      can swap the end of the clip ("Remove “Made with”" in its line) without recording again;
 //   4. new VideoFrame(composite) → VideoEncoder → each chunk posted (`studio:clip/chunk`, transferred, not copied).
 //
 // Stage 2 (decided 2026-11-05):

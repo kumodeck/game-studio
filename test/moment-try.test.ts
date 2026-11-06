@@ -36,8 +36,11 @@ test('the words: English and Japanese, the time in them, the "same time, new run
   const v = { ai: 'Claude', Ai: 'Claude', t: '0:05.02' };
   assert.equal(translate('en', 'try.btn', v), 'Try from 0:05.02');
   assert.equal(translate('en', 'try.opened', v), 'New code · same moment, 0:05.02');
-  // fix ✕3: short enough for a phone's flash (two lines at most), "mid-run" (fix △8).
-  assert.equal(translate('en', 'try.sameRun', v), 'Same time, new run · 0:05.02. This game couldn’t start mid-run yet.');
+  // fix ✕3: short enough for a phone's flash (two lines at most). Walk 2 △7 (decided 2026-11-06): "Same time, new run"
+  // and "start mid-run" were not read by a first-time person — it says what happened: played again from the start.
+  assert.equal(translate('en', 'try.sameRun', v), 'New code, played from the start to 0:05.02. This game can’t start from the middle yet.');
+  assert.equal(translate('en', 'cmp.afterSameRun', v), 'new code · played from the start to 0:05.02');
+  assert.doesNotMatch(translate('en', 'try.sameRun', v) + translate('en', 'cmp.afterSameRun', v), /new run|mid-run/);
   assert.equal(translate('en', 'try.openedOut', { ...v, name: 'the boss' }), 'New code · same moment, 0:05.02. Already out: the boss, so your change shows from the next one.');
   assert.equal(translate('en', 'cmp.resumeSee'), 'Resume to see it');
   assert.equal(translate('en', 'cmp.btn'), 'Before / After');
@@ -68,7 +71,7 @@ test('fix △7: a new run that loaded slower (or faster) than the asking one say
   assert.deepEqual(tryWords(false, undefined, undefined, 2.14), { flash: 'try.sameRunBehind', note: 'cmp.behind', s: '2.1' });
   assert.deepEqual(tryWords(false, undefined, undefined, -0.5), { flash: 'try.sameRunAhead', note: 'cmp.ahead', s: '0.5' });
   assert.equal(tryWords(true, undefined, 'boss', 3).flash, 'try.openedOut', 'a saved moment opens exactly: no drift');
-  assert.equal(translate('en', 'try.sameRunBehind', { t: '0:05.40', s: '2.1' }), 'Same time, new run · 0:05.40. This run loaded slower: the game may be 2.1 s behind.');
+  assert.equal(translate('en', 'try.sameRunBehind', { t: '0:05.40', s: '2.1' }), 'New code, played from the start to 0:05.40. It loaded slower this time: the game may be 2.1 s behind.');
 });
 
 test('the status keeps what was already out (--already): one short line', () => {

@@ -17,6 +17,11 @@
 //     paused (a drag looks around); then the pins no longer sit on what they marked — the picture the AI gets is the
 //     paused one, which they DO match. Kept simple on purpose (stage 2); a pin that follows the world would need the
 //     game page to project every frame.
+//   - Sent (walk 2 △16, decided 2026-11-06): the marks FOLD. The chips "① here ×" stayed in the field after the
+//     request, and a first-time person could not tell whether their next words would carry the same mark again. Now
+//     they go (and so do their pins), and one small chip "+ same mark" takes their place: pressed, they come back for the
+//     next words ("no, a bit more to the left" about the same spot); a new mark instead starts again at ①. The words
+//     sent and the marked picture already went with the request, so nothing the AI got is lost.
 // Pure parts: test/moment-marks.test.ts. The screen: test/studio-pause.browser.mjs (moment, momentphone).
 import type { MomentMark } from '../contract.ts';
 import { h } from './dom.ts';
@@ -58,6 +63,27 @@ export function markBox(m: MomentMark): { left: number; top: number; width?: num
   const p = (v: number) => Math.round(v * 10000) / 100;
   const [a = 0, b = 0, c = 0, d = 0] = m.screen;
   return m.kind === 'point' ? { left: p(a), top: p(b) } : { left: p(a), top: p(b), width: p(c - a), height: p(d - b) };
+}
+
+/**
+ * The marks in the field and the ones folded by a send (walk 2 △16): `live` go with the next words (chips, pins),
+ * `folded` wait behind "+ same mark". Pure, for the unit tests; createMomentMarks keeps one of these.
+ */
+export interface MarkSet {
+  live: MomentMark[];
+  folded: MomentMark[];
+}
+/** Sent: the live marks fold (an empty send keeps what was folded before). */
+export function foldOnSend(m: MarkSet): MarkSet {
+  return m.live.length ? { live: [], folded: m.live } : m;
+}
+/** "+ same mark": the folded marks back for the next words. */
+export function unfoldMarks(m: MarkSet): MarkSet {
+  return m.folded.length ? { live: m.folded, folded: [] } : m;
+}
+/** A new mark: the folded ones were the last words' — it starts again at ①. */
+export function markAdded(m: MarkSet, mark: Pick<MomentMark, 'kind' | 'screen'>): MarkSet {
+  return { live: [...m.live, { n: m.live.length + 1, ...mark }], folded: [] };
 }
 
 /** The marks' colour on the frame and in the marked picture: the pick's orange (the mock's pins; README pc-1). */
@@ -163,13 +189,21 @@ export interface MomentMarks {
    * The marks back on a frame that is the same moment (pause-ask stage 3: ▶ Try from 0:05.02 opened it again with the new
    * code — the person's ① still points where it did, so the next "no, here" can build on it). Mark mode stays off.
    */
-  restore(list: MomentMark[]): void;
+  restore(list: MomentMark[], folded?: MomentMark[]): void;
+  /** Sent (walk 2 △16): the marks fold to "+ same mark" — not on the frame, not in the next words, until pressed. */
+  fold(): void;
+  /** "+ same mark" pressed: the folded marks back, for the next words. */
+  unfold(): void;
+  /** The folded marks (for ▶ Try's reload, which keeps them folded). */
+  folded(): MomentMark[];
   /** Words changed (a language switch): the button's and chips' text again. */
   render(): void;
 }
 
 export function createMomentMarks(d: MomentMarksDeps): MomentMarks {
   let marks: MomentMark[] = [];
+  /** Folded by a send (walk 2 △16): "+ same mark" brings them back. Empty once marks are back or a new one is made. */
+  let kept: MomentMark[] = [];
   let on = false;
   const hint = h('div', { class: 'mark-hint', dataset: { part: 'mark-hint' }, hidden: true });
   const pins = h('div', { class: 'mark-pins' });
@@ -220,8 +254,11 @@ export function createMomentMarks(d: MomentMarksDeps): MomentMarks {
 
   function add(m: Pick<MomentMark, 'kind' | 'screen'>, w: number, hgt: number) {
     if (marks.length >= MARKS_MAX) return;
-    const mark: MomentMark = { n: marks.length + 1, ...m };
-    marks = [...marks, mark];
+    // A new mark after a send starts again at ①: the folded ones were the last words' (walk 2 △16).
+    const next = markAdded({ live: marks, folded: kept }, m);
+    const mark = next.live[next.live.length - 1]!;
+    marks = next.live;
+    kept = next.folded;
     render();
     d.changed();
     // What is under it: asked once, filled in when it comes (the request waits for nothing: a mark without it is fine).
@@ -262,7 +299,12 @@ export function createMomentMarks(d: MomentMarksDeps): MomentMarks {
     button.title = d.t('mark.tip');
     button.setAttribute('aria-label', d.t('mark.tip'));
     button.replaceChildren(h('span', { class: 'ask-mark-ring', 'aria-hidden': 'true' }), h('span', { class: 'ask-mark-word', text: d.t('mark.btn') }));
-    chips.hidden = !marks.length;
+    chips.hidden = !marks.length && !kept.length;
+    if (!marks.length && kept.length) {
+      chips.replaceChildren(h('button', { type: 'button', class: 'mark-again', dataset: { action: 'mark-again', part: 'mark-again' }, title: d.t('mark.againTip'),
+        onpointerdown: (e: Event) => e.preventDefault(), onclick: () => api.unfold() }, d.t('mark.again', { n: kept.length })));
+      return;
+    }
     chips.replaceChildren(...marks.map((m) => h('span', { class: 'mark-chip', dataset: { part: 'mark-chip', n: String(m.n) } },
       h('span', { class: 'mark-chip-n', text: markNumber(m.n) }), h('span', { text: ` ${m.kind === 'point' ? words().here : words().area}` }),
       h('button', { type: 'button', class: 'mark-chip-x', dataset: { action: 'mark-remove' }, title: d.t('mark.remove'), 'aria-label': `${d.t('mark.remove')} ${markChip(m, words())}`,
@@ -293,13 +335,28 @@ export function createMomentMarks(d: MomentMarksDeps): MomentMarks {
       render();
       d.changed();
     },
-    restore(list) {
+    restore(list, folded = []) {
       marks = renumber(list.slice(0, MARKS_MAX).map((m) => ({ ...m })));
+      kept = marks.length ? [] : renumber(folded.slice(0, MARKS_MAX).map((m) => ({ ...m })));
+      render();
+      d.changed();
+    },
+    fold() {
+      on = false;
+      ({ live: marks, folded: kept } = foldOnSend({ live: marks, folded: kept }));
+      render();
+      d.changed();
+    },
+    folded: () => kept.slice(),
+    unfold() {
+      if (!kept.length) return;
+      ({ live: marks, folded: kept } = unfoldMarks({ live: marks, folded: kept }));
       render();
       d.changed();
     },
     clear() {
-      if (!marks.length && !on) return;
+      if (!marks.length && !on && !kept.length) return;
+      kept = [];
       marks = [];
       on = false;
       press = null;

@@ -8,8 +8,8 @@
 //      where clips go and "Nothing leaves this computer.".
 //   2. ● Clip in Edit → ▶ Play, recording: the button red "0:0N · Stop", the red frame on the game (data-clip=rec), the
 //      bar of the time left. Pressed again ~1 s in: the clip ends one second later (~2 s).
-//   3. The line: "Clip saved · neon-run-clip-1.mp4", "… s · Wide 1280×720 · Movies › KUMODeck", Show in Finder (the
-//      server's command, no window), Remove mark, ✕; the post with the address and "N / 280", Copy post.
+//   3. The line: "Saved to Movies › KUMODeck" (the name in its tooltip; walk 2 △9), "… s · Wide 1280×720 ⌄", Show in
+//      Finder (the server's command, no window), Remove “Made with”, ✕; the post with the address and "N / 280", Copy post.
 //   4. The file in the clips folder (not the game folder): an MP4 (ftyp isom, moov before mdat, avc1, 1280×720) about
 //      2 s long (stopped ~1 s in, plus the mark's second), at most 30 frames a second (real time: a slow machine gives
 //      fewer frames, never a faster clip), the length the line says, key frames at the start and at the mark; it plays
@@ -46,6 +46,7 @@ import { startStudioServer } from '../src/server/server.mjs';
 import { launch, newPage } from './adapters-2d/cdp.mjs';
 import { startFakeAgent } from './ai-feel/fake-agent.mjs';
 import { startHost } from './web-demo-host.mjs';
+import { translate } from '../src/shell/i18n.ts';
 
 const PKG = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const UI = join(PKG, 'skills/arrange/bin/studio-ui');
@@ -102,7 +103,8 @@ const STATE = `(() => {
     frame: (() => { const s = document.querySelector('.stage'); return s ? getComputedStyle(s, '::after').boxShadow : ''; })(),
     time: box(document.querySelector('[data-part=clip-time]')),
     line: line && !line.hidden ? { text: line.innerText.replace(/\\s+/g, ' ').trim(), post: line.querySelector('[data-part=clip-post]')?.textContent || '',
-      count: line.querySelector('[data-part=clip-count]')?.textContent || '', where: line.querySelector('.clip-where')?.textContent || '',
+      count: line.querySelector('[data-part=clip-count]')?.textContent || '', head: line.querySelector('.clip-head')?.title || '',
+      headCut: (() => { const e = line.querySelector('[data-part=clip-saved]'); return !!e && e.scrollWidth > e.clientWidth + 1; })(), where: line.querySelector('.clip-where')?.textContent || '',
       reveal: box(line.querySelector('[data-action=clip-reveal]')), mark: box(line.querySelector('[data-action=clip-mark]')),
       rewrite: box(line.querySelector('[data-action=clip-rewrite]')), share: box(line.querySelector('[data-action=clip-share]')), save: box(line.querySelector('[data-action=clip-save]')),
       copy: box(line.querySelector('[data-action=clip-copy]')), close: box(line.querySelector('[data-action=clip-close]')),
@@ -176,7 +178,9 @@ async function local() {
     await page.waitFor(`document.querySelectorAll('.obj').length > 0`, 90000);
     await sleep(1200);
     let s = await state();
-    check(!!s.clip && /Clip|クリップ/.test(s.clip.text), `"● Clip" in the top bar ("${s.clip?.text}")`);
+    // Walk 2 ✕4 (decided 2026-11-06): in the person's language from the start (prefs.json says it) — it was "Clip" in
+    // English on a Japanese screen until the first clip, and /Clip|<ja>/ here let that pass.
+    check(!!s.clip && s.clip.text.trim() === translate(LANG, 'clip.btn'), `"● ${translate(LANG, 'clip.btn')}" in the top bar ("${s.clip?.text}")`);
     check(!!s.clip && !!s.redo && s.clip.l > s.redo.r && !!s.play && s.clip.r < s.play.l && Math.abs(s.clip.y - s.redo.y) < 3, 'right of Undo / Redo, left of ▶ Play, on the same line');
     // ⌄: lengths, the mark, where, nothing leaves.
     await page.click(s.more.x, s.more.y);
@@ -184,6 +188,8 @@ async function local() {
     check(!!s && /6/.test(s.menu) && /8/.test(s.menu) && /12/.test(s.menu), `⌄ lists 6 / 8 / 12 s ("${s?.menu}")`);
     check(!!s && (ja ? /このパソコンの外には何も送りません/ : /Nothing leaves this computer\./).test(s.menu), '⌄ says nothing leaves this computer');
     check(!!s && (ja ? /ムービー|ビデオ/ : /Movies|Videos/).test(s.menu), '⌄ says where clips go');
+    // Walk 2 △10: under the lengths, what a Before / After adds (its line said 10 s under "8 seconds ✓").
+    check(!!s && s.menu.includes(translate(LANG, 'clip.baAdds', { s: 2 })), '⌄ says Before / After adds 2 s');
     await shot('menu');
     await page.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
     await page.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
@@ -215,8 +221,13 @@ async function local() {
     // The game's name is "Neon Run — a boss comes in": its file stem.
     check(files.length === 1 && files[0] === 'neon-run-a-boss-comes-in-clip-1.mp4', `one clip in the clips folder (${files.join(', ')})`);
     check(!readdirSync(root).some((f) => f.endsWith('.mp4')), 'nothing in the game folder');
-    check((ja ? /クリップを保存しました · neon-run-a-boss-comes-in-clip-1\.mp4/ : /Clip saved · neon-run-a-boss-comes-in-clip-1\.mp4/).test(s.line.text), 'row 1: saved and its name');
-    check((ja ? /秒 · 横 1280×720 · ムービー › KUMODeck/ : / s · Wide 1280×720 · Movies › KUMODeck/).test(s.line.text), 'row 1: length, Wide 1280×720, Movies › KUMODeck');
+    const savedTo = translate(LANG, 'clip.saved', { dir: translate(LANG, 'clip.dir.movies') });
+    check(s.line.text.includes(savedTo) && !s.line.headCut, `row 1: "${savedTo}", whole`);
+    check(s.line.head === 'neon-run-a-boss-comes-in-clip-1.mp4', `the file's name in its tooltip ("${s.line.head}")`);
+    check(s.line.where.includes(translate(LANG, 'clip.shape.wide')) && !s.line.where.includes('KUMODeck'), `row 1: length and shape, the folder said once ("${s.line.where}")`);
+    check(s.line.text.includes(translate(LANG, 'clip.markRemove')), `"${translate(LANG, 'clip.markRemove')}" (not "Remove mark")`);
+    // Walk 2 △11: the post in the editor's language (English is clip-model's own).
+    if (ja) check(!/clip from my web game/.test(s.line.post), `the post in Japanese ("${s.line.post}")`);
     check(!!s.line.reveal && !!s.line.mark && !!s.line.close && !!s.line.copy, 'Show in Finder, Remove mark, ✕ and Copy post');
     check(s.line.post.includes('https://github.com/kumodeck/game-studio') && /KUMODeck Game Studio/.test(s.line.post), `the post with the address ("${s.line.post}")`);
     check(/^\d+ \/ 280$/.test(s.line.count), `the count (${s.line.count})`);
@@ -323,7 +334,7 @@ async function local() {
     check(!!s, 'Remove mark: the post without the address');
     if (s) {
       check(!/KUMODeck/.test(s.line.post), `…and without "Made with KUMODeck" ("${s.line.post}")`);
-      check(/Add mark|印を付ける/.test(s.line.text), 'the line now offers Add mark');
+      check(s.line.text.includes(translate(LANG, 'clip.markAdd')), 'the line now offers Add “Made with”');
     }
     await sleep(500);
     const after = readFileSync(join(clips, files[0]));
@@ -366,7 +377,7 @@ async function demo() {
     await page.click(s.clip.x, s.clip.y);
     let line = null;
     for (const t1 = Date.now(); Date.now() - t1 < 20000 && !line; await sleep(200)) line = (await state()).line;
-    check(!!line && (ja ? /クリップをダウンロードしました/ : /Clip downloaded · neon/).test(line.text), `the line says downloaded ("${line?.text}")`);
+    check(!!line && line.text.includes(translate(LANG, 'clip.downloaded', { dir: translate(LANG, 'clip.dir.downloads') })), `the line says downloaded ("${line?.text}")`);
     check(!!line && !line.reveal, 'no Show in Finder in the demo');
     check(!!line && !line.rewrite, 'no ✦ Rewrite in the demo (no AI)');
     let got = [];

@@ -498,7 +498,7 @@ a conversation, not a bug report:
 - **No `save` / `load` in the game yet** (`back` has no `moment`; the editor's "what Claude gets" said "the time only"):
   with your **first change** asked from a paused moment, write the game's moment hooks **as well** — the values and
   `save` / `load` (moment-connect: "This moment" and "Checkpoints", §4) — together with the fix, one reply. Until then
-  the person's ▶ Try can only play a new run to the same second ("Same time, new run"), and a boss mid-fight or a
+  the person's ▶ Try can only play a new run to the same second ("New code, played from the start to 0:05.02"), and a boss mid-fight or a
   score is never the same twice. Then `--check-moment <back>` (next point) must say the moment opened; it opens the
   same second of a new run for this ask (its `back` has no `moment`), so check `save` / `load` with `--check-moment`
   (no argument) too. The next ask from a pause keeps the whole moment.
@@ -564,7 +564,8 @@ The person saved a clip (● Clip: an MP4 of their game for X) and pressed **✦
 `clip` says what the clip is (`seconds`, `shape`, `mark`, and `asked`: their own words for a Before / After of a fix).
 
 - Write a better post for **this** clip: what the game is and what the clip shows, in the person's voice ("I", "my
-  game"), plain and concrete, English (the post goes to X), one line, at most one emoji. No hashtags unless the post had
+  game"), plain and concrete, in the language the post is written in (the editor writes it in
+  the person's language: keep a Japanese post Japanese), one line, at most one emoji. No hashtags unless the post had
   them. Read the game's code or README if you need its name or what happens in it; change **no files**.
 - **At most 280 as X counts** (a link counts 23, an emoji 2, Japanese and Chinese characters 2 each). The editor checks
   and keeps the old post when the new one is longer.

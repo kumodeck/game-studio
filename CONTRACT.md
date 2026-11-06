@@ -1566,7 +1566,8 @@ away, one line right over the field says "Just for this moment" (and ✦, below)
   under it) and **▶ Try from 0:05.02** (a new Play page with the code as it is now: `studio:moment/load` before its first
   frame when the moment was kept whole, and `studio:play/pause { at }` — the page holds itself when its clock reaches
   `at`; the field's talk, marks and the pause's asks carry over; the foot says "New code · same moment, 0:05.02", or
-  "Same time, new run · 0:05.02. This game couldn't start mid-run yet."; a moment opened whole adds what was already
+  "New code, played from the start to 0:05.02. This game can't start from the middle yet." (walk 2 △7, 2026-11-06:
+  was "Same time, new run"; no foot line while Before / After is open — its After says it); a moment opened whole adds what was already
   out: "Already out: the boss, so your change shows from the next one." from `already`, else the made object the ask
   was about, else "What was already out stays where it was."), **Before / After** (the asked frame with its marks beside
   the Try's frame; Try runs first when it has not; under a whole moment's After the same sentence with ▶ Resume to see
@@ -1693,12 +1694,14 @@ game resumes. A second press ends the clip one second later.
 - **The MP4 box** is written by the editor page (`src/shell/mp4.ts`: ftyp, moov first, one mdat; no dependency).
 - **The mark** (`src/shell/clip-model.ts`): the last second carries "Made with KUMODeck Game Studio /
   github.com/kumodeck/game-studio", bottom right, small, and the post carries the address — one switch for both.
-  `CLIP_MARK_DEFAULT` (on) is the default until the person chooses (Clip ⌄, or the line's Remove mark / Add mark);
+  `CLIP_MARK_DEFAULT` (on) is the default until the person chooses (Clip ⌄, or the line's Remove “Made with” / Add “Made with”);
   their choice is kept in `.studio/ui/prefs.json` `clip: { seconds, mark }`. The last second is encoded both ways (a
-  second encoder from a key frame), so Remove mark swaps the end of the saved clip without recording again (only when
+  second encoder from a key frame), so Remove “Made with” swaps the end of the saved clip without recording again (only when
   both encoders gave the same avcC).
-- **Saved**: through `StudioHost.clips` (`POST /api/clips`, §3.2) in Movies › KUMODeck; the line says the name, the
-  length, the place, Show in Finder, Remove mark, ✕, and the post (English, no AI, its X count) with Copy post. A host
+- **Saved**: through `StudioHost.clips` (`POST /api/clips`, §3.2) in Movies › KUMODeck; the line says the place
+  ("Saved to Movies › KUMODeck", the name in its tooltip; walk 2 △9, 2026-11-06), the length and shape, Show in Finder,
+  Remove “Made with”, ✕, and the post (no AI, its X count; in the editor's language since walk 2 △11 — `clip.post.*`
+  in i18n.ts, English written by clip-model.ts) with Copy post. A host
   without `clips` (the web demo) gives the MP4 as a download. Nothing is sent anywhere.
 - Not yet: sound, WebGPU, "the last 10 seconds" (stage 3).
 
@@ -1713,7 +1716,8 @@ game resumes. A second press ends the clip one second later.
   the editor gives the game a 9:16 window in the middle of the stage (shell.css `[data-clip-shape="tall"]`), so the
   game lays itself out tall — not a crop. `prefs.json` `clip.shape` once chosen.
 - **● Clip Before / After**, from the paused ask's Before / After panel once its After is there (§3.5.1): `start.before
-  = { image, ms: 2000, wipeMs: 300, label: "Before", after: "After", words?, stillFps: 10 }`, `seconds` = 10. The game
+  = { image, ms: 2000, wipeMs: 300, label: "Before", after: "After", words?, stillFps: 10 }`, `seconds` = 2 + the length chosen in Clip ⌄
+  (10 by default; walk 2 △10, 2026-11-06: it was a fixed 10 whatever the length, and ⌄ says "Before / After adds 2 s"). The game
   page encodes the still part first (the asked frame with its marks, cut to fill a Tall frame; "Before"; the asked words
   unless `prefs.json` `clip.words` is false), then says `started` — the editor resumes the Try's paused moment then —
   and records the game's picture from the clip's 2 s on, the Before wiped off over its first 0.3 s, "After" in its

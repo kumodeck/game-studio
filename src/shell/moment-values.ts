@@ -34,6 +34,11 @@
 //     with ⚑ at its right; a press opens the knobs. Three 44 px boxes filled the low sheet and left the list one row.
 //   - ✕8: numbers have their thousands' "," (13,100), as a HUD prints them.
 //
+// walk 2 △8 (decided 2026-11-06; a first-time person's walk of the whole editor): a game without values opened its
+// paused list with "Numbers like the score, and starting from here, aren't ready for this game yet." — the first words
+// read on pausing were about what does NOT work. That line and its ✦ are folded under one quiet row, "✦ More with
+// Claude ›" (a press opens them, and it stays open for this page); what the person reads first is the moment's objects.
+//
 // Pure of the editor's state: main.ts gives it the values (`studio:moment/values`) and does what a change means.
 import type { MomentValue } from '../contract.ts';
 import { h } from './dom.ts';
@@ -118,6 +123,8 @@ export function createMomentValues(d: MomentValuesDeps): MomentValuesBlock {
   // Narrow: folded until opened, and opened stays opened for this page (a person who turns numbers on a phone wants them
   // there at the next pause too).
   let open = false;
+  // A game without values: "More with {Ai} ›" opened (walk 2 △8). Kept for this page, like `open`.
+  let moreOpen = false;
   // What the last drawing was for (the language, the width): the editor's every render asks again (main.ts renderAll),
   // and drawing the rows again then would take a number being typed out from under the person's keys.
   let drawnFor = '';
@@ -176,14 +183,21 @@ export function createMomentValues(d: MomentValuesDeps): MomentValuesBlock {
       return;
     }
     if (!has) {
-      // The game has no codeMoment values (decision 13; ✕2: one line and one ✦ for the values and the checkpoints).
+      // The game has no codeMoment values (decision 13; ✕2: one line and one ✦ for the values and the checkpoints),
+      // folded under "✦ More with {Ai} ›" (walk 2 △8). The line and ✦ stay in the page while folded (hidden): ⚑'s line
+      // reads the ✦'s words from it, and the words are there to be found.
       const text = canKeep ? d.t('moment.noValues') : d.t('moment.noneBoth');
-      const line = h('p', { class: 'mv-none muted', dataset: { part: 'moment-none' }, text });
+      const more = h('button', { type: 'button', class: 'mv-more', dataset: { action: 'moment-more', part: 'moment-more' }, 'aria-expanded': String(moreOpen),
+        title: d.t('moment.moreTip', d.aiVars()), onclick: () => ((moreOpen = !moreOpen), render()) },
+        h('span', { class: 'ai-spark', 'aria-hidden': 'true' }, icon('spark')), h('span', { class: 'label', text: d.t('moment.more', d.aiVars()) }),
+        icon(moreOpen ? 'chevronDown' : 'chevronRight'));
+      const line = h('p', { class: 'mv-none muted', dataset: { part: 'moment-none' }, text, hidden: !moreOpen });
       // The card's ✦ buttons' look (placement-panel.ts aiButton: violet = the AI), its words in a span.
       const ask = h('button', { type: 'button', class: 'link-btn mv-ask ai', dataset: { action: 'moment-connect-ask', part: 'moment-values-ask' },
         title: d.t('moment.connectAsk', d.aiVars()), onclick: () => d.ask() },
         h('span', { class: 'ai-spark', 'aria-hidden': 'true' }, icon('spark')), h('span', { class: 'label', text: d.t('moment.connectAsk', d.aiVars()) }));
-      body.replaceChildren(line, ask);
+      ask.hidden = !moreOpen;
+      body.replaceChildren(more, line, ask);
       return;
     }
     body.replaceChildren(...(folds && !open ? [] : v!.map(row)));

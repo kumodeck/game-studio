@@ -157,8 +157,13 @@ export function downloadName(game: string, at: Date): string {
  * one switch: never a clip without the mark but with the address, or the other way round). No file place, no folder
  * name, no pass: nothing of this computer.
  */
-export function postText(o: { game: string; seconds: number; mark: boolean }): string {
+export function postText(o: { game: string; seconds: number; mark: boolean; say?: PostSay }): string {
   const game = o.game.trim().replace(/\s+/g, ' ').slice(0, 60);
+  // Another language (walk 2 △11, decided 2026-11-06): its own words from the editor's table (i18n.ts clip.post.*).
+  if (o.say) {
+    const what = o.say(game ? 'clip.post.clip' : 'clip.post.clipBare', { game, s: o.seconds });
+    return o.mark ? o.say('clip.post.clipMade', { what, url: CLIP_REPO_URL }) : o.say('clip.post.clipPlain', { what });
+  }
   // "an 8-second", "a 6-second" (said as "eight", "six").
   const a = /^(8|11|18)(\D|$)/.test(String(o.seconds)) ? 'an' : 'a';
   const what = game ? `${game}: ${a} ${o.seconds}-second clip from my web game` : `${a === 'an' ? 'An' : 'A'} ${o.seconds}-second clip from my web game`;
@@ -192,8 +197,18 @@ export function xLength(text: string): number {
 export const BA_BEFORE_MS = 2000;
 /** The wipe from Before to After, over the After's first frames (ms). */
 export const BA_WIPE_MS = 300;
-/** The After (s): 7 s of the new code playing, then the mark's second (still playing) — with the Before, 10 s in all. */
+/**
+ * The After (s) at the default length: 7 s of the new code playing, then the mark's second — with the Before, 10 s.
+ * Since walk 2 (△10, decided 2026-11-06) the After follows the length chosen in Clip options (baSeconds): it was a
+ * fixed 8, so the menu said "8 seconds ✓" while the Before / After just made was 10 s and picking 12 changed nothing.
+ */
 export const BA_AFTER_SECONDS = 8;
+/** What the Before adds to a Before / After (s): said beside the length in Clip options ("Before / After adds 2 s"). */
+export const BA_ADDS_SECONDS = BA_BEFORE_MS / 1000;
+/** A Before / After's whole length (s) for the length chosen: the 2 s Before, then that length of the After. */
+export function baSeconds(length: number): number {
+  return BA_ADDS_SECONDS + length;
+}
 /** The Before's still frames are encoded at this rate (fps): nothing moves, so 10 a second is plenty and quick. */
 export const BA_STILL_FPS = 10;
 /** The longest asked words drawn on the Before (characters, then "…"): one or two lines on a phone. */
@@ -217,9 +232,10 @@ export function baWords(asked: string): string {
  * cut so the whole post stays within X's 280; `words: false` (the person turned their words off) leaves them out.
  * `marked`: the Before had a mark of theirs. `ai`: the AI's name as the editor says it ("Claude", "Codex", "my AI").
  */
-export function beforeAfterPost(o: { time: number; asked: string; mark: boolean; words: boolean; marked: boolean; ai: string }): string {
+export function beforeAfterPost(o: { time: number; asked: string; mark: boolean; words: boolean; marked: boolean; ai: string; say?: PostSay }): string {
   const s = Math.max(0, Math.floor(o.time));
   const at = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+  if (o.say) return beforeAfterPostSaid({ ...o, at, say: o.say });
   const tail = `It fixed the code. Before → After 👇${o.mark ? ` ${CLIP_REPO_URL}` : ''}`;
   const head = `Paused my game at ${at}${o.marked ? ', marked a spot' : ''}`;
   const plain = `${head} and asked ${o.ai} for a fix. ${tail}`;
@@ -232,6 +248,33 @@ export function beforeAfterPost(o: { time: number; asked: string; mark: boolean;
     const post = `${head} and told ${o.ai} “${words}”. ${tail}`;
     if (xLength(post) <= X_LIMIT || words.length <= 8) return xLength(post) <= X_LIMIT ? post : plain;
     words = `${words.slice(0, Math.max(1, words.length - 12)).trimEnd()}…`;
+  }
+}
+
+/**
+ * The words of a post in a language other than English (walk 2 △11, decided 2026-11-06): the editor's translate() for
+ * the `clip.post.*` keys of its table. Absent = English, written here (the web demo, the tests, an editor in English).
+ * WHY: on a Japanese screen the post was English with only the asked words in Japanese ("…told Claude “<their words>”.
+ * It fixed the code."); posted as it was, it read as two languages mixed. A person posts in the language they read.
+ */
+export type PostSay = (key: string, vars: Record<string, string | number>) => string;
+
+/**
+ * The Before / After post from the table's words: `clip.post.ba` (with the asked words) or `clip.post.baPlain`, `clip.post.baMarked`
+ * for "marked a spot", the address after them with the mark. The same rules as English: the words cut to fit X's 280
+ * (most non-Latin characters count 2 there), never the address without the mark.
+ */
+function beforeAfterPostSaid(o: { at: string; asked: string; mark: boolean; words: boolean; marked: boolean; ai: string; say: PostSay }): string {
+  const vars = { at: o.at, ai: o.ai, marked: o.marked ? o.say('clip.post.baMarked', {}) : '' };
+  const end = (post: string) => (o.mark ? `${post} ${CLIP_REPO_URL}` : post);
+  const plain = end(o.say('clip.post.baPlain', vars));
+  const w = o.words ? baWords(o.asked) : '';
+  if (!w) return plain;
+  let words = w.replace(/[.!\u3002\uff01]+$/u, '');
+  for (;;) {
+    const post = end(o.say('clip.post.ba', { ...vars, words }));
+    if (xLength(post) <= X_LIMIT || words.length <= 4) return xLength(post) <= X_LIMIT ? post : plain;
+    words = `${words.slice(0, Math.max(1, words.length - 6)).trimEnd()}…`;
   }
 }
 

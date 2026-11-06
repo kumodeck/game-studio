@@ -7,7 +7,7 @@
 //   - one line (what the AI did; small under it, the files it touched — `--files`) and three buttons:
 //   - ▶ Try from 0:05.02: the game again with the NEW code, opened at the ask's moment (`back`: load(moment) before its
 //     first frame) and held there, paused — the field, the talk and the marks stay. A game without codeMoment save /
-//     load: a new run held at the same second, and the flash says so ("Same time, new run");
+//     load: a new run held at the same second, and the flash says so ("New code, played from the start to …"; walk 2 △7);
 //   - Before / After: the frame the person asked from (with its marks) beside the same moment with the new code (the
 //     frame Try paused on; Try runs first when it has not yet);
 //   - ↶ Undo: the game's files back to before the AI's change, right here (no reload: the moment stays as it is; Try

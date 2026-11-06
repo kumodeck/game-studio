@@ -9,8 +9,9 @@
 //   "0:05 left · Stop" (studio-clip-3; it counted up before), the game has a red frame (only what is inside it is in the clip) and a thin bar of the time left. A
 //   second press stops early (one more second for the mark, cut at the press: play-clip.ts). Then the line, where the
 //   AI's line is:
-//     row 1: ✓ Clip saved · neon-run-clip-1.mp4 / 8 s · Wide 1280×720 · Movies › KUMODeck · Show in Finder · Remove mark · ✕
-//     row 2: the post (English, the same words with no AI) · 102 / 280 · Copy post · ✦ Rewrite
+//     row 1: ✓ Saved to Movies › KUMODeck (the file's name in its tooltip) / 8 s · Wide 1280×720 ⌄ · Show in Finder ·
+//            Remove “Made with” · ✕   (walk 2 △9, decided 2026-11-06: was "Clip saved · <name>", both cut)
+//     row 2: the post (the editor's language since walk 2 △11; no AI) · 102 / 280 · Copy post · ✦ Rewrite
 //   The web demo has no folder: the clip is a download, and its line says so.
 // Stage 2:
 //   - ● Clip Before / After, from the paused ask's Before / After panel (moment-try.ts; main.ts openCompare): the asked
@@ -38,9 +39,9 @@ import { h } from './dom.ts';
 import { icon } from './icons.ts';
 import type { MenuEntry } from './context-menu.ts';
 import {
-  BA_AFTER_SECONDS, BA_BEFORE_MS, BA_STILL_FPS, BA_WIPE_MS, CLIP_BITRATE, CLIP_CODEC, CLIP_FPS, CLIP_HOLD_MS, CLIP_LENGTHS, CLIP_MARK_LINES, CLIP_SHAPES, X_LIMIT,
-  baWords, beforeAfterPost, beforeAfterStem, checkRewrite, clipShapeFor, clipSize, clipStem, downloadName, leftClock, postText, recLeftMs, withAddress, xComposeUrl, xLength,
-  type ClipPrefs, type ClipRefusal, type ClipShape,
+  BA_ADDS_SECONDS, BA_BEFORE_MS, BA_STILL_FPS, BA_WIPE_MS, CLIP_BITRATE, CLIP_CODEC, CLIP_FPS, CLIP_HOLD_MS, CLIP_LENGTHS, CLIP_MARK_LINES, CLIP_SHAPES, X_LIMIT,
+  baSeconds, baWords, beforeAfterPost, beforeAfterStem, checkRewrite, clipShapeFor, clipSize, clipStem, downloadName, leftClock, postText, recLeftMs, withAddress, xComposeUrl, xLength,
+  type ClipPrefs, type ClipRefusal, type ClipShape, type PostSay,
 } from './clip-model.ts';
 import { muxMp4, type Mp4Sample } from './mp4.ts';
 
@@ -74,8 +75,13 @@ export interface ClipDeps {
   phone(): boolean;
   /** Is an AI there to rewrite the post (the local host, an AI watching)? false = no ✦ Rewrite. */
   aiReady(): boolean;
-  /** The AI's name for the post's words ("Claude", "Codex", "my AI": English, the post is). */
+  /** The AI's name for the post's words ("Claude", "Codex", "my AI"; in the post's language). */
   aiName(): string;
+  /**
+   * The post's words when the editor is not in English (walk 2 △11, decided 2026-11-06): the editor's translate() for
+   * the `clip.post.*` keys; null = English (clip-model.ts writes it). Asked when the clip is saved: the language then.
+   */
+  postSay?(): PostSay | null;
   /** ✦ Rewrite: the post to the AI as a small request; resolves with its reply (the new post), or null (none came). */
   rewrite(text: string, ctx: ClipPostContext): Promise<string | null>;
 }
@@ -248,6 +254,9 @@ export function createClip(d: ClipDeps) {
     for (const s of CLIP_LENGTHS) {
       rows.push({ id: `clip-${s}`, label: t('clip.lengthRow', { s }), checked: p.seconds === s, run: () => (d.setPrefs({ ...d.prefs(), seconds: s }), (wanted = d.prefs()), render()) });
     }
+    // Before / After is the length chosen plus its 2 s still (walk 2 △10, decided 2026-11-06): said here, under the
+    // lengths, because the menu said "8 seconds ✓" right after a Before / After whose line said 10 s.
+    rows.push({ note: t('clip.baAdds', { s: BA_ADDS_SECONDS }) });
     rows.push({ sep: true },
       { id: 'clip-mark', label: t('clip.mark'), checked: p.mark, run: () => (d.setPrefs({ ...d.prefs(), mark: !d.prefs().mark }), (wanted = d.prefs())) },
       { id: 'clip-words', label: t('clip.words'), checked: p.words, run: () => (d.setPrefs({ ...d.prefs(), words: !d.prefs().words }), (wanted = d.prefs())) },
@@ -337,12 +346,14 @@ export function createClip(d: ClipDeps) {
     if (shape === 'tall') await settle();
     if (state !== 'starting') return;
     reset();
-    lengthMs = BA_BEFORE_MS + BA_AFTER_SECONDS * 1000;
+    // The After plays the length chosen in Clip options (walk 2 △10): it was a fixed 8 s whatever was chosen.
+    const total = baSeconds(wanted.seconds);
+    lengthMs = total * 1000;
     stillMs = BA_BEFORE_MS;
     render();
     const { w, h: hh } = clipSize(shape);
     const words = wanted.words ? baWords(o.asked) : '';
-    d.post({ type: 'studio:clip/start', id, seconds: BA_BEFORE_MS / 1000 + BA_AFTER_SECONDS, fps: CLIP_FPS, w, h: hh, codec: CLIP_CODEC, bitrate: CLIP_BITRATE,
+    d.post({ type: 'studio:clip/start', id, seconds: total, fps: CLIP_FPS, w, h: hh, codec: CLIP_CODEC, bitrate: CLIP_BITRATE,
       mark: wanted.mark, lines: [...CLIP_MARK_LINES],
       // "Before" / "After" in English whatever the editor's language: the video goes to X (as the mark's lines).
       before: { image, ms: BA_BEFORE_MS, wipeMs: BA_WIPE_MS, label: 'Before', after: 'After', stillFps: BA_STILL_FPS, ...(words ? { words } : {}) } });
@@ -453,9 +464,10 @@ export function createClip(d: ClipDeps) {
     const ok = await store(file, null, stem);
     if (!ok) return setState('idle');
     const words = wanted.words;
+    const say = d.postSay?.() ?? undefined;
     const postFor = made
-      ? (mk: boolean) => beforeAfterPost({ time: made.time, asked: made.asked, mark: mk, words, marked: made.marked, ai: d.aiName() })
-      : (mk: boolean) => postText({ game: d.game(), seconds, mark: mk });
+      ? (mk: boolean) => beforeAfterPost({ time: made.time, asked: made.asked, mark: mk, words, marked: made.marked, ai: d.aiName(), say })
+      : (mk: boolean) => postText({ game: d.game(), seconds, mark: mk, say });
     const ctx: ClipPostContext = { seconds, shape, mark: wanted.mark, ...(made && words ? { asked: baWords(made.asked) } : {}) };
     saved = { ...ok, seconds, shape, mark: wanted.mark, other, file, post: postFor(wanted.mark), postFor, rewritten: false, rewriting: false, ctx };
     setState('idle');
@@ -505,13 +517,15 @@ export function createClip(d: ClipDeps) {
     const post = s.post;
     const n = xLength(post);
     const where = t(`clip.dir.${s.where}`);
+    // "✓ Saved to Movies › KUMODeck" (walk 2 △9, decided 2026-11-06): where to look, whole. The row said "Clip saved ·
+    // neon-run-a-boss-comes-in…" and "… · Movies…", the name and the folder both cut; the name is the tooltip now.
     const head = h('div', { class: 'clip-row' },
-      h('span', { class: 'clip-head' }, icon('check'), h('strong', { text: t(s.where === 'downloads' ? 'clip.downloaded' : 'clip.saved', { name: s.name }) })),
+      h('span', { class: 'clip-head', title: s.name }, icon('check'), h('strong', { dataset: { part: 'clip-saved' }, text: t(s.where === 'downloads' ? 'clip.downloaded' : 'clip.saved', { dir: where }) })),
       // The shape and length as a button (studio-clip-3): Clip options for the next clip — a phone's way to them (its ●
       // has no ⌄), and on a computer the place the person is looking at right after a clip.
       h('button', { type: 'button', class: 'clip-where', dataset: { action: 'clip-options' }, 'aria-haspopup': 'menu', title: t('clip.whereTip'),
         onclick: (e: MouseEvent) => openMenu(e.currentTarget as HTMLElement) },
-      h('span', { text: t('clip.where', { s: s.seconds, shape: t(`clip.shape.${s.shape}`), dir: where }) }), icon('chevronDown')));
+      h('span', { text: t('clip.where', { s: s.seconds, shape: t(`clip.shape.${s.shape}`) }) }), icon('chevronDown')));
     // A phone (stage 2): the clip is on the computer (or a download), the person on the phone — Share… hands the MP4 to
     // the phone's share sheet (X's app is in it); a phone that cannot share files saves it (a download) instead. Show in
     // Finder would open a window on the computer, out of sight.
@@ -526,8 +540,10 @@ export function createClip(d: ClipDeps) {
       head.append(h('button', { type: 'button', class: 'link', dataset: { action: 'clip-reveal' }, text: t(s.reveal === 'finder' ? 'clip.finder' : 'clip.folder'),
         onclick: () => void d.host.clips!.reveal(s.name).then((r) => !r.ok && say(t('clip.saveFailed', { msg: r.error || '?' }), 6000)) }));
     }
+    // Remove “Made with” (walk 2 △9): it said "Remove mark", and a person who had just put ◎ marks on the frame read it
+    // as those (in Japanese both were the same word). It is the "Made with KUMODeck" at the clip's end and the address.
     if (s.other) {
-      head.append(h('button', { type: 'button', class: 'link', dataset: { action: 'clip-mark' }, text: t(s.mark ? 'clip.markRemove' : 'clip.markAdd'), onclick: () => void swap() }));
+      head.append(h('button', { type: 'button', class: 'link', dataset: { action: 'clip-mark' }, title: t('clip.mark'), text: t(s.mark ? 'clip.markRemove' : 'clip.markAdd'), onclick: () => void swap() }));
     }
     head.append(h('button', { type: 'button', class: 'icon-only link clip-x', dataset: { action: 'clip-close' }, title: t('clip.close'), 'aria-label': t('clip.close'),
       onclick: () => ((line.hidden = true), (saved = null), (note.hidden = true)) }, icon('close')));
@@ -551,7 +567,7 @@ export function createClip(d: ClipDeps) {
     line.hidden = false;
   }
 
-  /** "Remove mark" / "Add mark": the other end swapped in, saved over the same clip, and remembered for the next ones. */
+  /** Remove “Made with” / Add “Made with” (the mark): the other end swapped in, saved over the same clip, and remembered for the next ones. */
   async function swap() {
     if (!saved?.other) return;
     const s = saved;
