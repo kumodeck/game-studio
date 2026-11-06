@@ -5,8 +5,9 @@
 //   node test/studio-ai-presence.browser.mjs --ui <an older studio-ui folder> --before --shots <dir>   (photos only)
 //
 // Checks (three-crates, PC 1280×800, the editor started "from Claude Code"):
-// 1. Opened with no heartbeat: "Not sure Claude is open · How to open" inside the field, no green dot, no "● AI" in
-//    the top bar, and the placeholder says the other half ("kept as a note for Claude").
+// 1. Opened with no heartbeat: a quiet grey dot inside the field (decided 2026-11-06: "Not sure Claude is open" over a
+//    first screen read as broken), named "Claude isn't watching yet · How to open"; no green, no "● AI" in the top bar.
+//    Typing brings the words beside the field back: that is when it matters.
 // 2. The words open one line of what to do (Claude Code in this game's folder), and it closes.
 // 3. Sent with nobody watching: the fact — "Kept as a note for Claude. Nothing in the game changes until Claude reads
 //    it." — with what was asked under it and "How to open"; no "Call your AI", no promise ("next time").
@@ -51,6 +52,7 @@ const j = async (page, expr) => JSON.parse((await page.eval(expr)) || 'null');
 const READY = `document.querySelectorAll('.obj').length > 0 && !!document.querySelector('iframe')?.contentWindow?.__gameStudio?._debug`;
 const STATE = `JSON.stringify((() => { const p = document.querySelector('.presence'); const l = document.querySelector('.ai-line');
   return { p: p ? { state: p.dataset.state, text: p.textContent, dot: getComputedStyle(p.querySelector('.dot')).display !== 'none',
+    quiet: p.classList.contains('quiet'), words: getComputedStyle(p.querySelector('.p-text')).display !== 'none', label: p.getAttribute('aria-label') || '',
     inField: !!p.closest('.ask-box'), row: !!p.closest('.presence-row') } : null,
     peer: !!document.querySelector('[data-part=peer]'), ph: document.querySelector('.ask-input')?.placeholder,
     line: l && !l.hidden ? l.textContent : '', lineCls: l?.className, help: document.querySelector('.ai-open-help:not([hidden])')?.textContent || '' }; })())`;
@@ -98,19 +100,38 @@ try {
 
   // ---- 1. opened, no heartbeat ever: not sure ----
   let s = await j(page, STATE);
+  const sure = await page.eval(`document.querySelector('.presence.sure') !== null`);
   await shot('open');
   check(() => {
     assert.equal(s.peer, false, 'no "● AI" in the top bar');
     assert.equal(s.p?.state, 'unsure');
-    assert.match(s.p.text, ja ? /Claude が開いているか分かりません.*開き方/ : /Not sure Claude is open.*How to open/);
-    assert.equal(s.p.dot, false, 'no green without proof');
+    // Quiet until the person asks (ai-presence.ts presenceQuiet): the dot alone, its words in its name.
+    assert.equal(s.p.quiet, true, 'a quiet dot on opening');
+    assert.equal(s.p.words, false, 'no "not sure" words over the first screen');
+    assert.match(s.p.label, ja ? /Claude ?はまだ見ていません.*開き方/ : /Claude isn’t watching yet.*How to open/);
     assert.equal(s.p.inField, true, 'inside the field on a wide bar');
+    assert.equal(sure, false, 'no green without proof');
     // The field has one placeholder since studio-words-plan (2026-10-23): "Ask Claude…" whether the AI is there or not;
     // the presence words beside it say whether it is (it was "Write a note for Claude…" while not sure).
     if (BEFORE) assert.match(s.ph, ja ? /Claude へのメモを書く/ : /Write a note for Claude/);
     else assert.match(s.ph, ja ? /Claude ?に頼む/ : /^Ask Claude…$/);
-    ok('opened: "not sure", no dot, the placeholder asks Claude (the words beside it say it is not sure)');
+    ok('opened: a quiet grey dot named "isn\'t watching yet", the placeholder asks Claude');
   });
+  if (!BEFORE) {
+    // Typing brings the words back; emptying the field makes it quiet again.
+    await press(page, '.ask-input');
+    await page.send('Input.insertText', { text: 'a' });
+    await sleep(300);
+    s = await j(page, STATE);
+    assert.equal(s.p.quiet, false, 'typing: the words');
+    assert.equal(s.p.words, true);
+    assert.match(s.p.text, ja ? /Claude ?はまだ見ていません.*開き方/ : /Claude isn’t watching yet.*How to open/);
+    await shot('typing');
+    await page.eval(`(() => { const i = document.querySelector('.ask-input'); i.value = ''; i.dispatchEvent(new Event('input', { bubbles: true })); i.blur(); return 1; })()`);
+    await sleep(300);
+    assert.equal((await j(page, STATE)).p.quiet, true, 'empty again: quiet again');
+    ok('typing shows "Claude isn\'t watching yet · How to open"; an empty field is quiet again');
+  }
   if (!BEFORE) {
     // The placeholder is never cut by the words beside it (or the words went above).
     const cut = await page.eval(`(() => { const i = document.querySelector('.ask-input'); const c = document.createElement('canvas').getContext('2d'); c.font = getComputedStyle(i).font; return c.measureText(i.placeholder).width > i.clientWidth + 1; })()`);
@@ -182,6 +203,9 @@ try {
   await agent.stop();
   agent = null;
   if (!BEFORE) {
+    // 8 s after the stop is ~21 s after the "done": a fresh "done" no longer keeps it green once the heartbeat seen
+    // after it has stopped (ai-presence.ts statusSeen, decided 2026-11-06 — this step failed or passed by which side
+    // of 20 s the page's 3 s poll fell on).
     await sleep(8000);
     s = await j(page, STATE);
     assert.equal(s.p.state, 'unsure', 'within the grace: not sure, never "watching" and not yet "away"');

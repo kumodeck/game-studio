@@ -119,3 +119,16 @@ test('a UI element is called by its key in words, whatever it says', () => {
   // Short enough not to be cut ("…") where a name is shown: the list row, the card, the ask chip.
   assert.ok(displayName(ui('title-card', 'x'.repeat(40)), t).length <= 12);
 });
+
+// Phaser's unnamed objects (decided 2026-11-06): a texture key is the thing's name, and Phaser's type words are kinds.
+import { textureStem } from '../src/shell/names.ts';
+
+test('a Phaser image with no name is called by its texture key; its unnamed rectangle is a shape', () => {
+  assert.equal(displayName(item('path:garden/6', 'Image (no name)', { unstable: true, kinds: ['image'], group: 'rock' }), t), 'rock');
+  assert.equal(displayName(item('path:garden/1', 'Rectangle (no name)', { unstable: true, kinds: ['rectangle'] }), t), 'Unnamed shape');
+  assert.equal(displayName(item('path:3', 'Image (no name)', { unstable: true, kinds: ['image'] }), t), 'Unnamed picture', 'the word for a picture (this test says Unnamed picture)');
+  assert.equal(textureStem('big_rock', ['image']), 'big rock');
+  assert.equal(textureStem('__DEFAULT', ['image']), null, 'Phaser\'s placeholder texture');
+  assert.equal(textureStem('rock', ['container']), null, 'only pictures');
+  assert.equal(textureStem('blob:abc/123', ['sprite']), null, 'never a URL or id');
+});

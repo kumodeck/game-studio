@@ -1,4 +1,4 @@
-/* KUMODeck Game Studio 0.1.82 — MIT License — built file, edit src/ instead */
+/* KUMODeck Game Studio 0.1.83 — MIT License — built file, edit src/ instead */
 (() => {
 const __defs = [];
 const __cache = [];
@@ -498,6 +498,11 @@ const CONTRACT_VERSION = 1;
                       
      
                                         
+     
+                                                                                                                         
+                                                                                                               
+     
+                                   
      
                                                                             
                                                                            
@@ -1733,6 +1738,11 @@ const MSG_PREFIX = 'studio:';
      
                                                                                                                       
                                                                                                                  
+     
+                                                  
+     
+                                                                                                                            
+                                                                                                         
      
                                                   
      
@@ -8719,7 +8729,21 @@ __defs[14] = function (__exports) {
 const KIND_WORD                         = {
   sprite: 'picture', text: 'text', graphics: 'shape', container: 'group', group: 'group', model: 'model',
   box: 'shape', sphere: 'shape', plane: 'shape', cylinder: 'shape', cone: 'shape', mesh: 'shape',
+  // Phaser's own type names (its adapter sends `o.type` lowercased; decided 2026-11-06): an unnamed rock image and an
+  // unnamed ground rectangle in the Phaser garden were both "Unnamed object", and Save said "moved Unnamed object".
+  image: 'picture', rectangle: 'shape', ellipse: 'shape', arc: 'shape', triangle: 'shape', polygon: 'shape',
 };
+
+/**
+ * A texture's own key as a name (decided 2026-11-06, Phaser: `this.add.image(460, 470, 'rock')` reports group 'rock',
+ * not a file path, so fileStem had nothing to read). Only for a picture's kinds and only a plain word-like key: it is
+ * the name the game's code loaded the file under, so it reads as the thing ("rock"), never a URL or a generated id.
+ */
+function textureStem(group                    , kinds                               )                {
+  if (!group || !kinds?.some((k) => k === 'image' || k === 'sprite')) return null;
+  if (!/^[A-Za-z][\w .-]{0,39}$/.test(group) || group.startsWith('__')) return null;
+  return group.replace(/[-_]+/g, ' ').trim() || null;
+}
 
 /** The file name without folder and extension, when `group` is a picture / model URL or path. */
 function fileStem(group                    )                {
@@ -8990,7 +9014,7 @@ function displayName(it                                                         
   const given = givenName(it.key);
   if (given) return given;
   if (it.unstable) {
-    const stem = fileStem(it.group);
+    const stem = fileStem(it.group) ?? textureStem(it.group, it.kinds);
     if (stem) return stem;
     const guess = guessFor(it.key);
     if (guess) return guess;
@@ -9002,6 +9026,7 @@ function displayName(it                                                         
   return it.label;
 }
 
+__def(__exports, "textureStem", () => textureStem);
 __def(__exports, "fileStem", () => fileStem);
 __def(__exports, "hueOf", () => hueOf);
 __def(__exports, "guessNames", () => guessNames);
@@ -9832,18 +9857,21 @@ function createLibraryObjects(d                    )                     {
             } })));
       }
     }
-    // "Add to scene" first (the Library's main use, 2026-10-18), then "Ask your AI…", then the way to the game, then
-    // Delete — four, the same four as the tile's menu (context-rows.ts). No "Duplicate" (design review 2, item ①): in
+    // Until 2026-11-06: "Add to scene" first (the Library's main use, 2026-10-18), then "Ask your AI…", then the way to
+    // the game, then Delete — four, the same four as the tile's menu (context-rows.ts). No "Duplicate" (design review 2, item ①): in
     // the Library it did exactly what "Add to scene" does, and nobody could tell the two apart; the scene's Duplicate is
     // the card's button and ⌘D. A locked object can't be copied (the game's settings), so it has no "Add to scene".
+    // Reordered (decided 2026-11-06, a first-time walk): the detail is about an object that is ALREADY in the game, and a
+    // black "Put in the scene" as its first button made people wonder whether it was missing from the scene. Now the
+    // main button is "Show in the scene →" (where it is), and copying it is "Add another", a plain button after ✦.
     const acts = h('div', { class: 'shelf-acts' });
-    if (!locked) acts.append(h('button', { type: 'button', class: 'gsl-btn gsl-primary', dataset: { action: 'add-to-scene' }, text: d.t('lib.addToScene'), onclick: () => d.addToScene() }));
+    acts.append(h('button', { type: 'button', class: 'gsl-btn gsl-primary', dataset: { action: 'show-in-game' }, text: d.t('shelf.showInGame'), onclick: () => d.showInGame() }));
     // ✦ (studio-uniforms, 2026-10-23): the AI's uniform — spark, violet — so it is not read as a plain action. Its words are
     // the ask box's own "Ask Claude…" (studio-library-shelf, the UI plan 5 #3; was "Ask Claude about it…"): the box's chip
     // already names the pick, so "about it" said nothing more.
     if (d.askAi) acts.append(h('button', { type: 'button', class: 'gsl-btn ai', dataset: { action: 'lib-ask' }, onclick: () => d.askAi () },
       h('span', { class: 'gsl-spark', 'aria-hidden': 'true', text: '✦' }), d.t('lib.askAi')));
-    acts.append(h('button', { type: 'button', class: `gsl-btn${locked ? ' gsl-primary' : ''}`, dataset: { action: 'show-in-game' }, text: d.t('shelf.showInGame'), onclick: () => d.showInGame() }));
+    if (!locked) acts.append(h('button', { type: 'button', class: 'gsl-btn', dataset: { action: 'add-to-scene' }, text: d.t('lib.addToScene'), onclick: () => d.addToScene() }));
     if (!locked) acts.append(h('button', { type: 'button', class: 'gsl-btn', dataset: { action: 'remove' }, text: d.t('ops.remove'), onclick: () => d.remove() }));
     el.append(acts);
     return { el, key: keys.join(',') };
@@ -13389,6 +13417,8 @@ function whensShort(t                                                           
                
                                                                                                     
                 
+                                                                                                            
+                
                                                                             
                             
                              
@@ -13708,12 +13738,16 @@ function createTimelinePanel(view                    , act              ) {
     if (v.focus) {
       // An object with no motion yet (studio-motion-flow: "+ New motion" lands here): what makes one, in one line.
       const name = v.rows.find((r) => r.key === v.focus)?.label ?? v.focus;
-      // studio-tool-clear: the time line already past 0 s (the strip's "Make a motion for this" opens at 1 s): one move
-      // makes the motion — say where it is at 0 s and what to do now.
-      const at = Math.round(v.time * 10) / 10;
       // studio-no-presets: "Make a motion" — the words of the brief (the review, 10/23): drag it there; Esc stops.
-      const words = v.making === 'drag' ? t('tl.make.drag', { name }) : at > 0 ? t('tl.when.firstAt', { name, t: at }) : t('tl.when.first', { name });
-      return [h('span', { class: 'tl-lbl tl-first', dataset: { part: 'tl-first' }, text: words })];
+      if (v.making === 'drag') return [h('span', { class: 'tl-lbl tl-first', dataset: { part: 'tl-first' }, text: t('tl.make.drag', { name }) })];
+      // Not making (decided 2026-11-06, a first-run walk of v0.1.82): the line said "Pick a later time on the ruler, then
+      // move {name} there: that makes its motion" (and, past 0 s, "Now move it to where it should be at 2.5 s"), but since
+      // studio-fix-0142 a move of an object with no motion only moves where it stands (timeline-wire records()) — the
+      // person moved the lighthouse and nothing became a motion while the line said it would. Now the line says what a
+      // move does here and offers the one way in, the same "+ Make a motion" as the strip's Motion menu.
+      const items         = [h('span', { class: 'tl-lbl tl-first', dataset: { part: 'tl-first' }, text: t('tl.when.noMotion') })];
+      if (act.make) items.push(h('button', { type: 'button', class: 'tl-done tl-make', title: t('motion.makeTip'), dataset: { part: 'tl-make', action: 'tl-make' }, onclick: () => act.make () }, t('tl.make')));
+      return items;
     }
     return [h('span', { class: 'tl-lbl tl-first', text: t('tl.when.none') })];
   }
@@ -18218,6 +18252,11 @@ const en = {
   'motion.tool.savedHead': 'Saved motions',
   'hold.gameStart': 'Your game moves this while playing. Where you put it is where it starts; the game moves it on from there.',
   'tl.when.first': 'Pick a later time on the ruler, then move {name} there: that makes its motion',
+  // decided 2026-11-06 (a first-run walk): the line of an object with no motion, beside "+ Make a motion". The two lines
+  // above said a move would make a motion; since studio-fix-0142 it only moves where the object stands.
+  'tl.when.noMotion': 'No motion yet. Moving it changes where it stands.',
+  // decided 2026-11-06: Esc in a game that uses Esc itself (it took the key) — Play goes on, the way out is the top bar's.
+  'play.escGame': 'Esc is the game’s · ■ Edit to stop',
   'tl.whenAsk': 'When does it move?',
   'tl.on': 'On',
   'tl.off': 'Off',
@@ -18410,6 +18449,9 @@ const en = {
   'save.fail': 'Couldn’t save: {error}',
   'status.loading': 'Opening your game…',
   'status.waiting': 'Waiting for the game to start…',
+  // The line over the game while it opens (main.ts waitLine, decided 2026-11-06); the slow one after a few seconds.
+  'status.opening': 'Opening {name}…',
+  'status.openingSlow': 'Opening {name}… The first time takes a few seconds.',
   'status.connecting': 'Connecting the game to Game Studio… On a slower computer this can take a little while.',
   'status.noAdapter': 'This game isn’t connected to Game Studio yet.',
   'status.noAdapterHint': 'three.js games connect on their own. For other engines, ask {ai} to “write the Game Studio adapter for this game.”',
@@ -18464,8 +18506,10 @@ const en = {
   // The narrow list's one row for all the unnamed objects (side window, 2026-10-19), and its button.
   'noname.fold': 'Unnamed objects',
   'noname.askAi': 'Ask {ai} to name them',
-  'noname.why': 'A guessed name. Named in code, {ai} can find it and its position stays put.',
-  'noname.whyPlain': 'Named in code, {ai} can find it and its position stays put.',
+  // Decided 2026-11-06: "Named in code, Claude can find it…" sat on the card of an object WITHOUT a name and read as "it
+  // already has one". Now it says what to do and why, as an instruction.
+  'noname.why': 'A guessed name. Give it a name in code so {ai} can find it and it stays put.',
+  'noname.whyPlain': 'Give it a name in code so {ai} can find it and it stays put.',
   // studio-motion-fix △10 (decided 2026-11-05): "×6" alone did not say six of what.
   'ask.chipN': '{n:1 object|# objects}',
   'ask.chipNamed': '{name} ×{n}',
@@ -18482,7 +18526,9 @@ const en = {
   // Plan step 7 (2026-10-23): the sheet's tabs (Scene | the picked object | Motion), named for a screen reader.
   'sheet.tabs': 'What the sheet shows',
   // The one line under the game until the first pick (the words picked for plan "decide 1", kept after a wording check).
-  'intro.line': 'Shape your game by hand. Your AI writes the code.',
+  // Decided 2026-11-06 (first-screen fix): it says the whole loop in one line — move by hand, Save, the AI puts it in
+  // the code — so the field next to it no longer needs to talk about the AI before the person asks (presenceQuiet).
+  'intro.line': 'Move things by hand. Save, and {ai} puts it in your code.',
   // One line about the hand-off to the AI (requests and the AI's status).
   'ai.waiting': 'Sent your {what} to {ai}. Waiting for a reply…',
   // The one calm line when the request could not wake the AI right now (hands-on test 2026-10-19: "Your AI
@@ -18513,6 +18559,8 @@ const en = {
   'ai.p.look': 'Codex reads it when you type “{word}”',
   'ai.p.away': '{Ai} isn’t watching',
   'ai.p.unsure': 'Not sure {ai} is open',
+  // Never seen watching in this page, on a host that can tell (ai-presence.ts presenceKey, decided 2026-11-06).
+  'ai.p.notYet': '{Ai} isn’t watching yet',
   'ai.p.how': 'How to open',
   'ai.p.tip': 'What this means',
   // Pressing the words: one line of what is true and what to do (it replaces "Call your AI", which copied a word
@@ -18673,8 +18721,20 @@ const en = {
   'clip.btn': 'Clip',
   'clip.tip': 'Record the next {s} seconds of the game as a video',
   'clip.more': 'Clip options',
-  'clip.stop': '{t} · Stop',
+  // studio-clip-3 (decided 2026-11-06): the time LEFT, not the time so far — the person wants to know when it ends.
+  'clip.stop': '{t} left · Stop',
+  'clip.ending': 'Ending…',
+  'clip.saving': 'Saving…',
   'clip.stopTip': 'Stop now (the clip ends one second later)',
+  // A phone's ● is a round button only (the bar has no room for ⌄): holding it opens Clip options (studio-clip-3).
+  'clip.holdTip': 'Record the next {s} seconds of the game as a video. Hold for Clip options',
+  'clip.whereTip': 'Clip options: shape and length of the next clip',
+  'clip.postX': 'Post on X…',
+  'clip.postXTip': 'Opens X with this post written. Then add the video from {dir}',
+  'clip.postXOpened': 'X opened with the post. Add the video from {dir}, then post.',
+  'clip.askAi': '✦ Ask {ai}',
+  'clip.askWebgpu': 'Draw the game with WebGL instead of WebGPU, so ● Clip can record it.',
+  'clip.askTainted': 'Put the images this game loads from other sites into the game’s folder, so ● Clip can record it.',
   'clip.saved': 'Clip saved · {name}',
   'clip.downloaded': 'Clip downloaded · {name}',
   'clip.where': '{s} s · {shape} · {dir}',
@@ -18715,10 +18775,10 @@ const en = {
   'clip.saveTo': 'Saved to {dir}.',
   'clip.local': 'Nothing leaves this computer.',
   'clip.palette': 'Record a clip',
-  'clip.webgpu': 'Clip needs WebGL for now. This game draws with WebGPU.',
-  'clip.tainted': 'This game draws images from another site, so it can’t be recorded. Ask {ai} to put them in the game’s folder.',
+  'clip.webgpu': 'Clip can’t record WebGPU yet, and this game draws with WebGPU. {Ai} can switch it to WebGL, or use your computer’s screen recorder.',
+  'clip.tainted': 'This game draws images from another site, so the browser won’t let Clip read its picture. {Ai} can move them into the game’s folder.',
   'clip.noEncoder': 'This browser can’t make videos. Try the latest Chrome, Edge or Safari.',
-  'clip.nothing': 'Nothing to record yet: the game has no picture on screen.',
+  'clip.nothing': 'Nothing to record yet: the game has no picture on screen. Press ● Clip again once the game shows.',
   'clip.failed': 'The clip couldn’t be made ({msg}). Try again.',
   'clip.saveFailed': 'The clip couldn’t be saved: {msg}',
   'try.btn': 'Try from {t}',
@@ -19205,7 +19265,10 @@ const en = {
   'ctx.showUsers': 'Show just these objects',
   'ctx.replace': 'Replace…',
   // Use the Library (2026-10-18): add from it, ask the AI about what is picked there, and the Scene's way back to it.
-  'lib.addToScene': 'Put in the scene',
+  // An object in the Library is already placed (its card says "Placed in the game"), so the copy says it adds one more
+  // (decided 2026-11-06: "Put in the scene" on a placed object read as "is it not in the scene?"). A file's button is
+  // the Library tool's own (src/tools/library/strings.ts) and still says "Put in the scene".
+  'lib.addToScene': 'Add another',
   'lib.askAi': 'Ask {ai}…',
   'lib.askAboutIt': 'Ask {ai} about it…',
   'lib.addFileAi': 'Ask {ai} to put it in the scene…',
@@ -19606,6 +19669,8 @@ const ja                               = {
   'motion.tool.savedHead': '保存した動き',
   'hold.gameStart': 'ゲームが動かしている物です。置いた所がスタート位置になり、遊ぶとそこからゲームが動かします。',
   'tl.when.first': '目盛りで先の時刻を選んで、{name} をそこへ動かすと、動きができます',
+  'tl.when.noMotion': 'まだ動きはありません。動かすと置き場所が変わります。',
+  'play.escGame': 'Esc はゲームが使っています · ■ 編集 で止める',
   'tl.whenAsk': 'いつ動く？',
   'tl.on': 'オン',
   'tl.off': 'オフ',
@@ -19786,6 +19851,8 @@ const ja                               = {
   'save.fail': '保存できませんでした: {error}',
   'status.loading': 'ゲームを開いています…',
   'status.waiting': 'ゲームの起動を待っています…',
+  'status.opening': '{name} を開いています…',
+  'status.openingSlow': '{name} を開いています… 初めての時は数秒かかります。',
   'status.connecting': 'ゲームを Game Studio につないでいます… 遅めのパソコンでは少し時間がかかります。',
   'status.noAdapter': 'このゲームはまだ Game Studio につながっていません。',
   'status.noAdapterHint': 'three.js のゲームは自動でつながります。ほかのエンジンは {ai}に「このゲームの Game Studio のつなぎを書いて」と頼んでください。',
@@ -19831,8 +19898,8 @@ const ja                               = {
   'noname.act1': '名前を付ける',
   'noname.fold': '名前のない物',
   'noname.askAi': '{ai}に名前を付けてもらう',
-  'noname.why': '仮の名前です。名前があると {ai}に名前で頼めて、コードを直しても位置が残ります。',
-  'noname.whyPlain': '名前があると {ai}に名前で頼めて、コードを直しても位置が残ります。',
+  'noname.why': '仮の名前です。コードで名前を付けると、{ai}に名前で頼めて、コードを直しても位置が残ります。',
+  'noname.whyPlain': 'コードで名前を付けると、{ai}に名前で頼めて、コードを直しても位置が残ります。',
   'ask.chipN': '{n} 個',
   'ask.chipNamed': '{name} ×{n}',
   'large.open': '大きく開く',
@@ -19844,7 +19911,7 @@ const ja                               = {
   'sheet.fold': 'たたむ',
   'sheet.unfold': '一覧とカードを出す',
   'sheet.tabs': 'シートに出す物',
-  'intro.line': 'ゲームを手で直す場所。コードは、いつもの AI が書く。',
+  'intro.line': '手で動かして保存すると、{ai}がコードに入れます。',
   'ai.waiting': '{what}を {ai}に送りました。返事を待っています…',
   'ai.kept': '{ai}へのメモとして残しました。{ai2}が読むまでゲームは変わりません。',
   'ai.onIt': '{ai}が取りかかっています',
@@ -19860,6 +19927,7 @@ const ja                               = {
   'ai.p.look': 'Codex で「{word}」と打つと読みます',
   'ai.p.away': '{ai}が見ていません',
   'ai.p.unsure': '{ai}が開いているか分かりません',
+  'ai.p.notYet': '{ai}はまだ見ていません',
   'ai.p.how': '開き方',
   'ai.p.tip': 'これの意味',
   'ai.open.watching': '{ai}がこのゲームを見ています。送ったものは数秒で届きます。',
@@ -19980,8 +20048,18 @@ const ja                               = {
   'clip.btn': 'クリップ',
   'clip.tip': 'ゲームのこの先 {s} 秒を動画にする',
   'clip.more': 'クリップの設定',
-  'clip.stop': '{t} · 止める',
+  'clip.stop': '残り {t} · 止める',
+  'clip.ending': '仕上げ中…',
+  'clip.saving': '保存中…',
   'clip.stopTip': '今止める（動画は 1 秒後に終わります）',
+  'clip.holdTip': 'ゲームのこの先 {s} 秒を動画にする。長押しでクリップの設定',
+  'clip.whereTip': 'クリップの設定: 次のクリップの形と長さ',
+  'clip.postX': 'X に投稿…',
+  'clip.postXTip': '投稿の文を入れて X を開きます。動画は{dir}から足してください',
+  'clip.postXOpened': '投稿の文を入れて X を開きました。{dir}から動画を足して投稿してください。',
+  'clip.askAi': '✦ {ai}に頼む',
+  'clip.askWebgpu': '● クリップで録れるように、ゲームを WebGPU ではなく WebGL で描くようにして。',
+  'clip.askTainted': '● クリップで録れるように、別のサイトから読んでいる画像をゲームのフォルダに置いて。',
   'clip.saved': 'クリップを保存しました · {name}',
   'clip.downloaded': 'クリップをダウンロードしました · {name}',
   'clip.where': '{s} 秒 · {shape} · {dir}',
@@ -20020,10 +20098,10 @@ const ja                               = {
   'clip.saveTo': '保存先: {dir}。',
   'clip.local': 'このパソコンの外には何も送りません。',
   'clip.palette': 'クリップを録る',
-  'clip.webgpu': 'クリップは今は WebGL のゲームだけです。このゲームは WebGPU で描いています。',
-  'clip.tainted': 'このゲームは別のサイトの画像を描いているので、録れません。画像をゲームのフォルダに置くよう{ai}に頼めます。',
+  'clip.webgpu': 'クリップはまだ WebGPU を録れず、このゲームは WebGPU で描いています。{ai}に WebGL に変えてもらうか、パソコンの画面収録を使ってください。',
+  'clip.tainted': 'このゲームは別のサイトの画像を描いているので、ブラウザがクリップに絵を読ませません。{ai}に画像をゲームのフォルダへ移してもらえます。',
   'clip.noEncoder': 'このブラウザでは動画を作れません。新しい Chrome・Edge・Safari で試してください。',
-  'clip.nothing': 'まだ録る物がありません。ゲームの絵が出ていません。',
+  'clip.nothing': 'まだ録る物がありません。ゲームの絵が出ていません。絵が出てからもう一度 ● クリップを押してください。',
   'clip.failed': 'クリップを作れませんでした（{msg}）。もう一度試してください。',
   'clip.saveFailed': 'クリップを保存できませんでした: {msg}',
   'try.btn': '{t} から試す',
@@ -20443,7 +20521,7 @@ const ja                               = {
   'ctx.showInGame': 'シーンで見る',
   'ctx.showUsers': '使っている物だけ見る',
   'ctx.replace': '差し替え…',
-  'lib.addToScene': 'シーンに置く',
+  'lib.addToScene': 'もう 1 つ置く',
   'lib.askAi': '{ai}に頼む…',
   'lib.askAboutIt': 'これについて {ai}に頼む…',
   'lib.addFileAi': 'シーンに置くよう {ai}に頼む…',
@@ -21672,6 +21750,11 @@ const AWAY_AFTER_MS = 60_000;
                             
                                                                                       
                               
+     
+                                                                                                                          
+                                                                                                                        
+     
+                             
                                                                         
                        
  
@@ -21681,7 +21764,14 @@ function aiPresence(s               )             {
   if (aiBusy(s.phase) || s.phase === 'asking') return 'working';
   // A status just written proves the AI is here — but after its "done" it is no longer working (studio-motion-fix △4,
   // decided 2026-11-05: "Claude is working" sat under "Added … to the keep-out areas" for seconds after the reply).
-  if (s.statusTime != null && s.now - s.statusTime < HERE_STATUS_MS) return s.phase === 'done' || s.phase === 'failed' ? 'watching' : 'working';
+  // ...unless the heartbeat outlived that status and then stopped (decided 2026-11-06): a fresh status only stands in
+  // for a heartbeat this host does not have (the plugin's hook exits while it wakes Claude into a turn). When the page
+  // saw `watching` true AFTER the status came and now sees false, the heartbeat is the newer proof and it says the AI
+  // left: the grace's "not sure", never green. Before this, closing Claude right after a "done" kept "● Claude is
+  // watching" up to HERE_STATUS_MS after the done plus a poll (3 s), i.e. up to ~10 s after Claude was gone in the screen test
+  // (test/studio-ai-presence.browser.mjs step 5, 8 s after the stop), while the server already said `watching: false`.
+  const beatStopped = s.watching === false && s.lastWatching != null && s.statusSeen != null && s.lastWatching >= s.statusSeen;
+  if (s.statusTime != null && s.now - s.statusTime < HERE_STATUS_MS && !beatStopped) return s.phase === 'done' || s.phase === 'failed' ? 'watching' : 'working';
   if (s.agent === 'codex') return 'look';
   if (s.watching === false && s.agent === 'claude' && s.lastWatching != null && s.now - s.lastWatching >= AWAY_AFTER_MS
     && s.now - s.visibleSince >= AWAY_AFTER_MS) return 'away';
@@ -21708,6 +21798,33 @@ function aiNameKey(agent                     )                             {
   return agent === 'claude' ? 'claude' : agent === 'codex' ? 'codex' : 'any';
 }
 
+/**
+ * The presence as a quiet grey dot inside the field (its words in the title and the button's name), not words
+ * (first-screen fix, decided 2026-11-06). WHY: a first-time walk through the editor opened every sample on two notes
+ * over the game — the intro line and, in the field, "Not sure Claude is open · How to open" — and the second one stayed
+ * through picking, the Library and Save. To someone new, "not sure it is open" next to nothing they did reads as
+ * "something is not connected = broken", before they have asked anything. So "unsure" says its words only once the
+ * person starts to ask (text in the field) or has asked: that is when it matters whether the note reaches the AI now.
+ * The other states keep their words: green ones are good news, "away" is news (it was here and left), and Codex's
+ * "look" is the rule to follow.
+ */
+function presenceQuiet(p            , typed         , phase         )          {
+  // Only before anything was asked (phase 'none'): once a note is kept for the AI, the line over the field says so and
+  // "How to open" in the presence words is the thing to press next (save-receipt.ts, the kept-note line).
+  return p === 'unsure' && !typed && phase === 'none';
+}
+
+/**
+ * The i18n key of the presence words (decided 2026-11-06, with presenceQuiet). An AI never seen watching in this page
+ * while this host CAN tell ("watching" false) reads "Claude isn't watching yet": the editor's fact, and "yet" says it
+ * may come. A host that cannot tell, or the grace right after a heartbeat stopped, keeps "Not sure Claude is open"
+ * ("yet" would be wrong once it had been watching).
+ */
+function presenceKey(p            , watching                     , lastWatching               )         {
+  if (p === 'unsure' && watching === false && lastWatching == null) return 'ai.p.notYet';
+  return `ai.p.${p}`;
+}
+
 __def(__exports, "HERE_STATUS_MS", () => HERE_STATUS_MS);
 __def(__exports, "AWAY_AFTER_MS", () => AWAY_AFTER_MS);
 __def(__exports, "aiPresence", () => aiPresence);
@@ -21715,6 +21832,8 @@ __def(__exports, "presenceSure", () => presenceSure);
 __def(__exports, "UNSEEN_MS", () => UNSEEN_MS);
 __def(__exports, "QUIET_WORK_MS", () => QUIET_WORK_MS);
 __def(__exports, "aiNameKey", () => aiNameKey);
+__def(__exports, "presenceQuiet", () => presenceQuiet);
+__def(__exports, "presenceKey", () => presenceKey);
 };
 __defs[44] = function (__exports) {
 'use strict';
@@ -23438,6 +23557,19 @@ function isTryPause(at        , wanted        )          {
   return Number.isFinite(at) && Number.isFinite(wanted) && Math.abs(at - wanted) <= 0.25;
 }
 
+/**
+ * Decide on this pause now, or wait for the game's exact held second (pure; fixed 2026-11-06).
+ * `shot.exact` false = the editor's own estimate (the clock it last heard, run on to now). WHY wait: the game page
+ * takes the paused picture first and tells the held second right after (bridge play-ask.ts pauseNow → tellTime), so
+ * on a busy machine the estimate ran on by the picture's time — 0.5 s at 20× slower, where the Try's own pause read as
+ * "someone else's" and the Before / After panel, closed by the Try's reload, never came back. An estimate only runs
+ * late (the clock is run on, never back), so a match on it is a match; no match waits for the exact second.
+ */
+function tryPauseVerdict(shot                                  , wanted        )                         {
+  if (isTryPause(shot.time, wanted)) return 'try';
+  return shot.exact ? 'not' : 'wait';
+}
+
                            
                                        
                                                                                                        
@@ -23569,6 +23701,7 @@ function createMomentCompare()                {
 __def(__exports, "replyActions", () => replyActions);
 __def(__exports, "filesRow", () => filesRow);
 __def(__exports, "isTryPause", () => isTryPause);
+__def(__exports, "tryPauseVerdict", () => tryPauseVerdict);
 __def(__exports, "DRIFT_SAY_S", () => DRIFT_SAY_S);
 __def(__exports, "tryWords", () => tryWords);
 __def(__exports, "createMomentCompare", () => createMomentCompare);
@@ -24179,6 +24312,39 @@ function recClock(ms        )         {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 }
 
+// ----- studio-clip-3 (decided 2026-11-06): what is going on while it records, and fewer steps to X -----
+
+/**
+ * The time LEFT while recording (ms), for "0:05 left · Stop" and a phone's round ● ("5"). WHY left, not so far: the
+ * person pressed for "the next 8 s"; what they want to know is when it ends (stages 1–2 counted up: "0:03 · Stop").
+ * `stillMs`: a Before / After's still part, encoded before `started`
+ * (it is in the clip's length, not in the time the person waits).
+ */
+function recLeftMs(o                                                          )         {
+  return Math.max(0, o.totalMs - (o.stillMs ?? 0) - Math.max(0, o.elapsedMs));
+}
+
+/** "0:05" for the time left: whole seconds rounded UP (it says 0:01 until the very end, never 0:00 while recording). */
+function leftClock(ms        )         {
+  const s = Math.max(0, Math.ceil(ms / 1000));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+}
+
+/** Holding ● this long opens Clip options (a phone's ● has no ⌄: the bar has no room). Shorter than the system's own
+ * long-press menu on most phones, longer than a tap. */
+const CLIP_HOLD_MS = 500;
+
+/**
+ * X's compose page with the post written (its public "intent" address; nothing is sent until the person posts there).
+ * WHY: from the saved line to a post on X was Copy post → open X → paste → Show in Finder → drag; Post on X… does the
+ * first three in one press (and shows the clip in its folder on the computer), so it is one press and one drag. The
+ * video itself cannot go in the address: X takes it only from the person (a drag, or the phone's Share…).
+ */
+const X_COMPOSE = 'https://x.com/intent/post';
+function xComposeUrl(text        )         {
+  return `${X_COMPOSE}?text=${encodeURIComponent(text)}`;
+}
+
 __def(__exports, "CLIP_LENGTHS", () => CLIP_LENGTHS);
 __def(__exports, "CLIP_DEFAULT_LENGTH", () => CLIP_DEFAULT_LENGTH);
 __def(__exports, "CLIP_FPS", () => CLIP_FPS);
@@ -24214,6 +24380,11 @@ __def(__exports, "beforeAfterPost", () => beforeAfterPost);
 __def(__exports, "withAddress", () => withAddress);
 __def(__exports, "checkRewrite", () => checkRewrite);
 __def(__exports, "recClock", () => recClock);
+__def(__exports, "recLeftMs", () => recLeftMs);
+__def(__exports, "leftClock", () => leftClock);
+__def(__exports, "CLIP_HOLD_MS", () => CLIP_HOLD_MS);
+__def(__exports, "X_COMPOSE", () => X_COMPOSE);
+__def(__exports, "xComposeUrl", () => xComposeUrl);
 };
 __defs[58] = function (__exports) {
 'use strict';
@@ -26601,6 +26772,12 @@ const { icon, setButton } = __require(21);
                                  
      
                                   
+     
+                                                                                                                     
+                                                                                                                          
+                                                       
+     
+                     
  
 
 function motionCardRow(d                )                {
@@ -26614,7 +26791,19 @@ function motionCardRow(d                )                {
   // menu): the MotionCardDeps keep those for the timeline-wire caller, the card no longer uses them.
   const cs = d.clips();
   const c = d.shown() ?? cs[0];
-  if (!c) return [];
+  if (!c) {
+    // No motion yet (decided 2026-11-06, a first-run walk of v0.1.82): the card said nothing about motion, and the only way
+    // in was the strip's unnamed Motion picture at its far end — the walker wanted the lighthouse to bob, read the card
+    // (Position, Angle, Size) and found no way to. studio-card-doors had dropped this row ("an empty 'Motion: none' row
+    // would be one more thing to read and nothing to do there"); it comes back WITH the thing to do: one press, the same
+    // "Make a motion" as the strip's menu (the strip's button stays: it is the way with a saved motion too).
+    if (!d.startMake) return [];
+    const none = h('span', { class: 'motion-none', text: d.t('motion.none') });
+    // Its own part names: `motion-row` / `motion-make` mean "the row of a motion" / the old card buttons to the screen tests.
+    const make = h('button', { type: 'button', class: 'motion-make', title: d.t('motion.makeTip'), dataset: { action: 'motion-none-make', part: 'motion-none-make' },
+      onclick: () => d.startMake () }, d.t('tl.make'));
+    return [h('span', { class: 'f-l', text: d.t('motion.label') }), h('div', { class: 'f-cells motion-cells', dataset: { part: 'motion-none' } }, none, make)];
+  }
   const label = h('span', { class: 'f-l', text: d.t('motion.label') });
   // fix-0140 (J1 of the first-run check, 2026-10-23 — the same kind as a hands-on try's "I can't read anything in this
   // UI"): the row was "lighthouse's motion · When game starts", and on a 1280 card it ended "lighthouse's motion ·
@@ -28048,6 +28237,11 @@ function createTimeline(d              , makePanel                             =
     },
     fold: () => setOpen(false),
     done: () => void endMaking(),
+    // The line's "+ Make a motion" (an object with no motion on the plate; decided 2026-11-06): as the strip's Motion menu.
+    make: () => {
+      const k = focus();
+      if (k) (make(k), d.changed());
+    },
     clip(value) {
       const key = head();
       if (!key) return;
@@ -28374,7 +28568,7 @@ function createTimeline(d              , makePanel                             =
   }
 
   /** Keys meant for the timeline (from the plate itself, or the editor's keys when the plate was the last pressed). */
-  function onKey(e                                                               , onPlate = false)          {
+  function onKey(e                                                                                   , onPlate = false)          {
     if (!shown()) return false;
     const mod = e.ctrl || e.meta;
     const k = e.key.toLowerCase();
@@ -28382,7 +28576,7 @@ function createTimeline(d              , makePanel                             =
     // Making (the line says "Esc to cancel"): Esc ends it — from the game page too (it drops the pick there as well).
     if (k === 'escape' && !mod && making) return endMaking();
     if (k === 'k' && !mod) return keyNow();
-    if (!mine) return false;
+    if (!mine) return escClose(e);
     if (k === ' ' && !mod) return (playing ? stop() : play()), true;
     if ((k === 'delete' || k === 'backspace') && !mod) return deletePicked();
     if (mod && k === 'c' && sel.length) {
@@ -28416,7 +28610,19 @@ function createTimeline(d              , makePanel                             =
       panel.render();
       return true;
     }
-    return false;
+    return escClose(e);
+  }
+  /**
+   * Esc with nothing of the plate's own to cancel (making, picked points — above) folds the timeline away (decided
+   * 2026-11-06, a first-run walk of v0.1.82: Esc did nothing to it, the person thought it was closed, picked the
+   * lighthouse and read the timeline's line about it). From the game page the bridge has already used that Esc to put the
+   * tool down / drop the pick: then the timeline folds only once nothing is picked, so one Esc never does two things.
+   */
+  function escClose(e                                                                   )          {
+    if (e.key.toLowerCase() !== 'escape' || e.ctrl || e.meta || !open) return false;
+    if (e.fromGame && d.picked()) return false;
+    setOpen(false);
+    return true;
   }
 
   return {
@@ -28640,7 +28846,7 @@ function createTimeline(d              , makePanel                             =
      * The card's Motion row: this object's motions (each with when it starts), the Library's other motions to attach
      * (studio-motion-triggers), detach the shown one; and the button that opens the timeline.
      */
-    cardRow(key        , more                                                   = {})                {
+    cardRow(key        , more                                                                 = {})                {
       return motionCardRow({
         ...more,
         // studio-motion-delete: the row's menu deletes the Library motion (every object, one undo step) and asks first
@@ -28776,6 +28982,14 @@ const { icon } = __require(21);
                
                                                                                                                      
                 
+     
+                                                                                                                       
+                                                                                                                             
+                                                                                                                           
+                                                                                                                       
+                                                                                                                            
+     
+                 
          
 
 function noteOf(s        )       {
@@ -28783,7 +28997,7 @@ function noteOf(s        )       {
     ? { where: 'here'         , motion: s.here, more: 0 }
     : s.others[0] ? { where: 'elsewhere'         , motion: s.others[0], more: s.others.length - 1 } : null;
   if (!change && !s.rec) return null;
-  return { change, rec: s.rec, rule: !!s.here?.canRule && !s.rec };
+  return { change, rec: s.rec, rule: !!s.here?.canRule && !s.rec, brief: s.rec && change?.where === 'here' };
 }
 
 /**
@@ -28830,8 +29044,8 @@ function createMotionNote(d                ) {
     const t = d.t;
     const parts         = [];
     const c = n.change;
-    el.dataset.kind = c ? c.where : 'rec';
-    if (c) {
+    el.dataset.kind = c && !n.brief ? c.where : 'rec';
+    if (c && !n.brief) {
       // The Save's orange (shell.css --you): the dot at the start, and "Save" in "Save puts it in the game".
       parts.push(h('span', { class: 'mn-lead', 'aria-hidden': 'true' }));
       if (c.where === 'here') {
@@ -28848,13 +29062,14 @@ function createMotionNote(d                ) {
       parts.push(h('span', { class: 'mn-save', dataset: { part: 'motion-note-save' } }, a, h('b', { class: 'mn-save-w', text: t('btn.save') }), b));
     }
     if (n.rec) {
-      if (c) parts.push(dot());
+      if (c && !n.brief) parts.push(dot());
       // "Rec motion on · moving it adds a point · Turn off" (studio-motion-fix △5, decided 2026-11-05). It was "● Recording ·
       // press ● when you're done" in the recorder's red: Rec motion is on from the start, so opening the timeline showed
       // a recording nobody had started, and which ● ended it was not clear. Now the plain fact, what a move does, and the
       // way out in words (the same button: Rec motion off).
+      // Brief (above): "moving it adds a point" is the timeline line's "Keep moving to add a second" then.
       parts.push(h('span', { class: 'mn-rec', dataset: { part: 'motion-note-rec' } }, t('mnext2.rec')), dot(),
-        h('span', { class: 'mn-rec-end', text: t('mnext2.recEnd') }), dot(),
+        ...(n.brief ? [] : [h('span', { class: 'mn-rec-end', text: t('mnext2.recEnd') }), dot()]),
         h('button', { type: 'button', class: 'mn-rec-off', title: t('mnext2.recOffTip'), dataset: { action: 'motion-note-rec-off', part: 'motion-note-rec-off' }, onclick: () => d.recOff() },
           t('mnext2.recOff')));
     }
@@ -35781,7 +35996,7 @@ __defs[100] = function (__exports) {
 //
 // The flow (one press):
 //   ● Clip → Play first if in Edit (a paused game resumes) → the next 8 s (6 / 8 / 12 in ⌄) are recorded: the button is red
-//   "0:03 · Stop", the game has a red frame (only what is inside it is in the clip) and a thin bar of the time left. A
+//   "0:05 left · Stop" (studio-clip-3; it counted up before), the game has a red frame (only what is inside it is in the clip) and a thin bar of the time left. A
 //   second press stops early (one more second for the mark, cut at the press: play-clip.ts). Then the line, where the
 //   AI's line is:
 //     row 1: ✓ Clip saved · neon-run-clip-1.mp4 / 8 s · Wide 1280×720 · Movies › KUMODeck · Show in Finder · Remove mark · ✕
@@ -35796,6 +36011,15 @@ __defs[100] = function (__exports) {
 //     per the mark) before it replaces the post. Not there when no AI is connected (the web demo, nobody watching).
 //   - A phone: Share… (the system's share sheet with the MP4, Web Share) instead of Show in Finder — the MP4 is on the
 //     computer, the person is on the phone; a phone that cannot share files gets Save (a download) instead.
+// studio-clip-3 (decided 2026-11-06, the first things a person meets after the announcement):
+//   - While recording the button says the time LEFT ("0:05 left · Stop"), then "Ending…" after Stop (the mark's second),
+//     "Saving…" while the MP4 is written; a phone's round ● shows the seconds left ("5") instead of a bare dot.
+//   - A phone's ● has no ⌄ (no room in the bar): holding ● (or a right-click anywhere) opens Clip options, and the saved
+//     line's "8 s · Tall 720×1280 ⌄" opens them too, for the next clip — the same words as ⌄ on a computer.
+//   - Post on X… (computer): X's compose page with the post written, and the clip shown in its folder — one press and
+//     one drag, where it was Copy post, open X, paste, Show in Finder, drag.
+//   - WebGPU / a picture from another site: the line says what to do next, with "✦ Ask Claude" to put the request in
+//     the field (not sent: the person sends it).
 // WHY no key (⌘K lists it instead): while playing, the keys are the game's (keymap.ts); a letter would fight its controls.
 // WHY the next seconds, not the last ones: recording all through ▶ Play costs heat and battery, and a clip that only
 // starts on a press never records what the person did not mean to show.
@@ -35803,7 +36027,7 @@ __defs[100] = function (__exports) {
 const { h } = __require(16);
 const { icon } = __require(21);
                                                    
-const { BA_AFTER_SECONDS, BA_BEFORE_MS, BA_STILL_FPS, BA_WIPE_MS, CLIP_BITRATE, CLIP_CODEC, CLIP_FPS, CLIP_LENGTHS, CLIP_MARK_LINES, CLIP_SHAPES, X_LIMIT, baWords, beforeAfterPost, beforeAfterStem, checkRewrite, clipShapeFor, clipSize, clipStem, downloadName, postText, recClock, withAddress, xLength } = __require(57);
+const { BA_AFTER_SECONDS, BA_BEFORE_MS, BA_STILL_FPS, BA_WIPE_MS, CLIP_BITRATE, CLIP_CODEC, CLIP_FPS, CLIP_HOLD_MS, CLIP_LENGTHS, CLIP_MARK_LINES, CLIP_SHAPES, X_LIMIT, baWords, beforeAfterPost, beforeAfterStem, checkRewrite, clipShapeFor, clipSize, clipStem, downloadName, leftClock, postText, recLeftMs, withAddress, xComposeUrl, xLength } = __require(57);
 const { muxMp4 } = __require(99);
 
 /** What ✦ Rewrite tells the AI with the post (StudioRequestInput.clip). */
@@ -35828,7 +36052,8 @@ const { muxMp4 } = __require(99);
                      
                                
                                                  
-                                         
+                                                                                                                          
+                           
                                                                                                  
                                                     
                                                                               
@@ -35879,6 +36104,11 @@ function createClip(d          ) {
   let state            = 'idle';
   let id = '';
   let startedAt = 0;
+  /** Stop was pressed: the clip runs one second more (the mark), the button says "Ending…". */
+  let stopping = false;
+  /** The clip's whole length (ms) and its still part (a Before / After's 2 s, encoded before `started`). */
+  let lengthMs = 0;
+  let stillMs = 0;
   let clock                    ;
   let total = 0;
   let wanted            = d.prefs();
@@ -35897,16 +36127,74 @@ function createClip(d          ) {
 
   // ----- the button: ● Clip | ⌄ (one capsule, like ▶ Play ⌄) -----
   const label = h('span', { class: 'clip-label' });
-  const btn = h('button', { type: 'button', class: 'clip-btn', dataset: { action: 'clip', part: 'clip' }, onclick: (e            ) => void press(e.timeStamp) },
-    h('span', { class: 'rec-dot', 'aria-hidden': 'true' }), label);
-  const more = h('button', { type: 'button', class: 'clip-more', dataset: { action: 'clip-more', part: 'clip-more' }, 'aria-haspopup': 'menu', onclick: () => openMenu() });
-  more.append(icon('chevronDown'));
+  // A phone's round ● while recording: the whole seconds left ("5"), where the computer's button has its words.
+  const leftNum = h('span', { class: 'clip-left', 'aria-hidden': 'true', dataset: { part: 'clip-left' } });
+  const btn = h('button', { type: 'button', class: 'clip-btn', dataset: { action: 'clip', part: 'clip' }, onclick: (e            ) => {
+    // The press that opened Clip options by holding is not also a ● Clip.
+    if (held) return void (held = false);
+    void press(e.timeStamp);
+  } }, h('span', { class: 'rec-dot', 'aria-hidden': 'true' }), leftNum, label);
+  const more = h('button', { type: 'button', class: 'clip-more', dataset: { action: 'clip-more', part: 'clip-more' }, 'aria-haspopup': 'menu', onclick: () => openMenu(more) });
+  // Holding ● opens Clip options (studio-clip-3): a phone has no ⌄. Opened when the finger LIFTS — WHY: Chrome's own
+  // long-press sends a contextmenu while the finger is still down, and with the menu already open that landed on the
+  // menu's outside catcher and closed it at once (the phone screen test). A timer of our own too, not only contextmenu:
+  // iOS Safari sends none for a held button. A right-click (contextmenu with no finger down) opens it at once.
+  let held = false;
+  let pressing = false;
+  let holdTimer = 0;
+  btn.addEventListener('pointerdown', (e              ) => {
+    held = false;
+    window.clearTimeout(holdTimer);
+    if (state !== 'idle' || e.button > 0) return;
+    pressing = true;
+    holdTimer = window.setTimeout(() => (held = true), CLIP_HOLD_MS);
+  });
+  const lift = () => {
+    window.clearTimeout(holdTimer);
+    if (!pressing) return;
+    pressing = false;
+    // After the click this lift makes (which `held` swallows), so the menu is not closed by it.
+    if (held) window.setTimeout(() => state === 'idle' && openMenu(btn), 0);
+  };
+  btn.addEventListener('pointerup', lift);
+  btn.addEventListener('pointercancel', lift);
+  btn.addEventListener('contextmenu', (e       ) => {
+    e.preventDefault();
+    if (pressing) held = true;
+    else if (state === 'idle') openMenu(btn);
+  });
   const el = h('div', { class: 'clip-split', dataset: { part: 'clip-split' } }, btn, more);
   // The time left, a thin bar under the game's frame while recording (main.ts puts it in the stage).
   const bar = h('div', { class: 'clip-time', 'aria-hidden': 'true', dataset: { part: 'clip-time' } }, h('span'));
 
   // ----- the line when it is saved (main.ts puts it where the AI's line is) -----
   const line = h('div', { class: 'clip-line', role: 'status', 'aria-live': 'polite', hidden: true, dataset: { part: 'clip-line' } });
+  // The clip's own one-line notes (a refusal, "X opened…", "Mark removed…") in the line's place on the stage, under the
+  // saved rows when there are some (studio-clip-3, decided 2026-11-06). WHY not the editor's toast: it lives in the dock
+  // at the foot, which is put away while the game plays — and a clip is made while playing, so its refusals ("this game
+  // draws with WebGPU") and every note after a clip were never seen (found by the screen test of a refusal).
+  const note = h('div', { class: 'clip-row clip-note', hidden: true, dataset: { part: 'clip-note' } });
+  let noteTimer = 0;
+  function say(text        , ms = 6000, actions                                        ) {
+    window.clearTimeout(noteTimer);
+    const acts = (actions ?? []).map((a) => h('button', { type: 'button', class: `link${a.label.startsWith('✦') ? ' spark' : ''}`, dataset: { action: 'clip-note-act' },
+      text: a.label, onclick: () => (hideNote(), a.run()) }));
+    note.replaceChildren(h('span', { class: 'clip-note-text', text }), ...acts,
+      // Alone (no saved rows above it): its own ✕.
+      ...(saved && !line.hidden ? [] : [h('button', { type: 'button', class: 'icon-only link clip-x', dataset: { action: 'clip-note-close' }, title: t('clip.close'),
+        'aria-label': t('clip.close'), onclick: () => hideNote() }, icon('close'))]));
+    note.hidden = false;
+    if (!(saved && !line.hidden)) line.replaceChildren(note);
+    else if (note.parentElement !== line) line.append(note);
+    line.hidden = false;
+    noteTimer = window.setTimeout(hideNote, ms);
+  }
+  function hideNote() {
+    window.clearTimeout(noteTimer);
+    note.hidden = true;
+    // The note alone was the line: put it away too.
+    if (!line.querySelector('.clip-row:not(.clip-note)')) line.hidden = true;
+  }
 
   function setState(s           ) {
     state = s;
@@ -35914,20 +36202,27 @@ function createClip(d          ) {
     render();
   }
 
+  /** The time left (ms): the whole length while starting, then counted down from `started`. */
+  const left = () => recLeftMs({ totalMs: lengthMs, stillMs, elapsedMs: state === 'rec' ? performance.now() - startedAt : 0 });
+
   function render() {
     const recording = state === 'rec' || state === 'starting';
     btn.classList.toggle('on', recording);
+    btn.classList.toggle('saving', state === 'saving');
     btn.disabled = state === 'saving';
-    more.hidden = recording;
-    label.textContent = recording ? t('clip.stop', { t: recClock(state === 'rec' ? performance.now() - startedAt : 0) }) : t('clip.btn');
-    btn.title = recording ? t('clip.stopTip') : t('clip.tip', { s: wanted.seconds });
-    btn.setAttribute('aria-label', btn.title);
+    more.hidden = recording || state === 'saving';
+    const ms = left();
+    label.textContent = state === 'saving' ? t('clip.saving') : recording ? (stopping ? t('clip.ending') : t('clip.stop', { t: leftClock(ms) })) : t('clip.btn');
+    leftNum.textContent = recording && !stopping ? String(Math.ceil(ms / 1000)) : '';
+    btn.title = recording ? t('clip.stopTip') : booted && d.phone() ? t('clip.holdTip', { s: wanted.seconds }) : t('clip.tip', { s: wanted.seconds });
+    btn.setAttribute('aria-label', recording ? `${label.textContent} · ${t('clip.stopTip')}` : btn.title);
     more.title = t('clip.more');
     more.setAttribute('aria-label', t('clip.more'));
     bar.hidden = !recording;
   }
 
-  function openMenu() {
+  /** Clip options (⌄, holding ●, the saved line's shape), under `at`. */
+  function openMenu(at             ) {
     const p = d.prefs();
     const dir = d.host.clips ? t(placeKey(navigator.platform)) : t('clip.dir.downloads');
     const now = clipShapeFor(p, d.phone());
@@ -35943,7 +36238,7 @@ function createClip(d          ) {
       { id: 'clip-mark', label: t('clip.mark'), checked: p.mark, run: () => (d.setPrefs({ ...d.prefs(), mark: !d.prefs().mark }), (wanted = d.prefs())) },
       { id: 'clip-words', label: t('clip.words'), checked: p.words, run: () => (d.setPrefs({ ...d.prefs(), words: !d.prefs().words }), (wanted = d.prefs())) },
       { sep: true }, { note: `${t('clip.saveTo', { dir })} ${t('clip.local')}` });
-    d.menu(more, rows);
+    d.menu(at, rows);
   }
 
   /**
@@ -35972,11 +36267,13 @@ function createClip(d          ) {
       // late the busy game page reads it.
       const at = typeof pressedAt === 'number' && pressedAt > 0 && pressedAt <= performance.now() ? pressedAt : performance.now();
       d.post({ type: 'studio:clip/stop', id, at: performance.timeOrigin + at });
+      stopping = true;
+      render();
       return;
     }
     if (state !== 'idle') return;
     if (typeof (window                              ).VideoEncoder === 'undefined') {
-      d.toast(t('clip.noEncoder'), 7000);
+      say(t('clip.noEncoder'), 7000);
       return;
     }
     wanted = d.prefs();
@@ -35991,6 +36288,9 @@ function createClip(d          ) {
     if (shape === 'tall') await settle();
     if (state !== 'starting') return;
     reset();
+    lengthMs = wanted.seconds * 1000;
+    stillMs = 0;
+    render();
     const { w, h: hh } = clipSize(shape);
     d.post({ type: 'studio:clip/start', id, seconds: wanted.seconds, fps: CLIP_FPS, w, h: hh, codec: CLIP_CODEC, bitrate: CLIP_BITRATE,
       mark: wanted.mark, lines: [...CLIP_MARK_LINES] });
@@ -36004,7 +36304,7 @@ function createClip(d          ) {
   async function beforeAfter(o                  ) {
     if (state !== 'idle' || !d.playing()) return;
     if (typeof (window                              ).VideoEncoder === 'undefined') {
-      d.toast(t('clip.noEncoder'), 7000);
+      say(t('clip.noEncoder'), 7000);
       return;
     }
     wanted = d.prefs();
@@ -36017,12 +36317,15 @@ function createClip(d          ) {
     } catch (e) {
       ba = null;
       setState('idle');
-      d.toast(t('clip.failed', { msg: (e         ).message }), 6000);
+      say(t('clip.failed', { msg: (e         ).message }), 6000);
       return;
     }
     if (shape === 'tall') await settle();
     if (state !== 'starting') return;
     reset();
+    lengthMs = BA_BEFORE_MS + BA_AFTER_SECONDS * 1000;
+    stillMs = BA_BEFORE_MS;
+    render();
     const { w, h: hh } = clipSize(shape);
     const words = wanted.words ? baWords(o.asked) : '';
     d.post({ type: 'studio:clip/start', id, seconds: BA_BEFORE_MS / 1000 + BA_AFTER_SECONDS, fps: CLIP_FPS, w, h: hh, codec: CLIP_CODEC, bitrate: CLIP_BITRATE,
@@ -36036,7 +36339,7 @@ function createClip(d          ) {
   /** Nothing back from the game page (an old bridge, a page that went): give up after a while. */
   function waitStarted(ms        ) {
     clock = window.setTimeout(() => {
-      if (state === 'starting') (setState('idle'), d.toast(t('clip.failed', { msg: 'no answer from the game' }), 6000));
+      if (state === 'starting') (setState('idle'), say(t('clip.failed', { msg: 'no answer from the game' }), 6000));
     }, ms);
   }
 
@@ -36049,17 +36352,19 @@ function createClip(d          ) {
       case 'studio:clip/started':
         window.clearTimeout(clock);
         total = m.total;
+        if (total > 0) lengthMs = total;
         startedAt = performance.now();
+        stopping = false;
         setState('rec');
         // A Before / After: the Try's paused moment goes on now (its still part is in the clip already).
         if (ba && d.paused()) d.resume();
         clock = window.setInterval(() => {
-          label.textContent = t('clip.stop', { t: recClock(performance.now() - startedAt) });
+          render();
           if (performance.now() - heard > SILENT_MS) {
             window.clearInterval(clock);
             id = '';
             setState('idle');
-            d.toast(t('clip.failed', { msg: 'the game page went' }), 6000);
+            say(t('clip.failed', { msg: 'the game page went' }), 6000);
           }
         }, 250);
         (bar.firstElementChild               ).style.width = '0%';
@@ -36079,25 +36384,31 @@ function createClip(d          ) {
         window.clearInterval(clock);
         void finish(m.seconds, m.markAt);
         break;
-      case 'studio:clip/error':
+      case 'studio:clip/error': {
         window.clearInterval(clock);
         window.clearTimeout(clock);
+        stopping = false;
         setState('idle');
-        d.toast(refusal(m.why, m.msg), 8000);
+        const r = refusal(m.why, m.msg);
+        const ask = r.ask && d.ask && !d.host.offline ? d.ask : null;
+        say(r.text, ask ? 12000 : 9000, ask ? [{ label: t('clip.askAi'), run: () => ask(r.ask ) }] : undefined);
         break;
+      }
     }
     return true;
   }
 
-  function refusal(why             , msg         ) {
-    if (why === 'webgpu') return t('clip.webgpu');
-    if (why === 'tainted') return t('clip.tainted');
-    if (why === 'no-encoder') return t('clip.noEncoder');
-    if (why === 'nothing') return t('clip.nothing');
-    return t('clip.failed', { msg: msg || '?' });
+  /** The refusal's line and, where the AI can fix the game, the request ✦ Ask puts in the field (studio-clip-3). */
+  function refusal(why             , msg         )                                 {
+    if (why === 'webgpu') return { text: t('clip.webgpu'), ask: t('clip.askWebgpu') };
+    if (why === 'tainted') return { text: t('clip.tainted'), ask: t('clip.askTainted') };
+    if (why === 'no-encoder') return { text: t('clip.noEncoder') };
+    if (why === 'nothing') return { text: t('clip.nothing') };
+    return { text: t('clip.failed', { msg: msg || '?' }) };
   }
 
   async function finish(length        , markAt        ) {
+    stopping = false;
     setState('saving');
     const seconds = Math.round(length * 10) / 10;
     const { w, h: hh } = clipSize(shape);
@@ -36117,7 +36428,7 @@ function createClip(d          ) {
       }
     } catch (e) {
       setState('idle');
-      d.toast(t('clip.failed', { msg: (e         ).message }), 8000);
+      say(t('clip.failed', { msg: (e         ).message }), 8000);
       return;
     }
     main = [];
@@ -36147,7 +36458,7 @@ function createClip(d          ) {
     }
     const r = await d.host.clips.save(blob, replace ? { replace } : { stem });
     if (!r.ok) {
-      d.toast(t('clip.saveFailed', { msg: r.error }), 8000);
+      say(t('clip.saveFailed', { msg: r.error }), 8000);
       return null;
     }
     return { name: r.name, where: r.where, reveal: r.reveal };
@@ -36182,7 +36493,11 @@ function createClip(d          ) {
     const where = t(`clip.dir.${s.where}`);
     const head = h('div', { class: 'clip-row' },
       h('span', { class: 'clip-head' }, icon('check'), h('strong', { text: t(s.where === 'downloads' ? 'clip.downloaded' : 'clip.saved', { name: s.name }) })),
-      h('span', { class: 'clip-where', text: t('clip.where', { s: s.seconds, shape: t(`clip.shape.${s.shape}`), dir: where }) }));
+      // The shape and length as a button (studio-clip-3): Clip options for the next clip — a phone's way to them (its ●
+      // has no ⌄), and on a computer the place the person is looking at right after a clip.
+      h('button', { type: 'button', class: 'clip-where', dataset: { action: 'clip-options' }, 'aria-haspopup': 'menu', title: t('clip.whereTip'),
+        onclick: (e            ) => openMenu(e.currentTarget               ) },
+      h('span', { text: t('clip.where', { s: s.seconds, shape: t(`clip.shape.${s.shape}`), dir: where }) }), icon('chevronDown')));
     // A phone (stage 2): the clip is on the computer (or a download), the person on the phone — Share… hands the MP4 to
     // the phone's share sheet (X's app is in it); a phone that cannot share files saves it (a download) instead. Show in
     // Finder would open a window on the computer, out of sight.
@@ -36195,25 +36510,30 @@ function createClip(d          ) {
       }
     } else if (s.reveal && d.host.clips) {
       head.append(h('button', { type: 'button', class: 'link', dataset: { action: 'clip-reveal' }, text: t(s.reveal === 'finder' ? 'clip.finder' : 'clip.folder'),
-        onclick: () => void d.host.clips .reveal(s.name).then((r) => !r.ok && d.toast(t('clip.saveFailed', { msg: r.error || '?' }), 6000)) }));
+        onclick: () => void d.host.clips .reveal(s.name).then((r) => !r.ok && say(t('clip.saveFailed', { msg: r.error || '?' }), 6000)) }));
     }
     if (s.other) {
       head.append(h('button', { type: 'button', class: 'link', dataset: { action: 'clip-mark' }, text: t(s.mark ? 'clip.markRemove' : 'clip.markAdd'), onclick: () => void swap() }));
     }
     head.append(h('button', { type: 'button', class: 'icon-only link clip-x', dataset: { action: 'clip-close' }, title: t('clip.close'), 'aria-label': t('clip.close'),
-      onclick: () => ((line.hidden = true), (saved = null)) }, icon('close')));
+      onclick: () => ((line.hidden = true), (saved = null), (note.hidden = true)) }, icon('close')));
     const copyBtn = h('button', { type: 'button', class: 'link', dataset: { action: 'clip-copy' }, text: t('clip.copy'), onclick: () => void copy(s.post, copyBtn) });
     const draft = h('div', { class: 'clip-row clip-post' },
       h('span', { class: 'clip-x-mark', 'aria-hidden': 'true', text: '𝕏' }),
       h('span', { class: 'clip-text', dataset: { part: 'clip-post' }, title: post, text: post }),
-      h('span', { class: `clip-count${n > X_LIMIT ? ' over' : ''}`, dataset: { part: 'clip-count' }, text: t('clip.count', { n }) }),
-      copyBtn);
+      h('span', { class: `clip-count${n > X_LIMIT ? ' over' : ''}`, dataset: { part: 'clip-count' }, text: t('clip.count', { n }) }));
+    // Post on X… (studio-clip-3): a computer only — a phone's Share… hands X's app the video and the post together.
+    if (!d.phone()) {
+      draft.append(h('button', { type: 'button', class: 'link primary', dataset: { action: 'clip-post-x' }, title: t('clip.postXTip', { dir: where }), text: t('clip.postX'),
+        onclick: () => postOnX(s, where) }));
+    }
+    draft.append(copyBtn);
     // ✦ Rewrite (stage 2): only with an AI to ask (the plan: "not shown when no AI is connected").
     if (d.aiReady() || s.rewriting) {
       draft.append(h('button', { type: 'button', class: 'link spark', dataset: { action: 'clip-rewrite' }, disabled: s.rewriting, title: t('clip.rewriteTip'),
         onclick: () => void rewrite() }, icon('spark'), h('span', { text: t(s.rewriting ? 'clip.rewriting' : 'clip.rewrite') })));
     }
-    line.replaceChildren(head, draft);
+    line.replaceChildren(head, draft, note);
     line.hidden = false;
   }
 
@@ -36230,7 +36550,7 @@ function createClip(d          ) {
     d.setPrefs({ ...d.prefs(), mark: next });
     wanted = d.prefs();
     showLine();
-    d.toast(t(next ? 'clip.markOn' : 'clip.markOff'), 5000);
+    say(t(next ? 'clip.markOn' : 'clip.markOff'), 5000);
   }
 
   /** ✦ Rewrite: the AI's version of the post, checked (X's count, the address per the mark) before it is shown. */
@@ -36246,9 +36566,20 @@ function createClip(d          ) {
     if (c.ok) {
       s.post = c.text;
       s.rewritten = true;
-      d.toast(t('clip.rewritten'), 4000);
-    } else d.toast(t(reply == null ? 'clip.rewriteNone' : c.why === 'long' ? 'clip.rewriteLong' : 'clip.rewriteEmpty', { n: c.n }), 7000);
+      say(t('clip.rewritten'), 4000);
+    } else say(t(reply == null ? 'clip.rewriteNone' : c.why === 'long' ? 'clip.rewriteLong' : 'clip.rewriteEmpty', { n: c.n }), 7000);
     showLine();
+  }
+
+  /**
+   * Post on X…: X's compose page in a new tab with the post written (the press itself opens it: a browser lets a page
+   * open a tab only from a click), and the clip shown in its folder to drag in. Nothing is sent from here: X shows the
+   * post and the person posts it.
+   */
+  function postOnX(s       , where        ) {
+    window.open(xComposeUrl(s.post), '_blank', 'noopener');
+    if (s.reveal && d.host.clips) void d.host.clips.reveal(s.name).catch(() => null);
+    say(t('clip.postXOpened', { dir: where }), 8000);
   }
 
   async function share(s       ) {
@@ -36256,7 +36587,7 @@ function createClip(d          ) {
       await navigator.share({ files: [asFile(s)], text: s.post });
     } catch (e) {
       // Closed by the person (AbortError): nothing to say. Anything else: the one line, and they can Save instead.
-      if ((e         )?.name !== 'AbortError') d.toast(t('clip.shareFailed', { msg: (e         )?.message || '?' }), 6000);
+      if ((e         )?.name !== 'AbortError') say(t('clip.shareFailed', { msg: (e         )?.message || '?' }), 6000);
     }
   }
 
@@ -36285,7 +36616,11 @@ function createClip(d          ) {
   }
 
   let wasReady = false;
+  // `booted`: the first render runs while the editor is still being built (main.ts's phone() is not there yet), so the
+  // phone's words come one microtask later.
+  let booted = false;
   render();
+  queueMicrotask(() => ((booted = true), render()));
   return {
     el,
     bar,
@@ -36361,7 +36696,7 @@ const { statusCovers } = __require(41);
 const { handsFoldEntry } = __require(33);
                                                
 const { aiBusy, aiPhase, moreIn, reloadDecision } = __require(42);
-const { aiNameKey, aiPresence, presenceSure, QUIET_WORK_MS, UNSEEN_MS } = __require(43);
+const { aiNameKey, aiPresence, presenceKey, presenceQuiet, presenceSure, QUIET_WORK_MS, UNSEEN_MS } = __require(43);
 const { bounces, saveLoud } = __require(44);
 const { askView: questionView } = __require(45);
 const { playLine, playWords } = __require(46);
@@ -36371,7 +36706,7 @@ const { askFieldShown, askPhShort, createMomentShot, momentAskOffline, momentFoc
 const { createMomentValues, momentNumber, unitText } = __require(51);
 const { createMomentMarks, markedShot } = __require(52);
 const { createMomentGets, getsRows, orderMarked } = __require(53);
-const { createMomentCompare, filesRow, isTryPause, replyActions, tryWords } = __require(54);
+const { createMomentCompare, filesRow, replyActions, tryPauseVerdict, tryWords } = __require(54);
 const { CHECKPOINTS_LISTED, checkpointsOf, createCheckpointNote, createCheckpointPop, defaultCheckpointName, reloadCheckpoint, smallShot } = __require(55);
 const { LINE_FADE_MS, LINE_GRACE_MS, lineFades, lineKey, lineStayMs } = __require(56);
 const { renderSettings } = __require(59);
@@ -36836,6 +37171,8 @@ function start(host            ) {
   // The "done" status the person reloaded for: its line then shows what changed instead of "Reload".
   let aiReloadFor                = null;
   let aiTime                = null;
+  // When this page first read the status with that aiTime (page ms): ai-presence.ts statusSeen (decided 2026-11-06).
+  let aiTimeSeen                = null;
   const openedAt = Date.now();
   // AI feel (2026-10-16, ai-flow.ts). `aiWatching`: is an AI's watch running
   // right now (`studio.mjs --watch`; undefined = this host cannot tell, then
@@ -36853,6 +37190,8 @@ function start(host            ) {
   let visibleSince = Date.now();
   // The presence's line is open (toggleOpenHelp).
   let helpOpen = false;
+  // Whether the ask field had text at the last renderPresence (the quiet presence, decided 2026-11-06).
+  let askHadText = false;
   // Which AI is behind the editor (host.status().agent, which-ai.mjs): the line's "More in Claude" (ai-flow.ts moreIn).
   let aiAgent                     ;
   let aiSeen                    ;
@@ -37128,7 +37467,8 @@ function start(host            ) {
   // Stage 2 (2026-11-05): on a phone too, while playing (shell.css), Tall there until the person chooses; ● Clip Before /
   // After from the paused ask's Before / After panel (openCompare); ✦ Rewrite through clipRewrite.
   const clipper = createClip({
-    t: (k, v) => t(k, v),
+    // The AI by its name in the clip's lines ("Claude can switch it to WebGL"; studio-clip-3): aiVars, then the line's own.
+    t: (k, v) => t(k, { ...aiVars(), ...v }),
     host,
     post: (m) => postGame(m),
     playing: () => playing,
@@ -37144,7 +37484,13 @@ function start(host            ) {
       const mm = ctxMenu.el.getBoundingClientRect();
       ctxMenu.el.style.left = `${Math.max(8, Math.round(r.right - mm.width))}px`;
     },
-    toast: (text, ms) => showToast(text, ms),
+    // ✦ Ask on a refusal (studio-clip-3): the request in the field, not sent. While playing, the game pauses first and
+    // the paused moment's field takes it (momentStart, as words typed over the game do); in Edit, the field at once.
+    ask: (text) => {
+      if (!playing || playPaused) return void focusAsk(text);
+      clipAskDraft = text;
+      postGame({ type: 'studio:play/pause', on: true });
+    },
     changed: (st, shape) => {
       if (st === 'idle') delete app.dataset.clip;
       else app.dataset.clip = st;
@@ -37171,6 +37517,8 @@ function start(host            ) {
    * stays) — never handedOver(), which would start a new turn of the line and drop the last change's Undo.
    */
   const clipAsks = new Set        ();
+  /** ● Clip's ✦ Ask while playing: the request for the field once the game has paused (momentStart), else null. */
+  let clipAskDraft                = null;
   const clipWaits = new Map                                       ();
   async function clipRewrite(text        , ctx                 )                         {
     if (host.offline) return null;
@@ -37451,7 +37799,9 @@ function start(host            ) {
     if (picked && prefsLoaded && !uiPrefs.seen?.includes(INTRO_SEEN)) changeUi({ ...uiPrefs, seen: [...(uiPrefs.seen ?? []), INTRO_SEEN] });
     const intro = !host.offline && prefsLoaded && !uiPrefs.seen?.includes(INTRO_SEEN) && !picked && editing && !playing && tool === 'placement' && page === 'tool';
     if (introLine.hidden === intro) introLine.hidden = !intro;
-    if (intro && introLine.textContent !== t('intro.line')) introLine.textContent = t('intro.line');
+    // {ai}: "Save, and Claude puts it in your code" (decided 2026-11-06) — the person's own AI, "your AI" when unknown.
+    const introText = t('intro.line', aiVars());
+    if (intro && introLine.textContent !== introText) introLine.textContent = introText;
     // The motion's one line follows the pick (studio-motion-next-2): a pick from the game or the list comes through here.
     renderMotionNote();
     // ---- the sheet's tabs (phone / side window, something picked, the bottom not folded) ----
@@ -37482,8 +37832,13 @@ function start(host            ) {
       const it = items.find((i) => i.key === selected);
       return it ? displayName(it, t) : selected || '';
     })();
-    const want                                               = [['scene', t('tool.placement')], ['pick', pickName]];
+    const want                                                           = [['scene', t('tool.placement')], ['pick', pickName]];
     if (hasMotion) want.push(['motion', t('motion.label')]);
+    // The Library from the list sheet (decided 2026-11-06, a first-time walk at 390×844): with something picked, the
+    // Scene tab hides the old Scene | Library switch (fix-0139: "Scene" read twice), which left the Library only in "…"
+    // — the walk never found it. While the list is up (the person is looking for things), the tabs end with "Library".
+    // Only then: with the card or the motion up, three tabs and the picked object's name keep the row.
+    if (on === 'scene') want.push(['library', t('tool.library')]);
     const sig = `${on}|${want.map((w) => w.join(':')).join('|')}|${lang}`;
     if (sheetTabs.dataset.sig === sig) return;
     sheetTabs.dataset.sig = sig;
@@ -37492,7 +37847,8 @@ function start(host            ) {
       onclick: () => pickSheetTab(id) }, h('span', { class: 'label', text: label }))));
   }
   /** A tab pressed: the list (Scene), the card, or the motion's timeline — one at a time. */
-  function pickSheetTab(id                             ) {
+  function pickSheetTab(id                                         ) {
+    if (id === 'library') return switchTool('library');
     sheetOpen = id === 'scene';
     if (id === 'motion') timeline.setOpen(true);
     else if (timeline.isOpen()) timeline.setOpen(false);
@@ -37533,6 +37889,12 @@ function start(host            ) {
   // on 2026-10-17 ("I don't need this", see the caption's comment) and this is not them coming back — one line, no
   // steps, nothing to press. The words were picked for the plan's "decide 1" and kept after a wording check.
   const introLine = h('p', { class: 'intro-line', dataset: { part: 'intro-line' }, hidden: true });
+  // While the game opens (decided 2026-11-06, a first-time walk): the first open of a three.js sample takes 8–9 s (three.js
+  // from the CDN), and the only words on screen were a small grey line at the top of the side list — the middle of the
+  // screen was the game's empty background with a field saying "Not sure Claude is open". Now the same spot as the intro
+  // line says what is happening, with the game's name ("Opening Lantern Cove…"), until the objects are found
+  // (renderStatus). The side list's status line stays (it also carries errors and the adapter's notes).
+  const waitLine = h('p', { class: 'intro-line wait-line', role: 'status', dataset: { part: 'wait-line' }, hidden: true });
   // Phone / side window: the one sheet's tabs — Scene | <the picked object> | Motion (plan step 7; a try in the side window, 10/21: "it's
   // too hard to use from the Claude sidebar — the bottom menu has to be able to be minimised"). Before, the foot was
   // four blocks stacked over the game: the AI's reply, "● Claude is watching", the card and the field (shots
@@ -37545,7 +37907,7 @@ function start(host            ) {
   // web demo, no AI: the first half and what it is). Unfolded, the card says it and this line steps away (one place).
   const momentLine = h('p', { class: 'motion-note moment-line', role: 'status', hidden: true, dataset: { part: 'moment-line' } });
   // studio-motion-next-2: the motion's one line right over the field (after the intro line, which is gone by the first pick).
-  const dock = h('section', { class: 'ask-strip dock' }, caption, cardSlot, h('div', { class: 'palette-slot' }), introLine, motionNote.el, uiMissing.el, presenceRow, momentLine, bar);
+  const dock = h('section', { class: 'ask-strip dock' }, caption, cardSlot, h('div', { class: 'palette-slot' }), waitLine, introLine, motionNote.el, uiMissing.el, presenceRow, momentLine, bar);
   noteReady = true;
   // (introLine over presenceRow: the presence words on a narrow PC bar belong to the field, so they stay on it.)
   // Checkpoints (stage 3; checkpoints.ts): the line when one did not open, at the top of the game; the field under ⚑.
@@ -37731,6 +38093,10 @@ function start(host            ) {
     let top = phone() && !(fold && phone()) && !placementPanel.cardEl.hidden && cardSlot.contains(placementPanel.cardEl) && cardSlot.offsetHeight > 0 ? cardSlot.getBoundingClientRect().top : bar.getBoundingClientRect().top;
     // Plan step 7: the sheet's grip and tabs head the dock's plate over the card / the motion — they cover the game too.
     if (phone() && dock.contains(sheetGrip) && sheetGrip.offsetParent) top = Math.min(top, sheetGrip.getBoundingClientRect().top);
+    // Phone (decided 2026-11-06, a first-time walk at 390×844): the intro / wait line over the field is as wide as the
+    // screen, and the camera's ⌃⌄ in the corner sat on its right end ("…Your AI writes the code."). The line covers the
+    // game too, so the corner's buttons stand over it. (The dock's ResizeObserver sends again when the line comes / goes.)
+    for (const line of [introLine, waitLine]) if (phone() && !line.hidden && line.offsetParent) top = Math.min(top, line.getBoundingClientRect().top);
     if (!dock.hidden && dock.offsetParent) inset.bottom = Math.max(0, Math.round(sr.bottom - top + 8));
     // The phone's list sheet pads its foot by what the bar and the card cover (shell.css --studio-cover):
     // the card's height differs (2D Layer row, the open numbers), so it is measured, not guessed.
@@ -38160,6 +38526,8 @@ function start(host            ) {
       },
       say: (text) => showToast(text),
       undoKey: keyOf('undo', isMac()),
+      // No motion yet and it can have one (the strip's Motion button shows): "Motion  None  + Make a motion" (decided 2026-11-06).
+      ...(motionTarget() === k ? { startMake: () => (timeline.make(k), renderShelf()) } : {}),
     })),
     // The paused moment (pause-edit decision 5): what the game moves or made says "Just for this moment" on its card,
     // with Revert once moved and ✦ appear here for what it made (not in the web demo: no AI); no Copy / Delete.
@@ -38292,15 +38660,17 @@ function start(host            ) {
     changed: () => (renderShelf(), placementPanel.render()),
   });
 
+  /** The object the strip's Motion button is for now (null = no button). A function so the card (above) can ask it too. */
+  function motionTarget()                {
+    if (!editing || playing || dim !== '3d' || editLayer !== 'world' || group.length > 1 || !selected || libraryShown()) return null;
+    return motionable(selected) ? selected : null;
+  }
   // The strip's Motion button (studio-motion-tool, motion-tool.ts): what it shows, and its press — the timeline on the
   // pick's motion, or the small menu (make one by showing it / use a saved one). The same target rule as a drop.
   const motionTool = createMotionTool({
     t,
     send: (m) => send(m),
-    target: () => {
-      if (!editing || playing || dim !== '3d' || editLayer !== 'world' || group.length > 1 || !selected || libraryShown()) return null;
-      return motionable(selected) ? selected : null;
-    },
+    target: () => motionTarget(),
     several: () => editing && !playing && dim === '3d' && editLayer === 'world' && group.length > 1 && !libraryShown() && group.some((k) => motionable(k)),
     motions: (k) => {
       const names = (timeline.motionOf(k)?.clips ?? []).map((c) => c.name);
@@ -38594,6 +38964,12 @@ function start(host            ) {
   });
   // The presence words move inside / above the field as the bar's width changes (renderPresence).
   new ResizeObserver(() => renderPresence()).observe(askSlot);
+  // Typing in the field brings the quiet presence's words back (presenceQuiet, decided 2026-11-06); `input` bubbles from
+  // the field to its form. Only a change between empty and not redraws (renderPresence measures the bar).
+  placementPanel.askEl.addEventListener('input', () => {
+    const has = !!(placementPanel.askEl.querySelector('.ask-input')                           )?.value.trim();
+    if (has !== askHadText) renderPresence();
+  });
   askInput.addEventListener('focus', hideNews);
   new ResizeObserver(() => placeNews()).observe(askInput);
   const palette = createPalette({
@@ -39508,7 +39884,7 @@ function start(host            ) {
 
   /** Is the AI there (ai-presence.ts)? */
   function currentPresence()             {
-    return aiPresence({ now: Date.now(), watching: aiWatching, agent: aiAgent, phase: currentPhase(), statusTime: aiTime, lastWatching, visibleSince });
+    return aiPresence({ now: Date.now(), watching: aiWatching, agent: aiAgent, phase: currentPhase(), statusTime: aiTime, statusSeen: aiTimeSeen, lastWatching, visibleSince });
   }
   /** The AI's name for the words: {ai} / {Ai} (a sentence's start, English) / {ai2} (its second mention). */
   function aiVars()                         {
@@ -39535,14 +39911,20 @@ function start(host            ) {
     const v = aiVars();
     presence.dataset.state = p;
     presence.classList.toggle('sure', presenceSure(p));
-    (presence.querySelector('.p-text')               ).textContent = t(`ai.p.${p}`, v);
+    const words = t(presenceKey(p, aiWatching, lastWatching), v);
+    (presence.querySelector('.p-text')               ).textContent = words;
     // "How to open" only where opening is the thing to do; the green states read alone.
     const how = p === 'away' || p === 'unsure';
     const howEl = presence.querySelector('.p-how')               ;
     howEl.textContent = how ? t('ai.p.how') : '';
     howEl.hidden = !how;
     presence.setAttribute('aria-expanded', helpOpen ? 'true' : 'false');
-    presence.title = t('ai.p.tip');
+    // Quiet until the person starts to ask (ai-presence.ts presenceQuiet, decided 2026-11-06): "Not sure Claude is open"
+    // over a first screen read as broken. Text in the field (an `input` on the form calls this) brings the words back.
+    const typed = !!(placementPanel.askEl.querySelector('.ask-input')                           )?.value.trim();
+    askHadText = typed;
+    const quiet = presenceQuiet(p, typed, currentPhase()) && !helpOpen;
+    presence.title = quiet ? (how ? `${words} · ${t('ai.p.how')}` : words) : t('ai.p.tip');
     // Where: inside the field on a wide bar, on its own line above on a narrow one. offsetWidth 0 = not laid out yet
     // (a hidden bar): leave it where it is.
     // A phone / the side window (plan step 7, 2026-10-23): back inside the field, as ONLY its dot (shell.css; green =
@@ -39561,7 +39943,7 @@ function start(host            ) {
     const chips = [...box.querySelectorAll             ('.ask-chip:not([hidden])')].reduce((a, e) => a + e.offsetWidth, 0);
     if (!presence.classList.contains('dot-only') && w > 0) wordsNarrow = w < presence.offsetWidth + PRESENCE_ROOM + chips;
     const tlOpen = !phone() && app.dataset.timeline === 'open';
-    const dotOnly = phone() || (tlOpen && wordsNarrow);
+    const dotOnly = phone() || quiet || (tlOpen && wordsNarrow);
     const narrow = !dotOnly && wordsNarrow;
     const want = narrow ? presenceRow : box;
     if (presence.parentElement !== want) {
@@ -39569,7 +39951,8 @@ function start(host            ) {
       else presenceRow.append(presence);
     }
     presence.classList.toggle('dot-only', dotOnly);
-    if (dotOnly) presence.setAttribute('aria-label', how ? `${t(`ai.p.${p}`, v)} · ${t('ai.p.how')}` : t(`ai.p.${p}`, v));
+    presence.classList.toggle('quiet', quiet);
+    if (dotOnly) presence.setAttribute('aria-label', how ? `${words} · ${t('ai.p.how')}` : words);
     else presence.removeAttribute('aria-label');
     presenceRow.hidden = !narrow || askSlot.hidden;
     renderOpenHelp(p, v);
@@ -40075,26 +40458,9 @@ function start(host            ) {
     // its word until it was used once.
     app.dataset.markWord = prefsLoaded && !uiPrefs.seen?.includes(MARK_WORD_SEEN) ? 'on' : 'off';
     renderMomentEarlier();
-    // ▶ Try's pause (pause-ask stage 3): the same moment with the new code. The talk, the marks and the asks' ids go on
-    // (the field is the same conversation: "no, more to the left"); the flash says which moment this is; Before / After
-    // gets its After.
-    if (tryRun && tryKeep && isTryPause(momentShotAt.time, tryRun.time)) {
-      const k = tryKeep;
-      momentChat = k.chat;
-      momentTalk = k.talk;
-      for (const id of k.asks) momentAsks.add(id);
-      if (k.marks.length) momentMarks.restore(k.marks);
-      tried = { id: tryRun.id, time: tryRun.time, exact: tryRun.exact, ...(m.ask?.shot ? { after: m.ask.shot } : {}) };
-      const at = clockText(tryRun.time, 2);
-      // fix ✕2 (plan A): a saved moment says what was already out stays where it was; longer words, a little longer.
-      const w = tryWordsOf(tryRun.id, tryRun.exact, m.late ?? 0);
-      tried.late = m.late ?? 0;
-      momentBar.flash(t(w.flash, { t: at, ...(w.name ? { name: w.name } : {}), ...(w.s ? { s: w.s } : {}) }), 'play', w.note ? 9000 : 6000);
-      tryKeep = null;
-      tryRun = null;
-      renderMomentEarlier();
-      if (k.compare) window.setTimeout(() => openCompare(tried .id), 0);
-    }
+    // ▶ Try's pause (pause-ask stage 3): decided now, or once the game's exact held second is heard (tryPaused).
+    tryPending = m;
+    tryPaused();
     // This moment's values: asked at once (the head shows until they come; the game page answers in a frame).
     momentVals = undefined;
     momentConnectAsk = false;
@@ -40112,7 +40478,11 @@ function start(host            ) {
     }
     renderAll(true);
     // Words typed in the ✦ field over the game when it paused: the field at the foot now (the person was about to ask).
+    // ● Clip's ✦ Ask on a refusal (studio-clip-3) paused the game for its request: in the field now.
+    const clipDraft = clipAskDraft;
+    clipAskDraft = null;
     if (m.draft && !host.offline) focusAsk(m.draft);
+    else if (clipDraft && !host.offline) focusAsk(clipDraft);
     // pause-ask stage 1 (README §1): else the cursor goes in the field by itself — the first second after a pause says
     // "say something about THIS frame". Only when it takes nothing from the person (moment-ask.ts momentFocusOk: not on
     // a phone, not over another field or an open sheet). The web demo too: its field is there to try (Q1).
@@ -40124,8 +40494,43 @@ function start(host            ) {
       checkpointDraft(a.intent, a.checkpoint);
     }
   }
+  /**
+   * ▶ Try's pause (pause-ask stage 3): the same moment with the new code. The talk, the marks and the asks' ids go on
+   * (the field is the same conversation: "no, more to the left"); the flash says which moment this is; Before / After
+   * gets its After. Called at the pause (momentStart) and again when the held clock's exact second comes (play/time):
+   * the pause's own time is an estimate until then (moment-try.ts tryPauseVerdict says why; fixed 2026-11-06 — the
+   * Japanese screen test lost its Before / After panel 3 runs in 4 on a busy machine).
+   */
+  function tryPaused() {
+    const m = tryPending;
+    if (!m || !momentShotAt || !playPaused) return;
+    if (!tryRun || !tryKeep) {
+      tryPending = null;
+      return;
+    }
+    const v = tryPauseVerdict(momentShotAt, tryRun.time);
+    if (v === 'wait') return;
+    tryPending = null;
+    if (v === 'not') return;
+    const k = tryKeep;
+    momentChat = k.chat;
+    momentTalk = k.talk;
+    for (const id of k.asks) momentAsks.add(id);
+    if (k.marks.length) momentMarks.restore(k.marks);
+    tried = { id: tryRun.id, time: tryRun.time, exact: tryRun.exact, ...(m.ask?.shot ? { after: m.ask.shot } : {}) };
+    const at = clockText(tryRun.time, 2);
+    // fix ✕2 (plan A): a saved moment says what was already out stays where it was; longer words, a little longer.
+    const w = tryWordsOf(tryRun.id, tryRun.exact, m.late ?? 0);
+    tried.late = m.late ?? 0;
+    momentBar.flash(t(w.flash, { t: at, ...(w.name ? { name: w.name } : {}), ...(w.s ? { s: w.s } : {}) }), 'play', w.note ? 9000 : 6000);
+    tryKeep = null;
+    tryRun = null;
+    renderMomentEarlier();
+    if (k.compare) window.setTimeout(() => openCompare(tried .id), 0);
+  }
   /** play/paused off (Resume, Edit, a new page): the moment's own steps leave ⌘Z (undo.ts dropMoment), its tools go. */
   function momentEnd() {
+    tryPending = null;
     const had = moment || momentWhy.size > 0;
     moment = false;
     momentWhy = new Map();
@@ -40858,6 +41263,7 @@ function start(host            ) {
       if (r) {
         if (!clipReq) {
           aiStatus = r.status;
+          if (r.time !== aiTime) aiTimeSeen = r.time == null ? null : Date.now();
           aiTime = r.time;
         }
         if (r.watching !== undefined) aiWatching = r.watching;
@@ -41246,6 +41652,8 @@ function start(host            ) {
         if (playPaused) {
           const at = shotTimeOnClock(momentShotAt, m);
           if (at !== momentShotAt) (momentShotAt = at, renderMomentShot());
+          // ▶ Try's pause waiting for this exact second (tryPaused): decided now, the restored talk and marks drawn.
+          if (tryPending) (tryPaused(), renderAll(true));
         }
         momentBar.render();
         // A Next frame moved the game on: this moment's values may have changed (pause-edit stage 2).
@@ -41267,6 +41675,13 @@ function start(host            ) {
         break;
       case 'studio:play/answer':
         if (playing && !host.offline) void answerAi(m.text).then((ok) => postGame({ type: 'studio:play/sent', ok }));
+        break;
+      case 'studio:play/escape':
+        // Esc in the game while playing (decided 2026-11-06, a first-run walk: Esc did nothing). Paused, Esc is the
+        // moment's (it puts a tool / the pick down, as in Edit), so only a running game leaves.
+        if (!playing || playPaused) break;
+        if (m.game) showToast(t('play.escGame'), 5000);
+        else void togglePlay();
         break;
       case 'studio:play/reload': {
         // The person chose to see the fix: the game opens again from its new code, still in Play. `from` (stage 3): the
@@ -42065,6 +42480,8 @@ function start(host            ) {
   // `late` (fix △7): the asking run's PlayClock.late at the pause (s), to compare with the Try's new run.
   const askBacks = new Map                                                                                                                         ();
   let tryOpening                                                        = null;
+  /** The Try's pause waiting for the held clock's exact second (tryPaused), else null. */
+  let tryPending                                                                = null;
   let tryRun                                                      = null;
   let tryKeep                                                                                                  = null;
   // `late` (fix △7): the Try page's PlayClock.late at its pause, s.
@@ -42661,6 +43078,12 @@ function start(host            ) {
     // Edit button (it no longer shows a P). The browser-only web demo has no pause (no AI to talk to, host.offline):
     // there P is still Play ⇄ Edit, its only meaning there.
     // The web demo pauses too since pause-edit (decision 12): there the pause and the moment need no AI.
+    // Esc while playing, the focus in the editor page (just after ▶ Play was clicked, say): back to Edit, as from the game
+    // (play/escape above; decided 2026-11-06). Not while paused: there Esc is the moment's.
+    if (!mod && k === 'escape' && !e.shift && playing && !playPaused && !e.fromGame) {
+      void togglePlay();
+      return true;
+    }
     if (!mod && k === 'p' && !e.shift) {
       if (playing) pressPause();
       else void togglePlay();
@@ -42990,6 +43413,14 @@ function start(host            ) {
       if (first) line('note', `${t('check.' + first)} ${t('status.checkFail')}`);
     }
     status.hidden = !status.childNodes.length;
+    // The wait line over the game (waitLine above): until the objects are found, unless the game failed or is playing.
+    const waiting = !itemsSeen && !gameError && !playing && (phase === 'loading' || phase === 'waiting' || phase === 'ready');
+    if (waitLine.hidden === waiting) waitLine.hidden = !waiting;
+    if (waiting) {
+      const slow = phase !== 'loading' && Date.now() - helloAt >= WAIT_SLOW_MS;
+      const text = gameName ? t(slow ? 'status.openingSlow' : 'status.opening', { name: gameName }) : t('status.loading');
+      if (waitLine.textContent !== text) waitLine.textContent = text;
+    }
     app.dataset.items = itemsSeen ? 'seen' : 'waiting';
     // While playing, the side panel steps away (shell.css): play = the game only. In a paused moment it comes back
     // floating over the game (data-moment; pause-edit decision 4: the game's picture keeps its size).

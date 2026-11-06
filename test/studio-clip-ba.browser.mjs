@@ -2,7 +2,7 @@
 // src/shell/moment-try.ts's panel) in a headless browser: the real local server, the built editor,
 // examples/three-neon-boss and the stand-in AI (test/ai-feel/fake-agent.mjs) that moves where the boss comes in.
 //
-//   node test/studio-clip-ba.browser.mjs [--shots <dir>] [--lang en|ja] [--keep <dir>] [--tall]
+//   node test/studio-clip-ba.browser.mjs [--shots <dir>] [--lang en|ja] [--keep <dir>] [--tall] [--slow N]
 //
 // PC 1280×800:
 //   1. ▶ Play until the boss is out, P (paused), ◎ a mark on it, "Bring the boss in from here." + Enter: the stand-in
@@ -37,6 +37,8 @@ const SHOTS = take('--shots') ? resolve(take('--shots')) : null;
 const KEEP = take('--keep') ? resolve(take('--keep')) : null;
 const LANG = take('--lang', 'en');
 const TALL = args.includes('--tall');
+// --slow N: the page's CPU N times slower (DevTools' throttling) — a busy machine, where the Try's pause comes late.
+const SLOW = Number(take('--slow', '0')) || 0;
 const ja = LANG === 'ja';
 if (SHOTS) mkdirSync(SHOTS, { recursive: true });
 if (KEEP) mkdirSync(KEEP, { recursive: true });
@@ -122,7 +124,7 @@ function nudgeBoss(folder, rec) {
 }
 
 async function run() {
-  console.log(`before / after: Neon Run with a boss, PC 1280×800, ${TALL ? 'Tall' : 'Wide'}`);
+  console.log(`before / after: Neon Run with a boss, PC 1280×800, ${TALL ? 'Tall' : 'Wide'}${SLOW > 1 ? `, CPU ${SLOW}× slower` : ''}`);
   const root = mkdtempSync(join(tmpdir(), 'studio-clip-ba-'));
   const clips = mkdtempSync(join(tmpdir(), 'studio-clip-ba-movies-'));
   cpSync(join(PKG, 'examples/three-neon-boss'), root, { recursive: true, filter: (p) => !p.includes('/.studio/') && !p.endsWith('/.studio') });
@@ -140,6 +142,7 @@ async function run() {
     console.log(`  shot ${f}`);
   };
   try {
+    if (SLOW > 1) await page.send('Emulation.setCPUThrottlingRate', { rate: SLOW });
     await page.goto(srv.url);
     await page.waitFor(`document.querySelectorAll('.obj').length > 0 && !!${GW}?.__gameStudio?._debug`, 90000);
     await sleep(1000);
@@ -170,18 +173,11 @@ async function run() {
     await page.waitFor(`!!document.querySelector('[data-part=moment-compare]:not([hidden]) [data-part=compare-before] img')`, 5000);
     const early = await page.eval(`!!document.querySelector('[data-part=moment-compare]:not([hidden]) [data-action=compare-clip]')`);
     // The Try plays again up to the ask's second: slow in software GL. On a timeout, the screen and the editor's state.
-    // Seen 2026-11-05 (the Japanese run, three times; not the English one): the Try held at the ask's second but the
-    // panel had closed — then Before / After is pressed again, as a person would (said in the log).
+    // No pressing again (decided 2026-11-06): the panel closed at the Try's pause 3 runs in 4 in Japanese on a busy
+    // machine, and this test pressed Before / After again for it. The cause was the editor's (it judged the Try's pause
+    // on its estimate of the held second; moment-try.ts tryPauseVerdict); --slow 20 shows it again on any machine.
     const AFTER = `!!document.querySelector('[data-part=moment-compare]:not([hidden]) [data-part=compare-after] img')`;
-    await until(async () => (await page.eval(AFTER)) || ((await page.eval(IN.moment)) && !(await page.eval(`!!document.querySelector('[data-part=moment-compare]:not([hidden])')`))
-      && /Same time|同じ時刻|New code|新しいコード/.test(await page.eval(`document.querySelector('[data-part=play-flash]:not([hidden])')?.textContent || ''`))), 240000, 'the After or the Try held')
-      .catch(() => null);
-    if (!(await page.eval(AFTER)) && !(await page.eval(`!!document.querySelector('[data-part=moment-compare]:not([hidden])')`))) {
-      console.log('  · the panel closed at the Try\'s pause: Before / After pressed again');
-      const again = await j(page, box('[data-action=moment-compare]'));
-      if (again) await page.click(again.x, again.y);
-    }
-    await page.waitFor(AFTER, 60000).catch(async (e) => {
+    await page.waitFor(AFTER, 240000).catch(async (e) => {
       if (SHOTS) writeFileSync(join(SHOTS, `clip-ba-${ja ? 'ja' : 'en'}-timeout.png`), await page.screenshot());
       throw new Error(`${e.message} ${await page.eval(`JSON.stringify({ shell: { ...${SHELL}.dataset }, flash: document.querySelector('[data-part=play-flash]')?.textContent, time: document.querySelector('[data-part=play-time]')?.textContent, line: document.querySelector('.ai-line')?.textContent, toast: [...document.querySelectorAll('.toast.on')].map((t) => t.textContent).join(' ') })`)}`);
     });

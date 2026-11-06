@@ -4,7 +4,7 @@
 // Run: node --experimental-strip-types --no-warnings --test test/moment-try.test.ts
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { filesRow, isTryPause, replyActions, tryWords } from '../src/shell/moment-try.ts';
+import { filesRow, isTryPause, replyActions, tryPauseVerdict, tryWords } from '../src/shell/moment-try.ts';
 import { translate } from '../src/shell/i18n.ts';
 import { normalizeStatus } from '../src/schema/handoff.mjs';
 
@@ -81,4 +81,15 @@ test('the status keeps the files the AI touched (--files): paths inside the game
   const st = normalizeStatus({ state: 'done', note: 'The boss now comes in on the left', files: ['src/boss.js', '/etc/passwd', 'a.js', 'b.js', 'c.js', 'd.js', 'e.js', 'src/boss.js'] });
   assert.deepEqual(st!.files, ['src/boss.js', 'a.js', 'b.js', 'c.js', 'd.js']);
   assert.equal('files' in normalizeStatus({ state: 'done', files: 'src/boss.js' })!, false);
+});
+
+test('the Try\'s pause is judged on the exact held second, not on the editor\'s estimate (fixed 2026-11-06)', () => {
+  // The estimate (the clock last heard, run on) is late by the paused picture's time on a busy machine: 0.52 s seen at
+  // 20× slower. Not the Try's yet: wait for the game's own second (play/time right after the pause).
+  assert.equal(tryPauseVerdict({ time: 6.544, exact: false }, 6.022), 'wait');
+  assert.equal(tryPauseVerdict({ time: 6.022, exact: true }, 6.022), 'try');
+  // An estimate already within a frame or so is a match (it only runs late, never early).
+  assert.equal(tryPauseVerdict({ time: 4.63, exact: false }, 4.557), 'try');
+  // A pause of the person's own (P before a new run got there): no, once the exact second says so.
+  assert.equal(tryPauseVerdict({ time: 2.1, exact: true }, 6.022), 'not');
 });

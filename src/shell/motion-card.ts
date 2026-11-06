@@ -64,6 +64,12 @@ export interface MotionCardDeps {
    * Absent = no AI here: no row.
    */
   toRule?(clip: MotionClip): void;
+  /**
+   * The object can get a motion now (the strip's Motion button would show for it): with no motion yet, the card says
+   * "Motion  None  + Make a motion" and this starts making one, as the Motion menu's "Make a motion". Absent = no row for
+   * an object without a motion (as before 2026-11-06).
+   */
+  startMake?(): void;
 }
 
 export function motionCardRow(d: MotionCardDeps): HTMLElement[] {
@@ -77,7 +83,19 @@ export function motionCardRow(d: MotionCardDeps): HTMLElement[] {
   // menu): the MotionCardDeps keep those for the timeline-wire caller, the card no longer uses them.
   const cs = d.clips();
   const c = d.shown() ?? cs[0];
-  if (!c) return [];
+  if (!c) {
+    // No motion yet (decided 2026-11-06, a first-run walk of v0.1.82): the card said nothing about motion, and the only way
+    // in was the strip's unnamed Motion picture at its far end — the walker wanted the lighthouse to bob, read the card
+    // (Position, Angle, Size) and found no way to. studio-card-doors had dropped this row ("an empty 'Motion: none' row
+    // would be one more thing to read and nothing to do there"); it comes back WITH the thing to do: one press, the same
+    // "Make a motion" as the strip's menu (the strip's button stays: it is the way with a saved motion too).
+    if (!d.startMake) return [];
+    const none = h('span', { class: 'motion-none', text: d.t('motion.none') });
+    // Its own part names: `motion-row` / `motion-make` mean "the row of a motion" / the old card buttons to the screen tests.
+    const make = h('button', { type: 'button', class: 'motion-make', title: d.t('motion.makeTip'), dataset: { action: 'motion-none-make', part: 'motion-none-make' },
+      onclick: () => d.startMake!() }, d.t('tl.make'));
+    return [h('span', { class: 'f-l', text: d.t('motion.label') }), h('div', { class: 'f-cells motion-cells', dataset: { part: 'motion-none' } }, none, make)];
+  }
   const label = h('span', { class: 'f-l', text: d.t('motion.label') });
   // fix-0140 (J1 of the first-run check, 2026-10-23 — the same kind as a hands-on try's "I can't read anything in this
   // UI"): the row was "lighthouse's motion · When game starts", and on a 1280 card it ended "lighthouse's motion ·

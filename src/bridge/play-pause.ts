@@ -43,6 +43,15 @@ export function isPauseKey(e: { key: string; code?: string; ctrlKey?: boolean; m
   return e.key === 'p' || e.key === 'P' || e.code === 'KeyP';
 }
 
+/**
+ * Is this key press "back to Edit" while playing (decided 2026-11-06)? Esc with no modifier, not held down, never while a
+ * text field of the game has focus (there Esc is the field's).
+ */
+export function isLeaveKey(e: { key: string; repeat?: boolean; ctrlKey?: boolean; metaKey?: boolean; altKey?: boolean; shiftKey?: boolean; isComposing?: boolean }, typing: boolean): boolean {
+  if (typing || e.isComposing || e.repeat || e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return false;
+  return e.key === 'Escape';
+}
+
 interface AudioLike {
   state: string;
   suspend(): Promise<void>;

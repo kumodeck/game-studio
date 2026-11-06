@@ -26,7 +26,21 @@ import type { Item, Lang } from '../contract.ts';
 const KIND_WORD: Record<string, string> = {
   sprite: 'picture', text: 'text', graphics: 'shape', container: 'group', group: 'group', model: 'model',
   box: 'shape', sphere: 'shape', plane: 'shape', cylinder: 'shape', cone: 'shape', mesh: 'shape',
+  // Phaser's own type names (its adapter sends `o.type` lowercased; decided 2026-11-06): an unnamed rock image and an
+  // unnamed ground rectangle in the Phaser garden were both "Unnamed object", and Save said "moved Unnamed object".
+  image: 'picture', rectangle: 'shape', ellipse: 'shape', arc: 'shape', triangle: 'shape', polygon: 'shape',
 };
+
+/**
+ * A texture's own key as a name (decided 2026-11-06, Phaser: `this.add.image(460, 470, 'rock')` reports group 'rock',
+ * not a file path, so fileStem had nothing to read). Only for a picture's kinds and only a plain word-like key: it is
+ * the name the game's code loaded the file under, so it reads as the thing ("rock"), never a URL or a generated id.
+ */
+export function textureStem(group: string | undefined, kinds: readonly string[] | undefined): string | null {
+  if (!group || !kinds?.some((k) => k === 'image' || k === 'sprite')) return null;
+  if (!/^[A-Za-z][\w .-]{0,39}$/.test(group) || group.startsWith('__')) return null;
+  return group.replace(/[-_]+/g, ' ').trim() || null;
+}
 
 /** The file name without folder and extension, when `group` is a picture / model URL or path. */
 export function fileStem(group: string | undefined): string | null {
@@ -297,7 +311,7 @@ export function displayName(it: Pick<Item, 'key' | 'label' | 'kinds' | 'group' |
   const given = givenName(it.key);
   if (given) return given;
   if (it.unstable) {
-    const stem = fileStem(it.group);
+    const stem = fileStem(it.group) ?? textureStem(it.group, it.kinds);
     if (stem) return stem;
     const guess = guessFor(it.key);
     if (guess) return guess;

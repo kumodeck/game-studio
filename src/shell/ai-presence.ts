@@ -60,6 +60,11 @@ export interface PresenceState {
   statusTime: number | null;
   /** When this page last saw `watching` true (page ms); null = never in this page. */
   lastWatching: number | null;
+  /**
+   * When this page first read the status written at `statusTime` (page ms); null = none read. Page ms, not host ms, so it
+   * can be set against `lastWatching` even when the editor runs on another device than the server (a phone over --lan).
+   */
+  statusSeen?: number | null;
   /** Since when the page has been visible without a break (page ms). */
   visibleSince: number;
 }
@@ -69,7 +74,14 @@ export function aiPresence(s: PresenceState): AiPresence {
   if (aiBusy(s.phase) || s.phase === 'asking') return 'working';
   // A status just written proves the AI is here — but after its "done" it is no longer working (studio-motion-fix △4,
   // decided 2026-11-05: "Claude is working" sat under "Added … to the keep-out areas" for seconds after the reply).
-  if (s.statusTime != null && s.now - s.statusTime < HERE_STATUS_MS) return s.phase === 'done' || s.phase === 'failed' ? 'watching' : 'working';
+  // ...unless the heartbeat outlived that status and then stopped (decided 2026-11-06): a fresh status only stands in
+  // for a heartbeat this host does not have (the plugin's hook exits while it wakes Claude into a turn). When the page
+  // saw `watching` true AFTER the status came and now sees false, the heartbeat is the newer proof and it says the AI
+  // left: the grace's "not sure", never green. Before this, closing Claude right after a "done" kept "● Claude is
+  // watching" up to HERE_STATUS_MS after the done plus a poll (3 s), i.e. up to ~10 s after Claude was gone in the screen test
+  // (test/studio-ai-presence.browser.mjs step 5, 8 s after the stop), while the server already said `watching: false`.
+  const beatStopped = s.watching === false && s.lastWatching != null && s.statusSeen != null && s.lastWatching >= s.statusSeen;
+  if (s.statusTime != null && s.now - s.statusTime < HERE_STATUS_MS && !beatStopped) return s.phase === 'done' || s.phase === 'failed' ? 'watching' : 'working';
   if (s.agent === 'codex') return 'look';
   if (s.watching === false && s.agent === 'claude' && s.lastWatching != null && s.now - s.lastWatching >= AWAY_AFTER_MS
     && s.now - s.visibleSince >= AWAY_AFTER_MS) return 'away';
@@ -94,4 +106,31 @@ export const QUIET_WORK_MS = 120_000;
 /** The AI's name in the words: i18n key suffix for "Claude" / "Codex" / "your AI". */
 export function aiNameKey(agent: AiAgent | undefined): 'claude' | 'codex' | 'any' {
   return agent === 'claude' ? 'claude' : agent === 'codex' ? 'codex' : 'any';
+}
+
+/**
+ * The presence as a quiet grey dot inside the field (its words in the title and the button's name), not words
+ * (first-screen fix, decided 2026-11-06). WHY: a first-time walk through the editor opened every sample on two notes
+ * over the game — the intro line and, in the field, "Not sure Claude is open · How to open" — and the second one stayed
+ * through picking, the Library and Save. To someone new, "not sure it is open" next to nothing they did reads as
+ * "something is not connected = broken", before they have asked anything. So "unsure" says its words only once the
+ * person starts to ask (text in the field) or has asked: that is when it matters whether the note reaches the AI now.
+ * The other states keep their words: green ones are good news, "away" is news (it was here and left), and Codex's
+ * "look" is the rule to follow.
+ */
+export function presenceQuiet(p: AiPresence, typed: boolean, phase: AiPhase): boolean {
+  // Only before anything was asked (phase 'none'): once a note is kept for the AI, the line over the field says so and
+  // "How to open" in the presence words is the thing to press next (save-receipt.ts, the kept-note line).
+  return p === 'unsure' && !typed && phase === 'none';
+}
+
+/**
+ * The i18n key of the presence words (decided 2026-11-06, with presenceQuiet). An AI never seen watching in this page
+ * while this host CAN tell ("watching" false) reads "Claude isn't watching yet": the editor's fact, and "yet" says it
+ * may come. A host that cannot tell, or the grace right after a heartbeat stopped, keeps "Not sure Claude is open"
+ * ("yet" would be wrong once it had been watching).
+ */
+export function presenceKey(p: AiPresence, watching: boolean | undefined, lastWatching: number | null): string {
+  if (p === 'unsure' && watching === false && lastWatching == null) return 'ai.p.notYet';
+  return `ai.p.${p}`;
 }

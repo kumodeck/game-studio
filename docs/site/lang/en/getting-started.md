@@ -60,7 +60,7 @@ You can also say what you want in your own words, like “I want to fix where th
 
 ![The editor right after it opens](media/open.webp)
 
-Until you pick something, one line under the game says what the editor is for: **Shape your game by hand. Your AI writes the code.** It goes away with your first pick, and doesn’t come back for that game.
+Until you pick something, one line under the game says what the editor is for: **Move things by hand. Save, and Claude puts it in your code.** (with your own AI’s name). It goes away with your first pick, and doesn’t come back for that game. While the game is still opening, the same spot says **Opening Lantern Cove…** (your game’s name). The first time can take a few seconds.
 
 ### No game yet?
 

@@ -86,7 +86,8 @@ open it (above), never the sample. Then, for `no-game` only:
 
 If you ran the editor without `--starter` in a folder with no game, it printed
 `studio: no-game <folder> - ask once … --starter 3d (<title>) or --starter 2d (<title>)` and exited with code 4:
-that is the same question; ask it. `--starters` lists the samples as JSON (id, dim, title, blurb).
+that is the same question; ask it. `--starters` lists the samples as JSON (id, dim, title, blurb). Asked which
+version of Game Studio this is: `--version` prints the number alone.
 
 Your work, in order:
 

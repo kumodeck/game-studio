@@ -11,6 +11,7 @@ dependencies). It is the local implementation of the host interface (contract 3)
     node skills/arrange/bin/studio.mjs <game folder> --do <op> [--key k …]   # the AI does editor work itself: in the open editor, else in placement.json (CONTRACT.md §3.6)
     node skills/arrange/bin/studio.mjs <empty folder> --starter 3d|2d|<id>   # copy a sample game in, then open it (refused when any game page is there)
     node skills/arrange/bin/studio.mjs --starters                            # list the samples (JSON lines)
+    node skills/arrange/bin/studio.mjs --version                             # this Game Studio's version alone ("0.1.82"), exit 0
 
 - `node-check.mjs` - first code in studio.mjs: on Node older than 22.13, one line ("Game Studio needs Node 22.13 or newer. You have X. Install: https://nodejs.org") and exit 1
 - `starters.mjs` - sample games for a folder without one (`starters/<id>/` with `starter.json`; falls back to examples/three-crates and pixi-garden); `studio: no-game` (exit 4) and `--starter`

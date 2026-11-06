@@ -58,9 +58,10 @@ export const HANDLE_LABELS: Record<Lang, Record<HandleKind, string>> = {
   ja: { move: '移動（M）', rotate: '回す（T）', lift: '高さ（H）', scale: '大きさ（S）' },
 };
 /** The readout's words while a drag works (short: it sits next to the strip). */
-export const READOUT_WORDS: Record<Lang, Record<HandleKind | 'tipX' | 'tipZ', string>> = {
-  en: { move: 'Move', rotate: 'Turn', lift: 'Height', scale: 'Size', tipX: 'Tilt forward', tipZ: 'Tilt sideways' },
-  ja: { move: '移動', rotate: '回す', lift: '高さ', scale: '大きさ', tipX: '前後に倒す', tipZ: '左右に倒す' },
+export const READOUT_WORDS: Record<Lang, Record<HandleKind | 'tipX' | 'tipZ' | 'inside', string>> = {
+  // inside (decided 2026-11-06): after a move's numbers while it pushes into another object — "Move X +9.60 Z +2.73 · In sea-arch".
+  en: { move: 'Move', rotate: 'Turn', lift: 'Height', scale: 'Size', tipX: 'Tilt forward', tipZ: 'Tilt sideways', inside: 'In {name}' },
+  ja: { move: '移動', rotate: '回す', lift: '高さ', scale: '大きさ', tipX: '前後に倒す', tipZ: '左右に倒す', inside: '{name} に重なっています' },
 };
 /**
  * The one line shown the first time a tool is chosen (then never again on this computer): what a drag does now and
@@ -283,6 +284,8 @@ export interface Handles {
   ai(shape: Outline | null, rects: Rect[], tag: string | null): void;
   /** What the mouse is over in the editor page (a list row, the card, the ask chip): a softer light in your colour. */
   hover(shape: Outline | null, rects: Rect[]): void;
+  /** The pick pushes into another object while it is moved (adapter.overlaps): its outline is red until false. */
+  setClash(on: boolean): void;
   /** A new pick: its mark lights up once, then settles (the moment the eye looks for it). */
   flash(): void;
   /**
@@ -319,6 +322,11 @@ export interface Handles {
 /** Your hand and the AI's hand. Kept in step with --you / --ai in shell.css (fixed: they sit on the game, not on the shell's theme). */
 const YOU = '#ff6b1a';
 const AI = '#8b7cff';
+/**
+ * A move that ends inside another object (decided 2026-11-06, a first-run walk: a far rock dragged into the sea arch with
+ * nothing said). The system red, not the pick's orange: "not here" at a glance, as the readout then names what it is in.
+ */
+const CLASH = '#ff3b30';
 /** Gap between the object and the strip (px): 12 = the review's number (wave 1, W1-2 / M4, 2026-10-17); was 10. */
 const GAP = 12;
 const CSS = `
@@ -379,6 +387,8 @@ svg * { vector-effect: non-scaling-stroke; }
 .layer.sel .box { border-width: 3px; background: rgba(255,107,26,.12); box-shadow: 0 0 10px rgba(255,107,26,.55); }
 .layer.sel.flash .ol, .layer.sel.flash .box { animation: pick-flash .6s cubic-bezier(.2,.8,.2,1); }
 @keyframes pick-flash { from { filter: drop-shadow(0 0 16px rgba(255,107,26,1)) brightness(1.25); } }
+.layer.sel.clash .ol { filter: drop-shadow(0 0 6px rgba(255,59,48,.7)); }
+.layer.sel.clash .box { background: rgba(255,59,48,.14); box-shadow: 0 0 10px rgba(255,59,48,.6); }
 .layer.hover .ol { filter: drop-shadow(0 0 5px rgba(255,107,26,.45)); }
 .layer.hover .box { border-width: 2px; background: rgba(255,107,26,.08); box-shadow: 0 0 8px rgba(255,107,26,.4); }
 @media (prefers-reduced-motion: reduce) { .layer.sel.flash .ol, .layer.sel.flash .box { animation: none; } }
@@ -622,6 +632,7 @@ export function createHandles(doc: Document, hasLift: boolean): Handles {
   // One layer per kind of mark, bottom to top: ghosts, AI outlines, your outline, tags, strip, band.
   const ghostLayer = doc.createElement('div');
   const aiLayer = doc.createElement('div');
+  let clash = false;
   const selLayer = doc.createElement('div');
   const hoverLayer = doc.createElement('div');
   aiLayer.className = 'layer ai';
@@ -786,9 +797,10 @@ export function createHandles(doc: Document, hasLift: boolean): Handles {
     while (layer.children.length < rects.length) {
       const m = doc.createElement('div');
       m.className = 'box';
-      m.style.setProperty('--c', color);
       layer.append(m);
     }
+    // Every time: the pick's colour can change while it is drawn (CLASH).
+    for (const m of Array.from(layer.children) as HTMLElement[]) m.style.setProperty('--c', color);
     let all: Rect | null = null;
     rects.forEach((r, i) => {
       const m = layer.children[i] as HTMLElement;
@@ -1077,7 +1089,11 @@ export function createHandles(doc: Document, hasLift: boolean): Handles {
       }
     },
     selection(shape, rects, tag) {
-      tagAt(youTag, outline(selLayer, shape, rects, YOU, RING_YOU), tag);
+      selLayer.classList.toggle('clash', clash);
+      tagAt(youTag, outline(selLayer, shape, rects, clash ? CLASH : YOU, RING_YOU), tag);
+    },
+    setClash(on) {
+      clash = on;
     },
     hover(shape, rects) {
       outline(hoverLayer, shape, rects, YOU, RING_HOVER);

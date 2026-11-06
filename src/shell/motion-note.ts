@@ -48,6 +48,14 @@ export type Note = {
   rec: boolean;
   /** ✦ Have {ai} convert it to rules: the changed motion here is points (two or more), not recording, an AI here. */
   rule: boolean;
+  /**
+   * Recording the motion on screen while it has changes (decided 2026-11-06, a first-run walk of v0.1.82): the line is
+   * just "Rec motion on · Turn off". It was "lighthouse’s motion is made · Save puts it in the game · Rec motion on · moving
+   * it adds a point · Turn off" — two lines at 1280 px with "Turn off" alone on the second — while the timeline's own line
+   * under the game said the same ("✓ Moves 0–1 s. Keep moving to add a second. Done"). What was made and the next step
+   * are the timeline's line then; Save still glows (render() returns true), and once recording stops the full line is back.
+   */
+  brief: boolean;
 } | null;
 
 export function noteOf(s: NoteIn): Note {
@@ -55,7 +63,7 @@ export function noteOf(s: NoteIn): Note {
     ? { where: 'here' as const, motion: s.here, more: 0 }
     : s.others[0] ? { where: 'elsewhere' as const, motion: s.others[0], more: s.others.length - 1 } : null;
   if (!change && !s.rec) return null;
-  return { change, rec: s.rec, rule: !!s.here?.canRule && !s.rec };
+  return { change, rec: s.rec, rule: !!s.here?.canRule && !s.rec, brief: s.rec && change?.where === 'here' };
 }
 
 /**
@@ -102,8 +110,8 @@ export function createMotionNote(d: MotionNoteDeps) {
     const t = d.t;
     const parts: Node[] = [];
     const c = n.change;
-    el.dataset.kind = c ? c.where : 'rec';
-    if (c) {
+    el.dataset.kind = c && !n.brief ? c.where : 'rec';
+    if (c && !n.brief) {
       // The Save's orange (shell.css --you): the dot at the start, and "Save" in "Save puts it in the game".
       parts.push(h('span', { class: 'mn-lead', 'aria-hidden': 'true' }));
       if (c.where === 'here') {
@@ -120,13 +128,14 @@ export function createMotionNote(d: MotionNoteDeps) {
       parts.push(h('span', { class: 'mn-save', dataset: { part: 'motion-note-save' } }, a, h('b', { class: 'mn-save-w', text: t('btn.save') }), b));
     }
     if (n.rec) {
-      if (c) parts.push(dot());
+      if (c && !n.brief) parts.push(dot());
       // "Rec motion on · moving it adds a point · Turn off" (studio-motion-fix △5, decided 2026-11-05). It was "● Recording ·
       // press ● when you're done" in the recorder's red: Rec motion is on from the start, so opening the timeline showed
       // a recording nobody had started, and which ● ended it was not clear. Now the plain fact, what a move does, and the
       // way out in words (the same button: Rec motion off).
+      // Brief (above): "moving it adds a point" is the timeline line's "Keep moving to add a second" then.
       parts.push(h('span', { class: 'mn-rec', dataset: { part: 'motion-note-rec' } }, t('mnext2.rec')), dot(),
-        h('span', { class: 'mn-rec-end', text: t('mnext2.recEnd') }), dot(),
+        ...(n.brief ? [] : [h('span', { class: 'mn-rec-end', text: t('mnext2.recEnd') }), dot()]),
         h('button', { type: 'button', class: 'mn-rec-off', title: t('mnext2.recOffTip'), dataset: { action: 'motion-note-rec-off', part: 'motion-note-rec-off' }, onclick: () => d.recOff() },
           t('mnext2.recOff')));
     }

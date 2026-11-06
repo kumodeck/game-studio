@@ -59,7 +59,7 @@ Assets strings use the same rule). Japanese has no plural, so the ja table just 
 |---|---|
 | First-time tip | Click an object to select it · ⌘K for all actions |
 | Sent | “Put three lighthouses here” sent to your AI. Waiting for a reply… |
-| Before typing (next to the field) | ● Claude is watching · ● Claude is working · Not sure Claude is open · How to open · Claude isn’t watching · How to open (a green dot only with proof from this moment: a wrong green is worse than none) |
+| Before typing (next to the field) | ● Claude is watching · ● Claude is working · Claude isn’t watching yet · How to open · Not sure Claude is open · How to open · Claude isn’t watching · How to open (a green dot only with proof from this moment: a wrong green is worse than none; “not sure” and “not yet” are a quiet grey dot until the person types, decided 2026-11-06) |
 | Nobody there (after sending) | Kept as a note for Claude. Nothing in the game changes until Claude reads it. (the fact, not a promise like “it goes in next time”; never a warning or a command) |
 | AI has it | Claude is on it → its own words → Done |
 | AI asks | Is the second door a real door, or only for looks? [A real door] [Only for looks] (answered right here) |

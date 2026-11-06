@@ -178,6 +178,8 @@ export interface TimelineActs {
   fold(): void;
   /** studio-no-presets: making ends ("Done" on the line; Esc does the same). Absent = no button. */
   done?(): void;
+  /** "+ Make a motion" on the line of an object with no motion (decided 2026-11-06). Absent = no button. */
+  make?(): void;
   /** The clip menu: a clip's name, `new:<template>`, `rename`, `delete`. */
   clip(value: string): void;
   rename(name: string): void;
@@ -497,12 +499,16 @@ export function createTimelinePanel(view: () => TimelineView, act: TimelineActs)
     if (v.focus) {
       // An object with no motion yet (studio-motion-flow: "+ New motion" lands here): what makes one, in one line.
       const name = v.rows.find((r) => r.key === v.focus)?.label ?? v.focus;
-      // studio-tool-clear: the time line already past 0 s (the strip's "Make a motion for this" opens at 1 s): one move
-      // makes the motion — say where it is at 0 s and what to do now.
-      const at = Math.round(v.time * 10) / 10;
       // studio-no-presets: "Make a motion" — the words of the brief (the review, 10/23): drag it there; Esc stops.
-      const words = v.making === 'drag' ? t('tl.make.drag', { name }) : at > 0 ? t('tl.when.firstAt', { name, t: at }) : t('tl.when.first', { name });
-      return [h('span', { class: 'tl-lbl tl-first', dataset: { part: 'tl-first' }, text: words })];
+      if (v.making === 'drag') return [h('span', { class: 'tl-lbl tl-first', dataset: { part: 'tl-first' }, text: t('tl.make.drag', { name }) })];
+      // Not making (decided 2026-11-06, a first-run walk of v0.1.82): the line said "Pick a later time on the ruler, then
+      // move {name} there: that makes its motion" (and, past 0 s, "Now move it to where it should be at 2.5 s"), but since
+      // studio-fix-0142 a move of an object with no motion only moves where it stands (timeline-wire records()) — the
+      // person moved the lighthouse and nothing became a motion while the line said it would. Now the line says what a
+      // move does here and offers the one way in, the same "+ Make a motion" as the strip's Motion menu.
+      const items: Node[] = [h('span', { class: 'tl-lbl tl-first', dataset: { part: 'tl-first' }, text: t('tl.when.noMotion') })];
+      if (act.make) items.push(h('button', { type: 'button', class: 'tl-done tl-make', title: t('motion.makeTip'), dataset: { part: 'tl-make', action: 'tl-make' }, onclick: () => act.make!() }, t('tl.make')));
+      return items;
     }
     return [h('span', { class: 'tl-lbl tl-first', text: t('tl.when.none') })];
   }

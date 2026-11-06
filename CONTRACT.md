@@ -1447,7 +1447,10 @@ Enter, Shift, E / R / Q, Tab, Esc, the numbers and "/" (chat) all are taken.
   on the empty field) opens the game again from its new code, still in Play;
   × keeps playing as it is. The fix is also in the next time Play or Edit opens.
 - Messages: bridge → shell `studio:play/hello` (the game page can take a
-  request), `play/ask`, `play/answer`, `play/reload`; shell → bridge
+  request), `play/ask`, `play/answer`, `play/reload`, `play/escape` (Esc
+  while playing, not paused: back to Edit; `game: true` = the game took the key
+  with preventDefault, so Play goes on and the editor says how to stop —
+  decided 2026-11-06); shell → bridge
   `studio:play/on` (`lang`, the overlay's `words`: the bridge has no strings),
   `play/state`, `play/sent`. Nothing is shown until `play/on`, which the shell
   sends only when an AI is behind the host: **the offline web demo shows no

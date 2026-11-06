@@ -32,7 +32,7 @@ After **Done**, the timeline’s top line is where you change how it repeats and
 - **When does it move?** is [when it starts](#when-it-starts).
 - **How long** it takes is where its last point is on the timeline: the seconds are on the ruler, and only there. Drag the last point right to make it longer, left to make it shorter (the ruler has a little shaded room past the end for that).
 
-The Library’s **+ Make a motion** does the same. Once something has a motion, its card shows one line with the motion’s name, like **Motion  ship’s motion ›**; press it to open the motion on the timeline, where the top line says when it plays. A thing with no motion has no such line: the strip’s Motion button is the way in. To change the timing of one point, drag it along the ruler.
+The Library’s **+ Make a motion** does the same. Once something has a motion, its card shows one line with the motion’s name, like **Motion  ship’s motion ›**; press it to open the motion on the timeline, where the top line says when it plays. A thing with no motion has the line **Motion  None  + Make a motion** instead: **+ Make a motion** does what the strip’s Motion button does. To change the timing of one point, drag it along the ruler.
 
 Once something has a motion, the button shows a small dot, and pressing it opens that motion on the timeline.
 
@@ -44,7 +44,9 @@ Right-click the **Motion** line on the card, or press the **⋯** at its right e
 
 ## The timeline
 
-Select something with a motion, then press its **Motion** line on the card or the Motion button on the strip (or find **Timeline** in <kbd>⌘</kbd><kbd>K</kbd>). The timeline opens at the bottom of the game (above the card on a phone).
+Select something with a motion, then press its **Motion** line on the card or the Motion button on the strip (or find **Timeline** in <kbd>⌘</kbd><kbd>K</kbd>). The timeline opens at the bottom of the game (above the card on a phone). <kbd>Esc</kbd> folds it away (first it stops a motion you’re making, or deselects points you picked on it).
+
+With the timeline open, select something that has no motion and its line says **No motion yet. Moving it changes where it stands.** with **+ Make a motion** beside it: moving it there only moves it, until you make a motion.
 
 ![The timeline under the game, with the boat’s points and its path](media/timeline.webp)
 
@@ -63,7 +65,7 @@ A **point** says “at this time, be here.”
 1. Move the time line to a moment, like 2 s.
 2. Move, turn or resize the object.
 
-With **● Rec motion** on (it is, to start; it is in **Fine-tune**), that adds a point at the time line. The line over the box says so: **Rec motion on · moving it adds a point · Turn off** (nothing is being recorded until you move it). The first one also adds a point at 0 s, where the object started. Press <kbd>K</kbd> to add a point without moving anything.
+With **● Rec motion** on (it is, to start; it is in **Fine-tune**), that adds a point at the time line. The line over the box says so: **Rec motion on · moving it adds a point · Turn off** (nothing is being recorded until you move it). Once you’ve made or changed the motion, that line is just **Rec motion on · Turn off**: the timeline’s own line says what you made. The first one also adds a point at 0 s, where the object started. Press <kbd>K</kbd> to add a point without moving anything.
 
 To change points, click them (<kbd>Shift</kbd> or <kbd>⌘</kbd> adds more, or drag a box):
 

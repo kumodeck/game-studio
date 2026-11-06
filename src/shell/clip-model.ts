@@ -273,3 +273,36 @@ export function recClock(ms: number): string {
   const s = Math.max(0, Math.floor(ms / 1000));
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 }
+
+// ----- studio-clip-3 (decided 2026-11-06): what is going on while it records, and fewer steps to X -----
+
+/**
+ * The time LEFT while recording (ms), for "0:05 left · Stop" and a phone's round ● ("5"). WHY left, not so far: the
+ * person pressed for "the next 8 s"; what they want to know is when it ends (stages 1–2 counted up: "0:03 · Stop").
+ * `stillMs`: a Before / After's still part, encoded before `started`
+ * (it is in the clip's length, not in the time the person waits).
+ */
+export function recLeftMs(o: { totalMs: number; stillMs?: number; elapsedMs: number }): number {
+  return Math.max(0, o.totalMs - (o.stillMs ?? 0) - Math.max(0, o.elapsedMs));
+}
+
+/** "0:05" for the time left: whole seconds rounded UP (it says 0:01 until the very end, never 0:00 while recording). */
+export function leftClock(ms: number): string {
+  const s = Math.max(0, Math.ceil(ms / 1000));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+}
+
+/** Holding ● this long opens Clip options (a phone's ● has no ⌄: the bar has no room). Shorter than the system's own
+ * long-press menu on most phones, longer than a tap. */
+export const CLIP_HOLD_MS = 500;
+
+/**
+ * X's compose page with the post written (its public "intent" address; nothing is sent until the person posts there).
+ * WHY: from the saved line to a post on X was Copy post → open X → paste → Show in Finder → drag; Post on X… does the
+ * first three in one press (and shows the clip in its folder on the computer), so it is one press and one drag. The
+ * video itself cannot go in the address: X takes it only from the person (a drag, or the phone's Share…).
+ */
+export const X_COMPOSE = 'https://x.com/intent/post';
+export function xComposeUrl(text: string): string {
+  return `${X_COMPOSE}?text=${encodeURIComponent(text)}`;
+}

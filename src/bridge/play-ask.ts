@@ -33,7 +33,7 @@ import { isStudioMessage } from '../contract.ts';
 import { LINE_FADE_MS, LINE_GRACE_MS, lineStayMs } from '../shell/line-fade.ts';
 import { icon } from '../shell/icons.ts';
 import { shootPage } from './play-shot.ts';
-import { createPauseHold, isPauseKey, STEP_MS, type PauseHold, type PauseParts } from './play-pause.ts';
+import { createPauseHold, isLeaveKey, isPauseKey, STEP_MS, type PauseHold, type PauseParts } from './play-pause.ts';
 import { createMomentEditor, createMomentKinds, defaultHandlePx, type MomentHost, type MomentKinds } from './play-move.ts';
 import type { Core } from '../core/index.ts';
 import type { RulesHolder } from '../core/rules.ts';
@@ -601,6 +601,13 @@ export function startPlayAsk(o: PlayAskOptions): PlayAskHandle {
         openBar();
       } else if (type !== 'keydown' && aiOn && e.key === '`' && !gameTyping()) {
         e.stopImmediatePropagation();
+      } else if (type === 'keydown' && !barOpen && hold && isLeaveKey(e, gameTyping())) {
+        // Esc while playing (decided 2026-11-06, a first-run walk of v0.1.82: Esc did nothing, "■ Edit" in the top bar was
+        // the only way back). The game sees the key first — it is its key too — and the editor reads, once the key has
+        // been through the game, whether the game took it (preventDefault): not taken = back to Edit; taken = the game
+        // uses Esc (its own menu), so the editor only says how to stop. A pointer-locked or full-screen game never gets
+        // here with it: the browser spends that Esc on letting go of the mouse / leaving full screen.
+        nativeSetTimeout(() => post({ type: 'studio:play/escape', ...(e.defaultPrevented ? { game: true } : {}) }), 0);
       }
     }, true);
   }

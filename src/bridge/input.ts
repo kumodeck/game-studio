@@ -98,6 +98,7 @@ import { canLift, offWhy, type OffWhy } from './hold.ts';
 import { beginGroup, groupAnchor, groupLift, groupMove, groupPoses, groupRotate, groupScale, type GroupSession } from './group.ts';
 import { slideOf } from './outline-slide.ts';
 import { TOOL_WAY, type CodePlaceView } from './code-place.ts';
+import { turnPick, turnStep } from './turn-drag.ts';
 // What a drag of a rule layout's object does (moveHandle's data.code; studio-to-coords): turn the layout's knobs, stay
 // still (no knob for that way), or move just this one (⌥). 0 = an ordinary move (not a rule's object).
 const CODE_KNOB = 1;
@@ -671,7 +672,10 @@ export function attachInput(deps: InputDeps): InputHandle {
       // The turn centre stays where the group started (s.center): measuring
       // around the moving middle would wobble.
       const ang = Math.atan2(p.y - s.center[1], p.x - s.center[0]);
-      data.d = data.d! + wrap(ang - data.angle!);
+      // 3D: a straight pull turns too (turn-drag.ts, decided 2026-11-06), as for one object. The snap below is on the total.
+      const dx = p.x - (data.lx ?? p.x);
+      data.lx = p.x;
+      data.d = data.d! + turnPick(wrap(ang - data.angle!), dx, canTurn() ? TURN_PER_PX : 0, p.y > s.center[1]);
       data.angle = ang;
       let d = data.d!;
       // 15° steps within ±3° unless Shift, like one object.
@@ -716,6 +720,11 @@ export function attachInput(deps: InputDeps): InputHandle {
       data.cy = canTurn() && r ? r.y + r.h / 2 : a.center[1];
       data.angle = Math.atan2(p.y - data.cy, p.x - data.cx);
       data.sign = 0; // learnt from the first response: +1 if pose.r grows with d
+      // turn-drag.ts (decided 2026-11-06): the drag's total (unsnapped) and what the object was given, and the last x
+      // (3D: a straight pull turns too).
+      data.total = 0;
+      data.applied = 0;
+      data.lx = p.x;
     } else if (handle === 'scale') {
       data.dist = Math.max(8, Math.hypot(p.x - a.center[0], p.y - a.center[1]));
     } else if (handle === 'lift') {
@@ -783,21 +792,24 @@ export function attachInput(deps: InputDeps): InputHandle {
       if (!a) return;
       const cx = data.cx ?? a.center[0], cy = data.cy ?? a.center[1];
       const ang = Math.atan2(p.y - cy, p.x - cx);
-      const d = wrap(ang - data.angle!);
+      const arc = wrap(ang - data.angle!);
       data.angle = ang;
+      const dx = p.x - (data.lx ?? p.x);
+      data.lx = p.x;
       const before = adapter.anchor(key)!.pose.r ?? 0;
       // 3D: around the chosen axis through the box middle; 2D (and adapters without turn): the old way.
       const turnBy = (dd: number) => (canTurn() ? adapter.turn!(key, dd, state.axis) : adapter.rotate(key, dd));
-      pose = turnBy(d);
-      if (!data.sign && Math.abs(d) > 1e-4) data.sign = Math.sign(wrap((pose.r ?? 0) - before)) * Math.sign(d) || 1;
-      // Snap to 15° steps within ±3° unless Shift is held (the vertical turn only: a tip has no "straight"
-      // the editor knows of). The snap is applied to the object's own angle; `sign` maps it back to a screen delta.
-      if (!p.shift && data.sign && (!canTurn() || state.axis === 'y')) {
-        const r = pose.r ?? 0;
-        const target = Math.round(r / SNAP) * SNAP;
-        const off = target - r;
-        if (Math.abs(off) <= SNAP_WINDOW && Math.abs(off) > 1e-6) pose = turnBy(off * data.sign);
-      }
+      // turn-drag.ts (decided 2026-11-06, a first-run walk: a straight pull in 3D stayed at "Turn 0°"): 3D also reads the
+      // straight pull, and the 15° snap (within ±3° unless Shift; the vertical turn only: a tip has no "straight" the
+      // editor knows of) goes on the drag's total — on each step it put every small step back. `sign` maps the object's
+      // angle back to a screen turn.
+      const d = turnPick(arc, dx, canTurn() ? TURN_PER_PX : 0, p.y > cy);
+      const s = { total: data.total ?? 0, applied: data.applied ?? 0 };
+      const dd = turnStep(s, d, { snap: !p.shift && (!canTurn() || state.axis === 'y'), r0: m.from.r ?? 0, sign: data.sign ?? 0 });
+      data.total = s.total;
+      data.applied = s.applied;
+      if (Math.abs(dd) > 1e-9) pose = turnBy(dd);
+      if (!data.sign && Math.abs(dd) > 1e-4) data.sign = Math.sign(wrap((pose.r ?? 0) - before)) * Math.sign(dd) || 1;
     } else if (m.handle === 'scale') {
       const a = adapter.anchor(key);
       if (!a) return;
@@ -826,7 +838,44 @@ export function attachInput(deps: InputDeps): InputHandle {
     }
     m.last = pose;
     emitMoved(key, pose, { press: m.handle, ...(data.code === CODE_FREE ? { alone: true } : {}) });
-    handles.readout(readout(m.handle, m.from, pose, canTurn() ? state.axis : 'y'));
+    if (m.handle === 'move') clashCheck(key);
+    handles.readout(readout(m.handle, m.from, pose, canTurn() ? state.axis : 'y') + (m.handle === 'move' ? clashText() : ''));
+  };
+
+  // A move into another object (adapter.overlaps, 3D; decided 2026-11-06, a first-run walk of v0.1.82: a far rock dragged
+  // 120 px went 9.6 m into the sea arch and nothing said so — far away a pixel is metres). While it overlaps, the pick's
+  // outline is red and the readout names what it is in ("Move X +9.60 Z +2.73 · In sea-arch"); the drop is still allowed
+  // (putting a boat in a cave is a choice). Read at most every CLASH_MS: it measures every object's box.
+  const CLASH_MS = 100;
+  let clashAt = 0;
+  let clashKeys: string[] = [];
+  const clashCheck = (key: string) => {
+    if (!adapter.overlaps) return;
+    const now = nativeNow();
+    if (now - clashAt < CLASH_MS) return;
+    clashAt = now;
+    let ks: string[] = [];
+    try {
+      ks = adapter.overlaps(key).filter((k) => state.items.some((i) => i.key === k && !i.backdrop));
+    } catch {
+      ks = [];
+    }
+    if (ks.join('\n') === clashKeys.join('\n')) return;
+    clashKeys = ks;
+    handles.setClash(ks.length > 0);
+    markDirty();
+  };
+  const clashText = () => {
+    if (!clashKeys.length) return '';
+    const name = state.items.find((i) => i.key === clashKeys[0])?.label ?? clashKeys[0]!;
+    return ` · ${(READOUT_WORDS[lang] || READOUT_WORDS.en).inside.replace('{name}', name)}`;
+  };
+  const clashEnd = () => {
+    clashAt = 0;
+    if (!clashKeys.length) return;
+    clashKeys = [];
+    handles.setClash(false);
+    markDirty();
   };
 
   /** The readout's text: what this drag changed, from the pose before it. */
@@ -855,6 +904,7 @@ export function attachInput(deps: InputDeps): InputHandle {
   };
 
   const endGesture = () => {
+    clashEnd();
     if (mode.kind === 'handle' || mode.kind === 'group') {
       adapter.setSnap?.({ on: false });
       lastRead = null;
@@ -1487,8 +1537,30 @@ export function attachInput(deps: InputDeps): InputHandle {
   const inRects = (rs: Array<{ x: number; y: number; w: number; h: number }>) =>
     armed && !!hover && rs.some((r) => hover!.x >= r.x && hover!.x <= r.x + r.w && hover!.y >= r.y && hover!.y <= r.y + r.h);
   const selectionRects = () => rectsOf(state.group.length > 1 ? state.group : state.selected ? [state.selected] : []);
+  // What a click would select, lit before the click (decided 2026-11-06, a first-run walk of v0.1.82: in 3D nothing lit
+  // under the mouse, and a click on a thin lamp post selected the rock behind it — the person could not tell beforehand).
+  // The same soft light as a list row under the mouse (handles.hover), from the same rule as a click (tappableAt with
+  // the mouse's radius), so what lights is what a click takes. Not the pick itself (it has its own mark), not during a
+  // gesture, not on touch (no hover). Read at most every HOVER_MS: pickNear casts a ray at every object.
+  let gameHover: string | null = null;
+  let hoverTimer = 0;
+  const HOVER_MS = 60;
+  const probeHover = () => {
+    hoverTimer = 0;
+    let k: string | null = null;
+    if (hover && mode.kind === 'none' && !ptrs.size) {
+      k = tappableAt(adapter, state.items, win, hover.x, hover.y, UI.pickRadiusMouse)[0] ?? null;
+      if (k && (k === state.selected || state.group.includes(k))) k = null;
+    }
+    if (k === gameHover) return;
+    gameHover = k;
+    shapes.hover.sig = '';
+    shapes.hover.at = 0;
+    markDirty();
+  };
   const onHover = (e: PointerEvent) => {
     hover = e.pointerType === 'mouse' && e.buttons === 0 ? { x: e.clientX, y: e.clientY } : null;
+    if (hover ? !hoverTimer : gameHover) hoverTimer = nativeSetTimeout(probeHover, hover ? HOVER_MS : 0);
     if (hover && !armed) {
       armed = true;
       if (inRects(selectionRects())) armed = false; // still on it: wait until it leaves
@@ -1502,6 +1574,7 @@ export function attachInput(deps: InputDeps): InputHandle {
   const onLeave = (e: PointerEvent) => {
     if (e.relatedTarget) return;
     hover = null;
+    if (gameHover && !hoverTimer) hoverTimer = nativeSetTimeout(probeHover, 0);
     if (hoverIn) {
       hoverIn = false;
       markDirty();
@@ -1675,7 +1748,8 @@ export function attachInput(deps: InputDeps): InputHandle {
     const aiRects = rectsOf(aiShown);
     handles.ai(shapeOf('ai', aiShown, aiRects), aiRects, aiShown.length ? aiLabel : null);
     // What the mouse is over in the editor page (a row, the card, the chip): lit softly, under your pick's own mark.
-    const hovered = hoverKeys.filter((k) => state.items.some((i) => i.key === k));
+    // …and what the mouse is over in the game (gameHover, above).
+    const hovered = [...hoverKeys, ...(gameHover && !hoverKeys.includes(gameHover) ? [gameHover] : [])].filter((k) => state.items.some((i) => i.key === k));
     const hoverRects = rectsOf(hovered);
     handles.hover(hovered.length ? shapeOf('hover', hovered, hoverRects) : null, hovered.length ? hoverRects : []);
     if (key && state.group.length > 1) {
@@ -1791,6 +1865,7 @@ export function attachInput(deps: InputDeps): InputHandle {
       endGesture();
       nativeClearTimeout(pressTimer);
       nativeClearTimeout(menuTimer);
+      nativeClearTimeout(hoverTimer);
       for (const [t, fn] of winListeners) win.removeEventListener(t, fn, opts);
       for (const w of above) for (const t of ['pointerup', 'mouseup'] as const) w.removeEventListener(t, onUpAbove, { capture: true });
       nativeClearTimeout(hintTimer);

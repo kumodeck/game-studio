@@ -2,13 +2,13 @@
 title: Play
 nav: Play
 order: 3
-written-for: 0.1.82
+written-for: 0.1.83
 description: Play your game in the editor, slow it down, pause it on the exact frame, edit that moment by hand or with your AI, and keep it as a checkpoint.
 ---
 
 # Play
 
-Press **▶ Play** to play your game right where you’re editing it. Press **Edit** to go back. It’s the same page, so nothing reloads.
+Press **▶ Play** to play your game right where you’re editing it. Press **Edit** (or <kbd>Esc</kbd>) to go back. It’s the same page, so nothing reloads.
 
 ## Play and Edit
 
@@ -27,7 +27,7 @@ If you press Play with changes that aren’t saved, the editor asks first:
 - **Try without saving** plays with your changes. They’re still there when you come back to Edit, and **Save · 3** stays.
 - **Cancel** (or <kbd>Esc</kbd>) stays in Edit.
 
-Going back from Play to Edit never asks.
+Going back from Play to Edit never asks. If your game uses <kbd>Esc</kbd> itself (its own menu, say), <kbd>Esc</kbd> stays the game’s and one line says **Esc is the game’s · ■ Edit to stop**.
 
 A game with an older copy of the loader (`studio-placement.js`) plays in the same page too: in the editor it runs with the editor’s own loader. The file in your game isn’t changed, so outside the editor (a published game) your game still uses its copy. Before you publish a game with motions, ask your AI to copy the new loader into it.
 
@@ -154,26 +154,27 @@ If your AI asks you something, the answers show up as buttons right there. For t
 
 Want to show what you made or fixed? Press **● Clip** in the top bar, right of Undo and Redo. The next 8 seconds of the game become a video you can post on X.
 
-![Recording: the button is red and says the time and Stop, and a red frame goes round the game](media/clip-recording.webp)
+![Recording: the button is red and says the time left and Stop, and a red frame goes round the game](media/clip-recording.webp)
 
-- While it records, the button is red and says the time (**0:03 · Stop**). A red frame goes round the game: only what’s inside it is in the video. Your game’s picture and its HTML (the score, the health bar) are in it. The editor, the address and your folder names aren’t.
-- Press it again to stop early. The video ends one second after your press, even when the computer is busy.
+- While it records, the button is red and says the time left (**0:05 left · Stop**). On a phone, the round **●** shows the seconds left. A red frame goes round the game: only what’s inside it is in the video. Your game’s picture and its HTML (the score, the health bar) are in it. The editor, the address and your folder names aren’t.
+- Press it again to stop early. The video ends one second after your press, even when the computer is busy. The button says **Ending…**, then **Saving…**.
 - In Edit, **● Clip** starts Play first. A paused game goes on.
-- **⌄** picks the shape (**Wide 1280×720**, or **Tall 720×1280** for a phone screen), the length (6, 8 or 12 seconds) and whether the last second says **Made with KUMODeck Game Studio**. It remembers what you pick.
+- **⌄** picks the shape (**Wide 1280×720**, or **Tall 720×1280** for a phone screen), the length (6, 8 or 12 seconds) and whether the last second says **Made with KUMODeck Game Studio**. It remembers what you pick. On a phone, there’s no **⌄**: hold **●** instead.
 - **Tall** isn’t a crop. While it records, the editor gives your game a tall window, so a game that fits itself to its window lays out tall. On a phone, clips are Tall unless you pick Wide.
 
 When it’s done, one line shows where it went and the post to go with it:
 
-![The line once saved: the clip’s name, length and folder with Show in Finder and Remove mark, then the post with its count and Copy post](media/clip-saved.webp)
+![The line once saved: the clip’s name, length and folder with Show in Finder and Remove mark, then the post with its count, Post on X… and Copy post](media/clip-saved.webp)
 
 - **Clip saved · neon-run-clip-1.mp4**, in **Movies › KUMODeck** (Windows and Linux: **Videos › KUMODeck**). It’s never put in your game’s folder. **Show in Finder** opens it.
-- The post under it is ready to paste, with its length as X counts it (**102 / 280**). **Copy post** copies it. Open X, paste it, and drag the video in.
+- The post under it is ready, with its length as X counts it (**102 / 280**). **Post on X…** opens X with the post written and shows the video in its folder: drag it in and post. **Copy post** copies the post if you’d rather paste it yourself.
+- The length and shape (**8 s · Wide 1280×720 ⌄**) open the same choices as **⌄**, for your next clip.
 - **✦ Rewrite** asks your AI for a better post. Its post replaces yours only if it fits X’s 280. You only see **✦ Rewrite** when an AI is connected.
 - On a phone, **Share…** opens the phone’s share sheet with the video, so you can pick X there. A phone that can’t share videos shows **Save to this phone** instead.
 - The last second of the video says **Made with KUMODeck Game Studio** and the address, small, in the corner, and so does the post. **Remove mark** takes both off this clip, and new clips leave them off until you turn the mark back on in **⌄**.
 - Nothing leaves your computer. The editor doesn’t post anything; you do.
 
-It’s a 1280 × 720 MP4 (H.264) at 30 frames a second, with no sound. A few things don’t record yet: a game that draws with WebGPU (**Clip needs WebGL for now**), and a game that draws images from another site (ask your AI to put them in the game’s folder). The HTML over your game is drawn the same way as the picture your AI gets: boxes, text and images, without shadows or gradients.
+It’s a 1280 × 720 MP4 (H.264) at 30 frames a second, with no sound. A few things don’t record yet: a game that draws with WebGPU, and a game that draws images from another site. Clip says so over the game, with **✦ Ask Claude**: it pauses the game and puts the request in the field (switch to WebGL, or move the images into the game’s folder). You send it. The HTML over your game is drawn the same way as the picture your AI gets: boxes, text and images, without shadows or gradients.
 
 In the web demo, the video downloads instead (**Clip downloaded**).
 

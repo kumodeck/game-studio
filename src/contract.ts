@@ -483,6 +483,11 @@ export interface StudioAdapter {
    */
   middle?(key: string): number[] | null;
   /**
+   * 3D, optional (decided 2026-11-06): the keys of the listed objects the object's box now pushes into (not the grounds,
+   * not its own parents / children; most first, at most 3). The editor draws a move red while it is not empty.
+   */
+  overlaps?(key: string): string[];
+  /**
    * Optional: the share (0–1) of the game's view the object's on-screen box
    * covers, clipped to the view. Absent = the editor uses `anchor().rect`.
    * 3D adapters give it because a projected box drops the corners behind the
@@ -1719,6 +1724,11 @@ export type BridgeToShell =
    * line's "⚑ Before the boss" beside Reload — open it from that checkpoint (PlayLine.from), not from the start.
    */
   | { type: 'studio:play/reload'; from?: boolean }
+  /**
+   * Esc pressed in the game while playing, not paused (decided 2026-11-06): the editor goes back to Edit. `game` = the game
+   * took the key (preventDefault — its own menu): the editor stays in Play and says how to stop instead.
+   */
+  | { type: 'studio:play/escape'; game?: boolean }
   /**
    * ● Clip (stage 1, 2026-11-05): the clip's answers, in order. `started`; `config` = the encoder's avcC (SPS / PPS; `alt`:
    * of the second encoder, the end the other way); a `chunk` per encoded frame (AVC samples, ts / dur in µs; `alt` = of

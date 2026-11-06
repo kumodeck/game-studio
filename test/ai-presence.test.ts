@@ -44,3 +44,38 @@ test('the AI\'s name: Claude, Codex, or "your AI"', () => {
   assert.equal(aiNameKey('codex'), 'codex');
   assert.equal(aiNameKey(undefined), 'any');
 });
+
+// First-screen fix (decided 2026-11-06): "unsure" is a quiet dot until the person types; never-seen reads "not … yet".
+import { presenceKey, presenceQuiet } from '../src/shell/ai-presence.ts';
+
+test('"unsure" is a quiet dot until there is text in the field or a note was sent; every other state keeps its words', () => {
+  assert.equal(presenceQuiet('unsure', false, 'none'), true, 'opening the editor: no "Not sure" over the game');
+  assert.equal(presenceQuiet('unsure', true, 'none'), false, 'starting to ask: now it matters');
+  for (const ph of ['nudge', 'away', 'waiting'] as const) assert.equal(presenceQuiet('unsure', false, ph), false, `a note kept (${ph}): "How to open" is the next step`);
+  for (const p of ['watching', 'working', 'look', 'away'] as const) assert.equal(presenceQuiet(p, false, 'none'), false, p);
+});
+
+test('the words: "isn\'t watching yet" only when this host can tell and the AI was never seen in this page', () => {
+  assert.equal(presenceKey('unsure', false, null), 'ai.p.notYet');
+  assert.equal(presenceKey('unsure', undefined, null), 'ai.p.unsure', 'a host that cannot tell');
+  assert.equal(presenceKey('unsure', false, NOW - 1000), 'ai.p.unsure', 'the grace after a heartbeat stopped');
+  assert.equal(presenceKey('away', false, NOW - 10 * AWAY_AFTER_MS), 'ai.p.away');
+  assert.equal(presenceKey('watching', true, NOW), 'ai.p.watching');
+});
+
+// The heartbeat outlived the status, then stopped (decided 2026-11-06): the status no longer stands in for it.
+test('a fresh "done" is not "watching" once the heartbeat seen after it has stopped: the grace\'s "not sure"', () => {
+  const done = { phase: 'done' as const, statusTime: NOW - 12_000, statusSeen: NOW - 11_000 };
+  // Claude closed right after its reply: the page saw the heartbeat after the "done", and now it is gone.
+  assert.equal(aiPresence(base({ ...done, lastWatching: NOW - 8000 })), 'unsure', 'closed after the done: no green');
+  assert.equal(aiPresence(base({ ...done, phase: 'none', lastWatching: NOW - 8000 })), 'unsure', 'the line faded: still not "working"');
+  // The plugin's hook exited to wake Claude: no heartbeat during the turn, so the status is the proof (2026-11-05 rule).
+  assert.equal(aiPresence(base({ ...done, lastWatching: NOW - 30_000 })), 'watching', 'heartbeat last seen before the status');
+  assert.equal(aiPresence(base({ ...done, lastWatching: null })), 'watching', 'never a heartbeat in this page');
+  assert.equal(aiPresence(base({ ...done, statusSeen: null, lastWatching: NOW - 8000 })), 'watching', 'without statusSeen: the old rule');
+  // Still at work: the request itself says so, whatever the heartbeat did.
+  assert.equal(aiPresence(base({ ...done, phase: 'working', lastWatching: NOW - 8000 })), 'working');
+  // A heartbeat again is "watching", and the minute after it went is "away" as before.
+  assert.equal(aiPresence(base({ ...done, watching: true, lastWatching: NOW })), 'watching');
+  assert.equal(aiPresence(base({ ...done, statusTime: NOW - 70_000, statusSeen: NOW - 69_000, lastWatching: NOW - AWAY_AFTER_MS })), 'away');
+});

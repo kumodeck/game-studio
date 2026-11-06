@@ -85,13 +85,20 @@ test('the words: English and Japanese for the button, the line and the refusals'
     for (const k of ['clip.btn', 'clip.tip', 'clip.stop', 'clip.saved', 'clip.downloaded', 'clip.where', 'clip.finder', 'clip.copy', 'clip.copied',
       'clip.mark', 'clip.length', 'clip.local', 'clip.webgpu', 'clip.tainted', 'clip.noEncoder', 'clip.failed', 'clip.saveFailed', 'clip.markOff', 'clip.markOn',
       'clip.shape', 'clip.shape.wide', 'clip.shape.tall', 'clip.words', 'clip.ba', 'clip.baTip', 'clip.share', 'clip.saveHere', 'clip.shareFailed',
-      'clip.rewrite', 'clip.rewriteTip', 'clip.rewriting', 'clip.rewritten', 'clip.rewriteLong', 'clip.rewriteEmpty', 'clip.rewriteNone']) {
+      'clip.rewrite', 'clip.rewriteTip', 'clip.rewriting', 'clip.rewritten', 'clip.rewriteLong', 'clip.rewriteEmpty', 'clip.rewriteNone',
+      // studio-clip-3 (2026-11-06)
+      'clip.ending', 'clip.saving', 'clip.holdTip', 'clip.whereTip', 'clip.postX', 'clip.postXTip', 'clip.postXOpened',
+      'clip.askAi', 'clip.askWebgpu', 'clip.askTainted']) {
       const s = translate(lang, k, { n: 8, name: 'neon-run-clip-1.mp4', dir: 'Movies › KUMODeck', t: '0:03', s: 8 });
       assert.ok(s && s !== k, `${lang} ${k}`);
     }
   }
   assert.equal(translate('en', 'clip.local', {}), 'Nothing leaves this computer.');
-  assert.equal(translate('en', 'clip.webgpu', {}), 'Clip needs WebGL for now. This game draws with WebGPU.');
+  // studio-clip-3 (decided 2026-11-06): each refusal says what to do next (VOICE.md rule 2), the AI by its name.
+  assert.equal(translate('en', 'clip.webgpu', { Ai: 'Claude' }), 'Clip can’t record WebGPU yet, and this game draws with WebGPU. Claude can switch it to WebGL, or use your computer’s screen recorder.');
+  assert.equal(translate('en', 'clip.tainted', { Ai: 'Claude' }), 'This game draws images from another site, so the browser won’t let Clip read its picture. Claude can move them into the game’s folder.');
+  assert.equal(translate('en', 'clip.stop', { t: '0:05' }), '0:05 left · Stop');
+  assert.equal(translate('ja', 'clip.stop', { t: '0:05' }), '残り 0:05 · 止める');
   // Stage 2: the line names the shape it was recorded in.
   assert.equal(translate('en', 'clip.where', { s: 8, shape: translate('en', 'clip.shape.tall', {}), dir: 'Movies › KUMODeck' }), '8 s · Tall 720×1280 · Movies › KUMODeck');
   assert.equal(translate('ja', 'clip.where', { s: 8, shape: translate('ja', 'clip.shape.wide', {}), dir: 'ムービー › KUMODeck' }), '8 秒 · 横 1280×720 · ムービー › KUMODeck');
@@ -203,4 +210,27 @@ test('the MP4: durations from the timestamps, rounded on the running time (no dr
   assert.ok(info && Math.abs(info.seconds - 1.5) < 1e-6, String(info?.seconds));
   assert.throws(() => muxMp4({ width: 2, height: 2, avcc: new Uint8Array(1), samples: [] }));
   assert.equal(mp4Info(new Uint8Array([1, 2, 3])), null);
+});
+
+test('studio-clip-3: the time left while recording, rounded up, and a Before / After\'s still part not waited for', async () => {
+  const { recLeftMs, leftClock } = await import('../src/shell/clip-model.ts');
+  assert.equal(recLeftMs({ totalMs: 8000, elapsedMs: 0 }), 8000);
+  assert.equal(recLeftMs({ totalMs: 8000, elapsedMs: 3200 }), 4800);
+  assert.equal(recLeftMs({ totalMs: 8000, elapsedMs: 9000 }), 0);
+  // A Before / After of 10 s: its 2 s still part is made before recording starts, so 8 s are left at the start.
+  assert.equal(recLeftMs({ totalMs: 10000, stillMs: 2000, elapsedMs: 0 }), 8000);
+  assert.equal(leftClock(8000), '0:08');
+  assert.equal(leftClock(4800), '0:05');
+  assert.equal(leftClock(1), '0:01');
+  assert.equal(leftClock(0), '0:00');
+  assert.equal(leftClock(61000), '1:01');
+});
+
+test('studio-clip-3: Post on X… opens X\'s compose page with the post (X\'s count unchanged, nothing else in it)', async () => {
+  const { xComposeUrl, X_COMPOSE } = await import('../src/shell/clip-model.ts');
+  const post = 'Paused my game at 0:05 and told Claude “bring the boss in”. Before → After 👇 https://github.com/kumodeck/game-studio';
+  const u = new URL(xComposeUrl(post));
+  assert.equal(`${u.origin}${u.pathname}`, X_COMPOSE);
+  assert.equal(u.searchParams.get('text'), post);
+  assert.deepEqual([...u.searchParams.keys()], ['text']);
 });

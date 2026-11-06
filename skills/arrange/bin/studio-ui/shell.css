@@ -195,6 +195,10 @@ kbd { font: 400 var(--fs-s)/1 var(--sans); color: var(--text-3); padding: 0; bac
 .pill { display: inline-flex; align-items: center; height: 20px; font-weight: 600; padding: 0 8px; border-radius: 999px; background: var(--raise-2); color: var(--text-2); font-size: var(--fs-s); white-space: nowrap; }
 .thumb { display: block; flex: none; object-fit: contain; border-radius: 4px; background: var(--studio-thumb); }
 .thumb.empty { background: var(--raise); }
+/* A row's picture not drawn yet (decided 2026-11-06): the first open of a 3D sample showed a column of empty squares for a
+   few seconds, read as "no pictures". A soft pulse says "coming" — a few times only, because some objects never get one
+   (UI pieces, things the game hides), and those should settle as a quiet tile, not blink forever. */
+.obj .thumb.empty { animation: studio-pulse 1.2s var(--ease) 6; }
 /* A near-white object (a cloud, a snowman) on a mid-grey tile, so its picture shows (thumb-tone.ts, polish pass). */
 .thumb[data-tone="light"] { background: #8d9199; }
 /* No picture yet (the shell asks the game for 200 at a time; with hundreds of things some rows wait): a quiet tile, not the
@@ -820,6 +824,11 @@ span.foot-row { display: flex; align-items: center; min-height: var(--h); }
 .motion-more .icon { width: 16px; height: 16px; }
 .motion-line-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .motion-line .icon { width: 14px; height: 14px; color: var(--text-3); flex: none; }
+/* No motion yet (decided 2026-11-06): "None" read like the numbers' empty value, then the one thing to do — a quiet button
+   in the card's raise (not orange: it is a way in, not the next step the person must take). */
+.motion-none { flex: 1 1 auto; padding: 0 8px; color: var(--text-3); font-size: var(--fs-s); }
+.motion-make { flex: none; height: var(--h); padding: 0 10px; border-radius: 6px; background: var(--raise); color: var(--text); font-size: var(--fs-s); white-space: nowrap; }
+.motion-make:hover { background: var(--you-soft); color: var(--you-text); }
 .motion-tl { background: var(--raise); padding: 0 10px; gap: 6px; font-size: var(--fs-s); }
 .motion-tl.on { background: var(--you-soft); color: var(--you-text); }
 .tl-diamond { width: 7px; height: 7px; transform: rotate(45deg); background: currentColor; border-radius: 1px; flex: none; }
@@ -1092,7 +1101,7 @@ span.foot-row { display: flex; align-items: center; min-height: var(--h); }
 .assets-page { position: absolute; inset: 0; z-index: 3; background: var(--plate); overflow: hidden; }
 .assets-page .tool-mount { height: 100%; }
 .assets-page .gsl { --gsl-bg: transparent; --gsl-card: var(--raise); --gsl-line: var(--line-2); --gsl-accent: var(--you); --gsl-fg: var(--text); --gsl-muted: var(--text-2);
-  font: inherit; background: none; color: var(--text); padding: 24px 24px 96px; gap: 12px; display: grid; grid-template-columns: minmax(0, 1fr) 288px;
+  font: inherit; background: none; color: var(--text); padding: 24px 24px max(96px, calc(var(--dock-h, 0px) + 28px)); gap: 12px; display: grid; grid-template-columns: minmax(0, 1fr) 288px;
   grid-template-rows: auto auto auto auto minmax(0, 1fr) auto; grid-template-areas: "bar detail" "ai detail" "chips detail" "count detail" "grid detail" "foot detail"; column-gap: 24px; height: 100%; }
 .assets-page .gsl-bar { grid-area: bar; gap: 8px; }
 .assets-page .gsl-chips { grid-area: chips; }
@@ -1115,10 +1124,12 @@ span.foot-row { display: flex; align-items: center; min-height: var(--h); }
 .assets-page .gsl-count { grid-area: count; color: var(--text-3); font-size: var(--fs-s); }
 /* "Couldn't read the folder (…)." + Try again shares the count's cell: the count is empty while it shows. */
 .assets-page .gsl-readfail { grid-area: count; justify-self: start; max-width: 560px; border: 0; border-radius: var(--R); background: var(--raise); box-shadow: inset 3px 0 0 var(--gsl-missing); padding: 10px 10px 10px 14px; }
-.assets-page .gsl-grid { grid-area: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 16px; margin-bottom: -108px;
-  /* fix-0141 ⑪: at least the dock's height now (main.ts --dock-h) + its 16 px from the edge + 12 px of air, so the last
-     row scrolls up clear of the AI's line and presence too (a fixed 108 px left it under a three-row dock). */
-  padding-bottom: max(108px, calc(var(--dock-h, 0px) + 28px)); }
+.assets-page .gsl-grid { grid-area: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 16px;
+  /* fix-0141 ⑪: the last row scrolled up clear of the dock (a padding as tall as the dock). Decided 2026-11-06 (a first-time
+     walk): the grid now ENDS above the dock (the page's own bottom padding, .gsl above, is the dock's height + 28 px) instead
+     of running under it with a negative margin — at rest, the third row's names (rowboat, buoy) sat under the field, and
+     a name you cannot read looks like a broken tile. */
+  padding-bottom: 12px; }
 /* With no detail open, the detail's column folds away and the grid takes the whole page: 6 columns at 1280 (the second
    design review's ⑦, 2026-10-19). The 288 px column stayed reserved before, so the grid stopped at 4 columns and the
    right third of the page was empty. 140 = the smallest tile that still reads (6 × 140 + 5 × 16 fits the 976 px page). */
@@ -1306,6 +1317,12 @@ button.shelf-file.to:hover { background: var(--raise-2); }
 .shell[data-layout="phone"] .level-add-slot { display: none; }
 .shell[data-layout="phone"] .top-right { gap: 2px; }
 .shell[data-layout="phone"] .save-state { padding: 0 6px; }
+/* The game's name first (decided 2026-11-06, a first-time walk at 390×844): after a change or a Save the bar read
+   "Lantern …" / "Lantern C…" — the orange Save, the quiet "✓ Saved", Undo, a greyed Redo and Play took the row. On a
+   phone the quiet saved state is its ✓ alone (the line over the game says "Saved…" in words), and Redo steps away while
+   there is nothing to redo (it comes back right after an Undo, where it is wanted). */
+.shell[data-layout="phone"] .save-state > span { display: none; }
+.shell[data-layout="phone"] .top .actions [data-action="redo"]:disabled { display: none; }
 .shell[data-layout="phone"] .top .icon-btn { width: 44px; }
 .shell[data-layout="phone"] .top .icon-btn .icon { width: 20px; height: 20px; }
 /* Ask while playing (Ive review 3 ④): ✦ left of Edit, the AI's violet, no plate (it is the ask field's spark, not a
@@ -2225,6 +2242,7 @@ button.shelf-file.to:hover { background: var(--raise-2); }
 .intro-line { margin: 0; justify-self: center; max-width: 100%; padding: 4px 12px; border-radius: 999px; font-size: var(--fs-s); line-height: 1.4; color: var(--text-2); text-align: center;
   background: var(--glass); -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur); animation: studio-rise var(--dur-in) var(--ease); }
 .intro-line[hidden] { display: none; }
+/* The wait line (main.ts waitLine) is the intro line's look; it never shows with it (one is before the objects, the other after). */
 .shell:is([data-palette="open"], [data-palette="suggest"]) .intro-line, .shell[data-layout="phone"][data-sheet="open"] .intro-line { display: none; }
 /* The AI's reply over the game's top (it was the top block of the stack at the foot). Its fade and its way back (the
    field's focus) are unchanged (line-fade.ts). */
@@ -2235,6 +2253,10 @@ button.shelf-file.to:hover { background: var(--raise-2); }
 .presence.dot-only :is(.p-text, .p-how) { display: none; }
 .presence.dot-only .dot { display: block; background: var(--text-3); }
 .presence.dot-only.sure .dot { background: var(--live); }
+/* "Not sure" before the person asks (ai-presence.ts presenceQuiet, decided 2026-11-06): the same grey dot on a PC bar too,
+   at the field's mouse size, and the ⌘K hint stays beside it (a lone dot is not "words in its place"). */
+.shell:not([data-layout="phone"]) .presence.dot-only.quiet { width: 28px; min-height: 28px; }
+.shell:not([data-layout="phone"]) .ask-box:not(:focus-within):has(> .presence.quiet) .ask-kbd { display: revert; }
 /* The sheet's tabs: Scene | <the picked object> | Motion. A finger's 44 on a phone, the side window's mouse 32 (its
    rows are 32: shell.css [data-fit="side"]). The picked object's name is cut, never the other two. */
 .sheet-tabs { display: flex; gap: 4px; padding: 2px 8px 6px; min-width: 0; }
@@ -2616,6 +2638,13 @@ li.obj[aria-selected="true"] .hand-mark .hand-tag { padding: 0 4px; }
 .shell[data-layout="phone"] .clip-split > .clip-more { display: none; }
 .shell[data-layout="phone"] .clip-split > .clip-btn { padding: 0; width: 36px; justify-content: center; border-radius: 999px; }
 .shell[data-layout="phone"] .clip-split .clip-label { display: none; }
+/* studio-clip-3 (decided 2026-11-06): while recording, a phone's ● says the whole seconds left ("5") in place of the
+   blinking dot — the red frame and the bar said "recording", nothing said how long. Tabular digits: it does not jump. */
+.clip-btn .clip-left { display: none; }
+.shell[data-layout="phone"] .clip-split > .clip-btn.on .clip-left:not(:empty) { display: inline; font-weight: 700; font-size: 15px; font-variant-numeric: tabular-nums; }
+.shell[data-layout="phone"] .clip-split > .clip-btn.on:has(.clip-left:not(:empty)) .rec-dot { display: none; }
+/* Holding ● opens Clip options (clip.ts): no text selection or the system's own callout under the finger. */
+.clip-split > .clip-btn { -webkit-touch-callout: none; user-select: none; -webkit-user-select: none; touch-action: manipulation; }
 /* Tall (stage 2): while it records, the game gets a 9:16 window in the middle of the stage — not a crop: the game lays
    itself out to it (a resize), as a phone would. The red frame goes round that window (--clip-side, set by main.ts from
    the stage's size). */
@@ -2644,6 +2673,13 @@ li.obj[aria-selected="true"] .hand-mark .hand-tag { padding: 0 4px; }
 .clip-line .clip-head .icon { width: 14px; height: 14px; flex: none; }
 .clip-line .clip-head strong { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .clip-line .clip-where { color: var(--text-2); font-size: var(--fs-s); white-space: nowrap; flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+/* The shape and length as a button (studio-clip-3): Clip options for the next clip. It reads as the line's words with a
+   ⌄, not as one more pill, so the row's real buttons (Show in Finder, Share…) stay the ones that stand out. */
+.clip-line button.clip-where { display: inline-flex; align-items: center; gap: 4px; justify-content: flex-start; background: none; border: 0; padding: 0 4px;
+  min-height: var(--h); border-radius: 6px; cursor: pointer; text-align: left; }
+.clip-line button.clip-where > span { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.clip-line button.clip-where .icon { width: 12px; height: 12px; flex: none; }
+.clip-line button.clip-where:hover { background: var(--raise-2); color: var(--text); }
 .clip-line .link { flex: none; gap: 6px; color: var(--text); background: var(--raise-2); border-radius: 999px; padding: 0 12px; min-height: var(--h); font-weight: 600; }
 .clip-line .link:hover { background: var(--raise-3); }
 .clip-line .clip-x { width: var(--h); padding: 0; justify-content: center; display: inline-flex; align-items: center; }
@@ -2658,6 +2694,12 @@ li.obj[aria-selected="true"] .hand-mark .hand-tag { padding: 0 4px; }
 .clip-line .link.spark .icon { width: 13px; height: 13px; }
 .clip-line .link.spark:disabled { opacity: .6; }
 .clip-line .link.primary { background: var(--solid); color: var(--solid-fg); }
+/* The clip's own notes (studio-clip-3; clip.ts say): here, on the stage, because the editor's toast is in the dock and the
+   dock is put away while playing. Words wrap (a refusal is two sentences); ✦ Ask in the AI's violet. */
+.clip-line .clip-note { color: var(--text); font-size: var(--fs-s); }
+.clip-line .clip-note[hidden] { display: none; }
+.clip-line .clip-row:not(.clip-note) ~ .clip-note { border-top: 1px solid var(--line-2, var(--line)); padding-top: 6px; color: var(--text-2); }
+.clip-line .clip-note-text { flex: 1 1 auto; min-width: 0; line-height: 1.4; }
 .shell[data-layout="phone"] .stage > .clip-line { width: calc(100% - 16px); bottom: 8px; padding: 8px; }
 .shell[data-layout="phone"] .clip-line .clip-row { flex-wrap: wrap; gap: 6px; }
 .shell[data-layout="phone"] .clip-line .clip-where { flex-basis: 100%; }

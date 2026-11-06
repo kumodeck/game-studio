@@ -1,4 +1,4 @@
-/* KUMODeck Game Studio 0.1.82 — MIT License — built file, edit src/ instead */
+/* KUMODeck Game Studio 0.1.83 — MIT License — built file, edit src/ instead */
 (() => {
 const __defs = [];
 const __cache = [];
@@ -1257,7 +1257,18 @@ function pickNear(cands, camera, viewProj, ndcX, ndcY, radiusPx, size) {
     }
     return { who, t: best };
   };
+  // The object the pointer's own ray meets first is seen there, whatever the test below says (decided 2026-11-06, a
+  // first-run walk of v0.1.82: a click on Lantern Cove's lamp post — a 4 px pole — selected the rock behind it). The test
+  // below shoots a quarter of the way from the pointer toward the middle of the object's box; for a thin thing with a
+  // wide box (the post and its lamp arm) that point is beside the pole, its ray met the rock, the post counted as hidden
+  // and the rock won though the pointer was on the post.
+  let front = null;
+  for (const [c, t] of hits) if (!front || t < hits.get(front)) front = c;
   for (const row of rows) {
+    if (row.c === front) {
+      row.visible = true;
+      continue;
+    }
     const [x0, y0, x1, y1] = row.rect;
     const cx = (x0 + x1) / 2;
     const cy = (y0 + y1) / 2;
@@ -2318,6 +2329,64 @@ __def(__exports, "codeFromObject", () => codeFromObject);
 };
 __defs[12] = function (__exports) {
 'use strict';
+// ../adapters/three/overlap.js
+
+// What a moved object now sits inside (decided 2026-11-06, a first-run walk of v0.1.82): a far rock dragged 120 px went
+// 9.6 m and ended inside the sea arch, and nothing on screen said so — from far away one pixel is metres, and the eye
+// cannot tell depth. The bridge draws the pick's outline red and names what it overlaps while the drag lasts.
+//
+// The rule, on world boxes (pick.js worldBox):
+// - both boxes shrink by INSET of their own size on every side first, so things that only touch (a barrel standing on
+//   the pier, two crates side by side, a box's empty corners) do not count — only a real push into the other;
+// - an object that spreads much wider than the moved one (BIG × its floor area, x × z: a hill, an island, the sea) is
+//   what things stand on or in, not something to bump into: never counted (the moved one may be over it, or in its box,
+//   as a matter of course). Floor area, not volume: the first try used volume, and Lantern Cove's sea arch (a tall bow,
+//   ~15× the small rock's volume but ~8× its floor) counted as ground — the rock dragged into it stayed orange;
+// - the moved object's own parents and children are never counted (the caller leaves them out).
+// Plain numbers in, keys out: test/walk2-scene.test.ts reads it without three.js.
+
+/** Share of a box's size taken off every side before comparing (0.15 = the middle 70 % of each axis). */
+const INSET = 0.15;
+/** Another object this many times the moved one's floor area (x × z) or more is ground to it, never an overlap. */
+const BIG = 12;
+
+const floor = (b) => Math.max(1e-9, (b.max[0] - b.min[0]) * (b.max[2] - b.min[2]));
+const shrink = (b) => {
+  const min = [], max = [];
+  for (let i = 0; i < 3; i++) {
+    const d = (b.max[i] - b.min[i]) * INSET;
+    min.push(b.min[i] + d);
+    max.push(b.max[i] - d);
+  }
+  return { min, max };
+};
+
+/**
+ * @param {{ min: number[], max: number[] }} box  the moved object's world box
+ * @param {Array<{ key: string, box: { min: number[], max: number[] } | null }>} others
+ * @returns {string[]} the keys it overlaps, most overlapped first (at most 3)
+ */
+function overlapKeys(box, others) {
+  if (!box) return [];
+  const a = shrink(box);
+  const mine = floor(box);
+  const out = [];
+  for (const o of others) {
+    if (!o.box || floor(o.box) >= mine * BIG) continue;
+    const b = shrink(o.box);
+    let v = 1;
+    for (let i = 0; i < 3 && v > 0; i++) v *= Math.max(0, Math.min(a.max[i], b.max[i]) - Math.max(a.min[i], b.min[i]));
+    if (v > 0) out.push({ key: o.key, v });
+  }
+  return out.sort((x, y) => y.v - x.v).slice(0, 3).map((x) => x.key);
+}
+
+__def(__exports, "INSET", () => INSET);
+__def(__exports, "BIG", () => BIG);
+__def(__exports, "overlapKeys", () => overlapKeys);
+};
+__defs[13] = function (__exports) {
+'use strict';
 // ../adapters/three/adapter.js
 
 /**
@@ -2344,6 +2413,7 @@ const { focusSphere, sceneSphere } = __require(8);
 const { castSurface, castSurfaceAll, solidBox, surfaceBelowHit, surfaceMeshes } = __require(9);
 const { groundKeys } = __require(10);
 const { codeFromObject } = __require(11);
+const { overlapKeys } = __require(12);
 
 const DEG = Math.PI / 180;
 const S_MIN = 0.01;
@@ -3412,6 +3482,26 @@ function createThreeAdapter({ scene, renderer, camera }) {
       return poseOf(o);
     },
 
+    /**
+     * What the object now overlaps (overlap.js; decided 2026-11-06): other listed objects, not the grounds, not its own
+     * parents or children. The bridge asks during a move, at most every 100 ms.
+     */
+    overlaps(key) {
+      const o = objectOf(key);
+      if (!o) return [];
+      scene.updateMatrixWorld(true);
+      const kin = (c) => {
+        for (let p = c.parent; p; p = p.parent) if (p === o) return true;
+        for (let p = o.parent; p; p = p.parent) if (p === c) return true;
+        return false;
+      };
+      const boxes = allCands.map((c) => ({ c, box: worldBox(c.object) }));
+      const grounds = groundKeys(boxes.map(({ c, box }) => ({ key: c.key, label: c.label, named: c.source !== 'path', box })));
+      const others = boxes.filter(({ c }) => c.object !== o && !removed.has(c.key) && !grounds.has(c.key) && c.object.visible !== false && !kin(c.object))
+        .map(({ c, box }) => ({ key: c.key, box }));
+      return overlapKeys(worldBox(o), others);
+    },
+
     /** The bottom middle of the object's world box, in its parent's space (the space of pose.p). */
     foot(key) {
       const o = objectOf(key);
@@ -3837,7 +3927,7 @@ function createThreeAdapter({ scene, renderer, camera }) {
 __def(__exports, "whenThreeReady", () => whenThreeReady);
 __def(__exports, "createThreeAdapter", () => createThreeAdapter);
 };
-__defs[13] = function (__exports) {
+__defs[14] = function (__exports) {
 'use strict';
 // ../adapters/three/index.ts
 
@@ -3856,7 +3946,7 @@ __defs[13] = function (__exports) {
 // adapter knows the canvas rectangle. Converting here keeps adapter.js and its
 // own tests unchanged; folding the conversion into adapter.js later is fine.
                                                                      
-const { createThreeAdapter } = __require(12);
+const { createThreeAdapter } = __require(13);
 const { project, rayFromCamera, rayPlaneY, viewProjOf } = __require(3);
 
                      
@@ -3915,6 +4005,7 @@ function fitThreeAdapter(raw     , canvas                   )                {
     turn: (key, d, axis) => pose(key, raw.turn(key, d, axis)),
     foot: (key) => raw.foot(key),
     middle: (key) => raw.middle(key),
+    overlaps: (key) => raw.overlaps(key),
     coverage: (key) => raw.coverage(key),
     scale: (key, f) => pose(key, raw.scale(key, f)),
     nudgeY: (key, dy) => pose(key, raw.nudgeY(key, dy)),
@@ -4012,7 +4103,7 @@ const threeProbe               = {
 __def(__exports, "fitThreeAdapter", () => fitThreeAdapter);
 __def(__exports, "threeProbe", () => threeProbe);
 };
-__defs[14] = function (__exports) {
+__defs[15] = function (__exports) {
 'use strict';
 // ../contract.ts
 
@@ -4500,6 +4591,11 @@ const CONTRACT_VERSION = 1;
                       
      
                                         
+     
+                                                                                                                         
+                                                                                                               
+     
+                                   
      
                                                                             
                                                                            
@@ -5735,6 +5831,11 @@ const MSG_PREFIX = 'studio:';
      
                                                                                                                       
                                                                                                                  
+     
+                                                  
+     
+                                                                                                                            
+                                                                                                         
      
                                                   
      
@@ -7307,7 +7408,7 @@ __def(__exports, "IGNORED_DIRS", () => IGNORED_DIRS);
 __def(__exports, "UI", () => UI);
 __def(__exports, "LOCAL_PATHS", () => LOCAL_PATHS);
 };
-__defs[15] = function (__exports) {
+__defs[16] = function (__exports) {
 'use strict';
 // ../core/loads.ts
 
@@ -7440,7 +7541,7 @@ function installLoads(win                             = window)          {
 
 __def(__exports, "installLoads", () => installLoads);
 };
-__defs[16] = function (__exports) {
+__defs[17] = function (__exports) {
 'use strict';
 // ../core/time.ts
 
@@ -7709,15 +7810,15 @@ function installTime(opts             )                  {
 __def(__exports, "frameGate", () => frameGate);
 __def(__exports, "installTime", () => installTime);
 };
-__defs[17] = function (__exports) {
+__defs[18] = function (__exports) {
 'use strict';
 // ../core/index.ts
 
 // src/core: shared services inside the game page (time control, load log).
 // Installed by the edit script before any game code runs.
                                                   
-const { installLoads } = __require(15);
-const { installTime } = __require(16);
+const { installLoads } = __require(16);
+const { installTime } = __require(17);
 
                                            
                         
@@ -7729,7 +7830,7 @@ function installCore(opts             )       {
 
 __def(__exports, "installCore", () => installCore);
 };
-__defs[18] = function (__exports) {
+__defs[19] = function (__exports) {
 'use strict';
 // ../core/play-timers.ts
 
@@ -7968,7 +8069,7 @@ function installTimerHold(win                            , real                 
 __def(__exports, "makeTimerHold", () => makeTimerHold);
 __def(__exports, "installTimerHold", () => installTimerHold);
 };
-__defs[19] = function (__exports) {
+__defs[20] = function (__exports) {
 'use strict';
 // ../core/play-clock.ts
 
@@ -7990,7 +8091,7 @@ __defs[19] = function (__exports) {
 // lists what a pause still does not stop.
 
 const { nativeClearTimeout, nativeDateNow, nativeSetTimeout } = __require(0);
-const { installTimerHold } = __require(18);
+const { installTimerHold } = __require(19);
 
                             
                                                                         
@@ -8173,7 +8274,7 @@ __def(__exports, "LATE_CUT_MS", () => LATE_CUT_MS);
 __def(__exports, "makeClock", () => makeClock);
 __def(__exports, "installPlayClock", () => installPlayClock);
 };
-__defs[20] = function (__exports) {
+__defs[21] = function (__exports) {
 'use strict';
 // ../core/port2d.ts
 
@@ -8187,7 +8288,7 @@ __defs[20] = function (__exports) {
 // direct engine calls (read/write x, y, rotation, scale; report a screen
 // rectangle), which an AI can write correctly from one example and which the
 // self-check can verify.
-const { LIMITS } = __require(14);
+const { LIMITS } = __require(15);
                                        
 
                                                             
@@ -8668,7 +8769,7 @@ __def(__exports, "BACKDROP_NAME", () => BACKDROP_NAME);
 __def(__exports, "backdropRun", () => backdropRun);
 __def(__exports, "adapterFromPort2D", () => adapterFromPort2D);
 };
-__defs[21] = function (__exports) {
+__defs[22] = function (__exports) {
 'use strict';
 // ../loader/studio-placement.js
 
@@ -11009,7 +11110,7 @@ __def(__exports, "placeUi", () => placeUi);
 __def(__exports, "uiOffset", () => uiOffset);
 __def(__exports, "findByKey", () => findByKey);
 };
-__defs[22] = function (__exports) {
+__defs[23] = function (__exports) {
 'use strict';
 // ../adapters/ui/adapter.js
 
@@ -11030,7 +11131,7 @@ __defs[22] = function (__exports) {
 // UI in stage 1: rotatable false). parentToScreen maps that offset space to the screen: origin = where the middle
 // of the element would be at offset 0, one offset px = k screen px (k = the zoom of the parent, e.g. a HUD scaled to
 // fit the window).
-const { placeUi, uiOffset } = __require(21);
+const { placeUi, uiOffset } = __require(22);
 
 const KEY = /^[A-Za-z0-9_:#.\-\/]{1,80}$/;
 /** Scale bounds of a UI element: the same as placement.json `ui` (src/schema LIMITS.minUiScale / maxUiScale). */
@@ -11151,7 +11252,7 @@ function createUiPort(win, opts = {}) {
 
 __def(__exports, "createUiPort", () => createUiPort);
 };
-__defs[23] = function (__exports) {
+__defs[24] = function (__exports) {
 'use strict';
 // ../adapters/ui/index.ts
 
@@ -11165,8 +11266,8 @@ __defs[23] = function (__exports) {
 // The UI seat (CONTRACT.md §1.1): the bridge asks the game's own studio.registerUI() ports first, then this one.
                                                                
                                                 
-const { adapterFromPort2D } = __require(20);
-const { createUiPort } = __require(22);
+const { adapterFromPort2D } = __require(21);
+const { createUiPort } = __require(23);
 
 /** A UI-seat adapter from any Port2D (the built-in DOM one, or a game's registerUI port). */
 function uiAdapterFromPort(port        , core      , win        )                {
@@ -11196,7 +11297,7 @@ __def(__exports, "uiAdapterFromPort", () => uiAdapterFromPort);
 __def(__exports, "findDomUi", () => findDomUi);
 __def(__exports, "findDomUiPort", () => findDomUiPort);
 };
-__defs[24] = function (__exports) {
+__defs[25] = function (__exports) {
 'use strict';
 // ui-edge.ts
 
@@ -11215,7 +11316,7 @@ __defs[24] = function (__exports) {
 //     `from` / `at` (SKILL.md), so the element keeps to that edge on every window size.
 // The HTML UI's screen is the game page's window (the iframe): its CSS px, top-left 0, 0.
                                                                 
-const { uiAtOf, uiNearest } = __require(21);
+const { uiAtOf, uiNearest } = __require(22);
 
                       
             
@@ -11366,7 +11467,7 @@ __def(__exports, "paintEdgeLine", () => paintEdgeLine);
 __def(__exports, "edgeOf", () => edgeOf);
 __def(__exports, "createUiEdges", () => createUiEdges);
 };
-__defs[25] = function (__exports) {
+__defs[26] = function (__exports) {
 'use strict';
 // code-ui.ts
 
@@ -11393,7 +11494,7 @@ __defs[25] = function (__exports) {
 // keeps them until the AI writes them into the code on Save.
                                                                                                                                          
                                              
-const { paintEdgeLine } = __require(24);
+const { paintEdgeLine } = __require(25);
 
 /** A codeUi entry as the loader keeps it (src/loader/studio-placement.js codeUi). The methods are the game's copy's. */
                  
@@ -12101,12 +12202,12 @@ function mergeUiPorts(dom               , code        )         {
   };
 }
 
-__def(__exports, "placeWords", () => __require(24).placeWords);
+__def(__exports, "placeWords", () => __require(25).placeWords);
 __def(__exports, "codeUiEntries", () => codeUiEntries);
 __def(__exports, "createCodeUi", () => createCodeUi);
 __def(__exports, "mergeUiPorts", () => mergeUiPorts);
 };
-__defs[26] = function (__exports) {
+__defs[27] = function (__exports) {
 'use strict';
 // play-shot.ts
 
@@ -12355,7 +12456,7 @@ __def(__exports, "SHOT_W", () => SHOT_W);
 __def(__exports, "shootPage", () => shootPage);
 __def(__exports, "paintPage", () => paintPage);
 };
-__defs[27] = function (__exports) {
+__defs[28] = function (__exports) {
 'use strict';
 // ui-found.ts
 
@@ -12382,7 +12483,7 @@ __defs[27] = function (__exports) {
 // All of it is the editor's own drawing in the game page (a shadow root marked data-studio-ui, so the game's CSS cannot
 // reach it and play-shot.ts's painter leaves it out), gone when editing ends.
                                                              
-const { shootPage } = __require(26);
+const { shootPage } = __require(27);
 
                        
             
@@ -12811,7 +12912,7 @@ __def(__exports, "markHudCanvases", () => markHudCanvases);
 __def(__exports, "findUi", () => findUi);
 __def(__exports, "createUiFound", () => createUiFound);
 };
-__defs[28] = function (__exports) {
+__defs[29] = function (__exports) {
 'use strict';
 // selfcheck.ts
 
@@ -12823,7 +12924,7 @@ __defs[28] = function (__exports) {
 // after an adapter is found the bridge runs a few cheap tests on one object,
 // puts it back exactly, and reports which promise is broken. The shell shows
 // the result; the host hands it to the AI (local: .studio/check.md).
-const { KEY_RE } = __require(14);
+const { KEY_RE } = __require(15);
                                              
 
                                                
@@ -13071,7 +13172,7 @@ __def(__exports, "SECOND_LOOK_MS", () => SECOND_LOOK_MS);
 __def(__exports, "worthASecondLook", () => worthASecondLook);
 __def(__exports, "runSelfCheck", () => runSelfCheck);
 };
-__defs[29] = function (__exports) {
+__defs[30] = function (__exports) {
 'use strict';
 // ../core/rules.ts
 
@@ -13325,7 +13426,7 @@ __def(__exports, "rulesFor", () => rulesFor);
 __def(__exports, "placeOnGrid", () => placeOnGrid);
 __def(__exports, "withRules", () => withRules);
 };
-__defs[30] = function (__exports) {
+__defs[31] = function (__exports) {
 'use strict';
 // ../core/edits.ts
 
@@ -13640,7 +13741,7 @@ function withEdits(inner               )               {
 
 __def(__exports, "withEdits", () => withEdits);
 };
-__defs[31] = function (__exports) {
+__defs[32] = function (__exports) {
 'use strict';
 // hold.ts
 
@@ -13802,7 +13903,7 @@ __def(__exports, "createHoldState", () => createHoldState);
 __def(__exports, "holdItem", () => holdItem);
 __def(__exports, "withHold", () => withHold);
 };
-__defs[32] = function (__exports) {
+__defs[33] = function (__exports) {
 'use strict';
 // group.ts
 
@@ -13830,7 +13931,7 @@ __defs[32] = function (__exports) {
 //   handle and the others get the same move in metres. Turning goes around the
 //   middle of the group on the ground (vertical axis), as a turntable would.
                                                                                                   
-const { canLift } = __require(31);
+const { canLift } = __require(32);
 
                                
                  
@@ -14204,7 +14305,7 @@ __def(__exports, "groupScale", () => groupScale);
 __def(__exports, "groupLift", () => groupLift);
 __def(__exports, "groupPoses", () => groupPoses);
 };
-__defs[33] = function (__exports) {
+__defs[34] = function (__exports) {
 'use strict';
 // game-tools.ts
 
@@ -14216,7 +14317,7 @@ __defs[33] = function (__exports) {
 // points and back, draw on an overlay canvas, and say "my data changed".
 // While a tool is on, pointer presses go to it first (after the handles);
 // whatever it does not use still looks around / selects as usual.
-const { TOOL_ID_RE } = __require(14);
+const { TOOL_ID_RE } = __require(15);
                                              
 
                                
@@ -14426,7 +14527,7 @@ function createToolHost(d              )           {
 
 __def(__exports, "createToolHost", () => createToolHost);
 };
-__defs[34] = function (__exports) {
+__defs[35] = function (__exports) {
 'use strict';
 // ../core/keys.ts
 
@@ -14479,7 +14580,7 @@ function keyStep(key        , shift         , dim             )                {
 
 __def(__exports, "keyStep", () => keyStep);
 };
-__defs[35] = function (__exports) {
+__defs[36] = function (__exports) {
 'use strict';
 // handles.ts
 
@@ -14518,7 +14619,7 @@ __defs[35] = function (__exports) {
 // a box: a box is wider than the object and overlaps its neighbours, so "which
 // one is picked?" was answered by guessing. Adapters that cannot draw objects
 // alone get a rounded box (6 px corners, the radius of every control).
-const { UI } = __require(14);
+const { UI } = __require(15);
 
                                    
 
@@ -14543,9 +14644,10 @@ const HANDLE_LABELS                                           = {
   ja: { move: '移動（M）', rotate: '回す（T）', lift: '高さ（H）', scale: '大きさ（S）' },
 };
 /** The readout's words while a drag works (short: it sits next to the strip). */
-const READOUT_WORDS                                                             = {
-  en: { move: 'Move', rotate: 'Turn', lift: 'Height', scale: 'Size', tipX: 'Tilt forward', tipZ: 'Tilt sideways' },
-  ja: { move: '移動', rotate: '回す', lift: '高さ', scale: '大きさ', tipX: '前後に倒す', tipZ: '左右に倒す' },
+const READOUT_WORDS                                                                        = {
+  // inside (decided 2026-11-06): after a move's numbers while it pushes into another object — "Move X +9.60 Z +2.73 · In sea-arch".
+  en: { move: 'Move', rotate: 'Turn', lift: 'Height', scale: 'Size', tipX: 'Tilt forward', tipZ: 'Tilt sideways', inside: 'In {name}' },
+  ja: { move: '移動', rotate: '回す', lift: '高さ', scale: '大きさ', tipX: '前後に倒す', tipZ: '左右に倒す', inside: '{name} に重なっています' },
 };
 /**
  * The one line shown the first time a tool is chosen (then never again on this computer): what a drag does now and
@@ -14768,6 +14870,8 @@ const MOTION_ICON = '<path d="M20 19c-4.5 0-5-7-8.5-9.5S7 8 5.5 6.5" stroke-dash
                                                                      
                                                                                                                        
                                                     
+                                                                                                                  
+                              
                                                                                              
                 
      
@@ -14804,6 +14908,11 @@ const MOTION_ICON = '<path d="M20 19c-4.5 0-5-7-8.5-9.5S7 8 5.5 6.5" stroke-dash
 /** Your hand and the AI's hand. Kept in step with --you / --ai in shell.css (fixed: they sit on the game, not on the shell's theme). */
 const YOU = '#ff6b1a';
 const AI = '#8b7cff';
+/**
+ * A move that ends inside another object (decided 2026-11-06, a first-run walk: a far rock dragged into the sea arch with
+ * nothing said). The system red, not the pick's orange: "not here" at a glance, as the readout then names what it is in.
+ */
+const CLASH = '#ff3b30';
 /** Gap between the object and the strip (px): 12 = the review's number (wave 1, W1-2 / M4, 2026-10-17); was 10. */
 const GAP = 12;
 const CSS = `
@@ -14864,6 +14973,8 @@ svg * { vector-effect: non-scaling-stroke; }
 .layer.sel .box { border-width: 3px; background: rgba(255,107,26,.12); box-shadow: 0 0 10px rgba(255,107,26,.55); }
 .layer.sel.flash .ol, .layer.sel.flash .box { animation: pick-flash .6s cubic-bezier(.2,.8,.2,1); }
 @keyframes pick-flash { from { filter: drop-shadow(0 0 16px rgba(255,107,26,1)) brightness(1.25); } }
+.layer.sel.clash .ol { filter: drop-shadow(0 0 6px rgba(255,59,48,.7)); }
+.layer.sel.clash .box { background: rgba(255,59,48,.14); box-shadow: 0 0 10px rgba(255,59,48,.6); }
 .layer.hover .ol { filter: drop-shadow(0 0 5px rgba(255,107,26,.45)); }
 .layer.hover .box { border-width: 2px; background: rgba(255,107,26,.08); box-shadow: 0 0 8px rgba(255,107,26,.4); }
 @media (prefers-reduced-motion: reduce) { .layer.sel.flash .ol, .layer.sel.flash .box { animation: none; } }
@@ -15107,6 +15218,7 @@ function createHandles(doc          , hasLift         )          {
   // One layer per kind of mark, bottom to top: ghosts, AI outlines, your outline, tags, strip, band.
   const ghostLayer = doc.createElement('div');
   const aiLayer = doc.createElement('div');
+  let clash = false;
   const selLayer = doc.createElement('div');
   const hoverLayer = doc.createElement('div');
   aiLayer.className = 'layer ai';
@@ -15271,9 +15383,10 @@ function createHandles(doc          , hasLift         )          {
     while (layer.children.length < rects.length) {
       const m = doc.createElement('div');
       m.className = 'box';
-      m.style.setProperty('--c', color);
       layer.append(m);
     }
+    // Every time: the pick's colour can change while it is drawn (CLASH).
+    for (const m of Array.from(layer.children)                 ) m.style.setProperty('--c', color);
     let all              = null;
     rects.forEach((r, i) => {
       const m = layer.children[i]               ;
@@ -15562,7 +15675,11 @@ function createHandles(doc          , hasLift         )          {
       }
     },
     selection(shape, rects, tag) {
-      tagAt(youTag, outline(selLayer, shape, rects, YOU, RING_YOU), tag);
+      selLayer.classList.toggle('clash', clash);
+      tagAt(youTag, outline(selLayer, shape, rects, clash ? CLASH : YOU, RING_YOU), tag);
+    },
+    setClash(on) {
+      clash = on;
     },
     hover(shape, rects) {
       outline(hoverLayer, shape, rects, YOU, RING_HOVER);
@@ -15679,7 +15796,7 @@ __def(__exports, "unholdFromEvent", () => unholdFromEvent);
 __def(__exports, "choiceFromEvent", () => choiceFromEvent);
 __def(__exports, "handleFromEvent", () => handleFromEvent);
 };
-__defs[36] = function (__exports) {
+__defs[37] = function (__exports) {
 'use strict';
 // rise.ts
 
@@ -15703,7 +15820,7 @@ __defs[36] = function (__exports) {
 // keys; and two fingers already pan and pinch, so a two-finger "up" would take panning forward away.
 // WHY its own small shadow root (not in handles.ts with the strip): the strip follows the picked object and is
 // gone with nothing picked; these stay in one corner, always. Same glass, same sizes, same theme as the strip.
-const { UI } = __require(14);
+const { UI } = __require(15);
 
                                     
 
@@ -15837,7 +15954,7 @@ function createRiseButtons(doc          )              {
 __def(__exports, "RISE_LABELS", () => RISE_LABELS);
 __def(__exports, "createRiseButtons", () => createRiseButtons);
 };
-__defs[37] = function (__exports) {
+__defs[38] = function (__exports) {
 'use strict';
 // snap.ts
 
@@ -15938,7 +16055,7 @@ __def(__exports, "stepDetent", () => stepDetent);
 __def(__exports, "freeHeld", () => freeHeld);
 __def(__exports, "firstToTouch", () => firstToTouch);
 };
-__defs[38] = function (__exports) {
+__defs[39] = function (__exports) {
 'use strict';
 // outline-slide.ts
 
@@ -15971,7 +16088,7 @@ function slideOf(was                                                       , now
 
 __def(__exports, "slideOf", () => slideOf);
 };
-__defs[39] = function (__exports) {
+__defs[40] = function (__exports) {
 'use strict';
 // ../shell/offset-model.ts
 
@@ -16134,7 +16251,7 @@ __def(__exports, "snapAmount", () => snapAmount);
 __def(__exports, "noAmount", () => noAmount);
 __def(__exports, "rowAt", () => rowAt);
 };
-__defs[40] = function (__exports) {
+__defs[41] = function (__exports) {
 'use strict';
 // code-lists.ts
 
@@ -16297,7 +16414,7 @@ __def(__exports, "kindOf", () => kindOf);
 __def(__exports, "codeAvoidsOf", () => codeAvoidsOf);
 __def(__exports, "namedByLayout", () => namedByLayout);
 };
-__defs[41] = function (__exports) {
+__defs[42] = function (__exports) {
 'use strict';
 // code-place.ts
 
@@ -16356,10 +16473,10 @@ __defs[41] = function (__exports) {
 // lamps, a ring — and the editor only knows the rule by running it.
 // WHY SVG in a shadow root, as timeline-path.ts: the same look in every engine, out of reach of the game's CSS.
                                                                                                                                                                               
-const { codePose, knobValues, relayCodePlace } = __require(21);
+const { codePose, knobValues, relayCodePlace } = __require(22);
 const { nativeSetTimeout } = __require(0);
-const { addOffset, dragAmount, lastOf, movesRank, noAmount, offsetsFull, snapAmount } = __require(39);
-const { kindOf } = __require(40);
+const { addOffset, dragAmount, lastOf, movesRank, noAmount, offsetsFull, snapAmount } = __require(40);
+const { kindOf } = __require(41);
 
 const VIOLET = '#a78bfa';
 const YOU = '#ff6b1a';
@@ -17427,7 +17544,76 @@ __def(__exports, "ruleLags", () => ruleLags);
 __def(__exports, "moveWay", () => moveWay);
 __def(__exports, "createCodePlaceView", () => createCodePlaceView);
 };
-__defs[42] = function (__exports) {
+__defs[43] = function (__exports) {
+'use strict';
+// turn-drag.ts
+
+// The strip's Turn button dragged (one object, or several turning together): how far each pointer step turns.
+//
+// Why this file (decided 2026-11-06, a first-run walk of v0.1.82): in 3D a straight drag of the Turn button did not turn
+// the object at all — the chip stayed at "Turn 0°" — while the same drag in 2D turned it. Two causes, both fixed here:
+//
+// 1. The 15° snap was applied to EACH pointer step. A step of a slow drag turns ~1–3°, the object's angle then sat
+//    within ±3° of the 15° step it started on, and the snap put it straight back — every step. Only a fast arc (7°+ per
+//    step) ever got out. Now the snap is applied to the gesture's TOTAL: the drag adds up unsnapped, and the object goes
+//    to the nearest 15° only when that total lands within ±3° of one (Shift: never).
+// 2. The turn was measured only as the angle around the object's middle. 3D's strip sits under the object; a straight
+//    pull sideways from there, or one that heads away from the middle, changes that angle very little. In 3D the
+//    horizontal travel also counts now (TURN_PER_PX, the same rate as a drag with the Turn tool chosen): each step takes
+//    whichever of the two turns more, so the old arc (around the middle) works exactly as before and a straight pull turns
+//    too. Pulling right under the middle turns the way an arc there would (clockwise seen from above the strip), so the
+//    two never fight.
+// 2D keeps the angle only (its strip sits over the object and an arc is what people do there; it already turned).
+
+/** 15° steps. */
+const TURN_SNAP = (15 * Math.PI) / 180;
+/** Within ±3° of a step the total lands on it. */
+const TURN_SNAP_WINDOW = (3 * Math.PI) / 180;
+
+/** One drag's running state (the bridge keeps it in the gesture's data). */
+                           
+                                                                           
+                
+                                                                          
+                  
+ 
+
+/**
+ * This step's screen turn from the two readings: `arc` = the change of the pointer's angle around the object's middle
+ * (radians), `dx` = the horizontal travel of this step (px). `perPx` 0 = the arc only (2D). `below` = the pointer is
+ * under the middle (screen y down), where a pull to the right turns the negative way (as an arc there does).
+ */
+function turnPick(arc        , dx        , perPx        , below         )         {
+  if (!perPx) return arc;
+  const straight = (below ? -1 : 1) * dx * perPx;
+  return Math.abs(straight) > Math.abs(arc) ? straight : arc;
+}
+
+/**
+ * Add one step `d` (screen radians) to the drag and say how much to turn the object now. `snap`: snapping is on (no
+ * Shift, an axis the editor knows "straight" for); `r0` = the object's own angle when the drag began; `sign` = how the
+ * object's angle follows the screen turn (+1 / −1; 0 = not known yet: no snap until it is).
+ */
+function turnStep(s          , d        , o                                             )         {
+  s.total += d;
+  let want = s.total;
+  if (o.snap && o.sign) {
+    const raw = o.r0 + o.sign * s.total;
+    const target = Math.round(raw / TURN_SNAP) * TURN_SNAP;
+    const off = target - raw;
+    if (Math.abs(off) <= TURN_SNAP_WINDOW) want = s.total + off * o.sign;
+  }
+  const dd = want - s.applied;
+  s.applied = want;
+  return dd;
+}
+
+__def(__exports, "TURN_SNAP", () => TURN_SNAP);
+__def(__exports, "TURN_SNAP_WINDOW", () => TURN_SNAP_WINDOW);
+__def(__exports, "turnPick", () => turnPick);
+__def(__exports, "turnStep", () => turnStep);
+};
+__defs[44] = function (__exports) {
 'use strict';
 // input.ts
 
@@ -17517,20 +17703,21 @@ __defs[42] = function (__exports) {
 //   the adapter snaps (setSnap on; off when the gesture ends). The height drag stops on the first surface below
 //   (liftDetent); Ctrl or ⌥ held during the drag frees it, and pressing / letting go of them re-reads the drag at
 //   once (no need to move the pointer).
-const { UI } = __require(14);
+const { UI } = __require(15);
                                              
 const { nativeClearTimeout, nativeNow, nativeSetTimeout } = __require(0);
-const { keyStep } = __require(34);
+const { keyStep } = __require(35);
                                              
                                                 
-const { HANDLE_LABELS, LOCK_NOTE, MANY_LABEL, OFF_LINES, gameNote, unholdFromEvent, READOUT_WORDS, TOOL_HINT, choiceFromEvent, createHandles, handleFromEvent, isMotionKey, moreFromEvent, motionFromEvent, toolFromKey } = __require(35);
+const { HANDLE_LABELS, LOCK_NOTE, MANY_LABEL, OFF_LINES, gameNote, unholdFromEvent, READOUT_WORDS, TOOL_HINT, choiceFromEvent, createHandles, handleFromEvent, isMotionKey, moreFromEvent, motionFromEvent, toolFromKey } = __require(36);
                                                      
-const { createRiseButtons } = __require(36);
-const { BREAK_PX, BREAK_PX_TOUCH, firstToTouch, freeHeld, liftDetent } = __require(37);
-const { canLift, offWhy } = __require(31);
-const { beginGroup, groupAnchor, groupLift, groupMove, groupPoses, groupRotate, groupScale } = __require(32);
-const { slideOf } = __require(38);
-const { TOOL_WAY } = __require(41);
+const { createRiseButtons } = __require(37);
+const { BREAK_PX, BREAK_PX_TOUCH, firstToTouch, freeHeld, liftDetent } = __require(38);
+const { canLift, offWhy } = __require(32);
+const { beginGroup, groupAnchor, groupLift, groupMove, groupPoses, groupRotate, groupScale } = __require(33);
+const { slideOf } = __require(39);
+const { TOOL_WAY } = __require(42);
+const { turnPick, turnStep } = __require(43);
 // What a drag of a rule layout's object does (moveHandle's data.code; studio-to-coords): turn the layout's knobs, stay
 // still (no knob for that way), or move just this one (⌥). 0 = an ordinary move (not a rule's object).
 const CODE_KNOB = 1;
@@ -18104,7 +18291,10 @@ function attachInput(deps           )              {
       // The turn centre stays where the group started (s.center): measuring
       // around the moving middle would wobble.
       const ang = Math.atan2(p.y - s.center[1], p.x - s.center[0]);
-      data.d = data.d  + wrap(ang - data.angle );
+      // 3D: a straight pull turns too (turn-drag.ts, decided 2026-11-06), as for one object. The snap below is on the total.
+      const dx = p.x - (data.lx ?? p.x);
+      data.lx = p.x;
+      data.d = data.d  + turnPick(wrap(ang - data.angle ), dx, canTurn() ? TURN_PER_PX : 0, p.y > s.center[1]);
       data.angle = ang;
       let d = data.d ;
       // 15° steps within ±3° unless Shift, like one object.
@@ -18149,6 +18339,11 @@ function attachInput(deps           )              {
       data.cy = canTurn() && r ? r.y + r.h / 2 : a.center[1];
       data.angle = Math.atan2(p.y - data.cy, p.x - data.cx);
       data.sign = 0; // learnt from the first response: +1 if pose.r grows with d
+      // turn-drag.ts (decided 2026-11-06): the drag's total (unsnapped) and what the object was given, and the last x
+      // (3D: a straight pull turns too).
+      data.total = 0;
+      data.applied = 0;
+      data.lx = p.x;
     } else if (handle === 'scale') {
       data.dist = Math.max(8, Math.hypot(p.x - a.center[0], p.y - a.center[1]));
     } else if (handle === 'lift') {
@@ -18216,21 +18411,24 @@ function attachInput(deps           )              {
       if (!a) return;
       const cx = data.cx ?? a.center[0], cy = data.cy ?? a.center[1];
       const ang = Math.atan2(p.y - cy, p.x - cx);
-      const d = wrap(ang - data.angle );
+      const arc = wrap(ang - data.angle );
       data.angle = ang;
+      const dx = p.x - (data.lx ?? p.x);
+      data.lx = p.x;
       const before = adapter.anchor(key) .pose.r ?? 0;
       // 3D: around the chosen axis through the box middle; 2D (and adapters without turn): the old way.
       const turnBy = (dd        ) => (canTurn() ? adapter.turn (key, dd, state.axis) : adapter.rotate(key, dd));
-      pose = turnBy(d);
-      if (!data.sign && Math.abs(d) > 1e-4) data.sign = Math.sign(wrap((pose.r ?? 0) - before)) * Math.sign(d) || 1;
-      // Snap to 15° steps within ±3° unless Shift is held (the vertical turn only: a tip has no "straight"
-      // the editor knows of). The snap is applied to the object's own angle; `sign` maps it back to a screen delta.
-      if (!p.shift && data.sign && (!canTurn() || state.axis === 'y')) {
-        const r = pose.r ?? 0;
-        const target = Math.round(r / SNAP) * SNAP;
-        const off = target - r;
-        if (Math.abs(off) <= SNAP_WINDOW && Math.abs(off) > 1e-6) pose = turnBy(off * data.sign);
-      }
+      // turn-drag.ts (decided 2026-11-06, a first-run walk: a straight pull in 3D stayed at "Turn 0°"): 3D also reads the
+      // straight pull, and the 15° snap (within ±3° unless Shift; the vertical turn only: a tip has no "straight" the
+      // editor knows of) goes on the drag's total — on each step it put every small step back. `sign` maps the object's
+      // angle back to a screen turn.
+      const d = turnPick(arc, dx, canTurn() ? TURN_PER_PX : 0, p.y > cy);
+      const s = { total: data.total ?? 0, applied: data.applied ?? 0 };
+      const dd = turnStep(s, d, { snap: !p.shift && (!canTurn() || state.axis === 'y'), r0: m.from.r ?? 0, sign: data.sign ?? 0 });
+      data.total = s.total;
+      data.applied = s.applied;
+      if (Math.abs(dd) > 1e-9) pose = turnBy(dd);
+      if (!data.sign && Math.abs(dd) > 1e-4) data.sign = Math.sign(wrap((pose.r ?? 0) - before)) * Math.sign(dd) || 1;
     } else if (m.handle === 'scale') {
       const a = adapter.anchor(key);
       if (!a) return;
@@ -18259,7 +18457,44 @@ function attachInput(deps           )              {
     }
     m.last = pose;
     emitMoved(key, pose, { press: m.handle, ...(data.code === CODE_FREE ? { alone: true } : {}) });
-    handles.readout(readout(m.handle, m.from, pose, canTurn() ? state.axis : 'y'));
+    if (m.handle === 'move') clashCheck(key);
+    handles.readout(readout(m.handle, m.from, pose, canTurn() ? state.axis : 'y') + (m.handle === 'move' ? clashText() : ''));
+  };
+
+  // A move into another object (adapter.overlaps, 3D; decided 2026-11-06, a first-run walk of v0.1.82: a far rock dragged
+  // 120 px went 9.6 m into the sea arch and nothing said so — far away a pixel is metres). While it overlaps, the pick's
+  // outline is red and the readout names what it is in ("Move X +9.60 Z +2.73 · In sea-arch"); the drop is still allowed
+  // (putting a boat in a cave is a choice). Read at most every CLASH_MS: it measures every object's box.
+  const CLASH_MS = 100;
+  let clashAt = 0;
+  let clashKeys           = [];
+  const clashCheck = (key        ) => {
+    if (!adapter.overlaps) return;
+    const now = nativeNow();
+    if (now - clashAt < CLASH_MS) return;
+    clashAt = now;
+    let ks           = [];
+    try {
+      ks = adapter.overlaps(key).filter((k) => state.items.some((i) => i.key === k && !i.backdrop));
+    } catch {
+      ks = [];
+    }
+    if (ks.join('\n') === clashKeys.join('\n')) return;
+    clashKeys = ks;
+    handles.setClash(ks.length > 0);
+    markDirty();
+  };
+  const clashText = () => {
+    if (!clashKeys.length) return '';
+    const name = state.items.find((i) => i.key === clashKeys[0])?.label ?? clashKeys[0] ;
+    return ` · ${(READOUT_WORDS[lang] || READOUT_WORDS.en).inside.replace('{name}', name)}`;
+  };
+  const clashEnd = () => {
+    clashAt = 0;
+    if (!clashKeys.length) return;
+    clashKeys = [];
+    handles.setClash(false);
+    markDirty();
   };
 
   /** The readout's text: what this drag changed, from the pose before it. */
@@ -18288,6 +18523,7 @@ function attachInput(deps           )              {
   };
 
   const endGesture = () => {
+    clashEnd();
     if (mode.kind === 'handle' || mode.kind === 'group') {
       adapter.setSnap?.({ on: false });
       lastRead = null;
@@ -18920,8 +19156,30 @@ function attachInput(deps           )              {
   const inRects = (rs                                                       ) =>
     armed && !!hover && rs.some((r) => hover .x >= r.x && hover .x <= r.x + r.w && hover .y >= r.y && hover .y <= r.y + r.h);
   const selectionRects = () => rectsOf(state.group.length > 1 ? state.group : state.selected ? [state.selected] : []);
+  // What a click would select, lit before the click (decided 2026-11-06, a first-run walk of v0.1.82: in 3D nothing lit
+  // under the mouse, and a click on a thin lamp post selected the rock behind it — the person could not tell beforehand).
+  // The same soft light as a list row under the mouse (handles.hover), from the same rule as a click (tappableAt with
+  // the mouse's radius), so what lights is what a click takes. Not the pick itself (it has its own mark), not during a
+  // gesture, not on touch (no hover). Read at most every HOVER_MS: pickNear casts a ray at every object.
+  let gameHover                = null;
+  let hoverTimer = 0;
+  const HOVER_MS = 60;
+  const probeHover = () => {
+    hoverTimer = 0;
+    let k                = null;
+    if (hover && mode.kind === 'none' && !ptrs.size) {
+      k = tappableAt(adapter, state.items, win, hover.x, hover.y, UI.pickRadiusMouse)[0] ?? null;
+      if (k && (k === state.selected || state.group.includes(k))) k = null;
+    }
+    if (k === gameHover) return;
+    gameHover = k;
+    shapes.hover.sig = '';
+    shapes.hover.at = 0;
+    markDirty();
+  };
   const onHover = (e              ) => {
     hover = e.pointerType === 'mouse' && e.buttons === 0 ? { x: e.clientX, y: e.clientY } : null;
+    if (hover ? !hoverTimer : gameHover) hoverTimer = nativeSetTimeout(probeHover, hover ? HOVER_MS : 0);
     if (hover && !armed) {
       armed = true;
       if (inRects(selectionRects())) armed = false; // still on it: wait until it leaves
@@ -18935,6 +19193,7 @@ function attachInput(deps           )              {
   const onLeave = (e              ) => {
     if (e.relatedTarget) return;
     hover = null;
+    if (gameHover && !hoverTimer) hoverTimer = nativeSetTimeout(probeHover, 0);
     if (hoverIn) {
       hoverIn = false;
       markDirty();
@@ -19108,7 +19367,8 @@ function attachInput(deps           )              {
     const aiRects = rectsOf(aiShown);
     handles.ai(shapeOf('ai', aiShown, aiRects), aiRects, aiShown.length ? aiLabel : null);
     // What the mouse is over in the editor page (a row, the card, the chip): lit softly, under your pick's own mark.
-    const hovered = hoverKeys.filter((k) => state.items.some((i) => i.key === k));
+    // …and what the mouse is over in the game (gameHover, above).
+    const hovered = [...hoverKeys, ...(gameHover && !hoverKeys.includes(gameHover) ? [gameHover] : [])].filter((k) => state.items.some((i) => i.key === k));
     const hoverRects = rectsOf(hovered);
     handles.hover(hovered.length ? shapeOf('hover', hovered, hoverRects) : null, hovered.length ? hoverRects : []);
     if (key && state.group.length > 1) {
@@ -19224,6 +19484,7 @@ function attachInput(deps           )              {
       endGesture();
       nativeClearTimeout(pressTimer);
       nativeClearTimeout(menuTimer);
+      nativeClearTimeout(hoverTimer);
       for (const [t, fn] of winListeners) win.removeEventListener(t, fn, opts);
       for (const w of above) for (const t of ['pointerup', 'mouseup']         ) w.removeEventListener(t, onUpAbove, { capture: true });
       nativeClearTimeout(hintTimer);
@@ -19240,7 +19501,7 @@ __def(__exports, "screenShareOf", () => screenShareOf);
 __def(__exports, "tappableAt", () => tappableAt);
 __def(__exports, "attachInput", () => attachInput);
 };
-__defs[43] = function (__exports) {
+__defs[45] = function (__exports) {
 'use strict';
 // observe.ts
 
@@ -19298,7 +19559,7 @@ function drivenBetween(before        , after        , dim     )                 
 __def(__exports, "WATCH_MS", () => WATCH_MS);
 __def(__exports, "drivenBetween", () => drivenBetween);
 };
-__defs[44] = function (__exports) {
+__defs[46] = function (__exports) {
 'use strict';
 // timeline-path.ts
 
@@ -19335,7 +19596,7 @@ __defs[44] = function (__exports) {
 // for objects at the top of the scene (every starter's); an object inside a moved group draws its path off by the
 // group's offset (stage 2).
                                                                                                                      
-const { handlesOf, trackAt } = __require(21);
+const { handlesOf, trackAt } = __require(22);
 
 const YOU = '#ff6b1a';
 // "Key" → "Point" in both languages (studio-words-plan, 2026-10-23; the word list, checked with Gemini): the same mark as
@@ -19988,7 +20249,7 @@ function createTimelineView(d                  )               {
 
 __def(__exports, "createTimelineView", () => createTimelineView);
 };
-__defs[45] = function (__exports) {
+__defs[47] = function (__exports) {
 'use strict';
 // code-theme.ts
 
@@ -20080,7 +20341,7 @@ __def(__exports, "codeThemeEntries", () => codeThemeEntries);
 __def(__exports, "createCodeTheme", () => createCodeTheme);
 __def(__exports, "mergeThemeVars", () => mergeThemeVars);
 };
-__defs[46] = function (__exports) {
+__defs[48] = function (__exports) {
 'use strict';
 // ui-extras.ts
 
@@ -20111,8 +20372,8 @@ __defs[46] = function (__exports) {
 // element too (inline); the colour of an element that is its own text (a button) and the fill in the sheet, inline only
 // when the game's own normal rule is more specific than one attribute (the same test as the loader's).
                                                                                                                                        
-const { uiTextNode, uiTextPart } = __require(21);
-const { mergeThemeVars } = __require(45);
+const { uiTextNode, uiTextPart } = __require(22);
+const { mergeThemeVars } = __require(47);
 
                                
               
@@ -20612,7 +20873,7 @@ function createUiExtras(deps              )           {
 __def(__exports, "hexColor", () => hexColor);
 __def(__exports, "createUiExtras", () => createUiExtras);
 };
-__defs[47] = function (__exports) {
+__defs[49] = function (__exports) {
 'use strict';
 // ../shell/layers.ts
 
@@ -20751,14 +21012,14 @@ __def(__exports, "dropTarget", () => dropTarget);
 __def(__exports, "orderOfLayer", () => orderOfLayer);
 __def(__exports, "layerBlocks", () => layerBlocks);
 };
-__defs[48] = function (__exports) {
+__defs[50] = function (__exports) {
 'use strict';
 // ../shell/pose-compare.ts
 
 // Pose rounding and comparison: the file's precision (1 mm or 0.1 px, 1e-4 rad) and "the same pose".
 // Split out of placement-model.ts (2026-10-21) so the game page's ▶ Play code (bridge/play-arrange.ts) compares
 // poses exactly as the editor does without bundling the whole model into studio-edit.js (it added 37 KB).
-const { LIMITS } = __require(14);
+const { LIMITS } = __require(15);
 
 function roundTo(v        , step        )         {
   return Math.round(v / step) * step;
@@ -20804,7 +21065,7 @@ function samePose(a                  , b                  , dim     )          {
 __def(__exports, "roundPose", () => roundPose);
 __def(__exports, "samePose", () => samePose);
 };
-__defs[49] = function (__exports) {
+__defs[51] = function (__exports) {
 'use strict';
 // ../shell/timeline-model.ts
 
@@ -20819,7 +21080,7 @@ __defs[49] = function (__exports) {
 // WHY every change returns a new clip / motion: the undo stack keeps whole motions (`{ kind: 'motion', from, to }`,
 // the change motion-gui added), so one edit = one snapshot, and nothing here mutates what the store holds.
                                                                                                                         
-const { clipAt, motionAt } = __require(21);
+const { clipAt, motionAt } = __require(22);
 
 const CHANNELS                  = ['p', 'r', 's'];
 /** Two keys closer than this (seconds) are the same moment: a new key there replaces the old one. */
@@ -21175,7 +21436,7 @@ __def(__exports, "legacyOffsets", () => legacyOffsets);
 __def(__exports, "libCounted", () => libCounted);
 __def(__exports, "stretchClip", () => stretchClip);
 };
-__defs[50] = function (__exports) {
+__defs[52] = function (__exports) {
 'use strict';
 // play-arrange.ts
 
@@ -21200,10 +21461,10 @@ __defs[50] = function (__exports) {
 // The UI (`ui`) goes through the loader's own placeUi() (shared with the editor's UI layer), which sets the same
 // offset again rather than adding to it.
                                                                                    
-const { hasLayer, orderOfLayer } = __require(47);
-const { samePose } = __require(48);
-const { compose, legacyOffsets } = __require(49);
-const { motionRunner, resolveClip } = __require(21);
+const { hasLayer, orderOfLayer } = __require(49);
+const { samePose } = __require(50);
+const { compose, legacyOffsets } = __require(51);
+const { motionRunner, resolveClip } = __require(22);
 
                                                                                                                                   
                                                                                                    
@@ -21391,7 +21652,7 @@ function moveInPlay(a               , file                 , win                
 __def(__exports, "arrangeInPlay", () => arrangeInPlay);
 __def(__exports, "moveInPlay", () => moveInPlay);
 };
-__defs[51] = function (__exports) {
+__defs[53] = function (__exports) {
 'use strict';
 // play-switch.ts
 
@@ -21445,7 +21706,7 @@ __defs[51] = function (__exports) {
                                                           
                                              
                                           
-const { moveInPlay } = __require(50);
+const { moveInPlay } = __require(52);
                                                    
                                                  
 
@@ -21625,7 +21886,7 @@ function createPlaySwitch(d                )             {
 __def(__exports, "loaderPlay", () => loaderPlay);
 __def(__exports, "createPlaySwitch", () => createPlaySwitch);
 };
-__defs[52] = function (__exports) {
+__defs[54] = function (__exports) {
 'use strict';
 // ../shell/keep-out-model.ts
 
@@ -21855,7 +22116,7 @@ __def(__exports, "rowKey", () => rowKey);
 __def(__exports, "inBox", () => inBox);
 __def(__exports, "avoidWords", () => avoidWords);
 };
-__defs[53] = function (__exports) {
+__defs[55] = function (__exports) {
 'use strict';
 // keep-out-paint.ts
 
@@ -22070,7 +22331,7 @@ __def(__exports, "nearestOn", () => nearestOn);
 __def(__exports, "boundsOf", () => boundsOf);
 __def(__exports, "clipBounds", () => clipBounds);
 };
-__defs[54] = function (__exports) {
+__defs[56] = function (__exports) {
 'use strict';
 // keep-out.ts
 
@@ -22098,10 +22359,10 @@ __defs[54] = function (__exports) {
 // Space: the layout's root is taken to be the scene (as timeline-path.ts takes an object's parent): a layout inside a
 // moved group draws its areas off by the group's offset.
                                                                                                         
-const { codeSpot, findByKey, knobValues } = __require(21);
-const { addBox, inBox, nextBoxName, rowsOf, setBox } = __require(52);
-const { findKnob, knobRange, knobText, unitText } = __require(41);
-const { B, boundsOf, boxCorners, clipBounds, edgesOf, nearestOn, outlineOf, runsOf, sampleGrid, shapeOf } = __require(53);
+const { codeSpot, findByKey, knobValues } = __require(22);
+const { addBox, inBox, nextBoxName, rowsOf, setBox } = __require(54);
+const { findKnob, knobRange, knobText, unitText } = __require(42);
+const { B, boundsOf, boxCorners, clipBounds, edgesOf, nearestOn, outlineOf, runsOf, sampleGrid, shapeOf } = __require(55);
 
 const YOU = '#ff6b1a';
 const VIOLET = '#a78bfa';
@@ -22868,7 +23129,7 @@ function createKeepOutView(d                 )              {
 
 __def(__exports, "createKeepOutView", () => createKeepOutView);
 };
-__defs[55] = function (__exports) {
+__defs[57] = function (__exports) {
 'use strict';
 // code-motion.ts
 
@@ -22896,7 +23157,7 @@ __defs[55] = function (__exports) {
 // WHY its own listeners, added before input.ts (editor.ts makes this before attaching input): a press on the ◇ must not
 // pick or drag what is under it — the same reason as timeline-path.ts.
                                                                                                                  
-const { findKnob, knobRange, knobText, unitText } = __require(41);
+const { findKnob, knobRange, knobText, unitText } = __require(42);
 
 const VIOLET = '#8b7cff';
 const YOU = '#ff6b1a';
@@ -23245,7 +23506,7 @@ __def(__exports, "ruleAt", () => ruleAt);
 __def(__exports, "withRuleMotions", () => withRuleMotions);
 __def(__exports, "createCodeMotionView", () => createCodeMotionView);
 };
-__defs[56] = function (__exports) {
+__defs[58] = function (__exports) {
 'use strict';
 // seen.ts
 
@@ -23329,38 +23590,38 @@ __def(__exports, "seenEnough", () => seenEnough);
 __def(__exports, "minPickPx", () => minPickPx);
 __def(__exports, "tooSmall", () => tooSmall);
 };
-__defs[57] = function (__exports) {
+__defs[59] = function (__exports) {
 'use strict';
 // editor.ts
 
 // Edit session inside the game page: applies shell messages to the adapter,
 // runs the studio's own draw loop while the game is frozen, and reports
 // changes back. Pointer gestures and handles are attached by input.ts.
-const { UI } = __require(14);
+const { UI } = __require(15);
                                              
 const { nativeClearTimeout, nativeNow, nativeSetTimeout } = __require(0);
-const { withRules } = __require(29);
-const { withEdits } = __require(30);
-const { beginGroup, groupAnchor, groupLift, groupMove, groupPoses, groupRotate, groupScale, groupShift } = __require(32);
-const { createToolHost } = __require(33);
-const { attachInput, tappableAt } = __require(42);
+const { withRules } = __require(30);
+const { withEdits } = __require(31);
+const { beginGroup, groupAnchor, groupLift, groupMove, groupPoses, groupRotate, groupScale, groupShift } = __require(33);
+const { createToolHost } = __require(34);
+const { attachInput, tappableAt } = __require(44);
                                                   
-const { firstToTouch, stepDetent } = __require(37);
-const { createHoldState, withHold } = __require(31);
-const { drivenBetween, WATCH_MS } = __require(43);
-const { runSelfCheck, SECOND_LOOK_MS, worthASecondLook } = __require(28);
-const { createTimelineView } = __require(44);
-const { createUiExtras, hexColor } = __require(46);
-const { createCodeTheme } = __require(45);
-const { createUiEdges } = __require(24);
-const { codeUiEntries } = __require(25);
-const { createUiFound } = __require(27);
-const { loaderPlay } = __require(51);
-const { codeAvoidsOf, codeMotionsOf, codePlacesOf, namedByLayout } = __require(40);
-const { createCodePlaceView } = __require(41);
-const { createKeepOutView } = __require(54);
-const { createCodeMotionView, withRuleMotions } = __require(55);
-const { seenEnough, tooSmall } = __require(56);
+const { firstToTouch, stepDetent } = __require(38);
+const { createHoldState, withHold } = __require(32);
+const { drivenBetween, WATCH_MS } = __require(45);
+const { runSelfCheck, SECOND_LOOK_MS, worthASecondLook } = __require(29);
+const { createTimelineView } = __require(46);
+const { createUiExtras, hexColor } = __require(48);
+const { createCodeTheme } = __require(47);
+const { createUiEdges } = __require(25);
+const { codeUiEntries } = __require(26);
+const { createUiFound } = __require(28);
+const { loaderPlay } = __require(53);
+const { codeAvoidsOf, codeMotionsOf, codePlacesOf, namedByLayout } = __require(41);
+const { createCodePlaceView } = __require(42);
+const { createKeepOutView } = __require(56);
+const { createCodeMotionView, withRuleMotions } = __require(57);
+const { seenEnough, tooSmall } = __require(58);
 
                              
                                                                                                                      
@@ -25066,7 +25327,7 @@ function createEditor(deps            )         {
 
 __def(__exports, "createEditor", () => createEditor);
 };
-__defs[58] = function (__exports) {
+__defs[60] = function (__exports) {
 'use strict';
 // ../shell/line-fade.ts
 
@@ -25129,7 +25390,7 @@ __def(__exports, "lineFades", () => lineFades);
 __def(__exports, "lineStayMs", () => lineStayMs);
 __def(__exports, "lineKey", () => lineKey);
 };
-__defs[59] = function (__exports) {
+__defs[61] = function (__exports) {
 'use strict';
 // ../shell/icons.ts
 
@@ -25318,7 +25579,7 @@ function setButton(b                   , name               , label        , sho
 __def(__exports, "icon", () => icon);
 __def(__exports, "setButton", () => setButton);
 };
-__defs[60] = function (__exports) {
+__defs[62] = function (__exports) {
 'use strict';
 // play-pause.ts
 
@@ -25365,6 +25626,15 @@ function isPauseKey(e                                                           
   // By the character (p / P with Shift), or the physical key when a layout or an IME gives another character for it
   // (a Japanese keyboard in kana input gives a kana for the P key).
   return e.key === 'p' || e.key === 'P' || e.code === 'KeyP';
+}
+
+/**
+ * Is this key press "back to Edit" while playing (decided 2026-11-06)? Esc with no modifier, not held down, never while a
+ * text field of the game has focus (there Esc is the field's).
+ */
+function isLeaveKey(e                                                                                                                                      , typing         )          {
+  if (typing || e.isComposing || e.repeat || e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return false;
+  return e.key === 'Escape';
 }
 
                      
@@ -25521,9 +25791,10 @@ function createPauseHold(win                            , parts            )    
 __def(__exports, "STEP_MS", () => STEP_MS);
 __def(__exports, "SPEEDS", () => SPEEDS);
 __def(__exports, "isPauseKey", () => isPauseKey);
+__def(__exports, "isLeaveKey", () => isLeaveKey);
 __def(__exports, "createPauseHold", () => createPauseHold);
 };
-__defs[61] = function (__exports) {
+__defs[63] = function (__exports) {
 'use strict';
 // play-move.ts
 
@@ -25553,11 +25824,11 @@ __defs[61] = function (__exports) {
 // left it in an earlier pause of this play): anything that moved by itself in between, anything the game made since
 // (not there at the start), and anything the draft's motions move.
                                                                                                                             
-const { UI } = __require(14);
+const { UI } = __require(15);
                                              
                                                     
-const { createEditor } = __require(57);
-const { drivenBetween } = __require(43);
+const { createEditor } = __require(59);
+const { drivenBetween } = __require(45);
 const { nativeSetTimeout } = __require(0);
 
 /** One pose as observe.ts compares them (it reads only key and pose). */
@@ -25776,7 +26047,7 @@ __def(__exports, "createMomentKinds", () => createMomentKinds);
 __def(__exports, "createMomentEditor", () => createMomentEditor);
 __def(__exports, "defaultHandlePx", () => defaultHandlePx);
 };
-__defs[62] = function (__exports) {
+__defs[64] = function (__exports) {
 'use strict';
 // play-ask.ts
 
@@ -25811,12 +26082,12 @@ __defs[62] = function (__exports) {
 // moment — the list, the card, the field, Save, ⌘Z — is the editor page's. Stage 1–2's chat panel over the paused
 // game, "✥ Move / Talk" and M are gone (decision 2).
                                                                                                                                                
-const { isStudioMessage } = __require(14);
-const { LINE_FADE_MS, LINE_GRACE_MS, lineStayMs } = __require(58);
-const { icon } = __require(59);
-const { shootPage } = __require(26);
-const { createPauseHold, isPauseKey, STEP_MS } = __require(60);
-const { createMomentEditor, createMomentKinds, defaultHandlePx } = __require(61);
+const { isStudioMessage } = __require(15);
+const { LINE_FADE_MS, LINE_GRACE_MS, lineStayMs } = __require(60);
+const { icon } = __require(61);
+const { shootPage } = __require(27);
+const { createPauseHold, isLeaveKey, isPauseKey, STEP_MS } = __require(62);
+const { createMomentEditor, createMomentKinds, defaultHandlePx } = __require(63);
                                              
                                                     
 const { nativeSetTimeout, nativeClearTimeout } = __require(0);
@@ -26383,6 +26654,13 @@ function startPlayAsk(o                )                {
         openBar();
       } else if (type !== 'keydown' && aiOn && e.key === '`' && !gameTyping()) {
         e.stopImmediatePropagation();
+      } else if (type === 'keydown' && !barOpen && hold && isLeaveKey(e, gameTyping())) {
+        // Esc while playing (decided 2026-11-06, a first-run walk of v0.1.82: Esc did nothing, "■ Edit" in the top bar was
+        // the only way back). The game sees the key first — it is its key too — and the editor reads, once the key has
+        // been through the game, whether the game took it (preventDefault): not taken = back to Edit; taken = the game
+        // uses Esc (its own menu), so the editor only says how to stop. A pointer-locked or full-screen game never gets
+        // here with it: the browser spends that Esc on letting go of the mouse / leaving full screen.
+        nativeSetTimeout(() => post({ type: 'studio:play/escape', ...(e.defaultPrevented ? { game: true } : {}) }), 0);
       }
     }, true);
   }
@@ -26921,7 +27199,7 @@ __def(__exports, "near2D", () => near2D);
 __def(__exports, "isStepKey", () => isStepKey);
 __def(__exports, "startPlayAsk", () => startPlayAsk);
 };
-__defs[63] = function (__exports) {
+__defs[65] = function (__exports) {
 'use strict';
 // ../shell/clip-model.ts
 
@@ -27201,6 +27479,39 @@ function recClock(ms        )         {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 }
 
+// ----- studio-clip-3 (decided 2026-11-06): what is going on while it records, and fewer steps to X -----
+
+/**
+ * The time LEFT while recording (ms), for "0:05 left · Stop" and a phone's round ● ("5"). WHY left, not so far: the
+ * person pressed for "the next 8 s"; what they want to know is when it ends (stages 1–2 counted up: "0:03 · Stop").
+ * `stillMs`: a Before / After's still part, encoded before `started`
+ * (it is in the clip's length, not in the time the person waits).
+ */
+function recLeftMs(o                                                          )         {
+  return Math.max(0, o.totalMs - (o.stillMs ?? 0) - Math.max(0, o.elapsedMs));
+}
+
+/** "0:05" for the time left: whole seconds rounded UP (it says 0:01 until the very end, never 0:00 while recording). */
+function leftClock(ms        )         {
+  const s = Math.max(0, Math.ceil(ms / 1000));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+}
+
+/** Holding ● this long opens Clip options (a phone's ● has no ⌄: the bar has no room). Shorter than the system's own
+ * long-press menu on most phones, longer than a tap. */
+const CLIP_HOLD_MS = 500;
+
+/**
+ * X's compose page with the post written (its public "intent" address; nothing is sent until the person posts there).
+ * WHY: from the saved line to a post on X was Copy post → open X → paste → Show in Finder → drag; Post on X… does the
+ * first three in one press (and shows the clip in its folder on the computer), so it is one press and one drag. The
+ * video itself cannot go in the address: X takes it only from the person (a drag, or the phone's Share…).
+ */
+const X_COMPOSE = 'https://x.com/intent/post';
+function xComposeUrl(text        )         {
+  return `${X_COMPOSE}?text=${encodeURIComponent(text)}`;
+}
+
 __def(__exports, "CLIP_LENGTHS", () => CLIP_LENGTHS);
 __def(__exports, "CLIP_DEFAULT_LENGTH", () => CLIP_DEFAULT_LENGTH);
 __def(__exports, "CLIP_FPS", () => CLIP_FPS);
@@ -27236,8 +27547,13 @@ __def(__exports, "beforeAfterPost", () => beforeAfterPost);
 __def(__exports, "withAddress", () => withAddress);
 __def(__exports, "checkRewrite", () => checkRewrite);
 __def(__exports, "recClock", () => recClock);
+__def(__exports, "recLeftMs", () => recLeftMs);
+__def(__exports, "leftClock", () => leftClock);
+__def(__exports, "CLIP_HOLD_MS", () => CLIP_HOLD_MS);
+__def(__exports, "X_COMPOSE", () => X_COMPOSE);
+__def(__exports, "xComposeUrl", () => xComposeUrl);
 };
-__defs[64] = function (__exports) {
+__defs[66] = function (__exports) {
 'use strict';
 // play-clip.ts
 
@@ -27282,10 +27598,10 @@ __defs[64] = function (__exports) {
 //   - no-encoder: no WebCodecs H.264 in this browser.
 // Not drawn (play-shot.ts's limits): CSS gradients, shadows, SVG, rotated boxes; sound is a later stage.
                                                                    
-const { isStudioMessage } = __require(14);
+const { isStudioMessage } = __require(15);
 const { nativeCancelRaf, nativeClearTimeout, nativeNow, nativeRaf, nativeSetTimeout } = __require(0);
-const { cutAtPress, markStartMs } = __require(63);
-const { paintPage } = __require(26);
+const { cutAtPress, markStartMs } = __require(65);
+const { paintPage } = __require(27);
 
                                       
                                                
@@ -27870,7 +28186,7 @@ function record(win     , m       , skip                          , post        
 __def(__exports, "watchCanvasKinds", () => watchCanvasKinds);
 __def(__exports, "startPlayClip", () => startPlayClip);
 };
-__defs[65] = function (__exports) {
+__defs[67] = function (__exports) {
 'use strict';
 // moment-load.ts
 
@@ -27898,7 +28214,7 @@ __defs[65] = function (__exports) {
 // (the loader before the first frame, play-arrange after it), so a gate moved since the checkpoint stands where the
 // scene has it now.
                                                                             
-const { CHECKPOINT_MAX_CHARS, LOCAL_PATHS, isStudioMessage } = __require(14);
+const { CHECKPOINT_MAX_CHARS, LOCAL_PATHS, isStudioMessage } = __require(15);
 const { nativeClearTimeout, nativeNow, nativeSetTimeout } = __require(0);
 
                                       
@@ -28161,7 +28477,7 @@ __def(__exports, "MOMENT_WAIT_MS", () => MOMENT_WAIT_MS);
 __def(__exports, "LOAD_PROMISE_MS", () => LOAD_PROMISE_MS);
 __def(__exports, "startCheckpointHold", () => startCheckpointHold);
 };
-__defs[66] = function (__exports) {
+__defs[68] = function (__exports) {
 'use strict';
 // moment-values.ts
 
@@ -28183,8 +28499,8 @@ __defs[66] = function (__exports) {
 // Message driven and on its own listener, so it answers in an edit page (Edit, ▶ Play in the same page) and in a page
 // opened for Play alike — the moment's editor may be either (play-move.ts) and `--do list` asks in Edit too.
                                                                                 
-const { isStudioMessage } = __require(14);
-const { momentHooks } = __require(65);
+const { isStudioMessage } = __require(15);
+const { momentHooks } = __require(67);
 
 /** One value as the loader keeps it (codeMoment, src/loader/studio-placement.js). */
                  
@@ -28339,7 +28655,7 @@ __def(__exports, "fitValue", () => fitValue);
 __def(__exports, "setValue", () => setValue);
 __def(__exports, "startMomentValues", () => startMomentValues);
 };
-__defs[67] = function (__exports) {
+__defs[69] = function (__exports) {
 'use strict';
 // levels.ts
 
@@ -28354,7 +28670,7 @@ __defs[67] = function (__exports) {
 // and a page opened again (a reload, ▶ Play, the AI's change) must come back on the same level by itself.
 // WHY null outside the editor's frame: in the shipped game (or the game opened on its own) the game's own progress
 // picks the level; the studio must not.
-const { KEY_RE, LOCAL_PATHS } = __require(14);
+const { KEY_RE, LOCAL_PATHS } = __require(15);
 
 /** The game's list, cleaned: ids that fit a key (KEY_RE), each once, labels as text (≤ 120 characters). */
 function cleanLevels(list         )              {
@@ -28394,7 +28710,7 @@ function pickLevel(list         , href        , inFrame         )               
 __def(__exports, "cleanLevels", () => cleanLevels);
 __def(__exports, "pickLevel", () => pickLevel);
 };
-__defs[68] = function (__exports) {
+__defs[70] = function (__exports) {
 'use strict';
 // early-press.ts
 
@@ -28414,7 +28730,7 @@ __defs[68] = function (__exports) {
 // right-click drops it, and a later tap replaces it (the last one is what the person meant). The listeners sit on the game
 // window in the capture phase, never block anything (the game still runs and gets its input until the editor begins),
 // and go away once the editor has taken the tap.
-const { UI } = __require(14);
+const { UI } = __require(15);
 
                            
             
@@ -28476,7 +28792,7 @@ function watchEarlyTaps(win        )            {
 
 __def(__exports, "watchEarlyTaps", () => watchEarlyTaps);
 };
-__defs[69] = function (__exports) {
+__defs[71] = function (__exports) {
 'use strict';
 // connect-wait.ts
 
@@ -28575,7 +28891,7 @@ __def(__exports, "connectStep", () => connectStep);
 __def(__exports, "uiOnlyMayOpen", () => uiOnlyMayOpen);
 __def(__exports, "waitReason", () => waitReason);
 };
-__defs[70] = function (__exports) {
+__defs[72] = function (__exports) {
 'use strict';
 // bridge.ts
 
@@ -28585,27 +28901,27 @@ __defs[70] = function (__exports) {
 // adapter self-check, and translates between the shell's messages and the
 // adapter. Pointer input and handles live in input.ts / handles.ts; this file
 // only wires them up.
-const { CONTRACT_VERSION, LOCAL_PATHS, isStudioMessage } = __require(14);
-const { installCore } = __require(17);
-const { installPlayClock } = __require(19);
-const { adapterFromPort2D } = __require(20);
-const { findDomUiPort, uiAdapterFromPort } = __require(23);
-const { codeUiEntries, createCodeUi, mergeUiPorts } = __require(25);
-const { findUi: findUiNow, markHudCanvases } = __require(27);
-const { runSelfCheck } = __require(28);
-const { createEditor } = __require(57);
-const { startPlayAsk } = __require(62);
-const { startPlayClip, watchCanvasKinds } = __require(64);
-const { startMomentValues } = __require(66);
-const { fromCheckpoint, startCheckpointHold, startMomentSave } = __require(65);
-const { createPlaySwitch } = __require(51);
-const { arrangeInPlay, moveInPlay } = __require(50);
-const { applyPlacement, placementForLevel } = __require(21);
-const { pickLevel } = __require(67);
-const { watchEarlyTaps } = __require(68);
+const { CONTRACT_VERSION, LOCAL_PATHS, isStudioMessage } = __require(15);
+const { installCore } = __require(18);
+const { installPlayClock } = __require(20);
+const { adapterFromPort2D } = __require(21);
+const { findDomUiPort, uiAdapterFromPort } = __require(24);
+const { codeUiEntries, createCodeUi, mergeUiPorts } = __require(26);
+const { findUi: findUiNow, markHudCanvases } = __require(28);
+const { runSelfCheck } = __require(29);
+const { createEditor } = __require(59);
+const { startPlayAsk } = __require(64);
+const { startPlayClip, watchCanvasKinds } = __require(66);
+const { startMomentValues } = __require(68);
+const { fromCheckpoint, startCheckpointHold, startMomentSave } = __require(67);
+const { createPlaySwitch } = __require(53);
+const { arrangeInPlay, moveInPlay } = __require(52);
+const { applyPlacement, placementForLevel } = __require(22);
+const { pickLevel } = __require(69);
+const { watchEarlyTaps } = __require(70);
                                                     
 const { nativeNow, nativeSetTimeout } = __require(0);
-const { connectStep, uiOnlyMayOpen, waitReason, LATE_LOOK_MS, LOOK_MS } = __require(69);
+const { connectStep, uiOnlyMayOpen, waitReason, LATE_LOOK_MS, LOOK_MS } = __require(71);
 
                                 
                            
@@ -29155,7 +29471,7 @@ function startBridge(opts               )       {
 __def(__exports, "readEditParams", () => readEditParams);
 __def(__exports, "startBridge", () => startBridge);
 };
-__defs[71] = function (__exports) {
+__defs[73] = function (__exports) {
 'use strict';
 // main.ts
 
@@ -29173,12 +29489,12 @@ __require(0);
 // boot.js (classic, side effects only) must run before everything else of
 // the three.js adapter: it installs __THREE_DEVTOOLS__ and wraps rAF/render.
 __require(1);
-const { threeProbe } = __require(13);
-const { startBridge } = __require(70);
+const { threeProbe } = __require(14);
+const { startBridge } = __require(72);
 
 startBridge({ builtins: [threeProbe] });
 
 
 };
-__require(71);
+__require(73);
 })();

@@ -74,10 +74,14 @@ test('noteOf: the change on screen first, then another object\'s; ● recording 
   const m = { key: 'lamp', label: 'lamp', name: 'lamp’s motion', made: false };
   const base: NoteIn = { here: null, rec: false, others: [] };
   assert.equal(noteOf(base), null);
-  assert.deepEqual(noteOf({ ...base, here: { ...m, canRule: true } }), { change: { where: 'here', motion: { ...m, canRule: true }, more: 0 }, rec: false, rule: true });
+  assert.deepEqual(noteOf({ ...base, here: { ...m, canRule: true } }), { change: { where: 'here', motion: { ...m, canRule: true }, more: 0 }, rec: false, rule: true, brief: false });
   assert.equal(noteOf({ ...base, here: { ...m, canRule: true }, rec: true })!.rule, false, 'recording: finish first (the ● part, not ✦)');
-  assert.deepEqual(noteOf({ ...base, rec: true }), { change: null, rec: true, rule: false });
+  assert.deepEqual(noteOf({ ...base, rec: true }), { change: null, rec: true, rule: false, brief: false });
+  // decided 2026-11-06 (a first-run walk): recording the motion on screen with changes = "Rec motion on · Turn off" alone
+  // (the timeline's line says what was made); another object's change keeps the whole line.
+  assert.equal(noteOf({ ...base, here: { ...m, canRule: true }, rec: true })!.brief, true);
   const o = { key: 'gate', label: 'gate', name: 'gate’s motion', made: true };
+  assert.equal(noteOf({ ...base, others: [o], rec: true })!.brief, false);
   assert.deepEqual(noteOf({ ...base, others: [o, m] })!.change, { where: 'elsewhere', motion: o, more: 1 });
   assert.equal(noteOf({ ...base, here: { ...m, canRule: false }, others: [o] })!.change!.where, 'here', 'the one on screen wins');
 });
@@ -126,12 +130,13 @@ test('Repeat and When are changes too; ⌘Z back to the saved motion → no line
 test('a new motion says "is made"; ● Rec motion on → recording, its ● turns it off', () => frames(() => {
   const r = rig();
   r.tl.make('lamp');
-  assert.deepEqual(r.note(), { change: null, rec: true, rule: false }, 'making: "Rec motion on · moving it adds a point · Turn off"');
+  assert.deepEqual(r.note(), { change: null, rec: true, rule: false, brief: false }, 'making: "Rec motion on · moving it adds a point · Turn off"');
   r.tl.moved('lamp', at(2), true, at(0));
   const n = r.note()!;
   assert.equal(n.change?.motion.made, true, '"lamp’s motion is made"');
   assert.equal(n.rec, true);
   assert.equal(n.rule, false, 'recording: no ✦ yet');
+  assert.equal(n.brief, true, 'made while recording: "Rec motion on · Turn off" alone (the timeline\'s line says it was made)');
   r.tl.recOff();
   assert.equal(r.tl.state().auto, false, 'the line\'s ● = Rec motion off');
   assert.equal(r.view().making, null, 'making ends with it');
@@ -140,7 +145,7 @@ test('a new motion says "is made"; ● Rec motion on → recording, its ● turn
   // A saved motion, ● on, nothing changed: recording only.
   r.save();
   r.acts().auto(true);
-  assert.deepEqual(r.note(), { change: null, rec: true, rule: false });
+  assert.deepEqual(r.note(), { change: null, rec: true, rule: false, brief: false });
 }));
 
 test('another object picked, or none: "Not saved: lamp’s motion" — each Library motion once, the name picks it', () => frames(() => {

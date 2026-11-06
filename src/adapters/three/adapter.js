@@ -22,6 +22,7 @@ import { focusSphere, sceneSphere } from './focus.js';
 import { castSurface, castSurfaceAll, solidBox, surfaceBelowHit, surfaceMeshes } from './surface.js';
 import { groundKeys } from './ground.js';
 import { codeFromObject } from './code-from.js';
+import { overlapKeys } from './overlap.js';
 
 const DEG = Math.PI / 180;
 const S_MIN = 0.01;
@@ -1088,6 +1089,26 @@ export function createThreeAdapter({ scene, renderer, camera }) {
       grabs.delete(key);
       touch();
       return poseOf(o);
+    },
+
+    /**
+     * What the object now overlaps (overlap.js; decided 2026-11-06): other listed objects, not the grounds, not its own
+     * parents or children. The bridge asks during a move, at most every 100 ms.
+     */
+    overlaps(key) {
+      const o = objectOf(key);
+      if (!o) return [];
+      scene.updateMatrixWorld(true);
+      const kin = (c) => {
+        for (let p = c.parent; p; p = p.parent) if (p === o) return true;
+        for (let p = o.parent; p; p = p.parent) if (p === c) return true;
+        return false;
+      };
+      const boxes = allCands.map((c) => ({ c, box: worldBox(c.object) }));
+      const grounds = groundKeys(boxes.map(({ c, box }) => ({ key: c.key, label: c.label, named: c.source !== 'path', box })));
+      const others = boxes.filter(({ c }) => c.object !== o && !removed.has(c.key) && !grounds.has(c.key) && c.object.visible !== false && !kin(c.object))
+        .map(({ c, box }) => ({ key: c.key, box }));
+      return overlapKeys(worldBox(o), others);
     },
 
     /** The bottom middle of the object's world box, in its parent's space (the space of pose.p). */

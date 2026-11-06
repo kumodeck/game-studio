@@ -29,7 +29,7 @@
 // No line ever prints the editor's address without its pass (?t=): such a link only says "Missing pass" (open-in.mjs).
 // Anything meant only for a human (help text, the QR code) goes to stderr.
 
-import { promises as fs, existsSync, realpathSync } from 'node:fs';
+import { promises as fs, existsSync, realpathSync, readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { spawn } from 'node:child_process';
@@ -144,6 +144,7 @@ For the AI agent (hand-offs, see the arrange skill), then exit:
                    a,b), ui.set (id, p, s, from, set | --clear). Fields as --<field> <value>
                    (numbers and lists as JSON: --to "[1,0,2]"); when: start | click | touch | key:E |
                    time:2 | after:Hop | cue:<name>. Prints "studio: did …" per op. CONTRACT.md §3.6
+  -v, --version    print this Game Studio's version (e.g. 0.1.82) and exit
   -h, --help       show this help
 
 STUDIO_BROWSER=<command> opens links with that command instead of the default browser (tests).
@@ -154,6 +155,17 @@ Needs Node.js ${NODE_MIN.join(".")} or later.`;
 
 export async function main(argv) {
   const args = parseArgs(argv);
+  // --version (decided 2026-11-06): an AI asked "which version is this?" had only "unknown option" and the help to read.
+  // One line on stdout, the number alone, exit 0.
+  if (args.version) {
+    const v = studioVersion(path.dirname(fileURLToPath(import.meta.url)));
+    if (!v) {
+      process.stderr.write('studio: couldn’t find this Game Studio’s version (no package.json or plugin.json next to it)\n');
+      return 2;
+    }
+    process.stdout.write(`${v}\n`);
+    return 0;
+  }
   if (args.starters) return listStarters(path.dirname(fileURLToPath(import.meta.url)), args);
   // The plugin's hooks (ai-wake.mjs): no folder, the session's folder comes on stdin.
   if (args.hook !== undefined) return runHook(args.hook);
@@ -207,8 +219,11 @@ export async function main(argv) {
     // No game here. With the default page that usually means "an empty folder": say on stdout what
     // the agent asks and runs next (the arrange skill, "A folder without a game"). Exit 4 = no game.
     if (!args.entry) {
+      // Only the stdout line (decided 2026-11-06): stderr used to add "There’s no index.html … To open a different page,
+      // use --entry <file>." — advice for a folder WITH a game under another name, read by the AI next to "Start from a
+      // sample?" for an empty folder. A folder that has files but no page still gets the --entry hint.
       process.stdout.write(noGameLine(root, await findStarters(here, args.startersDir)) + '\n');
-      process.stderr.write(`There’s no ${entry} in ${root} yet. To open a different page, use --entry <file>.\n`);
+      if (!folderIsEmpty(root)) process.stderr.write(`There’s no ${entry} in ${root} yet. To open a different page, use --entry <file>.\n`);
       return 4;
     }
     process.stderr.write(`studio: no ${entry} in ${root}. Check the name after --entry.\n`);
@@ -579,11 +594,41 @@ async function writeStatus(root, args) {
   return 0;
 }
 
+/**
+ * This Game Studio's version: the nearest package.json named "game-studio" or .claude-plugin/plugin.json above `here`
+ * (src/server/ in the repository, skills/arrange/bin/ in the plugin as installed). null = neither found.
+ */
+export function studioVersion(here) {
+  let dir = here;
+  for (let i = 0; i < 5; i++) {
+    for (const f of [path.join(dir, 'package.json'), path.join(dir, '.claude-plugin', 'plugin.json')]) {
+      try {
+        const j = JSON.parse(readFileSync(f, 'utf8'));
+        if (typeof j.version === 'string' && (f.endsWith('plugin.json') || j.name === 'game-studio')) return j.version;
+      } catch { /* not here */ }
+    }
+    const up = path.dirname(dir);
+    if (up === dir) break;
+    dir = up;
+  }
+  return null;
+}
+
+/** True when the folder has nothing in it but dot-files (.git, .DS_Store, .studio). Missing = empty. */
+function folderIsEmpty(root) {
+  try {
+    return readdirSync(root).every((n) => n.startsWith('.'));
+  } catch {
+    return true;
+  }
+}
+
 function parseArgs(argv) {
   const out = { open: true };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '-h' || a === '--help') out.help = true;
+    else if (a === '-v' || a === '--version') out.version = true;
     else if (a === '--lan') out.lan = true;
     else if (a === '--no-open') out.open = false;
     else if (a === '--open') out.openNow = true;

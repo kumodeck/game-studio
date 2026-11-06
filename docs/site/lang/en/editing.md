@@ -15,6 +15,7 @@ The editor has three parts: the column on the left (**Scene** and **Library**), 
 ## Select
 
 - **Click** (or tap) an object to select it. Click the same spot again to select the one behind it.
+- **Point** at something with the mouse and it lights up softly first: that is what a click there selects. Thin things count too: a click right on a lamp post takes the post, not the rock behind it.
 - **Click nothing** (the sky, the sea, the ground) to deselect. Big things like the ground are selected from the Scene list instead, so you don’t grab them by accident.
 - Selecting from the **Scene** list (or ⌘K, or **Show in game** in the Library) doesn’t move your camera when the object is already on screen. Only when it’s out of sight does the view slide to it, and never so far that it ends up tiny. Deselecting never moves the camera either.
 - <kbd>Esc</kbd> steps back: it closes an open menu, then puts the tool down, then deselects.
@@ -47,6 +48,7 @@ The tool stays chosen until you press <kbd>Esc</kbd> or choose another. A readou
 
 **More ways to turn and resize.** The small ▾ in the corner of **Turn** and **Size** (or a long press on the button) opens the choices:
 
+- Drag the **Turn** button itself to turn without choosing the tool: around the object, or just straight left or right (in 3D too).
 - In 3D, Turn has **Turn**, **Tilt forward** and **Tilt sideways**. <kbd>R</kbd> goes to the next one. It turns around the middle of the object, so it stays where it is.
 - With several selected, **Together** turns or resizes them as one group (the gaps change too). **Each in place** keeps each one where it is.
 
@@ -56,7 +58,8 @@ The tool stays chosen until you press <kbd>Esc</kbd> or choose another. A readou
 
 ## Snap into place
 
-In 3D, things land on what’s under them:
+In 3D, things land on what’s under them. And if a move pushes something into another thing (far away, one pixel is metres), its outline turns red and the readout names what it’s in, like **Move X +9.60 Z +2.73 · In sea-arch**. You can still let go there.
+
 
 - Dragging **Height** down stops on the first surface below. Keep pulling a little further to go through it.
 - <kbd>End</kbd> drops the selected object to the floor (on a Mac laptop, <kbd>fn</kbd><kbd>→</kbd>). It’s in the right-click menu too.
@@ -130,7 +133,7 @@ A game with no assets yet shows **Assets · 0** and one place to drop files on.
 
 Click a tile to see its detail: which objects use a file, which files are unused or missing.
 
-- **Put in the scene** on an object puts a duplicate where you’re looking. A file needs new code to become an object, so its button is **✦ Ask Claude to put it in the scene…**: the request goes in the box at the bottom, and nothing is sent until you press <kbd>Enter</kbd>.
+- An object in the Library is already in the game: **Show in the scene →** takes you to it, and **Add another** puts a duplicate where you’re looking. A file needs new code to become an object, so its button is **✦ Ask Claude to put it in the scene…**: the request goes in the box at the bottom, and nothing is sent until you press <kbd>Enter</kbd>.
 - **Replace…** swaps a file for another. **Add assets** brings new ones in.
 - **Show in the scene** goes back to the Scene with it selected.
 - **✦ Ask Claude…** (your AI’s name) puts the cursor in the box at the bottom, with the tile named in it.
@@ -145,10 +148,10 @@ The box at the bottom is for your AI. Type what you want and press <kbd>Enter</k
 - About what’s selected: “add 3 more in a row,” “make it glow.”
 - About the whole game: “add three lighthouses around the island.”
 
-Before you type, the right end of the box says whether your AI is there (in the side window and on a phone, only its dot: press it for the words):
+The right end of the box says whether your AI is there. Until you start typing, and when the editor isn’t sure, that’s only a small grey dot (press it for the words). In the side window and on a phone it’s always the dot:
 
 - **● Claude is watching**: what you send reaches it within seconds. **● Claude is working**: it’s on a request.
-- **Not sure Claude is open** or **Claude isn’t watching**: you can still write. It’s kept as a note, and nothing in the game changes until Claude reads it. **How to open** says what to do.
+- **Claude isn’t watching yet**, **Not sure Claude is open** or **Claude isn’t watching**: you can still write. It’s kept as a note, and nothing in the game changes until Claude reads it. **How to open** says what to do.
 - With Codex: **Codex reads it when you type “look”**.
 
 The name is your own AI, or “your AI” when the editor can’t tell. Press the words for one line on what they mean.

@@ -33,6 +33,7 @@ The hold for the editor's first look happens once per page (`heldOnce` in boot.j
 - `keys.js` — which objects are movable and their keys (pure; shared with the placement loader)
 - `apply.js` — apply a placement.json to a scene (the three.js half of the loader)
 - `pick.js` — bounds, ray casts, pickNear ordering rules
+- `overlap.js` — what a moved object's box pushes into (not grounds, not much bigger things): the move's red outline (decided 2026-11-06)
 - `surface.js` — surfaces to set things on (snap to surfaces: the ground, a pier's planks; light effects and the moving objects left out), world-space triangles in an xz grid so a 100 k-triangle terrain answers a ray per pointer move
 - `camera.js` — the edit camera (orbit / pan / zoom / rise = straight up or down / fly = WASD, scaled to the scene / look = turn in place / frame)
 - `focus.js` — what the edit camera frames: the object and its neighbours when picked from the list, the play area for frameAll (pure maths)

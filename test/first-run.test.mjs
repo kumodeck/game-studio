@@ -99,6 +99,8 @@ test('CLI: a folder without a game says what to ask (exit 4), --starters lists t
   assert.equal(r.status, 4, r.stderr);
   assert.equal(r.stdout.trim(), `studio: no-game ${dir} - ask once "Start from a sample? 3D or 2D", then run again with --starter 3d (Fake Harbor) or --starter 2d (Fake Pond)`);
   assert.deepEqual(readdirSync(dir), [], 'nothing written');
+  // Decided 2026-11-06: no "--entry <file>" advice for an EMPTY folder (it is for a game whose page has another name).
+  assert.doesNotMatch(r.stderr, /--entry/, 'an empty folder gets only the sample line');
   const l = run(['--starters', '--starters-dir', FAKE]);
   assert.equal(l.status, 0);
   assert.deepEqual(l.stdout.trim().split('\n').map((x) => JSON.parse(x).id), ['fake-3d', 'fake-2d', 'fake-2d-late']);
@@ -176,4 +178,20 @@ test('every starter and example that ships studio-placement.js ships the current
     }
   }
   assert.deepEqual(stale, [], 'run npm run build to refresh these copies');
+});
+
+// Decided 2026-11-06: --version answers "which Game Studio is this?" with the number alone (it was "unknown option").
+test('CLI: --version / -v print the version from package.json and exit 0; a folder with files still gets the --entry hint', () => {
+  const pkg = JSON.parse(readFileSync(join(PKG, 'package.json'), 'utf8'));
+  for (const flag of ['--version', '-v']) {
+    const r = run([flag]);
+    assert.equal(r.status, 0, r.stderr);
+    assert.equal(r.stdout.trim(), pkg.version);
+  }
+  const dir = tmp('notes');
+  writeFileSync(join(dir, 'notes.txt'), 'not a game');
+  const r = run([dir, '--starters-dir', FAKE]);
+  assert.equal(r.status, 4);
+  assert.match(r.stderr, /--entry <file>/, 'files but no page: maybe it is called something else');
+  rmSync(dir, { recursive: true, force: true });
 });

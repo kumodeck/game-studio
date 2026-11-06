@@ -287,7 +287,18 @@ export function pickNear(cands, camera, viewProj, ndcX, ndcY, radiusPx, size) {
     }
     return { who, t: best };
   };
+  // The object the pointer's own ray meets first is seen there, whatever the test below says (decided 2026-11-06, a
+  // first-run walk of v0.1.82: a click on Lantern Cove's lamp post — a 4 px pole — selected the rock behind it). The test
+  // below shoots a quarter of the way from the pointer toward the middle of the object's box; for a thin thing with a
+  // wide box (the post and its lamp arm) that point is beside the pole, its ray met the rock, the post counted as hidden
+  // and the rock won though the pointer was on the post.
+  let front = null;
+  for (const [c, t] of hits) if (!front || t < hits.get(front)) front = c;
   for (const row of rows) {
+    if (row.c === front) {
+      row.visible = true;
+      continue;
+    }
     const [x0, y0, x1, y1] = row.rect;
     const cx = (x0 + x1) / 2;
     const cy = (y0 + y1) / 2;

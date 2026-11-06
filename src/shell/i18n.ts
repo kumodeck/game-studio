@@ -100,6 +100,11 @@ const en = {
   'motion.tool.savedHead': 'Saved motions',
   'hold.gameStart': 'Your game moves this while playing. Where you put it is where it starts; the game moves it on from there.',
   'tl.when.first': 'Pick a later time on the ruler, then move {name} there: that makes its motion',
+  // decided 2026-11-06 (a first-run walk): the line of an object with no motion, beside "+ Make a motion". The two lines
+  // above said a move would make a motion; since studio-fix-0142 it only moves where the object stands.
+  'tl.when.noMotion': 'No motion yet. Moving it changes where it stands.',
+  // decided 2026-11-06: Esc in a game that uses Esc itself (it took the key) — Play goes on, the way out is the top bar's.
+  'play.escGame': 'Esc is the game’s · ■ Edit to stop',
   'tl.whenAsk': 'When does it move?',
   'tl.on': 'On',
   'tl.off': 'Off',
@@ -292,6 +297,9 @@ const en = {
   'save.fail': 'Couldn’t save: {error}',
   'status.loading': 'Opening your game…',
   'status.waiting': 'Waiting for the game to start…',
+  // The line over the game while it opens (main.ts waitLine, decided 2026-11-06); the slow one after a few seconds.
+  'status.opening': 'Opening {name}…',
+  'status.openingSlow': 'Opening {name}… The first time takes a few seconds.',
   'status.connecting': 'Connecting the game to Game Studio… On a slower computer this can take a little while.',
   'status.noAdapter': 'This game isn’t connected to Game Studio yet.',
   'status.noAdapterHint': 'three.js games connect on their own. For other engines, ask {ai} to “write the Game Studio adapter for this game.”',
@@ -346,8 +354,10 @@ const en = {
   // The narrow list's one row for all the unnamed objects (side window, 2026-10-19), and its button.
   'noname.fold': 'Unnamed objects',
   'noname.askAi': 'Ask {ai} to name them',
-  'noname.why': 'A guessed name. Named in code, {ai} can find it and its position stays put.',
-  'noname.whyPlain': 'Named in code, {ai} can find it and its position stays put.',
+  // Decided 2026-11-06: "Named in code, Claude can find it…" sat on the card of an object WITHOUT a name and read as "it
+  // already has one". Now it says what to do and why, as an instruction.
+  'noname.why': 'A guessed name. Give it a name in code so {ai} can find it and it stays put.',
+  'noname.whyPlain': 'Give it a name in code so {ai} can find it and it stays put.',
   // studio-motion-fix △10 (decided 2026-11-05): "×6" alone did not say six of what.
   'ask.chipN': '{n:1 object|# objects}',
   'ask.chipNamed': '{name} ×{n}',
@@ -364,7 +374,9 @@ const en = {
   // Plan step 7 (2026-10-23): the sheet's tabs (Scene | the picked object | Motion), named for a screen reader.
   'sheet.tabs': 'What the sheet shows',
   // The one line under the game until the first pick (the words picked for plan "decide 1", kept after a wording check).
-  'intro.line': 'Shape your game by hand. Your AI writes the code.',
+  // Decided 2026-11-06 (first-screen fix): it says the whole loop in one line — move by hand, Save, the AI puts it in
+  // the code — so the field next to it no longer needs to talk about the AI before the person asks (presenceQuiet).
+  'intro.line': 'Move things by hand. Save, and {ai} puts it in your code.',
   // One line about the hand-off to the AI (requests and the AI's status).
   'ai.waiting': 'Sent your {what} to {ai}. Waiting for a reply…',
   // The one calm line when the request could not wake the AI right now (hands-on test 2026-10-19: "Your AI
@@ -395,6 +407,8 @@ const en = {
   'ai.p.look': 'Codex reads it when you type “{word}”',
   'ai.p.away': '{Ai} isn’t watching',
   'ai.p.unsure': 'Not sure {ai} is open',
+  // Never seen watching in this page, on a host that can tell (ai-presence.ts presenceKey, decided 2026-11-06).
+  'ai.p.notYet': '{Ai} isn’t watching yet',
   'ai.p.how': 'How to open',
   'ai.p.tip': 'What this means',
   // Pressing the words: one line of what is true and what to do (it replaces "Call your AI", which copied a word
@@ -555,8 +569,20 @@ const en = {
   'clip.btn': 'Clip',
   'clip.tip': 'Record the next {s} seconds of the game as a video',
   'clip.more': 'Clip options',
-  'clip.stop': '{t} · Stop',
+  // studio-clip-3 (decided 2026-11-06): the time LEFT, not the time so far — the person wants to know when it ends.
+  'clip.stop': '{t} left · Stop',
+  'clip.ending': 'Ending…',
+  'clip.saving': 'Saving…',
   'clip.stopTip': 'Stop now (the clip ends one second later)',
+  // A phone's ● is a round button only (the bar has no room for ⌄): holding it opens Clip options (studio-clip-3).
+  'clip.holdTip': 'Record the next {s} seconds of the game as a video. Hold for Clip options',
+  'clip.whereTip': 'Clip options: shape and length of the next clip',
+  'clip.postX': 'Post on X…',
+  'clip.postXTip': 'Opens X with this post written. Then add the video from {dir}',
+  'clip.postXOpened': 'X opened with the post. Add the video from {dir}, then post.',
+  'clip.askAi': '✦ Ask {ai}',
+  'clip.askWebgpu': 'Draw the game with WebGL instead of WebGPU, so ● Clip can record it.',
+  'clip.askTainted': 'Put the images this game loads from other sites into the game’s folder, so ● Clip can record it.',
   'clip.saved': 'Clip saved · {name}',
   'clip.downloaded': 'Clip downloaded · {name}',
   'clip.where': '{s} s · {shape} · {dir}',
@@ -597,10 +623,10 @@ const en = {
   'clip.saveTo': 'Saved to {dir}.',
   'clip.local': 'Nothing leaves this computer.',
   'clip.palette': 'Record a clip',
-  'clip.webgpu': 'Clip needs WebGL for now. This game draws with WebGPU.',
-  'clip.tainted': 'This game draws images from another site, so it can’t be recorded. Ask {ai} to put them in the game’s folder.',
+  'clip.webgpu': 'Clip can’t record WebGPU yet, and this game draws with WebGPU. {Ai} can switch it to WebGL, or use your computer’s screen recorder.',
+  'clip.tainted': 'This game draws images from another site, so the browser won’t let Clip read its picture. {Ai} can move them into the game’s folder.',
   'clip.noEncoder': 'This browser can’t make videos. Try the latest Chrome, Edge or Safari.',
-  'clip.nothing': 'Nothing to record yet: the game has no picture on screen.',
+  'clip.nothing': 'Nothing to record yet: the game has no picture on screen. Press ● Clip again once the game shows.',
   'clip.failed': 'The clip couldn’t be made ({msg}). Try again.',
   'clip.saveFailed': 'The clip couldn’t be saved: {msg}',
   'try.btn': 'Try from {t}',
@@ -1087,7 +1113,10 @@ const en = {
   'ctx.showUsers': 'Show just these objects',
   'ctx.replace': 'Replace…',
   // Use the Library (2026-10-18): add from it, ask the AI about what is picked there, and the Scene's way back to it.
-  'lib.addToScene': 'Put in the scene',
+  // An object in the Library is already placed (its card says "Placed in the game"), so the copy says it adds one more
+  // (decided 2026-11-06: "Put in the scene" on a placed object read as "is it not in the scene?"). A file's button is
+  // the Library tool's own (src/tools/library/strings.ts) and still says "Put in the scene".
+  'lib.addToScene': 'Add another',
   'lib.askAi': 'Ask {ai}…',
   'lib.askAboutIt': 'Ask {ai} about it…',
   'lib.addFileAi': 'Ask {ai} to put it in the scene…',
@@ -1488,6 +1517,8 @@ const ja: Partial<Record<Key, string>> = {
   'motion.tool.savedHead': '保存した動き',
   'hold.gameStart': 'ゲームが動かしている物です。置いた所がスタート位置になり、遊ぶとそこからゲームが動かします。',
   'tl.when.first': '目盛りで先の時刻を選んで、{name} をそこへ動かすと、動きができます',
+  'tl.when.noMotion': 'まだ動きはありません。動かすと置き場所が変わります。',
+  'play.escGame': 'Esc はゲームが使っています · ■ 編集 で止める',
   'tl.whenAsk': 'いつ動く？',
   'tl.on': 'オン',
   'tl.off': 'オフ',
@@ -1668,6 +1699,8 @@ const ja: Partial<Record<Key, string>> = {
   'save.fail': '保存できませんでした: {error}',
   'status.loading': 'ゲームを開いています…',
   'status.waiting': 'ゲームの起動を待っています…',
+  'status.opening': '{name} を開いています…',
+  'status.openingSlow': '{name} を開いています… 初めての時は数秒かかります。',
   'status.connecting': 'ゲームを Game Studio につないでいます… 遅めのパソコンでは少し時間がかかります。',
   'status.noAdapter': 'このゲームはまだ Game Studio につながっていません。',
   'status.noAdapterHint': 'three.js のゲームは自動でつながります。ほかのエンジンは {ai}に「このゲームの Game Studio のつなぎを書いて」と頼んでください。',
@@ -1713,8 +1746,8 @@ const ja: Partial<Record<Key, string>> = {
   'noname.act1': '名前を付ける',
   'noname.fold': '名前のない物',
   'noname.askAi': '{ai}に名前を付けてもらう',
-  'noname.why': '仮の名前です。名前があると {ai}に名前で頼めて、コードを直しても位置が残ります。',
-  'noname.whyPlain': '名前があると {ai}に名前で頼めて、コードを直しても位置が残ります。',
+  'noname.why': '仮の名前です。コードで名前を付けると、{ai}に名前で頼めて、コードを直しても位置が残ります。',
+  'noname.whyPlain': 'コードで名前を付けると、{ai}に名前で頼めて、コードを直しても位置が残ります。',
   'ask.chipN': '{n} 個',
   'ask.chipNamed': '{name} ×{n}',
   'large.open': '大きく開く',
@@ -1726,7 +1759,7 @@ const ja: Partial<Record<Key, string>> = {
   'sheet.fold': 'たたむ',
   'sheet.unfold': '一覧とカードを出す',
   'sheet.tabs': 'シートに出す物',
-  'intro.line': 'ゲームを手で直す場所。コードは、いつもの AI が書く。',
+  'intro.line': '手で動かして保存すると、{ai}がコードに入れます。',
   'ai.waiting': '{what}を {ai}に送りました。返事を待っています…',
   'ai.kept': '{ai}へのメモとして残しました。{ai2}が読むまでゲームは変わりません。',
   'ai.onIt': '{ai}が取りかかっています',
@@ -1742,6 +1775,7 @@ const ja: Partial<Record<Key, string>> = {
   'ai.p.look': 'Codex で「{word}」と打つと読みます',
   'ai.p.away': '{ai}が見ていません',
   'ai.p.unsure': '{ai}が開いているか分かりません',
+  'ai.p.notYet': '{ai}はまだ見ていません',
   'ai.p.how': '開き方',
   'ai.p.tip': 'これの意味',
   'ai.open.watching': '{ai}がこのゲームを見ています。送ったものは数秒で届きます。',
@@ -1862,8 +1896,18 @@ const ja: Partial<Record<Key, string>> = {
   'clip.btn': 'クリップ',
   'clip.tip': 'ゲームのこの先 {s} 秒を動画にする',
   'clip.more': 'クリップの設定',
-  'clip.stop': '{t} · 止める',
+  'clip.stop': '残り {t} · 止める',
+  'clip.ending': '仕上げ中…',
+  'clip.saving': '保存中…',
   'clip.stopTip': '今止める（動画は 1 秒後に終わります）',
+  'clip.holdTip': 'ゲームのこの先 {s} 秒を動画にする。長押しでクリップの設定',
+  'clip.whereTip': 'クリップの設定: 次のクリップの形と長さ',
+  'clip.postX': 'X に投稿…',
+  'clip.postXTip': '投稿の文を入れて X を開きます。動画は{dir}から足してください',
+  'clip.postXOpened': '投稿の文を入れて X を開きました。{dir}から動画を足して投稿してください。',
+  'clip.askAi': '✦ {ai}に頼む',
+  'clip.askWebgpu': '● クリップで録れるように、ゲームを WebGPU ではなく WebGL で描くようにして。',
+  'clip.askTainted': '● クリップで録れるように、別のサイトから読んでいる画像をゲームのフォルダに置いて。',
   'clip.saved': 'クリップを保存しました · {name}',
   'clip.downloaded': 'クリップをダウンロードしました · {name}',
   'clip.where': '{s} 秒 · {shape} · {dir}',
@@ -1902,10 +1946,10 @@ const ja: Partial<Record<Key, string>> = {
   'clip.saveTo': '保存先: {dir}。',
   'clip.local': 'このパソコンの外には何も送りません。',
   'clip.palette': 'クリップを録る',
-  'clip.webgpu': 'クリップは今は WebGL のゲームだけです。このゲームは WebGPU で描いています。',
-  'clip.tainted': 'このゲームは別のサイトの画像を描いているので、録れません。画像をゲームのフォルダに置くよう{ai}に頼めます。',
+  'clip.webgpu': 'クリップはまだ WebGPU を録れず、このゲームは WebGPU で描いています。{ai}に WebGL に変えてもらうか、パソコンの画面収録を使ってください。',
+  'clip.tainted': 'このゲームは別のサイトの画像を描いているので、ブラウザがクリップに絵を読ませません。{ai}に画像をゲームのフォルダへ移してもらえます。',
   'clip.noEncoder': 'このブラウザでは動画を作れません。新しい Chrome・Edge・Safari で試してください。',
-  'clip.nothing': 'まだ録る物がありません。ゲームの絵が出ていません。',
+  'clip.nothing': 'まだ録る物がありません。ゲームの絵が出ていません。絵が出てからもう一度 ● クリップを押してください。',
   'clip.failed': 'クリップを作れませんでした（{msg}）。もう一度試してください。',
   'clip.saveFailed': 'クリップを保存できませんでした: {msg}',
   'try.btn': '{t} から試す',
@@ -2325,7 +2369,7 @@ const ja: Partial<Record<Key, string>> = {
   'ctx.showInGame': 'シーンで見る',
   'ctx.showUsers': '使っている物だけ見る',
   'ctx.replace': '差し替え…',
-  'lib.addToScene': 'シーンに置く',
+  'lib.addToScene': 'もう 1 つ置く',
   'lib.askAi': '{ai}に頼む…',
   'lib.askAboutIt': 'これについて {ai}に頼む…',
   'lib.addFileAi': 'シーンに置くよう {ai}に頼む…',

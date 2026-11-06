@@ -61,6 +61,19 @@ export function isTryPause(at: number, wanted: number): boolean {
   return Number.isFinite(at) && Number.isFinite(wanted) && Math.abs(at - wanted) <= 0.25;
 }
 
+/**
+ * Decide on this pause now, or wait for the game's exact held second (pure; fixed 2026-11-06).
+ * `shot.exact` false = the editor's own estimate (the clock it last heard, run on to now). WHY wait: the game page
+ * takes the paused picture first and tells the held second right after (bridge play-ask.ts pauseNow → tellTime), so
+ * on a busy machine the estimate ran on by the picture's time — 0.5 s at 20× slower, where the Try's own pause read as
+ * "someone else's" and the Before / After panel, closed by the Try's reload, never came back. An estimate only runs
+ * late (the clock is run on, never back), so a match on it is a match; no match waits for the exact second.
+ */
+export function tryPauseVerdict(shot: { time: number; exact: boolean }, wanted: number): 'try' | 'not' | 'wait' {
+  if (isTryPause(shot.time, wanted)) return 'try';
+  return shot.exact ? 'not' : 'wait';
+}
+
 export interface TryWords {
   /** The flash when the Try paused. */
   flash: 'try.sameRun' | 'try.sameRunBehind' | 'try.sameRunAhead' | 'try.openedOut' | 'try.openedStay';

@@ -76,7 +76,7 @@ import { statusCovers } from '../schema/handoff.mjs';
 import { handsFoldEntry } from '../schema/hands.mjs';
 import type { Folded } from './code-places.ts';
 import { aiBusy, aiPhase, moreIn, reloadDecision, type AiPhase } from './ai-flow.ts';
-import { aiNameKey, aiPresence, presenceSure, QUIET_WORK_MS, UNSEEN_MS, type AiPresence } from './ai-presence.ts';
+import { aiNameKey, aiPresence, presenceKey, presenceQuiet, presenceSure, QUIET_WORK_MS, UNSEEN_MS, type AiPresence } from './ai-presence.ts';
 import { bounces, saveLoud } from './save-loud.ts';
 import { askView as questionView } from './ai-ask.ts';
 import { playLine, playWords } from './play-ask.ts';
@@ -86,7 +86,7 @@ import { askFieldShown, askPhShort, createMomentShot, momentAskOffline, momentFo
 import { createMomentValues, momentNumber, unitText } from './moment-values.ts';
 import { createMomentMarks, markedShot } from './moment-marks.ts';
 import { createMomentGets, getsRows, orderMarked } from './moment-gets.ts';
-import { createMomentCompare, filesRow, isTryPause, replyActions, tryWords } from './moment-try.ts';
+import { createMomentCompare, filesRow, replyActions, tryPauseVerdict, tryWords } from './moment-try.ts';
 import { CHECKPOINTS_LISTED, checkpointsOf, createCheckpointNote, createCheckpointPop, defaultCheckpointName, reloadCheckpoint, smallShot } from './checkpoints.ts';
 import { LINE_FADE_MS, LINE_GRACE_MS, lineFades, lineKey, lineStayMs } from './line-fade.ts';
 import { renderSettings } from './settings-page.ts';
@@ -551,6 +551,8 @@ export function start(host: StudioHost) {
   // The "done" status the person reloaded for: its line then shows what changed instead of "Reload".
   let aiReloadFor: string | null = null;
   let aiTime: number | null = null;
+  // When this page first read the status with that aiTime (page ms): ai-presence.ts statusSeen (decided 2026-11-06).
+  let aiTimeSeen: number | null = null;
   const openedAt = Date.now();
   // AI feel (2026-10-16, ai-flow.ts). `aiWatching`: is an AI's watch running
   // right now (`studio.mjs --watch`; undefined = this host cannot tell, then
@@ -568,6 +570,8 @@ export function start(host: StudioHost) {
   let visibleSince = Date.now();
   // The presence's line is open (toggleOpenHelp).
   let helpOpen = false;
+  // Whether the ask field had text at the last renderPresence (the quiet presence, decided 2026-11-06).
+  let askHadText = false;
   // Which AI is behind the editor (host.status().agent, which-ai.mjs): the line's "More in Claude" (ai-flow.ts moreIn).
   let aiAgent: AiAgent | undefined;
   let aiSeen: string | undefined;
@@ -843,7 +847,8 @@ export function start(host: StudioHost) {
   // Stage 2 (2026-11-05): on a phone too, while playing (shell.css), Tall there until the person chooses; ● Clip Before /
   // After from the paused ask's Before / After panel (openCompare); ✦ Rewrite through clipRewrite.
   const clipper = createClip({
-    t: (k, v) => t(k, v),
+    // The AI by its name in the clip's lines ("Claude can switch it to WebGL"; studio-clip-3): aiVars, then the line's own.
+    t: (k, v) => t(k, { ...aiVars(), ...v }),
     host,
     post: (m) => postGame(m),
     playing: () => playing,
@@ -859,7 +864,13 @@ export function start(host: StudioHost) {
       const mm = ctxMenu.el.getBoundingClientRect();
       ctxMenu.el.style.left = `${Math.max(8, Math.round(r.right - mm.width))}px`;
     },
-    toast: (text, ms) => showToast(text, ms),
+    // ✦ Ask on a refusal (studio-clip-3): the request in the field, not sent. While playing, the game pauses first and
+    // the paused moment's field takes it (momentStart, as words typed over the game do); in Edit, the field at once.
+    ask: (text) => {
+      if (!playing || playPaused) return void focusAsk(text);
+      clipAskDraft = text;
+      postGame({ type: 'studio:play/pause', on: true });
+    },
     changed: (st, shape) => {
       if (st === 'idle') delete app.dataset.clip;
       else app.dataset.clip = st;
@@ -886,6 +897,8 @@ export function start(host: StudioHost) {
    * stays) — never handedOver(), which would start a new turn of the line and drop the last change's Undo.
    */
   const clipAsks = new Set<string>();
+  /** ● Clip's ✦ Ask while playing: the request for the field once the game has paused (momentStart), else null. */
+  let clipAskDraft: string | null = null;
   const clipWaits = new Map<string, (note: string | null) => void>();
   async function clipRewrite(text: string, ctx: ClipPostContext): Promise<string | null> {
     if (host.offline) return null;
@@ -1166,7 +1179,9 @@ export function start(host: StudioHost) {
     if (picked && prefsLoaded && !uiPrefs.seen?.includes(INTRO_SEEN)) changeUi({ ...uiPrefs, seen: [...(uiPrefs.seen ?? []), INTRO_SEEN] });
     const intro = !host.offline && prefsLoaded && !uiPrefs.seen?.includes(INTRO_SEEN) && !picked && editing && !playing && tool === 'placement' && page === 'tool';
     if (introLine.hidden === intro) introLine.hidden = !intro;
-    if (intro && introLine.textContent !== t('intro.line')) introLine.textContent = t('intro.line');
+    // {ai}: "Save, and Claude puts it in your code" (decided 2026-11-06) — the person's own AI, "your AI" when unknown.
+    const introText = t('intro.line', aiVars());
+    if (intro && introLine.textContent !== introText) introLine.textContent = introText;
     // The motion's one line follows the pick (studio-motion-next-2): a pick from the game or the list comes through here.
     renderMotionNote();
     // ---- the sheet's tabs (phone / side window, something picked, the bottom not folded) ----
@@ -1197,8 +1212,13 @@ export function start(host: StudioHost) {
       const it = items.find((i) => i.key === selected);
       return it ? displayName(it, t) : selected || '';
     })();
-    const want: Array<['scene' | 'pick' | 'motion', string]> = [['scene', t('tool.placement')], ['pick', pickName]];
+    const want: Array<['scene' | 'pick' | 'motion' | 'library', string]> = [['scene', t('tool.placement')], ['pick', pickName]];
     if (hasMotion) want.push(['motion', t('motion.label')]);
+    // The Library from the list sheet (decided 2026-11-06, a first-time walk at 390×844): with something picked, the
+    // Scene tab hides the old Scene | Library switch (fix-0139: "Scene" read twice), which left the Library only in "…"
+    // — the walk never found it. While the list is up (the person is looking for things), the tabs end with "Library".
+    // Only then: with the card or the motion up, three tabs and the picked object's name keep the row.
+    if (on === 'scene') want.push(['library', t('tool.library')]);
     const sig = `${on}|${want.map((w) => w.join(':')).join('|')}|${lang}`;
     if (sheetTabs.dataset.sig === sig) return;
     sheetTabs.dataset.sig = sig;
@@ -1207,7 +1227,8 @@ export function start(host: StudioHost) {
       onclick: () => pickSheetTab(id) }, h('span', { class: 'label', text: label }))));
   }
   /** A tab pressed: the list (Scene), the card, or the motion's timeline — one at a time. */
-  function pickSheetTab(id: 'scene' | 'pick' | 'motion') {
+  function pickSheetTab(id: 'scene' | 'pick' | 'motion' | 'library') {
+    if (id === 'library') return switchTool('library');
     sheetOpen = id === 'scene';
     if (id === 'motion') timeline.setOpen(true);
     else if (timeline.isOpen()) timeline.setOpen(false);
@@ -1248,6 +1269,12 @@ export function start(host: StudioHost) {
   // on 2026-10-17 ("I don't need this", see the caption's comment) and this is not them coming back — one line, no
   // steps, nothing to press. The words were picked for the plan's "decide 1" and kept after a wording check.
   const introLine = h('p', { class: 'intro-line', dataset: { part: 'intro-line' }, hidden: true });
+  // While the game opens (decided 2026-11-06, a first-time walk): the first open of a three.js sample takes 8–9 s (three.js
+  // from the CDN), and the only words on screen were a small grey line at the top of the side list — the middle of the
+  // screen was the game's empty background with a field saying "Not sure Claude is open". Now the same spot as the intro
+  // line says what is happening, with the game's name ("Opening Lantern Cove…"), until the objects are found
+  // (renderStatus). The side list's status line stays (it also carries errors and the adapter's notes).
+  const waitLine = h('p', { class: 'intro-line wait-line', role: 'status', dataset: { part: 'wait-line' }, hidden: true });
   // Phone / side window: the one sheet's tabs — Scene | <the picked object> | Motion (plan step 7; a try in the side window, 10/21: "it's
   // too hard to use from the Claude sidebar — the bottom menu has to be able to be minimised"). Before, the foot was
   // four blocks stacked over the game: the AI's reply, "● Claude is watching", the card and the field (shots
@@ -1260,7 +1287,7 @@ export function start(host: StudioHost) {
   // web demo, no AI: the first half and what it is). Unfolded, the card says it and this line steps away (one place).
   const momentLine = h('p', { class: 'motion-note moment-line', role: 'status', hidden: true, dataset: { part: 'moment-line' } });
   // studio-motion-next-2: the motion's one line right over the field (after the intro line, which is gone by the first pick).
-  const dock = h('section', { class: 'ask-strip dock' }, caption, cardSlot, h('div', { class: 'palette-slot' }), introLine, motionNote.el, uiMissing.el, presenceRow, momentLine, bar);
+  const dock = h('section', { class: 'ask-strip dock' }, caption, cardSlot, h('div', { class: 'palette-slot' }), waitLine, introLine, motionNote.el, uiMissing.el, presenceRow, momentLine, bar);
   noteReady = true;
   // (introLine over presenceRow: the presence words on a narrow PC bar belong to the field, so they stay on it.)
   // Checkpoints (stage 3; checkpoints.ts): the line when one did not open, at the top of the game; the field under ⚑.
@@ -1446,6 +1473,10 @@ export function start(host: StudioHost) {
     let top = phone() && !(fold && phone()) && !placementPanel.cardEl.hidden && cardSlot.contains(placementPanel.cardEl) && cardSlot.offsetHeight > 0 ? cardSlot.getBoundingClientRect().top : bar.getBoundingClientRect().top;
     // Plan step 7: the sheet's grip and tabs head the dock's plate over the card / the motion — they cover the game too.
     if (phone() && dock.contains(sheetGrip) && sheetGrip.offsetParent) top = Math.min(top, sheetGrip.getBoundingClientRect().top);
+    // Phone (decided 2026-11-06, a first-time walk at 390×844): the intro / wait line over the field is as wide as the
+    // screen, and the camera's ⌃⌄ in the corner sat on its right end ("…Your AI writes the code."). The line covers the
+    // game too, so the corner's buttons stand over it. (The dock's ResizeObserver sends again when the line comes / goes.)
+    for (const line of [introLine, waitLine]) if (phone() && !line.hidden && line.offsetParent) top = Math.min(top, line.getBoundingClientRect().top);
     if (!dock.hidden && dock.offsetParent) inset.bottom = Math.max(0, Math.round(sr.bottom - top + 8));
     // The phone's list sheet pads its foot by what the bar and the card cover (shell.css --studio-cover):
     // the card's height differs (2D Layer row, the open numbers), so it is measured, not guessed.
@@ -1875,6 +1906,8 @@ export function start(host: StudioHost) {
       },
       say: (text) => showToast(text),
       undoKey: keyOf('undo', isMac()),
+      // No motion yet and it can have one (the strip's Motion button shows): "Motion  None  + Make a motion" (decided 2026-11-06).
+      ...(motionTarget() === k ? { startMake: () => (timeline.make(k), renderShelf()) } : {}),
     })),
     // The paused moment (pause-edit decision 5): what the game moves or made says "Just for this moment" on its card,
     // with Revert once moved and ✦ appear here for what it made (not in the web demo: no AI); no Copy / Delete.
@@ -2007,15 +2040,17 @@ export function start(host: StudioHost) {
     changed: () => (renderShelf(), placementPanel.render()),
   });
 
+  /** The object the strip's Motion button is for now (null = no button). A function so the card (above) can ask it too. */
+  function motionTarget(): string | null {
+    if (!editing || playing || dim !== '3d' || editLayer !== 'world' || group.length > 1 || !selected || libraryShown()) return null;
+    return motionable(selected) ? selected : null;
+  }
   // The strip's Motion button (studio-motion-tool, motion-tool.ts): what it shows, and its press — the timeline on the
   // pick's motion, or the small menu (make one by showing it / use a saved one). The same target rule as a drop.
   const motionTool = createMotionTool({
     t,
     send: (m) => send(m),
-    target: () => {
-      if (!editing || playing || dim !== '3d' || editLayer !== 'world' || group.length > 1 || !selected || libraryShown()) return null;
-      return motionable(selected) ? selected : null;
-    },
+    target: () => motionTarget(),
     several: () => editing && !playing && dim === '3d' && editLayer === 'world' && group.length > 1 && !libraryShown() && group.some((k) => motionable(k)),
     motions: (k) => {
       const names = (timeline.motionOf(k)?.clips ?? []).map((c) => c.name);
@@ -2309,6 +2344,12 @@ export function start(host: StudioHost) {
   });
   // The presence words move inside / above the field as the bar's width changes (renderPresence).
   new ResizeObserver(() => renderPresence()).observe(askSlot);
+  // Typing in the field brings the quiet presence's words back (presenceQuiet, decided 2026-11-06); `input` bubbles from
+  // the field to its form. Only a change between empty and not redraws (renderPresence measures the bar).
+  placementPanel.askEl.addEventListener('input', () => {
+    const has = !!(placementPanel.askEl.querySelector('.ask-input') as HTMLInputElement | null)?.value.trim();
+    if (has !== askHadText) renderPresence();
+  });
   askInput.addEventListener('focus', hideNews);
   new ResizeObserver(() => placeNews()).observe(askInput);
   const palette = createPalette({
@@ -3223,7 +3264,7 @@ export function start(host: StudioHost) {
 
   /** Is the AI there (ai-presence.ts)? */
   function currentPresence(): AiPresence {
-    return aiPresence({ now: Date.now(), watching: aiWatching, agent: aiAgent, phase: currentPhase(), statusTime: aiTime, lastWatching, visibleSince });
+    return aiPresence({ now: Date.now(), watching: aiWatching, agent: aiAgent, phase: currentPhase(), statusTime: aiTime, statusSeen: aiTimeSeen, lastWatching, visibleSince });
   }
   /** The AI's name for the words: {ai} / {Ai} (a sentence's start, English) / {ai2} (its second mention). */
   function aiVars(): Record<string, string> {
@@ -3250,14 +3291,20 @@ export function start(host: StudioHost) {
     const v = aiVars();
     presence.dataset.state = p;
     presence.classList.toggle('sure', presenceSure(p));
-    (presence.querySelector('.p-text') as HTMLElement).textContent = t(`ai.p.${p}`, v);
+    const words = t(presenceKey(p, aiWatching, lastWatching), v);
+    (presence.querySelector('.p-text') as HTMLElement).textContent = words;
     // "How to open" only where opening is the thing to do; the green states read alone.
     const how = p === 'away' || p === 'unsure';
     const howEl = presence.querySelector('.p-how') as HTMLElement;
     howEl.textContent = how ? t('ai.p.how') : '';
     howEl.hidden = !how;
     presence.setAttribute('aria-expanded', helpOpen ? 'true' : 'false');
-    presence.title = t('ai.p.tip');
+    // Quiet until the person starts to ask (ai-presence.ts presenceQuiet, decided 2026-11-06): "Not sure Claude is open"
+    // over a first screen read as broken. Text in the field (an `input` on the form calls this) brings the words back.
+    const typed = !!(placementPanel.askEl.querySelector('.ask-input') as HTMLInputElement | null)?.value.trim();
+    askHadText = typed;
+    const quiet = presenceQuiet(p, typed, currentPhase()) && !helpOpen;
+    presence.title = quiet ? (how ? `${words} · ${t('ai.p.how')}` : words) : t('ai.p.tip');
     // Where: inside the field on a wide bar, on its own line above on a narrow one. offsetWidth 0 = not laid out yet
     // (a hidden bar): leave it where it is.
     // A phone / the side window (plan step 7, 2026-10-23): back inside the field, as ONLY its dot (shell.css; green =
@@ -3276,7 +3323,7 @@ export function start(host: StudioHost) {
     const chips = [...box.querySelectorAll<HTMLElement>('.ask-chip:not([hidden])')].reduce((a, e) => a + e.offsetWidth, 0);
     if (!presence.classList.contains('dot-only') && w > 0) wordsNarrow = w < presence.offsetWidth + PRESENCE_ROOM + chips;
     const tlOpen = !phone() && app.dataset.timeline === 'open';
-    const dotOnly = phone() || (tlOpen && wordsNarrow);
+    const dotOnly = phone() || quiet || (tlOpen && wordsNarrow);
     const narrow = !dotOnly && wordsNarrow;
     const want = narrow ? presenceRow : box;
     if (presence.parentElement !== want) {
@@ -3284,7 +3331,8 @@ export function start(host: StudioHost) {
       else presenceRow.append(presence);
     }
     presence.classList.toggle('dot-only', dotOnly);
-    if (dotOnly) presence.setAttribute('aria-label', how ? `${t(`ai.p.${p}`, v)} · ${t('ai.p.how')}` : t(`ai.p.${p}`, v));
+    presence.classList.toggle('quiet', quiet);
+    if (dotOnly) presence.setAttribute('aria-label', how ? `${words} · ${t('ai.p.how')}` : words);
     else presence.removeAttribute('aria-label');
     presenceRow.hidden = !narrow || askSlot.hidden;
     renderOpenHelp(p, v);
@@ -3790,26 +3838,9 @@ export function start(host: StudioHost) {
     // its word until it was used once.
     app.dataset.markWord = prefsLoaded && !uiPrefs.seen?.includes(MARK_WORD_SEEN) ? 'on' : 'off';
     renderMomentEarlier();
-    // ▶ Try's pause (pause-ask stage 3): the same moment with the new code. The talk, the marks and the asks' ids go on
-    // (the field is the same conversation: "no, more to the left"); the flash says which moment this is; Before / After
-    // gets its After.
-    if (tryRun && tryKeep && isTryPause(momentShotAt.time, tryRun.time)) {
-      const k = tryKeep;
-      momentChat = k.chat;
-      momentTalk = k.talk;
-      for (const id of k.asks) momentAsks.add(id);
-      if (k.marks.length) momentMarks.restore(k.marks);
-      tried = { id: tryRun.id, time: tryRun.time, exact: tryRun.exact, ...(m.ask?.shot ? { after: m.ask.shot } : {}) };
-      const at = clockText(tryRun.time, 2);
-      // fix ✕2 (plan A): a saved moment says what was already out stays where it was; longer words, a little longer.
-      const w = tryWordsOf(tryRun.id, tryRun.exact, m.late ?? 0);
-      tried.late = m.late ?? 0;
-      momentBar.flash(t(w.flash, { t: at, ...(w.name ? { name: w.name } : {}), ...(w.s ? { s: w.s } : {}) }), 'play', w.note ? 9000 : 6000);
-      tryKeep = null;
-      tryRun = null;
-      renderMomentEarlier();
-      if (k.compare) window.setTimeout(() => openCompare(tried!.id), 0);
-    }
+    // ▶ Try's pause (pause-ask stage 3): decided now, or once the game's exact held second is heard (tryPaused).
+    tryPending = m;
+    tryPaused();
     // This moment's values: asked at once (the head shows until they come; the game page answers in a frame).
     momentVals = undefined;
     momentConnectAsk = false;
@@ -3827,7 +3858,11 @@ export function start(host: StudioHost) {
     }
     renderAll(true);
     // Words typed in the ✦ field over the game when it paused: the field at the foot now (the person was about to ask).
+    // ● Clip's ✦ Ask on a refusal (studio-clip-3) paused the game for its request: in the field now.
+    const clipDraft = clipAskDraft;
+    clipAskDraft = null;
     if (m.draft && !host.offline) focusAsk(m.draft);
+    else if (clipDraft && !host.offline) focusAsk(clipDraft);
     // pause-ask stage 1 (README §1): else the cursor goes in the field by itself — the first second after a pause says
     // "say something about THIS frame". Only when it takes nothing from the person (moment-ask.ts momentFocusOk: not on
     // a phone, not over another field or an open sheet). The web demo too: its field is there to try (Q1).
@@ -3839,8 +3874,43 @@ export function start(host: StudioHost) {
       checkpointDraft(a.intent, a.checkpoint);
     }
   }
+  /**
+   * ▶ Try's pause (pause-ask stage 3): the same moment with the new code. The talk, the marks and the asks' ids go on
+   * (the field is the same conversation: "no, more to the left"); the flash says which moment this is; Before / After
+   * gets its After. Called at the pause (momentStart) and again when the held clock's exact second comes (play/time):
+   * the pause's own time is an estimate until then (moment-try.ts tryPauseVerdict says why; fixed 2026-11-06 — the
+   * Japanese screen test lost its Before / After panel 3 runs in 4 on a busy machine).
+   */
+  function tryPaused() {
+    const m = tryPending;
+    if (!m || !momentShotAt || !playPaused) return;
+    if (!tryRun || !tryKeep) {
+      tryPending = null;
+      return;
+    }
+    const v = tryPauseVerdict(momentShotAt, tryRun.time);
+    if (v === 'wait') return;
+    tryPending = null;
+    if (v === 'not') return;
+    const k = tryKeep;
+    momentChat = k.chat;
+    momentTalk = k.talk;
+    for (const id of k.asks) momentAsks.add(id);
+    if (k.marks.length) momentMarks.restore(k.marks);
+    tried = { id: tryRun.id, time: tryRun.time, exact: tryRun.exact, ...(m.ask?.shot ? { after: m.ask.shot } : {}) };
+    const at = clockText(tryRun.time, 2);
+    // fix ✕2 (plan A): a saved moment says what was already out stays where it was; longer words, a little longer.
+    const w = tryWordsOf(tryRun.id, tryRun.exact, m.late ?? 0);
+    tried.late = m.late ?? 0;
+    momentBar.flash(t(w.flash, { t: at, ...(w.name ? { name: w.name } : {}), ...(w.s ? { s: w.s } : {}) }), 'play', w.note ? 9000 : 6000);
+    tryKeep = null;
+    tryRun = null;
+    renderMomentEarlier();
+    if (k.compare) window.setTimeout(() => openCompare(tried!.id), 0);
+  }
   /** play/paused off (Resume, Edit, a new page): the moment's own steps leave ⌘Z (undo.ts dropMoment), its tools go. */
   function momentEnd() {
+    tryPending = null;
     const had = moment || momentWhy.size > 0;
     moment = false;
     momentWhy = new Map();
@@ -4573,6 +4643,7 @@ export function start(host: StudioHost) {
       if (r) {
         if (!clipReq) {
           aiStatus = r.status;
+          if (r.time !== aiTime) aiTimeSeen = r.time == null ? null : Date.now();
           aiTime = r.time;
         }
         if (r.watching !== undefined) aiWatching = r.watching;
@@ -4961,6 +5032,8 @@ export function start(host: StudioHost) {
         if (playPaused) {
           const at = shotTimeOnClock(momentShotAt, m);
           if (at !== momentShotAt) (momentShotAt = at, renderMomentShot());
+          // ▶ Try's pause waiting for this exact second (tryPaused): decided now, the restored talk and marks drawn.
+          if (tryPending) (tryPaused(), renderAll(true));
         }
         momentBar.render();
         // A Next frame moved the game on: this moment's values may have changed (pause-edit stage 2).
@@ -4982,6 +5055,13 @@ export function start(host: StudioHost) {
         break;
       case 'studio:play/answer':
         if (playing && !host.offline) void answerAi(m.text).then((ok) => postGame({ type: 'studio:play/sent', ok }));
+        break;
+      case 'studio:play/escape':
+        // Esc in the game while playing (decided 2026-11-06, a first-run walk: Esc did nothing). Paused, Esc is the
+        // moment's (it puts a tool / the pick down, as in Edit), so only a running game leaves.
+        if (!playing || playPaused) break;
+        if (m.game) showToast(t('play.escGame'), 5000);
+        else void togglePlay();
         break;
       case 'studio:play/reload': {
         // The person chose to see the fix: the game opens again from its new code, still in Play. `from` (stage 3): the
@@ -5780,6 +5860,8 @@ export function start(host: StudioHost) {
   // `late` (fix △7): the asking run's PlayClock.late at the pause (s), to compare with the Try's new run.
   const askBacks = new Map<string, { time: number; exact: boolean; before?: string; asked: string; out?: string; late?: number; marked?: boolean }>();
   let tryOpening: { id: string; time: number; moment?: unknown } | null = null;
+  /** The Try's pause waiting for the held clock's exact second (tryPaused), else null. */
+  let tryPending: Extract<BridgeToShell, { type: 'studio:play/paused' }> | null = null;
   let tryRun: { id: string; time: number; exact: boolean } | null = null;
   let tryKeep: { chat: string; talk: ChatModel; marks: MomentMark[]; asks: string[]; compare: boolean } | null = null;
   // `late` (fix △7): the Try page's PlayClock.late at its pause, s.
@@ -6376,6 +6458,12 @@ export function start(host: StudioHost) {
     // Edit button (it no longer shows a P). The browser-only web demo has no pause (no AI to talk to, host.offline):
     // there P is still Play ⇄ Edit, its only meaning there.
     // The web demo pauses too since pause-edit (decision 12): there the pause and the moment need no AI.
+    // Esc while playing, the focus in the editor page (just after ▶ Play was clicked, say): back to Edit, as from the game
+    // (play/escape above; decided 2026-11-06). Not while paused: there Esc is the moment's.
+    if (!mod && k === 'escape' && !e.shift && playing && !playPaused && !e.fromGame) {
+      void togglePlay();
+      return true;
+    }
     if (!mod && k === 'p' && !e.shift) {
       if (playing) pressPause();
       else void togglePlay();
@@ -6705,6 +6793,14 @@ export function start(host: StudioHost) {
       if (first) line('note', `${t('check.' + first)} ${t('status.checkFail')}`);
     }
     status.hidden = !status.childNodes.length;
+    // The wait line over the game (waitLine above): until the objects are found, unless the game failed or is playing.
+    const waiting = !itemsSeen && !gameError && !playing && (phase === 'loading' || phase === 'waiting' || phase === 'ready');
+    if (waitLine.hidden === waiting) waitLine.hidden = !waiting;
+    if (waiting) {
+      const slow = phase !== 'loading' && Date.now() - helloAt >= WAIT_SLOW_MS;
+      const text = gameName ? t(slow ? 'status.openingSlow' : 'status.opening', { name: gameName }) : t('status.loading');
+      if (waitLine.textContent !== text) waitLine.textContent = text;
+    }
     app.dataset.items = itemsSeen ? 'seen' : 'waiting';
     // While playing, the side panel steps away (shell.css): play = the game only. In a paused moment it comes back
     // floating over the game (data-moment; pause-edit decision 4: the game's picture keeps its size).

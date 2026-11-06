@@ -1352,6 +1352,11 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
     },
     fold: () => setOpen(false),
     done: () => void endMaking(),
+    // The line's "+ Make a motion" (an object with no motion on the plate; decided 2026-11-06): as the strip's Motion menu.
+    make: () => {
+      const k = focus();
+      if (k) (make(k), d.changed());
+    },
     clip(value) {
       const key = head();
       if (!key) return;
@@ -1678,7 +1683,7 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
   }
 
   /** Keys meant for the timeline (from the plate itself, or the editor's keys when the plate was the last pressed). */
-  function onKey(e: { key: string; ctrl: boolean; meta: boolean; shift: boolean }, onPlate = false): boolean {
+  function onKey(e: { key: string; ctrl: boolean; meta: boolean; shift: boolean; fromGame?: boolean }, onPlate = false): boolean {
     if (!shown()) return false;
     const mod = e.ctrl || e.meta;
     const k = e.key.toLowerCase();
@@ -1686,7 +1691,7 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
     // Making (the line says "Esc to cancel"): Esc ends it — from the game page too (it drops the pick there as well).
     if (k === 'escape' && !mod && making) return endMaking();
     if (k === 'k' && !mod) return keyNow();
-    if (!mine) return false;
+    if (!mine) return escClose(e);
     if (k === ' ' && !mod) return (playing ? stop() : play()), true;
     if ((k === 'delete' || k === 'backspace') && !mod) return deletePicked();
     if (mod && k === 'c' && sel.length) {
@@ -1720,7 +1725,19 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
       panel.render();
       return true;
     }
-    return false;
+    return escClose(e);
+  }
+  /**
+   * Esc with nothing of the plate's own to cancel (making, picked points — above) folds the timeline away (decided
+   * 2026-11-06, a first-run walk of v0.1.82: Esc did nothing to it, the person thought it was closed, picked the
+   * lighthouse and read the timeline's line about it). From the game page the bridge has already used that Esc to put the
+   * tool down / drop the pick: then the timeline folds only once nothing is picked, so one Esc never does two things.
+   */
+  function escClose(e: { key: string; ctrl: boolean; meta: boolean; fromGame?: boolean }): boolean {
+    if (e.key.toLowerCase() !== 'escape' || e.ctrl || e.meta || !open) return false;
+    if (e.fromGame && d.picked()) return false;
+    setOpen(false);
+    return true;
   }
 
   return {
@@ -1944,7 +1961,7 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
      * The card's Motion row: this object's motions (each with when it starts), the Library's other motions to attach
      * (studio-motion-triggers), detach the shown one; and the button that opens the timeline.
      */
-    cardRow(key: string, more: Pick<MotionCardDeps, 'menu' | 'say' | 'undoKey'> = {}): HTMLElement[] {
+    cardRow(key: string, more: Pick<MotionCardDeps, 'menu' | 'say' | 'undoKey' | 'startMake'> = {}): HTMLElement[] {
       return motionCardRow({
         ...more,
         // studio-motion-delete: the row's menu deletes the Library motion (every object, one undo step) and asks first

@@ -325,18 +325,21 @@ export function createLibraryObjects(d: LibraryObjectsDeps): LibraryObjectsPart 
             } })));
       }
     }
-    // "Add to scene" first (the Library's main use, 2026-10-18), then "Ask your AI…", then the way to the game, then
-    // Delete — four, the same four as the tile's menu (context-rows.ts). No "Duplicate" (design review 2, item ①): in
+    // Until 2026-11-06: "Add to scene" first (the Library's main use, 2026-10-18), then "Ask your AI…", then the way to
+    // the game, then Delete — four, the same four as the tile's menu (context-rows.ts). No "Duplicate" (design review 2, item ①): in
     // the Library it did exactly what "Add to scene" does, and nobody could tell the two apart; the scene's Duplicate is
     // the card's button and ⌘D. A locked object can't be copied (the game's settings), so it has no "Add to scene".
+    // Reordered (decided 2026-11-06, a first-time walk): the detail is about an object that is ALREADY in the game, and a
+    // black "Put in the scene" as its first button made people wonder whether it was missing from the scene. Now the
+    // main button is "Show in the scene →" (where it is), and copying it is "Add another", a plain button after ✦.
     const acts = h('div', { class: 'shelf-acts' });
-    if (!locked) acts.append(h('button', { type: 'button', class: 'gsl-btn gsl-primary', dataset: { action: 'add-to-scene' }, text: d.t('lib.addToScene'), onclick: () => d.addToScene() }));
+    acts.append(h('button', { type: 'button', class: 'gsl-btn gsl-primary', dataset: { action: 'show-in-game' }, text: d.t('shelf.showInGame'), onclick: () => d.showInGame() }));
     // ✦ (studio-uniforms, 2026-10-23): the AI's uniform — spark, violet — so it is not read as a plain action. Its words are
     // the ask box's own "Ask Claude…" (studio-library-shelf, the UI plan 5 #3; was "Ask Claude about it…"): the box's chip
     // already names the pick, so "about it" said nothing more.
     if (d.askAi) acts.append(h('button', { type: 'button', class: 'gsl-btn ai', dataset: { action: 'lib-ask' }, onclick: () => d.askAi!() },
       h('span', { class: 'gsl-spark', 'aria-hidden': 'true', text: '✦' }), d.t('lib.askAi')));
-    acts.append(h('button', { type: 'button', class: `gsl-btn${locked ? ' gsl-primary' : ''}`, dataset: { action: 'show-in-game' }, text: d.t('shelf.showInGame'), onclick: () => d.showInGame() }));
+    if (!locked) acts.append(h('button', { type: 'button', class: 'gsl-btn', dataset: { action: 'add-to-scene' }, text: d.t('lib.addToScene'), onclick: () => d.addToScene() }));
     if (!locked) acts.append(h('button', { type: 'button', class: 'gsl-btn', dataset: { action: 'remove' }, text: d.t('ops.remove'), onclick: () => d.remove() }));
     el.append(acts);
     return { el, key: keys.join(',') };

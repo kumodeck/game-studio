@@ -53,3 +53,13 @@ test('a tap on a lantern standing on a ground that runs on under the camera pick
   // Beside it, on the grass: the ground (the only thing there).
   assert.deepEqual(pickNear(cands, cam, persp, 0.5, -0.5, 0, SIZE), ['ground']);
 });
+
+test('a press right on a thin post with a wide lamp arm picks the post, not the rock behind it (decided 2026-11-06)', () => {
+  // A first-run walk of v0.1.82: Lantern Cove's lamp post (a 4 px pole) — the "is it seen" ray went a quarter of the way
+  // to the middle of its box (pulled right by the arm), missed the pole and met the rock, so the rock won.
+  const post = group(box([-0.1, -4, -6], [0.1, 4, -5.8]), box([0.1, 3.8, -6], [3, 4, -5.8]));
+  const rock = group(box([1, -4, -12], [5, 4, -10]));
+  const cands = [{ key: 'rock', object: rock }, { key: 'lamp-post', object: post }];
+  const keys = pickNear(cands, camera, PROJ, ...at(0, 0), 28, SIZE);
+  assert.equal(keys[0], 'lamp-post', keys.join(' '));
+});

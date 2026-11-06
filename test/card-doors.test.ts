@@ -37,6 +37,10 @@ test('the ask box gets words only from ✦ buttons (focusAsk callers)', () => {
     // pause-edit (2026-10-28): words typed in the ✦ field over the game when P paused it move to the field at the foot
     // (the person was about to ask; nothing sent), and the card's ✦ Have Claude make it appear here (a draft).
     [/^if \(m\.draft && !host\.offline\) focusAsk\(m\.draft\);$/, 'a pause: the ✦ field\'s words over the game go on in the field (a draft)'],
+    // studio-clip-3 (2026-11-06): ● Clip's refusal (WebGPU / images from another site) has ✦ Ask Claude — its request
+    // ("Draw the game with WebGL…") in the field, the game paused first while playing (the person sends it).
+    [/^if \(!playing \|\| playPaused\) return void focusAsk\(text\);$/, '● Clip\'s refusal: ✦ Ask … (a draft)'],
+    [/^else if \(clipDraft && !host\.offline\) focusAsk\(clipDraft\);$/, '● Clip\'s refusal while playing: its draft once paused'],
     [/^focusAsk\(t\('moment\.appearDraft', \{ name \}\)\);$/, 'the paused moment\'s ✦ Have Claude make it appear here (a draft)'],
     // pause-edit stage 2 (2026-10-28): the moment's "This moment" with no codeMoment — ✦ Have Claude make this moment
     // editable puts the draft "Make this moment editable" and the chip "This moment" in the field (the person sends it).
