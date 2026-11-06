@@ -53,41 +53,41 @@ use the current directory: the editor finds the game's page in it by itself, **w
 `studio: entry <page> …` when it isn't `index.html`. Open **the person's own file**: never copy their game into a new
 folder, rename it or make an `index.html` for it (saves would go to the copy, not their game). If the page it picked
 is not the one they mean, start it again with `--entry <page>`. **Only if there is no game at all** (`studio:
-no-game`: an empty folder, or only notes, config and pages that aren't games) offer a sample, below; do not write a
-game yourself. Never tell the person what the file is called or isn't called: say the game is open.
+no-game`: an empty folder, or only notes, config and pages that aren't games) the editor opens on its shelf of samples,
+below; do not write a game yourself and do not ask which sample. Never tell the person what the file is called or isn't
+called: say the game is open.
 
-## 0. A folder without a game: start from a sample
+## 0. A folder without a game: the editor opens on its shelf
 
-Someone trying the editor for the first time often has no game yet. The editor decides it: started without
-`--starter`, it looks through the folder and its subfolders (not `node_modules`) for any page that runs a game, by
-any name, and prints `studio: no-game …` (exit 4) only when there is none. A game page by another name is their game:
-open it (above), never the sample. Then, for `no-game` only:
+Someone trying the editor for the first time often has no game yet. The editor decides it: it looks through the folder
+and its subfolders (not `node_modules`) for any page that runs a game, by any name. A game page by another name is
+their game: open it (above), never a sample. When there is none, **start the editor as usual, ask nothing first**: it
+prints `studio: no-game <folder> - the editor opens on its shelf of samples: don't ask which one, …`, then `studio:
+ready …`, and opens on a shelf of moving samples. The person picks one there (they see each one playing); the editor
+copies it into the folder and opens it, and prints `studio: started <id> (<n> files) <title>`.
 
-1. Ask **one** question, in the user's language, and nothing else first: **"There's no game here yet. Want to start from a
-   sample? Pick 3D or 2D."** (in Claude Code, in a terminal or the Claude app, a question with the two choices). If they say no, stop there.
-2. Start the editor with the answer; it copies the sample into the folder and opens it, in one command (use the
-   folder's **absolute path**, not `.`):
+1. Start it with the usual line (§3; the folder's **absolute path**, not `.`):
 
    ```sh
-   node <this skill's folder>/bin/studio.mjs /absolute/path/to/folder --starter 3d --detach   # or --starter 2d
+   node <this skill's folder>/bin/studio.mjs /absolute/path/to/folder --detach
    ```
 
-   It prints `studio: started <id> (<n> files) <title>`, then `studio: ready <url> pid <n>`, and returns: the editor
-   keeps running on its own (§3). Then start the watch, if your environment has one (§3). It never overwrites a file
-   and refuses a folder that already has a different game; the same line run again opens the same sample. The samples
-   are three.js (3D) and PixiJS (2D) with their adapter included, so skip §1 and §2. It opens in their default
-   browser, in the Claude app too (§3).
-3. The link first, then where it is (§3, "When you open it, say") and one line: "Here's a sample game in your folder. Click anything and drag it to move
-   it, type a change in the box at the bottom, and click Save when you like it."
-   Say nothing else about the editor: not the self-check (mention it only if it printed
-   `studio: check failed`), not the watch, not the log.
-4. **The samples already read `placement.json` when they start** (the loader is in them, §4 Way 1). When the person
-   saves, do not ask how to apply it: look at the game (§3.3), set `done`, and tell them it's in.
+   Then start the watch, if your environment has one (§3): it works before a sample is picked.
+2. The link first, then where it is (§3, "When you open it, say") and one line: "Pick a sample on the shelf: point at
+   one to see it move, then open it. Then try what its card says." Do not ask "3D or 2D?" or which one, and do not
+   describe the samples: the shelf shows them. Say nothing else about the editor: not the self-check (mention it only
+   if it printed `studio: check failed`), not the watch, not the log.
+3. When `studio: started …` comes (or the folder has the sample's files the next time you look), it is a three.js,
+   PixiJS or Phaser sample with its adapter included, so skip §1 and §2. **The samples already read `placement.json`
+   when they start** (the loader is in them, §4 Way 1). When the person saves, do not ask how to apply it: look at the
+   game (§3.3), set `done`, and tell them it's in. Each sample's card suggests one thing to ask (“Make the waves twice
+   as tall.”): it is a change of one number in the game's code; make it as asked.
 
-If you ran the editor without `--starter` in a folder with no game, it printed
-`studio: no-game <folder> - ask once … --starter 3d (<title>) or --starter 2d (<title>)` and exited with code 4:
-that is the same question; ask it. `--starters` lists the samples as JSON (id, dim, title, blurb). Asked which
-version of Game Studio this is: `--version` prints the number alone.
+It never overwrites a file and never copies a sample into a folder that has a game. `--starter <3d|2d|id>` still copies
+one without the shelf (for scripts and tests; the same line run again opens the same sample). `--starters` lists the
+samples as JSON (id, dim, title, blurb). `--check-view`, `--shot` and `--check-moment` in a folder without a game stop
+with `studio: no-game … nothing to check yet` (exit 4): start the editor instead. Asked which version of Game Studio
+this is: `--version` prints the number alone.
 
 Your work, in order:
 

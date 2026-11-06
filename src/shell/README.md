@@ -93,6 +93,13 @@ Click an object…") was removed on 2026-10-17 after a try of the web demo — t
 editor opens on the game alone. An old `intro` in `.studio/ui/prefs.json` is
 ignored.
 
+The shelf of samples (decided 2026-11-06): in a folder without a game, `local.ts` opens `shelf.ts` instead of the
+editor — one heading, one line, the samples as cards in `order` ("Coming" for the planned ones), the pointed card playing
+its game live (one at a time), a press growing the card in place (no dialog) with the three tries and ONE button
+"Open <title>". After Open the page reloads into the editor and `shelf-tour.ts` shows one card at a time (1 Move → 2 Play,
+then press P → 3 ● Clip, a violet ring on the press, Skip = never again on this device) and “Try asking ‘…’” over the
+ask field. Their words: `shelf-strings.ts`; their look: `shelf-css.ts` (shell.css's tokens).
+
 Entries: `local.ts` (studio-shell.js, the local server with `host-local.ts`)
 and `src/hosts/browser/main.ts` (the browser-only web demo). Both call
 `start(host)` from `main.ts`; a host with `offline: true` (no AI behind it)

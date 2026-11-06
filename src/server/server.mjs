@@ -19,12 +19,13 @@
 //   /__studio/host.js     local host implementation for the shell
 //   /__studio/studio-placement.js   the loader (so a game can try it before copying it in)
 //   /__studio/api/...     JSON API (see handleApi)
+//   /__studio/shelf/<id>/<file>   a sample's own files, for the shelf's pictures (only with o.shelf; read-only)
 //   /__studio/<file>      other files of the built UI (studio-edit.js, shell assets)
 //   /<anything else>      the game folder; HTML responses get the edit script injected, and the game's copy of
 //                         the loader (studio-placement.js) is answered with the editor's own (loader-copy.mjs)
 
 import http from 'node:http';
-import { promises as fs } from 'node:fs';
+import { promises as fs, readFileSync } from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { validateStudioFile, isSafeRelativePath, LIMITS, KEY_RE } from '../schema/studio-files.mjs';
@@ -47,6 +48,7 @@ import { listGameFiles, codeSignature, snapshotGame, restoreGame } from './ai-un
 import { readWatch, handoffLine, wakeAlive } from './ai-watch.mjs';
 import { agentFromEnv, whichAi } from './which-ai.mjs';
 import { createHandsRelay, HANDS_MAX_MS, HANDS_WAIT_MS } from './hands-relay.mjs';
+import { findStarters, shelfList, copyStarter } from './starters.mjs';
 import { readHandsInput } from '../schema/hands.mjs';
 
 const PREFIX = '/__studio/';
@@ -66,6 +68,8 @@ const GAME_TOOLS_URL = '/__studio/game-tools.js';
  * @param {object} [o.kumo]    tests only: { home, env, fetch } for the optional KUMODeck sign-in (kumo.mjs)
  * @param {object} [o.env]     tests only: the environment read for which AI started the editor (which-ai.mjs; default process.env)
  * @param {object} [o.clips]   tests only: { dir, where, reveal, run } — where ● Clip saves (clips.mjs; default Movies › KUMODeck) and the "Show in Finder" command
+ * @param {object} [o.shelf]   a folder without a game (cli.mjs): { here, startersDir } — the editor opens on the shelf of samples and
+ *                             copies the one picked into `root` (api/shelf, decided 2026-11-06). Without it there is no shelf.
  * @returns {Promise<{ url: string, origin: string, port: number, close: () => Promise<void> }>}
  */
 export async function startStudioServer(o) {
@@ -120,6 +124,8 @@ export async function startStudioServer(o) {
   ctx.hands = createHandsRelay();
   // ● Clip (stage 1, 2026-11-05; clips.mjs): the person's videos folder, never the game folder.
   ctx.clips = { ...clipPlace(), ...(o.clips || {}) };
+  // The shelf (a folder without a game): where the samples are read from, and the one opened (null until a pick).
+  if (o.shelf) ctx.shelf = { here: o.shelf.here, startersDir: o.shelf.startersDir, opened: null };
 
   server.on('request', (req, res) => {
     handle(req, res).catch((e) => {
@@ -184,6 +190,7 @@ export async function startStudioServer(o) {
     }
 
     if (u.pathname.startsWith(PREFIX + 'api/')) return handleApi(req, res, u, ctx);
+    if (u.pathname.startsWith(PREFIX + 'shelf/')) return serveShelfFile(req, res, u.pathname.slice((PREFIX + 'shelf/').length), ctx);
     if (u.pathname === PREFIX || u.pathname + '/' === PREFIX) return serveShell(req, res, ctx);
     if (u.pathname.startsWith(PREFIX)) return serveUi(req, res, u.pathname.slice(PREFIX.length), ctx);
     if (req.method !== 'GET' && req.method !== 'HEAD') return sendJson(res, 405, { error: 'the game folder is read-only' });
@@ -214,6 +221,51 @@ export async function startStudioServer(o) {
 async function handleApi(req, res, u, ctx) {
   const route = u.pathname.slice((PREFIX + 'api/').length);
   const m = req.method;
+
+  // The shelf (decided 2026-11-06): a folder without a game opens the editor on its samples, not on an empty game.
+  // `shelf: true` until the person opens one (then the page reloads and gets the game as usual).
+  if (route === 'open' && m === 'GET' && ctx.shelf && !(await hasGame(ctx))) {
+    return sendJson(res, 200, { shelf: true, origin: ctx.origin, gameUrl: '', title: '' });
+  }
+  if (route === 'shelf' && m === 'GET') {
+    if (!ctx.shelf) throw httpError(404, 'no shelf: this folder has a game');
+    const list = shelfList(await findStarters(ctx.shelf.here, ctx.shelf.startersDir), { coming: !ctx.shelf.startersDir });
+    return sendJson(res, 200, {
+      hasGame: await hasGame(ctx),
+      items: list.map((s) => ({
+        id: s.id, title: s.title, dim: s.dim, blurb: s.blurb, order: s.order,
+        // The card's line in other languages (a starter's strings.json, decided 2026-11-06); `blurb` stays English.
+        ...(s.blurbs ? { blurbs: s.blurbs } : {}),
+        ...(s.coming ? { coming: true } : {
+          thumb: s.thumb ? `${PREFIX}shelf/${s.id}/${path.basename(s.thumb)}` : null,
+          play: `${PREFIX}shelf/${s.id}/index.html`,
+          try: s.try || null,
+          engine: engineOf(s),
+        }),
+      })),
+    });
+  }
+  if (route === 'shelf/open' && m === 'POST') {
+    if (!ctx.shelf) throw httpError(404, 'no shelf: this folder has a game');
+    let id;
+    try {
+      ({ id } = JSON.parse((await readBody(req, 1024)).toString('utf8')));
+    } catch {
+      throw httpError(400, 'body must be JSON like {"id":"lantern-cove"}');
+    }
+    // The same pick twice (a double press, two tabs): already in, nothing copied again.
+    if (ctx.shelf.opened === id && (await hasGame(ctx))) return sendJson(res, 200, { ok: true, id, already: true });
+    // A game appeared meanwhile (the AI wrote one): never mix a sample into it.
+    if (await hasGame(ctx)) return sendJson(res, 409, { error: 'this folder has a game now', code: 'has-game' });
+    const s = (await findStarters(ctx.shelf.here, ctx.shelf.startersDir)).find((x) => x.id === id);
+    if (!s) throw httpError(404, `no sample "${String(id).slice(0, 40)}"`);
+    const r = await copyStarter(s, ctx.rootReal);
+    if (r.conflicts.length) return sendJson(res, 409, { error: `already in the folder: ${r.conflicts.slice(0, 3).join(', ')}`, code: 'conflict' });
+    ctx.shelf.opened = s.id;
+    // The same line `--starter` prints, so an agent reading the output learns the same thing either way.
+    ctx.log(`studio: started ${s.id} (${r.files.length} files) ${s.title}`);
+    return sendJson(res, 200, { ok: true, id: s.id, files: r.files.length });
+  }
 
   if (route === 'open' && m === 'GET') {
     return sendJson(res, 200, {
@@ -772,6 +824,39 @@ async function serveUi(req, res, name, ctx) {
     return sendBody(req, res, 200, 'text/javascript; charset=utf-8', '/* studio-edit.js is not built yet */\n');
   }
   return sendJson(res, 404, { error: 'not found' });
+}
+
+/** The folder has the page the editor opens (the shelf's question: is there a game yet). */
+async function hasGame(ctx) {
+  return fs.stat(path.join(ctx.rootReal, ctx.entry)).then((st) => st.isFile(), () => false);
+}
+
+/** "three.js" / "PixiJS" / "Phaser" for the shelf's card, read from the page's script URLs (starter.json has no engine). */
+function engineOf(s) {
+  try {
+    const html = readFileSync(path.join(s.dir, 'index.html'), 'utf8').slice(0, 64 * 1024);
+    if (/\bphaser\b/i.test(html)) return 'Phaser';
+    if (/\bpixi(\.js)?\b/i.test(html)) return 'PixiJS';
+    if (/\bthree\b/i.test(html)) return 'three.js';
+  } catch {}
+  return s.dim === '3d' ? '3D' : '2D';
+}
+
+/**
+ * A sample's own files for the shelf: its picture and, while a card is pointed at, the game itself running in a small
+ * frame (shelf.ts). Read-only, only files inside that sample's folder (resolveInside), and only while there is a shelf.
+ * The game is served as it is (no edit script): on the shelf it only plays.
+ */
+async function serveShelfFile(req, res, rest, ctx) {
+  if (!ctx.shelf) return sendJson(res, 404, { error: 'not found' });
+  if (req.method !== 'GET' && req.method !== 'HEAD') return sendJson(res, 405, { error: 'read-only' });
+  const i = rest.indexOf('/');
+  const id = i < 0 ? rest : rest.slice(0, i);
+  const s = (await findStarters(ctx.shelf.here, ctx.shelf.startersDir)).find((x) => x.id === id);
+  if (!s) return sendJson(res, 404, { error: 'no such sample' });
+  const r = await resolveInside(await fs.realpath(s.dir), i < 0 ? '/' : rest.slice(i));
+  if (!r.ok) return sendText(res, r.status, r.reason);
+  return sendFile(req, res, r.abs, r.stat);
 }
 
 async function serveGameFile(req, res, pathname, ctx) {

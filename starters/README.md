@@ -6,15 +6,41 @@ small, finished-looking scene that opens in a few seconds and that you can rearr
 
 | Folder | Engine | What it is |
 |---|---|---|
+| `big-swell/` | three.js 0.187.0 (CDN) | 3D. A rough sea at sunset: ducks, buoys, a raft and crates ride the waves, a big swell lifts them all every 6 s. No asset files. 11 objects. First on the shelf (`order` 0). |
 | `lantern-cove/` | three.js 0.187.0 (CDN) | 3D. A quiet harbor at dusk: clear water with real reflections, a lighthouse, floating boats. Tap the water to sail. 15 objects. |
 | `firefly-ruins/` | PixiJS 8.21.0 (CDN) | 2D. An old stone gate by a still pond at sunset, fireflies, wind, a bell. Tap to send a breeze. 14 objects. |
+| `neon-run/` | three.js (CDN) | 3D. Only a `starter.json` that says `"from": "examples/three-neon-boss"`: the game is read from there (one copy of it, not two). A neon runner where a boss comes 4 s in. |
+| `domino-spiral/` | three.js 0.187.0 (CDN) | 3D. About 400 glowing dominoes in a spiral on a dark mirror floor; a ball knocks the first one over. Drag the head and the whole line follows. 3 objects (head, bend, center). |
+| `marble-rain/` | Phaser 3.80.1 + Matter (CDN) | 2D. Hundreds of glowing marbles pour through a triangle of pins into bins. Move a pin and they fall another way. 76 objects. No files: all drawn by code. |
 
 Each folder has the same three files the editor reads (the "starter" shape):
 
 - `index.html`: opens as-is in a browser (from a web server: the files in `assets/` are fetched). No build step. The
   only things loaded from outside are the engine files from cdn.jsdelivr.net.
-- `starter.json`: `{ "title", "dim": "3d" | "2d", "blurb", "thumb", "order" }`
+- `starter.json`: `{ "title", "dim": "3d" | "2d", "blurb", "thumb", "order", "try" }`. `order` is the place on the
+  shelf (0 first). `try` (decided 2026-11-06) is the sample's "Try": `{ "move": <the name of a thing that is fun to
+  drag>, "pauseAt": <seconds into Play to pause at>, "ask": { "en" } }` — the words to ask from that paused
+  moment. The stand-in AI for tests and clips (`test/ai-feel/fake-agent.mjs`, `SHELF_FIXES`) has one answer for each
+  sample's ask
+- `strings.json`: the starter's words in other languages, `{ "ja": { "blurb", "try": { "ask", "move" } } }` (the
+  package keeps non-English text in translation files only). `blurb` is the shelf card's line, `try.ask` the words to
+  ask, `try.move` what to call the thing to move (in starter.json `move` is its placement name). Like `starter.json`, it
+  is not copied into a game. For a `from` starter the example's `strings.json` is read, then the starter's own over it
 - `thumb.png`: 640×400 picture of the starter
+
+The editor shows them on its **shelf** (decided 2026-11-06): in a folder without a game, `/arrange` opens the editor on
+a page of these samples in `order`, each playing when pointed at; the one opened is copied into the folder. The AI asks
+nothing. `starter.json` may also say what to try in the sample (shown on the shelf and in the guide after it opens):
+
+```json
+"try": { "move": "duck", "pauseAt": 7.6, "ask": { "en": "Make the waves twice as tall." } }
+```
+
+`move` = the placement name of a thing worth dragging (the guide shows it readable: `lighthouse_1` → "lighthouse"),
+`pauseAt` = the second to pause at on the game's own clock (the guide shows the editor's top-bar second: about 0.6 s
+earlier, whole seconds), `ask` = one change to ask the AI for
+(one number in the code, so Before / After differ at a glance). All optional. A starter can stand for a game kept in
+`examples/` with `"from": "examples/<id>"` (only there), plus any field to change (`order`).
 
 and also:
 
@@ -26,7 +52,7 @@ and also:
 
 ## Where the art comes from
 
-Nothing is downloaded except the engines. Most shapes, textures, colours and sounds are made by the code in this
+Nothing is downloaded except the engines. Domino Spiral has no `assets/` at all: everything in it is code. Most shapes, textures, colours and sounds are made by the code in this
 folder when the page loads:
 
 - Lantern Cove: terrain, rocks, boats, buildings and trees are built from three.js primitive shapes and noise
@@ -67,3 +93,21 @@ Measured before `assets/` (2026-10-17) added 0.27 MB (Lantern Cove, plus three's
 Ruins), fetched first thing when the game code starts. Frame rates were measured on an Apple M5 Max GPU, which is
 faster than a typical laptop. Lantern Cove checks its own speed in the first 2 seconds: below ~45 fps it turns off multisampling and renders at pixel ratio 1
 (`setQuality` in `js/main.js`).
+
+Big Swell (2026-11-06, measured headless with `test/studio-shelf-swell.browser.mjs --part game`): our files 0.09 MB
+(0.06 MB of it the placement loader), plus three.js and its Sky add-on from the CDN (no post-processing). 59–60 fps on a PC
+(1280×720, the GPU); on a phone-sized page (390×844, pixel ratio 2) 53 fps with the CPU 4× slower (stays sharp), and
+10 fps with the CPU 20× slower, where it drops to pixel ratio 1 (`setQuality` in `game.js`, the same rule as Lantern
+Cove).
+
+## In the web demo
+
+`scripts/build-web-demo.mjs` lists every folder here as a sample, in the same order (3D first, then `order`), so Big
+Swell is the demo's first sample with no extra option. A sample that lives in `examples/` is added with `--also`, for
+example the paused moment's Neon Run:
+
+```bash
+node scripts/build-web-demo.mjs --out <dir> --also examples/three-neon-boss
+```
+
+Each sample's Japanese line is in `src/hosts/browser/strings.js` (by its id).

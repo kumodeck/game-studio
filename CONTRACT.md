@@ -1184,7 +1184,10 @@ except `.studio/adapter.js` through its own route).
 | `POST /__studio/api/hands/:id` | `{ results }` or `{ working: true }` | The page's answer to job `id`, or "still on it" (sent at once and every 5 s while the job runs: each gives the CLI 20 s more, up to 120 s in all); 410 when no `--do` waits for it any more |
 | `GET /__studio/studio-edit.js` | — | Edit script |
 | `GET /__studio/game-adapter.js` | — | `<game>/.studio/adapter.js` (plain file only), or an empty script |
-| `GET /__studio/api/open` | — | `{ gameUrl, origin, lanUrl }`; the shell adds `?studio=edit` |
+| `GET /__studio/api/open` | — | `{ gameUrl, origin, lanUrl }`; the shell adds `?studio=edit`; in a folder without a game (started without `--entry`) `{ shelf: true, origin }` until a sample is opened (decided 2026-11-06) |
+| `GET /__studio/api/shelf` | — | Only in a folder without a game (else 404): `{ hasGame, items: [{ id, title, dim, blurb, order, coming? , thumb, play, engine, try }] }` — the samples in `order` (`starters.mjs shelfList`; `coming: true` = planned, not here yet, no `thumb` / `play`); `try` = `{ move?, pauseAt?, ask?: { en?, ja? } }` or null |
+| `POST /__studio/api/shelf/open` | `{ id }` | Copies that sample into the folder (never overwrites) and prints `studio: started <id> (<n> files) <title>`: `{ ok, id, files }`; the same id again `{ ok, already: true }`; 409 `{ code: "has-game" }` once the folder has a game, 409 `{ code: "conflict" }` when a file is already there, 404 for an unknown id |
+| `GET /__studio/shelf/<id>/<file>` | — | A sample's own files (its picture, its game played as it is, without the edit script) for the shelf; read-only, only inside that sample, only while there is a shelf |
 | `GET /__studio/api/files/:tool` | — | `{ value }` (null when missing or invalid, with `error`) |
 | `PUT /__studio/api/files/:tool` | result JSON | `{ ok, path, request, at, undo, watching, seen? }`; validated by `src/schema`; 422 with `details` if invalid; also keeps a `saved` request (§3.4) and prints `studio: saved …` |
 | `PUT /__studio/api/files/:tool?handoff=0` | result JSON | `{ ok, path }`: the same file, written as a draft (no request, no stdout line). The editor writes every change this way as it goes; Save is the PUT without it |

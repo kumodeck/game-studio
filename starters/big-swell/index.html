@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+  <meta name="theme-color" content="#1b1622" />
+  <title>Big Swell</title>
+  <style>
+    html, body { margin: 0; height: 100%; overflow: hidden; background: #1b1622; touch-action: none; }
+    canvas { position: fixed; left: 0; top: 0; width: 100%; height: 100%; display: block; }
+    /* The HUD (HTML over the canvas): the title and the one thing to do, top left; how many crates float, top right.
+       Small and quiet on purpose: the sea is the show (a sample has to read in 1 second, decided 2026-11-06). */
+    #hud { position: fixed; left: 18px; top: 14px; color: #fff7ec; font: 600 15px/1.35 system-ui, sans-serif;
+      text-shadow: 0 1px 6px rgba(40, 18, 10, .55); pointer-events: none; }
+    #hud .title { font-size: 20px; letter-spacing: .18em; }
+    #count { position: fixed; right: 18px; top: 14px; color: #fff7ec; font: 600 15px/1.35 system-ui, sans-serif;
+      text-shadow: 0 1px 6px rgba(40, 18, 10, .55); pointer-events: none; }
+  </style>
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.187.0/build/three.module.min.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.187.0/examples/jsm/"
+      }
+    }
+  </script>
+</head>
+<body>
+  <div id="hud"><div class="title">BIG SWELL</div><div>Tap the water to drop a crate</div></div>
+  <div id="count">Afloat 0</div>
+  <script type="module" src="game.js"></script>
+</body>
+</html>

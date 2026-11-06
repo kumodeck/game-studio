@@ -3,5 +3,12 @@
   "dim": "3d",
   "blurb": "A neon runner where a boss comes in a few seconds in. Press ❚❚ when it comes and move it, just for that moment.",
   "thumb": "thumb.png",
-  "order": 2
+  "order": 2,
+  "try": {
+    "move": "gate",
+    "pauseAt": 4.6,
+    "ask": {
+      "en": "Bring the boss in from here."
+    }
+  }
 }

@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+  <meta name="theme-color" content="#07051a" />
+  <title>Marble Rain</title>
+  <style>
+    html, body { margin: 0; height: 100%; overflow: hidden; background: #07051a; touch-action: none; }
+    canvas { display: block; }
+    /* The HUD (HTML over the canvas): the title and the one thing to do, top left; how many marbles, top right.
+       Small and quiet on purpose: the rain is the show (a sample has to read in 1 second, decided 2026-11-06). */
+    .hud { position: fixed; top: 14px; color: #eef2ff; font: 600 15px/1.35 system-ui, -apple-system, sans-serif;
+      text-shadow: 0 1px 8px rgba(40, 20, 90, 0.8); pointer-events: none; }
+    #title { left: 18px; }
+    #title b { display: block; font-size: 20px; letter-spacing: 0.18em; }
+    #count { right: 18px; font-variant-numeric: tabular-nums; }
+  </style>
+  <!-- Phaser 3.80.1 from a CDN, pinned (the full build: Matter physics is in it). The version an AI reaches for first
+       when asked for "a Phaser game", and the one the bundled Phaser adapter is tested with. -->
+  <script src="https://cdn.jsdelivr.net/npm/phaser@3.80.1/dist/phaser.min.js"></script>
+</head>
+<body>
+  <div class="hud" id="title"><b>MARBLE RAIN</b>Tap to pour a handful</div>
+  <div class="hud" id="count">Marbles 0</div>
+  <script type="module" src="game.js"></script>
+</body>
+</html>

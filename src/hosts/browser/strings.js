@@ -92,8 +92,12 @@ window.DEMO_LIST_TEXT = {
     license: 'MIT ライセンス',
     error: '見本の一覧を読めませんでした。',
     // Translations of each starter.json "blurb" (update when starters/<id>/starter.json changes).
+    'big-swell': '夕日の荒れた海。アヒル・ブイ・いかだ・木箱が波に乗り、数秒おきに大波が全部を持ち上げます。水をタップすると木箱が落ちます。',
     'lantern-cove': '夕暮れの静かな港。澄んだ水、灯台、本当に浮かぶ舟。水をタップすると舟が進みます。',
     'firefly-ruins': '夕日の池のほとりに古い石の門。ホタルが出てきて、タップすると風が吹きます。',
+    // Domino Spiral and Marble Rain: the same words as their strings.json "blurb" (keep the two in step).
+    'domino-spiral': '暗い鏡の床に、光るドミノ約 400 枚がうず巻きに並びます。鉄の球が最初の 1 枚を倒します。先頭をドラッグすると、列ぜんぶがついてきます。',
+    'marble-rain': '光る玉が何百も、三角に並んだピンの間を落ちて、下の箱にたまります。ピンを 1 本動かすと、玉の落ち方が変わります。',
     // The paused moment's sample (examples/three-neon-boss, added with --also; pause-edit fix 1).
     'three-neon-boss': 'ネオンの道を走るゲーム。数秒でボスが来ます。来たら ❚❚ で止めて、その瞬間だけ動かせます。',
   },

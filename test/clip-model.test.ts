@@ -192,6 +192,25 @@ test('walk 2 △11 · a post in the editor\'s language: the table\'s words, the 
   assert.match(postText({ game: 'Neon Run', seconds: 8, mark: false }), /^Neon Run: an 8-second clip/);
 });
 
+test('"marked a spot" only when the ask had a mark, in English and Japanese (decided 2026-11-06, seen on Big Swell)', () => {
+  const o = { time: 7.6, asked: 'Make the waves twice as tall.', mark: true, words: true, ai: 'Claude' };
+  assert.equal(beforeAfterPost({ ...o, marked: false }),
+    `Paused my game at 0:07 and told Claude “make the waves twice as tall”. It fixed the code. Before → After 👇 ${CLIP_REPO_URL}`);
+  assert.equal(beforeAfterPost({ ...o, marked: true }),
+    `Paused my game at 0:07, marked a spot and told Claude “make the waves twice as tall”. It fixed the code. Before → After 👇 ${CLIP_REPO_URL}`);
+  assert.doesNotMatch(beforeAfterPost({ ...o, words: false, marked: false }), /marked/);
+  // Japanese: the table's words; without a mark the sentence still reads (the comma is the template's, not the mark's).
+  const say = (k: string, v: Record<string, string | number>) => translate('ja', k, v);
+  const mk = translate('ja', 'clip.post.baMarked', {});
+  const jaOff = beforeAfterPost({ ...o, asked: 'x y z', marked: false, say });
+  const jaOn = beforeAfterPost({ ...o, asked: 'x y z', marked: true, say });
+  assert.ok(!jaOff.includes(mk), jaOff);
+  assert.ok(jaOn.includes(mk), jaOn);
+  assert.equal(jaOff, `${translate('ja', 'clip.post.ba', { at: '0:07', marked: '', ai: 'Claude', words: 'x y z' })} ${CLIP_REPO_URL}`);
+  assert.ok(jaOff.startsWith('0:07 ') && /\S、Claude /.test(jaOff), `the pause and the ask joined by the template's comma: ${jaOff}`);
+  assert.ok(!beforeAfterPost({ ...o, words: false, marked: false, say }).includes(mk));
+});
+
 test('stage 2 · ✦ Rewrite: the AI\'s post is taken only within 280, and the address follows the mark whatever it wrote', () => {
   const ok = checkRewrite('"Paused my game, told Claude to bring the boss in — fixed 👇 github.com/kumodeck/game-studio"', true);
   assert.ok(ok.ok);

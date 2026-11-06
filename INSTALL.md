@@ -152,10 +152,11 @@ The plugin's skill only loads in a new session, so this time you start the edito
    `--entry <that page>`. Other lines:
    - `studio: build-first <page> …` (exit 5): the game runs from its build. Run its build (`npm install` if
      `node_modules` is missing, then `npm run build`) and the same start line again.
-   - `studio: no-game …` (exit 4): there is no game here at all, so start from the sample. If GAME is empty (or
-     holds only hidden files), run the start line again with `--starter 3d` (it copies the 3D sample game, Lantern
-     Cove, into it). If GAME has other files, use the subfolder `GAME/game-studio-sample` with `--starter 3d`
-     instead, so nothing of theirs is mixed with the sample (it is GAME from here on).
+   - `studio: no-game … the editor opens on its shelf …` (then `studio: ready …` as usual): there is no game here at
+     all, so the editor opened on its shelf of samples and the person picks one there (it is copied into GAME). Ask
+     nothing about samples. If GAME is not empty (it has files of theirs that aren't a game), stop it first
+     (`node STUDIO GAME --stop`), make the subfolder `GAME/game-studio-sample` and start that instead, so nothing of
+     theirs is mixed with a sample (it is GAME from here on).
    - In Codex, `listen EPERM`: the sandbox blocks the local server. Ask for approval to run the same line outside
      the sandbox.
 3. **Show it.** Right after `studio: ready` comes `studio: reply with this link alone on the first line of your
@@ -187,7 +188,8 @@ The plugin's skill only loads in a new session, so this time you start the edito
      hidden: "Press ⌘⇧B to see it (Ctrl+Shift+B on Windows), or open the link." right after "Game Studio is
      installed." (still after the link).
    - `studio: open none`: "Open this link in your browser." right after "Game Studio is installed.".
-   - The sample (`--starter 3d`): "Here's a sample game in your folder, open in the editor …" in the first line.
+   - No game (the shelf): "Game Studio is installed. Pick a sample on the shelf in your browser: point at one to
+     see it move, then open it." in place of the line about their game, and nothing about 3D or 2D.
    - You changed the settings file (§3, no `claude` command): its one line goes right after the link.
 
    Say nothing else: not which file names the editor looks for, not why a page was picked, not the watch (step 5),

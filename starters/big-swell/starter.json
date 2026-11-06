@@ -1,0 +1,14 @@
+{
+  "title": "Big Swell",
+  "dim": "3d",
+  "blurb": "A rough sea at sunset. Ducks, buoys, a raft and crates ride the waves, and every few seconds a big swell lifts them all. Tap the water to drop a crate.",
+  "thumb": "thumb.png",
+  "order": 0,
+  "try": {
+    "move": "duck",
+    "pauseAt": 7.6,
+    "ask": {
+      "en": "Make the waves twice as tall."
+    }
+  }
+}

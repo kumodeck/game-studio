@@ -165,11 +165,13 @@ test('own game: only a Vite source (no build yet) → build-first, exit 5, never
   rmSync(dir, { recursive: true, force: true });
 });
 
-test('own game: a folder with no game (notes, an about page) → the sample is offered (exit 4)', () => {
+// Decided 2026-11-06: no game → the editor opens on its shelf of samples (it used to exit 4 for the AI to ask).
+test('own game: a folder with no game (notes, an about page) → the editor opens on the shelf, nothing copied', async () => {
   const dir = folder('none', { 'notes.md': '# todo', 'about.html': ABOUT, 'chart.html': '<canvas id="c"></canvas>' });
-  const r = run([dir, '--starters-dir', FAKE]);
-  assert.equal(r.status, 4, r.stdout + r.stderr);
-  assert.match(r.stdout, /^studio: no-game /);
+  const lines = await startAndStop([dir, '--starters-dir', FAKE]);
+  assert.match(lines[0], /^studio: no-game .* - the editor opens on its shelf of samples/);
+  assert.ok(lines.some((l) => l.startsWith('studio: ready ')));
+  assert.deepEqual(listing(dir), ['about.html', 'chart.html', 'notes.md'], 'nothing copied before a pick');
   rmSync(dir, { recursive: true, force: true });
 });
 

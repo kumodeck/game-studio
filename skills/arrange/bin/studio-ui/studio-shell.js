@@ -1,4 +1,4 @@
-/* KUMODeck Game Studio 0.1.84 — MIT License — built file, edit src/ instead */
+/* KUMODeck Game Studio 0.1.85 — MIT License — built file, edit src/ instead */
 (() => {
 const __defs = [];
 const __cache = [];
@@ -18728,6 +18728,7 @@ const en = {
   'clip.post.clipPlain': '{what} 👇',
   'clip.post.ba': 'Paused my game at {at}{marked} and told {ai} “{words}”. It fixed the code. Before → After 👇',
   'clip.post.baPlain': 'Paused my game at {at}{marked} and asked {ai} for a fix. It fixed the code. Before → After 👇',
+  // {marked} is this only when the ask had a mark (the person's ◎ on the frame), else empty (decided 2026-11-06).
   'clip.post.baMarked': ', marked a spot',
   'clip.post.ai': 'my AI',
   'clip.tip': 'Record the next {s} seconds of the game as a video',
@@ -20066,9 +20067,9 @@ const ja                               = {
   'clip.post.clipBare': 'ウェブゲームの {s} 秒のクリップ',
   'clip.post.clipMade': '{what}。KUMODeck Game Studio で作りました 👇 {url}',
   'clip.post.clipPlain': '{what} 👇',
-  'clip.post.ba': '{at} で止めて{marked}{ai} に「{words}」と頼んだら、コードを直してくれた。前 → 後 👇',
-  'clip.post.baPlain': '{at} で止めて{marked}{ai} に直してと頼んだら、コードを直してくれた。前 → 後 👇',
-  'clip.post.baMarked': '印を付け、',
+  'clip.post.ba': '{at} で止めて{marked}、{ai} に「{words}」と頼んだら、コードを直してくれた。前 → 後 👇',
+  'clip.post.baPlain': '{at} で止めて{marked}、{ai} に直してと頼んだら、コードを直してくれた。前 → 後 👇',
+  'clip.post.baMarked': '印を付け',
   'clip.post.ai': 'AI',
   'clip.tip': 'ゲームのこの先 {s} 秒を動画にする',
   'clip.more': 'クリップの設定',
@@ -44586,17 +44587,872 @@ __def(__exports, "createLocalHost", () => createLocalHost);
 };
 __defs[103] = function (__exports) {
 'use strict';
+// shelf-strings.ts
+
+// The shelf's words (shelf.ts: the samples a folder without a game opens on; shelf-tour.ts: the one card that guides
+// the first three tries after one opens). English is the fallback for every key. How to word them: docs/VOICE.md.
+// Kept apart from i18n.ts (decided 2026-11-06): the shelf is drawn before the editor starts, and its words change
+// together, not with the editor's.
+                                           
+const { plural } = __require(39);
+
+const en = {
+  'title': 'Start with a sample',
+  // One line under the title: what these are and what to do with them (no feature list: the moving pictures show it).
+  'lead': 'Small games to move, pause and ask your AI about. Open one and play with it for a minute, then make your own.',
+  'own': 'Have a game already?',
+  'own.how': 'Open its folder with your AI and type {cmd}',
+  'crumb': 'New game',
+  'coming': 'Coming',
+  'playing': 'Playing',
+  'meta': '{engine} · {dim}',
+  'dim.3d': '3D',
+  'dim.2d': '2D',
+  'back': 'All samples',
+  'open': 'Open {title}',
+  'opening': 'Opening {title}…',
+  'openFailed': 'Couldn’t open it: {e}',
+  'hasGame': 'This folder has a game now. Reload to open it.',
+  // The three tries, in the same order for every sample (decided 2026-11-06): move it, pause and ask, clip it.
+  'step.move': 'Move',
+  'step.move.with': 'Drag the {move}.',
+  'step.move.any': 'Drag anything in the game.',
+  'step.move.more': 'It stays where you put it, even while it plays.',
+  'step.pause': 'Play, then press P',
+  'step.pause.at': 'at about {s} s.',
+  'step.pause.any': 'when something good happens.',
+  'step.pause.more': 'Ask for a change right there:',
+  'step.clip': '● Clip',
+  'step.clip.more': 'the Before / After: 10 s, ready to post.',
+  // The guide after it opens: one card at a time, three at most, Skip any time and never again.
+  'tour.head': 'Try {title} · {n} of {all}',
+  'tour.move': 'Drag the {move}',
+  'tour.moveAny': 'Drag anything in the game',
+  'tour.moveMore': 'It keeps doing what it does from where you put it.',
+  'tour.next': 'Next',
+  'tour.play': 'Press Play. Pause at about {s} s',
+  'tour.playAny': 'Press Play. Pause when something good happens',
+  'tour.playMore': 'Press P to stop that moment, then ask for a change right there.',
+  // A sample whose ask says "here" (starter.json `try.mark`): point at the spot first. A hint, not a step of its own.
+  'tour.playMoreMark': 'Press P to stop that moment, press ◎ Mark and point at the spot, then ask.',
+  'tour.clip': 'When the change is in, press ● Clip',
+  'tour.clipMore': 'You get a 10-second Before / After, ready to post.',
+  'tour.done': 'Done',
+  'tour.skip': 'Skip',
+  'tour.key': 'play / pause',
+  'try.ask': 'Try asking',
+  'try.askTip': 'Puts it in the field. Press Return to send it.',
+  'ask.quote': '“{text}”',
+};
+                           
+
+const ja                               = {
+  'title': '見本から始める',
+  'lead': '動かして、止めて、AI に頼める小さなゲームです。1 つ開いて 1 分遊んでから、自分のゲームを作りましょう。',
+  'own': 'もうゲームがある？',
+  'own.how': 'そのフォルダを AI で開いて {cmd} と打つ',
+  'crumb': '新しいゲーム',
+  'coming': '準備中',
+  'playing': '再生中',
+  'back': 'すべての見本',
+  'open': '{title} を開く',
+  'opening': '{title} を開いています…',
+  'openFailed': '開けませんでした: {e}',
+  'hasGame': 'このフォルダにゲームができました。読み込み直すと開きます。',
+  'step.move': '動かす',
+  'step.move.with': '{move} をドラッグ。',
+  'step.move.any': 'ゲームの中の物をどれでもドラッグ。',
+  'step.move.more': '動いている間も、置いた所にいます。',
+  'step.pause': '▶ で遊んで P で止める',
+  'step.pause.at': '{s} 秒ごろ。',
+  'step.pause.any': 'いい場面が来たら。',
+  'step.pause.more': 'その場面で直してほしい事を頼む:',
+  'step.clip': '● Clip',
+  'step.clip.more': 'で前 / 後の 10 秒の動画。そのまま投稿できます。',
+  'tour.head': '{title} を試す · {n} / {all}',
+  'tour.move': '{move} をドラッグ',
+  'tour.moveAny': 'ゲームの中の物をどれでもドラッグ',
+  'tour.moveMore': '置いた所から、いつもの動きを続けます。',
+  'tour.next': '次へ',
+  'tour.play': '▶ で遊んで、{s} 秒ごろに止める',
+  'tour.playAny': '▶ で遊んで、いい場面で止める',
+  'tour.playMore': 'P でその場面を止めて、そこで直してほしい事を頼みます。',
+  'tour.playMoreMark': 'P でその場面を止めて、◎ 印で場所を指してから頼みます。',
+  'tour.clip': '直ったら ● Clip を押す',
+  'tour.clipMore': '前 / 後の 10 秒の動画ができます。そのまま投稿できます。',
+  'tour.done': '終わり',
+  'tour.skip': 'スキップ',
+  'tour.key': '遊ぶ / 止める',
+  'try.ask': '頼んでみる',
+  'try.askTip': '入力欄に入ります。Return で送ります。',
+  'ask.quote': '「{text}」',
+};
+
+function shelfText(lang      , key     , vars                                  = {})         {
+  const s = (lang === 'ja' ? ja[key] : undefined) ?? en[key];
+  return plural(s, vars).replace(/\{(\w+)\}/g, (_m, k) => (k in vars ? String(vars[k]) : `{${k}}`));
+}
+
+                                                             
+
+/**
+ * A sample's own words in `lang` (its starter.json for English, its strings.json for the others: the server puts both
+ * in). Japanese falls back to English; English never shows another language. Decided 2026-11-06: no stand-ins here any
+ * more, every sample on the shelf carries its own words.
+ */
+function pick(lang      , w       )         {
+  return (lang === 'ja' ? w?.ja || w?.en : w?.en) || '';
+}
+/** What a sample's "Try asking" says in `lang`. */
+function askWords(lang      , ask       )         {
+  return pick(lang, ask);
+}
+/**
+ * The thing to move as a person reads it ("duck", not "duck_1"): `moveName` from the server, else the raw `move`.
+ * In another language the English name follows in brackets (the Japanese word, then "(lighthouse)"): the editor's list shows
+ * the game's own names, which are English, so the person can find it there (seen in the shots, 2026-11-06).
+ */
+function moveWords(lang      , tr                                                        )         {
+  const en = tr?.moveName?.en || tr?.move || '';
+  if (lang === 'ja' && tr?.moveName?.ja) return en && en !== tr.moveName.ja ? `${tr.moveName.ja}（${en}）` : tr.moveName.ja;
+  return en;
+}
+/** The card's line in `lang`: strings.json's `blurb` (the server's `blurbs`), else starter.json's English. */
+function blurbWords(lang      , it                                             )         {
+  return (lang === 'ja' ? it.blurbs?.ja : undefined) || it.blurb;
+}
+
+__def(__exports, "shelfText", () => shelfText);
+__def(__exports, "askWords", () => askWords);
+__def(__exports, "moveWords", () => moveWords);
+__def(__exports, "blurbWords", () => blurbWords);
+};
+__defs[104] = function (__exports) {
+'use strict';
+// shelf-css.ts
+
+// The shelf's look (shelf.ts) and the guide's (samples-tour.ts), put in the page as one <style> by whichever runs.
+// In this file and not shell.css (decided 2026-11-06): the shelf is a page of its own drawn before the editor, and the
+// guide is gone after three tries; neither should weigh on the editor's sheet. Same tokens as shell.css (its six
+// rules: the desk, one glass, orange = you, violet = the AI, nested corners, one motion curve), so both themes follow.
+const SHELF_CSS = `
+.samples-page { min-height: 100vh; min-height: 100dvh; background: var(--studio-page); color: var(--studio-fg);
+  font: 14px/1.4 -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+.samples-page button { font: inherit; color: inherit; border: 0; background: none; cursor: pointer; padding: 0; text-align: inherit; min-height: 0; }
+/* The editor's own button look (shell.css: inline-flex, centred, one line) is for its small presses; a card is a block. */
+.samples-page button.samples-card, .samples-page button.samples-back { display: block; white-space: normal; text-align: left; border-radius: 14px; }
+.samples-page button.samples-card:hover { background: var(--plate); }
+.samples-bar { height: 44px; display: flex; align-items: center; gap: 10px; padding: 0 14px; }
+.samples-logo { width: 16px; height: 16px; border-radius: 4px; background: var(--studio-fg); flex: none; }
+.samples-crumb { font-weight: 600; white-space: nowrap; }
+.samples-crumb .sep { color: var(--studio-muted); font-weight: 400; margin: 0 6px; }
+.samples-sp { flex: 1; }
+.samples-own { margin: 0; color: var(--studio-muted); font-size: 13px; text-align: right; }
+.samples-own > span { color: var(--studio-fg); }
+.samples-own code { font: 600 12px ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--raise); padding: 2px 6px; border-radius: 5px; color: var(--studio-fg); }
+
+.samples-main { padding: 26px 48px 48px; max-width: 1280px; margin: 0 auto; box-sizing: border-box; }
+.samples-head { margin-bottom: 22px; }
+.samples-head h1 { margin: 0; font-size: 28px; letter-spacing: -.02em; font-weight: 700; }
+.samples-head p { margin: 6px 0 0; color: var(--studio-muted); font-size: 15px; max-width: 600px; }
+/* Three across (six samples = two even rows), two on a narrow window, one on a phone. */
+.samples-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; align-items: stretch; }
+@media (max-width: 900px) { .samples-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+.samples-card { display: block; width: 100%; background: var(--plate); border-radius: 14px; overflow: hidden;
+  box-shadow: var(--plate-shadow); position: relative; transition: transform .2s cubic-bezier(.2, .8, .2, 1), box-shadow .2s; }
+.samples-card:not(.coming):hover, .samples-card:focus-visible, .samples-card.is-live { transform: translateY(-2px); box-shadow: 0 0 0 2px var(--studio-fg), var(--glass-shadow); outline: none; }
+.samples-card.coming { cursor: default; }
+.samples-card.coming .samples-pic { filter: saturate(.4); opacity: .7; }
+.samples-pic { aspect-ratio: 16 / 10; background: #000; position: relative; overflow: hidden; }
+.samples-pic img, .samples-live { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; border: 0; display: block; }
+.samples-live { opacity: 0; transition: opacity .3s ease-out; pointer-events: none; background: transparent; }
+.samples-live.on { opacity: 1; }
+.samples-blank { position: absolute; inset: 0; display: grid; place-items: center; color: rgba(255, 255, 255, .55); font-weight: 650; font-size: 18px;
+  background: radial-gradient(120% 90% at 50% 60%, #2a2440, #0e0d14); }
+.samples-tags { position: absolute; left: 10px; top: 10px; display: flex; gap: 6px; }
+.samples-chip { font-size: 11.5px; font-weight: 600; padding: 3px 8px; border-radius: 999px; background: rgba(0, 0, 0, .55); color: #fff; }
+.samples-chip.soon { background: rgba(255, 255, 255, .88); color: #1d1d1f; }
+.samples-playing { position: absolute; right: 10px; bottom: 10px; font-size: 11.5px; color: #fff; background: rgba(0, 0, 0, .5);
+  padding: 3px 8px; border-radius: 999px; display: none; align-items: center; gap: 5px; }
+.samples-playing i { width: 6px; height: 6px; border-radius: 50%; background: #30d158; }
+.is-live .samples-playing { display: flex; }
+.samples-txt { padding: 12px 14px 14px; }
+.samples-txt h3 { margin: 0; font-size: 15.5px; font-weight: 650; display: flex; align-items: baseline; gap: 8px; }
+.samples-txt h3 small { font-size: 12px; color: var(--studio-muted); font-weight: 500; }
+.samples-txt p { margin: 4px 0 0; color: var(--studio-muted); font-size: 13px; }
+
+/* The grown card: the picture large on the left, the words and the one button on the right. */
+.samples-big { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(300px, 1fr); background: var(--plate); border-radius: 18px;
+  overflow: hidden; box-shadow: var(--plate-shadow), var(--glass-shadow); }
+.samples-big .samples-pic { aspect-ratio: auto; min-height: 460px; }
+.samples-side { padding: 18px 24px 22px; display: flex; flex-direction: column; min-width: 0; }
+.samples-page button.samples-back { color: var(--studio-muted); font-size: 13px; align-self: flex-start; margin-bottom: 10px; border-radius: 6px; padding: 2px 4px 2px 0; }
+.samples-page button.samples-back:hover { color: var(--studio-fg); background: none; }
+.samples-side h2 { margin: 0; font-size: 24px; letter-spacing: -.01em; }
+.samples-meta { color: var(--studio-muted); font-size: 13px; margin: 2px 0 0; }
+.samples-lead { margin: 12px 0 16px; font-size: 14.5px; }
+.samples-steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+.samples-steps li { display: grid; grid-template-columns: 26px 1fr; gap: 10px; align-items: start; font-size: 13.5px; }
+.samples-steps .num { width: 24px; height: 24px; border-radius: 50%; background: var(--raise-2); display: grid; place-items: center; font-weight: 650; font-size: 12px; }
+.samples-steps b { font-weight: 650; }
+.samples-steps b.rec { color: var(--rec); }
+.samples-say { display: inline-block; margin-top: 5px; padding: 3px 9px; border-radius: 8px; background: var(--ai-soft); color: var(--ai-text); font-weight: 550; }
+.samples-foot { margin-top: auto; padding-top: 20px; }
+.samples-page button.samples-go { display: flex; align-items: center; justify-content: center; width: 100%; height: 42px; border-radius: 21px; font-weight: 600; background: var(--solid) !important; color: var(--solid-fg) !important; text-align: center !important; }
+.samples-go:disabled { opacity: .6; cursor: progress; }
+.samples-note { margin: 8px 0 0; font-size: 13px; color: var(--danger); }
+
+/* Phone: one column, the bar's right side under the heading, the grown card stacked (picture over words). */
+@media (max-width: 600px) {
+  .samples-bar { padding: 0 16px; }
+  .samples-own { display: none; }
+  .samples-main { padding: 14px 16px 32px; }
+  .samples-head h1 { font-size: 24px; }
+  .samples-head p { font-size: 14px; }
+  .samples-grid { grid-template-columns: 1fr; gap: 14px; }
+  .samples-txt { padding: 10px 12px 12px; }
+  .samples-big { grid-template-columns: 1fr; border-radius: 16px; }
+  .samples-big .samples-pic { min-height: 0; aspect-ratio: 16 / 10; }
+  .samples-side { padding: 14px 16px 18px; }
+  .samples-side h2 { font-size: 21px; }
+}
+
+/* ---- the guide after a sample opens (samples-tour.ts) ---- */
+.tour-card { position: fixed; z-index: 60; width: 340px; max-width: calc(100vw - 32px); box-sizing: border-box; padding: 14px 16px 12px;
+  background: var(--glass-thick); -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur); border-radius: 14px;
+  box-shadow: var(--glass-shadow), 0 0 0 .5px var(--glass-edge); color: var(--studio-fg);
+  font: 13px/1.4 -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif; animation: tour-in .24s cubic-bezier(.2, .8, .2, 1); }
+@keyframes tour-in { from { opacity: 0; transform: translateY(-6px); } }
+.tour-card .k { font-size: 12px; color: var(--studio-muted); display: flex; justify-content: space-between; align-items: center; }
+.tour-card .dots { display: flex; gap: 4px; }
+.tour-card .dots i { width: 6px; height: 6px; border-radius: 50%; background: var(--raise-3); }
+.tour-card .dots i.on { background: var(--studio-fg); }
+.tour-card h4 { margin: 6px 0 4px; font-size: 15px; font-weight: 650; }
+.tour-card p { margin: 0; color: var(--studio-muted); }
+.tour-card .row { margin-top: 10px; display: flex; gap: 8px; align-items: center; color: var(--studio-muted); font-size: 12.5px; }
+.tour-card .row .sp { flex: 1; }
+.tour-card kbd { letter-spacing: 0; font: 600 11.5px ui-monospace, Menlo, monospace; padding: 2px 7px; border-radius: 5px; background: var(--raise-2); color: var(--studio-fg); }
+.tour-card button { font: inherit; border: 0; background: none; cursor: pointer; color: var(--studio-muted); padding: 4px 6px; border-radius: 6px; min-height: 0; }
+.tour-card button:hover { color: var(--studio-fg); }
+.tour-card button.next { background: var(--solid); color: var(--solid-fg); font-weight: 600; padding: 4px 12px; border-radius: 13px; }
+.tour-ring { position: fixed; z-index: 59; pointer-events: none; border-radius: 999px; box-shadow: 0 0 0 2px var(--ai), 0 0 0 6px var(--ai-soft);
+  animation: tour-ring 1.6s ease-in-out infinite; }
+@keyframes tour-ring { 50% { box-shadow: 0 0 0 2px var(--ai), 0 0 0 9px transparent; } }
+.try-ask { display: flex; gap: 8px; align-items: center; justify-content: center; flex-wrap: wrap; margin: 0 0 8px; pointer-events: auto; }
+.try-ask em { font-style: normal; color: var(--studio-muted); font-size: 12.5px; padding: 6px 10px; border-radius: 999px;
+  background: var(--glass); -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur); box-shadow: 0 0 0 .5px var(--glass-edge); }
+.try-ask button { min-height: 0; display: inline-block; font: 550 13px/1.3 -apple-system, BlinkMacSystemFont, system-ui, sans-serif; border: 0; cursor: pointer; padding: 6px 12px; border-radius: 999px;
+  background: var(--glass); -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur); box-shadow: 0 0 0 .5px var(--glass-edge); color: var(--ai-text);
+  max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+@media (max-width: 600px) { .tour-card { left: 16px !important; right: 16px !important; width: auto; } }
+@media (prefers-reduced-motion: reduce) { .tour-card, .tour-ring { animation: none; } }
+`;
+
+__def(__exports, "SHELF_CSS", () => SHELF_CSS);
+};
+__defs[105] = function (__exports) {
+'use strict';
+// shelf.ts
+
+// The shelf: what the editor opens on in a folder without a game (decided 2026-11-06). Before, the AI asked
+// "Start from a sample? 3D or 2D" in words and copied one in; with six samples words cannot show what they are, so
+// the editor shows them moving and the person picks with their eyes. The AI asks nothing (SKILL.md §0).
+//
+// The screen, in the order it is met:
+//   1. One heading, one line, the samples as cards in `order` (src/server/starters.mjs shelfList). Samples still
+//      being made are "Coming" cards (no picture, not pressable). Top right: "Have a game already? … /arrange".
+//   2. Pointing at a card plays THAT sample, live, in its picture (only one at a time; see `live` below for why it is
+//      the game itself and not a video). Leaving the card stops it and frees its WebGL context.
+//   3. A press makes the card grow into the shelf's place — not a dialog over it (no scrim, no ✕): the same picture
+//      keeps playing, bigger, with one line about it, the three tries (Move → Play, then press P → ● Clip), the words
+//      to ask in a violet tag, and ONE button: "Open <title>". "All samples" goes back.
+//   4. Open: the server copies the sample into the folder (api/shelf/open) and the page reloads into the editor on
+//      it; samples-tour.ts then shows the one-card guide (it learns which sample from sessionStorage).
+//
+// Phone (390 wide): one column; there is no pointing, so cards show their picture and the grown card plays.
+//
+// Built apart from main.ts on purpose: the editor's start needs a game page, the shelf has none. local.ts asks the
+// server once (host.open → `shelf: true`) and starts one or the other.
+const { LOCAL_PATHS } = __require(0);
+const { h } = __require(16);
+const { detectLang } = __require(39);
+const { normalizeUi, effectiveTheme } = __require(58);
+const { shelfText, askWords, moveWords, blurbWords } = __require(103);
+const { SHELF_CSS } = __require(104);
+
+/** One card, as the server sends it (server.mjs api/shelf). */
+                            
+             
+                
+                   
+                
+                                                                                            
+                           
+                
+                   
+                        
+                
+                  
+                                                                                                                      
+                                                                                                                                                
+ 
+
+/** What samples-tour.ts needs after the reload: kept in sessionStorage for this tab only (not a preference). */
+const TOUR_KEY = 'studio.shelfTour';
+                                                                               
+
+/** How long a pointer must rest on a card before its game starts (a mouse sweeping across the grid starts nothing). */
+const LIVE_DELAY_MS = 180;
+
+/** The three tries of a sample, as plain data (test/shelf.test.ts): what each says, with the sample's own words. */
+function shelfSteps(lang      , it                               ) {
+  const tr = it.try || {};
+  const ask = askWords(lang, tr.ask);
+  const move = moveWords(lang, tr);
+  // Sentences meet with a space in English and with nothing between them in Japanese (after its full stop).
+  const join = (parts          ) => parts.filter(Boolean).join(lang === 'ja' ? '' : ' ');
+  return [
+    { n: 1, head: shelfText(lang, 'step.move'), text: join([move ? shelfText(lang, 'step.move.with', { move }) : shelfText(lang, 'step.move.any'), shelfText(lang, 'step.move.more')]) },
+    {
+      n: 2, head: shelfText(lang, 'step.pause'),
+      text: join([tr.pauseAt !== undefined ? shelfText(lang, 'step.pause.at', { s: pauseSeconds(tr.pauseAt) }) : shelfText(lang, 'step.pause.any'), ask ? shelfText(lang, 'step.pause.more') : '']),
+      ask: ask || null,
+    },
+    { n: 3, head: shelfText(lang, 'step.clip'), text: shelfText(lang, 'step.clip.more'), rec: true },
+  ];
+}
+
+/**
+ * How far the game's own clock runs ahead of the editor's top-bar clock (seconds). Measured 2026-11-06 on Big Swell:
+ * the game's clock read 7.6 s when the top bar read 0:07.01 — the game starts counting when its page loads, the top bar
+ * when ▶ Play has it running. `try.pauseAt` is written in the game's clock (the tests and the clips pause by it).
+ */
+const GAME_CLOCK_LEAD = 0.6;
+
+/**
+ * `try.pauseAt` (the game's clock) as the second the person sees on the top bar, in whole seconds: 7.6 → "7", the
+ * "0:07" the bar shows then (decided 2026-11-06). Whole seconds because the lead varies a little with load time and the
+ * words say "about"; floored like the bar's clock (clockText), so the guide never names a second the bar has not reached.
+ */
+function pauseSeconds(pauseAt        )         {
+  return String(Math.max(0, Math.floor(pauseAt - GAME_CLOCK_LEAD + 1e-6)));
+}
+
+function showShelf(host            , shelfHost           )       {
+  let lang       = detectLang(location.search, navigator.language || 'en');
+  const say = (k                                 , v                                  ) => shelfText(lang, k, v);
+  const root = document.documentElement;
+  const style = h('style', { text: SHELF_CSS, dataset: { studioShelf: '' } });
+  document.head.append(style);
+  const mq = window.matchMedia?.('(prefers-color-scheme: dark)');
+  let prefs = normalizeUi(null);
+  const theme = () => (root.dataset.theme = effectiveTheme(prefs, !!mq?.matches));
+  theme();
+  mq?.addEventListener?.('change', theme);
+
+  const app = document.getElementById('app') || document.body;
+  app.textContent = '';
+  const page = h('div', { class: 'samples-page', dataset: { part: 'samples' } });
+  app.append(page);
+
+  let items              = [];
+  let chosen                   = null;
+  let note = '';
+  let busy = false;
+  // The one live game (a card pointed at, or the grown card). Never two: each is a whole game with its own GPU work.
+  let live                                                                   = null;
+  let liveTimer = 0;
+
+  /**
+   * Play the sample in `at` (its picture box). WHY the game itself and not a short video (decided 2026-11-06): a
+   * video per sample is a file to make again every time a sample changes (six of them, made by different people),
+   * and it would be the only file on the shelf that is not code. The samples are small, run from seed and time,
+   * and start in about a second; one at a time, stopped the moment the pointer leaves, costs less than six videos
+   * decoding side by side. The picture stays under it until the game has drawn, so nothing flashes black.
+   */
+  function playIn(it           , at             ) {
+    if (!it.play || (live && live.id === it.id && live.at === at)) return;
+    stopLive();
+    const frame = h('iframe', { class: 'samples-live', src: it.play, title: it.title, tabindex: -1, 'aria-hidden': 'true', allow: 'autoplay' });
+    frame.addEventListener('load', () => setTimeout(() => frame.classList.add('on'), 350));
+    at.append(frame);
+    at.closest('.samples-card, .samples-big')?.classList.add('is-live');
+    live = { id: it.id, frame, at };
+  }
+  function stopLive() {
+    clearTimeout(liveTimer);
+    if (!live) return;
+    live.at.closest('.samples-card, .samples-big')?.classList.remove('is-live');
+    // about:blank first: some browsers keep a removed frame's WebGL context until the page is collected.
+    live.frame.src = 'about:blank';
+    live.frame.remove();
+    live = null;
+  }
+
+  const canPoint = () => window.matchMedia?.('(hover: hover) and (pointer: fine)').matches ?? true;
+  const phone = () => window.innerWidth < 600;
+
+  function card(it           ) {
+    const pic = h('div', { class: 'samples-pic' });
+    if (it.thumb) pic.append(h('img', { src: it.thumb, alt: '', draggable: false, decoding: 'async' }));
+    else pic.append(h('div', { class: 'samples-blank', text: it.title }));
+    const tags = h('div', { class: 'samples-tags' });
+    if (it.coming) tags.append(h('span', { class: 'samples-chip soon', text: say('coming') }));
+    pic.append(tags, h('span', { class: 'samples-playing', 'aria-hidden': 'true' }, h('i'), say('playing')));
+    const el = h(it.coming ? 'div' : 'button', {
+      class: `samples-card${it.coming ? ' coming' : ''}`,
+      dataset: { id: it.id, part: 'samples-card' },
+      ...(it.coming ? { 'aria-disabled': 'true' } : { type: 'button', 'aria-label': `${it.title}. ${blurbWords(lang, it)}` }),
+    }, pic, h('div', { class: 'samples-txt' },
+      h('h3', {}, it.title, h('small', { text: it.engine || say(it.dim === '3d' ? 'dim.3d' : 'dim.2d') })),
+      h('p', { text: blurbWords(lang, it) })));
+    if (it.coming) return el;
+    const enter = () => {
+      if (!canPoint()) return;
+      clearTimeout(liveTimer);
+      liveTimer = window.setTimeout(() => playIn(it, pic), LIVE_DELAY_MS);
+    };
+    const leave = () => {
+      clearTimeout(liveTimer);
+      if (live && live.at === pic) stopLive();
+    };
+    el.addEventListener('pointerenter', (e) => e.pointerType === 'mouse' && enter());
+    el.addEventListener('pointerleave', leave);
+    el.addEventListener('focus', () => enter());
+    el.addEventListener('blur', leave);
+    el.addEventListener('click', () => choose(it, el));
+    return el;
+  }
+
+  function head() {
+    const cmd = h('code', { text: '/arrange' });
+    const how = say('own.how', { cmd: '\u0000' }).split('\u0000');
+    return h('header', { class: 'samples-bar' },
+      h('span', { class: 'samples-logo', 'aria-hidden': 'true' }),
+      h('span', { class: 'samples-crumb' }, 'Studio', h('span', { class: 'sep', text: '/' }), say('crumb')),
+      h('span', { class: 'samples-sp' }),
+      h('p', { class: 'samples-own', dataset: { part: 'samples-own' } }, h('span', { text: say('own') }), ' ', how[0], cmd, how[1] || ''));
+  }
+
+  function grid() {
+    stopLive();
+    page.dataset.view = 'grid';
+    page.replaceChildren(head(), h('main', { class: 'samples-main' },
+      h('div', { class: 'samples-head' },
+        h('h1', { text: say('title') }),
+        h('p', { text: say('lead') })),
+      h('div', { class: 'samples-grid', role: 'list' }, ...items.map((it) => {
+        const c = card(it);
+        c.setAttribute('role', 'listitem');
+        return c;
+      }))));
+    document.title = `${say('title')} — Game Studio`;
+  }
+
+  /**
+   * The grown card. It grows from the card's own place (FLIP: measured before and after, then animated with a
+   * transform), so the eye follows the same picture: that is what makes it "this card, bigger" and not a new window.
+   */
+  function choose(it           , from             ) {
+    const before = from.querySelector('.samples-pic')?.getBoundingClientRect();
+    const keep = live && live.id === it.id ? live.frame : null;
+    chosen = it;
+    note = '';
+    page.dataset.view = 'big';
+    const big = bigView(it);
+    // The live game the pointer started keeps playing in the big picture (no restart): moved, not made again.
+    if (keep && live) {
+      const pic = big.querySelector('.samples-pic')               ;
+      live.at.closest('.samples-card')?.classList.remove('is-live');
+      pic.append(keep);
+      live.at = pic;
+      big.classList.add('is-live');
+    } else stopLive();
+    page.replaceChildren(head(), h('main', { class: 'samples-main' }, big));
+    if (!live) playIn(it, big.querySelector('.samples-pic')               );
+    const pic = big.querySelector('.samples-pic')               ;
+    const after = pic.getBoundingClientRect();
+    if (before && after.width && !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+      const sx = before.width / after.width;
+      const sy = before.height / after.height;
+      pic.animate([
+        { transform: `translate(${before.left - after.left}px, ${before.top - after.top}px) scale(${sx}, ${sy})`, transformOrigin: '0 0' },
+        { transform: 'none', transformOrigin: '0 0' },
+      ], { duration: 320, easing: 'cubic-bezier(.2, .8, .2, 1)' });
+      big.querySelector('.samples-side')?.animate([{ opacity: 0, transform: 'translateY(8px)' }, { opacity: 1, transform: 'none' }], { duration: 260, delay: 90, fill: 'backwards', easing: 'ease-out' });
+    }
+    document.title = `${it.title} — Game Studio`;
+    (big.querySelector('[data-action=samples-open]')                      )?.focus({ preventScroll: true });
+  }
+
+  function bigView(it           ) {
+    const steps = shelfSteps(lang, it);
+    const openBtn = h('button', { type: 'button', class: 'samples-go', dataset: { action: 'samples-open', part: 'samples-open' }, onclick: () => void open(it) }, say('open', { title: it.title }));
+    const line = h('p', { class: 'samples-note', role: 'status', dataset: { part: 'samples-note' }, text: note, hidden: !note });
+    return h('section', { class: 'samples-big', dataset: { id: it.id, part: 'samples-big' }, 'aria-label': it.title },
+      h('div', { class: 'samples-pic' }, ...(it.thumb ? [h('img', { src: it.thumb, alt: '', draggable: false })] : []),
+        h('span', { class: 'samples-playing', 'aria-hidden': 'true' }, h('i'), say('playing'))),
+      h('div', { class: 'samples-side' },
+        h('button', { type: 'button', class: 'samples-back', dataset: { action: 'samples-back' }, onclick: () => back() }, '‹ ', say('back')),
+        h('h2', { text: it.title }),
+        h('p', { class: 'samples-meta', text: say('meta', { engine: it.engine || '', dim: say(it.dim === '3d' ? 'dim.3d' : 'dim.2d') }) }),
+        h('p', { class: 'samples-lead', text: blurbWords(lang, it) }),
+        h('ol', { class: 'samples-steps' }, ...steps.map((s) => h('li', {},
+          h('span', { class: 'num', text: String(s.n) }),
+          h('div', {}, h('b', { class: s.rec ? 'rec' : '', text: s.head }), ' ', s.text,
+            ...(s.ask ? [h('br'), h('span', { class: 'samples-say', dataset: { part: 'samples-say' }, text: say('ask.quote', { text: s.ask }) })] : []))))),
+        h('div', { class: 'samples-foot' }, openBtn, line)));
+  }
+
+  function back() {
+    chosen = null;
+    grid();
+  }
+
+  async function open(it           ) {
+    if (busy) return;
+    busy = true;
+    const btn = page.querySelector('[data-action=samples-open]')                            ;
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = say('opening', { title: it.title });
+    }
+    const r = await shelfHost.open(it.id);
+    if (r.ok) {
+      try {
+        sessionStorage.setItem(TOUR_KEY, JSON.stringify({ id: it.id, title: it.title, try: it.try ?? null }                    ));
+      } catch {
+        // No storage (a private window): the sample still opens, only without the guide.
+      }
+      stopLive();
+      location.reload();
+      return;
+    }
+    busy = false;
+    note = r.code === 'has-game' ? say('hasGame') : say('openFailed', { e: r.error });
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = say('open', { title: it.title });
+    }
+    const line = page.querySelector('[data-part=samples-note]')                      ;
+    if (line) {
+      line.textContent = note;
+      line.hidden = false;
+    }
+  }
+
+  // Escape goes back from the grown card (the way out a person tries first; there is no ✕ to look for).
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && chosen && !busy) back();
+  });
+  // A phone turned to wide (or a window made narrow) must not leave a pointer-started game running in a card.
+  window.addEventListener('resize', () => {
+    if (!chosen && live && (phone() || !canPoint())) stopLive();
+  });
+  // A hidden tab plays nothing.
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden && !chosen) stopLive();
+  });
+
+  void (async () => {
+    const [ui, list] = await Promise.all([host.loadUi().catch(() => null), shelfHost.list()]);
+    prefs = normalizeUi(ui);
+    if (prefs.lang && !new URLSearchParams(location.search).get('lang')) lang = prefs.lang;
+    root.lang = lang;
+    theme();
+    items = list?.items ?? [];
+    grid();
+    // ?sample=<id> opens straight on that sample's grown card (a link from the docs or a post; also the tests).
+    const want = new URLSearchParams(location.search).get('sample');
+    const it = want ? items.find((x) => x.id === want && !x.coming) : null;
+    if (it) {
+      const c = page.querySelector(`[data-id="${CSS.escape(it.id)}"]`)                      ;
+      if (c) choose(it, c);
+    }
+  })();
+}
+
+/** The shelf's two calls (host-local.ts): the list, and "copy this one in". */
+                            
+                                                 
+                                                                                        
+ 
+
+/**
+ * The local server's side of the shelf (server.mjs api/shelf…). Apart from host-local.ts: the shelf exists only for
+ * the local editor in a folder without a game, and nothing in the editor itself calls it.
+ */
+function createShelfHost(base         = LOCAL_PATHS.api)                                              {
+  const get = async (path        ) => {
+    const r = await fetch(base + path, { cache: 'no-store', credentials: 'same-origin' });
+    return r.ok ? r.json() : null;
+  };
+  return {
+    // Asked once before anything is drawn (local.ts): the shelf or the editor. Any failure = the editor, as before.
+    isShelf: () => get('open').then((r) => r?.shelf === true, () => false),
+    list: () => get('shelf').catch(() => null),
+    async open(id) {
+      try {
+        const r = await fetch(base + 'shelf/open', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id }), cache: 'no-store', credentials: 'same-origin' });
+        const data = await r.json().catch(() => null);
+        if (r.ok) return { ok: true };
+        return { ok: false, code: typeof data?.code === 'string' ? data.code : undefined, error: (data && data.error) || `HTTP ${r.status}` };
+      } catch (e) {
+        return { ok: false, error: (e         ).message };
+      }
+    },
+  };
+}
+
+__def(__exports, "TOUR_KEY", () => TOUR_KEY);
+__def(__exports, "shelfSteps", () => shelfSteps);
+__def(__exports, "GAME_CLOCK_LEAD", () => GAME_CLOCK_LEAD);
+__def(__exports, "pauseSeconds", () => pauseSeconds);
+__def(__exports, "showShelf", () => showShelf);
+__def(__exports, "createShelfHost", () => createShelfHost);
+};
+__defs[106] = function (__exports) {
+'use strict';
+// shelf-tour.ts
+
+// The guide after a sample opens from the shelf (shelf.ts; decided 2026-11-06). One card at a time, three at most,
+// the same three tries as the shelf promised: 1 Move → 2 Play, then press P → 3 ● Clip. The thing to press next wears
+// a violet ring (▶ Play, then ● Clip) so it reads without reading. Skip ends it at any step and it never comes back on
+// this device. Over the ask field: “Try asking ‘…’” — pressing it puts the sample's words in the field (nothing to
+// type), and it goes once used.
+//
+// Not the first-run tips that were taken out on 2026-10-17 ("I don't need this"): those came for everyone in every
+// game. This comes once, only to someone who just picked a sample on the shelf to try it, and only says what the
+// shelf card already said, at the moment it applies.
+//
+// It reads the editor from outside (its data-part / data-action marks and the shell's data-playing / data-paused),
+// so main.ts carries no tour code: when the guide is done there is nothing of it left running.
+                                           
+const { h } = __require(16);
+const { shelfText, askWords, moveWords } = __require(103);
+const { SHELF_CSS } = __require(104);
+const { TOUR_KEY, pauseSeconds } = __require(105);
+
+/** Set once Skip or Done is pressed: no guide again on this device (any sample, any folder). */
+const TOUR_OFF_KEY = 'studio.shelfTour.off';
+const STEP_KEY = 'studio.shelfTour.step';
+/** How long to wait for the editor's buttons before showing the card anyway (a slow first open of three.js is ~9 s). */
+const WAIT_MAX_MS = 20_000;
+
+                                 
+
+/**
+ * The next step from what the editor shows (pure; test/shelf.test.ts). A change made (Save shows) finishes Move;
+ * playing skips ahead to Play; a paused moment finishes Play. Never goes back: a person who paused and then pressed
+ * Edit is not asked to pause again.
+ */
+function nextStep(now          , seen                                                         )           {
+  let s = now;
+  if (s === 1 && (seen.changed || seen.playing || seen.paused)) s = 2;
+  if (s === 2 && seen.paused) s = 3;
+  return s;
+}
+
+/**
+ * The card's second line (pure; test/shelf.test.ts). `try.mark` (decided 2026-11-06, Marble Rain): the ask says
+ * "here", so the Play card says to point with ◎ Mark first — one line in the same card, not a fourth step, and nothing
+ * checks that a mark was made (asking without one still works).
+ */
+function moreKey(step          , tr                                       )                                                                            {
+  if (step === 1) return 'tour.moveMore';
+  if (step === 2) return tr?.mark ? 'tour.playMoreMark' : 'tour.playMore';
+  return 'tour.clipMore';
+}
+
+const store = (kind                     ) => {
+  try {
+    return kind === 'local' ? window.localStorage : window.sessionStorage;
+  } catch {
+    return null;
+  }
+};
+
+function startTour()       {
+  const ss = store('session');
+  const ls = store('local');
+  let start                   = null;
+  try {
+    start = JSON.parse(ss?.getItem(TOUR_KEY) || 'null');
+  } catch {
+    start = null;
+  }
+  if (!start || typeof start.id !== 'string') return;
+  const off = ls?.getItem(TOUR_OFF_KEY) === '1';
+  const lang = ()       => (document.documentElement.lang === 'ja' ? 'ja' : 'en');
+  const say = (k                                 , v                                  ) => shelfText(lang(), k, v);
+  const tr = start.try || {};
+  if (!document.querySelector('style[data-studio-shelf]')) document.head.append(h('style', { text: SHELF_CSS, dataset: { studioShelf: '' } }));
+
+  let step           = (Number(ss?.getItem(STEP_KEY)) || 1)            ;
+  let card                     = null;
+  let ring                     = null;
+  let chips                     = null;
+  let raf = 0;
+  let shownStep = 0;
+  let shownLang = '';
+  const t0 = Date.now();
+
+  const $ = (sel        ) => [...document.querySelectorAll             (sel)].find((e) => e.offsetParent !== null) ?? null;
+  const app = () => document.querySelector             ('[data-part=app]');
+
+  function end(forever         ) {
+    cancelAnimationFrame(raf);
+    card?.remove();
+    ring?.remove();
+    card = ring = null;
+    ss?.removeItem(STEP_KEY);
+    // The guide is over; the "Try asking" words stay until used (they are the sample's, not the guide's).
+    if (forever) ls?.setItem(TOUR_OFF_KEY, '1');
+    if (used || !askWords(lang(), tr.ask)) ss?.removeItem(TOUR_KEY);
+  }
+
+  /** What the ring is around in this step, or null (Move: the thing to drag is inside the game, not a button). */
+  function target()                     {
+    // ▶ Play first; once it plays, ❚❚ (P) is the press that finishes this step.
+    if (step === 2) return (app()?.dataset.playing === 'on' ? $('[data-action=play-pause]') : null) || $('[data-action=play]');
+    if (step === 3) return $('[data-action=clip]');
+    return null;
+  }
+
+  function draw() {
+    if (!card) {
+      card = h('div', { class: 'tour-card', role: 'region', 'aria-label': start .title, 'aria-live': 'polite', dataset: { part: 'samples-tour' } });
+      document.body.append(card);
+    }
+    if (shownStep === step && shownLang === lang()) return;
+    shownStep = step;
+    shownLang = lang();
+    const head = step === 1 ? (moveWords(lang(), tr) ? say('tour.move', { move: moveWords(lang(), tr) }) : say('tour.moveAny'))
+      : step === 2 ? (tr.pauseAt !== undefined ? say('tour.play', { s: pauseSeconds(tr.pauseAt) }) : say('tour.playAny'))
+      : say('tour.clip');
+    const more = say(moreKey(step, tr));
+    const row = h('div', { class: 'row' });
+    if (step === 2) row.append(h('kbd', { text: 'P' }), h('span', { text: say('tour.key') }));
+    row.append(h('span', { class: 'sp' }), h('button', { type: 'button', dataset: { action: 'tour-skip' }, onclick: () => end(true) }, say('tour.skip')));
+    if (step === 1) row.append(h('button', { type: 'button', class: 'next', dataset: { action: 'tour-next' }, onclick: () => go(2) }, say('tour.next')));
+    if (step === 3) row.append(h('button', { type: 'button', class: 'next', dataset: { action: 'tour-done' }, onclick: () => end(true) }, say('tour.done')));
+    card.dataset.step = String(step);
+    card.replaceChildren(
+      h('div', { class: 'k' }, h('span', { text: say('tour.head', { title: start .title, n: step, all: 3 }) }),
+        h('span', { class: 'dots', 'aria-hidden': 'true' }, ...[1, 2, 3].map((i) => h('i', { class: i === step ? 'on' : '' })))),
+      h('h4', { text: head }), h('p', { text: more }), row);
+  }
+
+  function go(s          ) {
+    step = s;
+    ss?.setItem(STEP_KEY, String(s));
+  }
+
+  /** Every frame while the guide is up: follow the editor (step, the ring's button, where the card sits). */
+  function tick() {
+    raf = requestAnimationFrame(tick);
+    const a = app();
+    const ready = !!a && !!$('[data-action=play]') && ($('[data-part=wait-line]') === null || Date.now() - t0 > WAIT_MAX_MS);
+    if (!ready) return;
+    const save = $('[data-part=save]');
+    go(nextStep(step, { changed: !!save, playing: a .dataset.playing === 'on', paused: a .dataset.paused === 'on' }));
+    draw();
+    const tg = target();
+    const r = tg?.getBoundingClientRect();
+    if (r && r.width) {
+      if (!ring) {
+        ring = h('div', { class: 'tour-ring', 'aria-hidden': 'true', dataset: { part: 'tour-ring' } });
+        document.body.append(ring);
+      }
+      Object.assign(ring.style, { left: `${r.left - 3}px`, top: `${r.top - 3}px`, width: `${r.width + 6}px`, height: `${r.height + 6}px` });
+    } else if (ring) {
+      ring.remove();
+      ring = null;
+    }
+    // Under the button the step is about (▶ Play's corner on Move too: that is where the next press is).
+    const near = (r && r.width ? r : $('[data-action=play]')?.getBoundingClientRect()) ?? null;
+    if (card && near) {
+      card.style.top = `${Math.round(near.bottom + 12)}px`;
+      card.style.right = `${Math.max(16, Math.round(window.innerWidth - near.right))}px`;
+      card.style.left = 'auto';
+    }
+  }
+
+  // ● Clip pressed in step 3 = the guide is done (the Clip's own line takes over from here).
+  document.addEventListener('click', (e) => {
+    if (card && step === 3 && (e.target                  )?.closest?.('[data-action=clip]')) end(true);
+  }, true);
+
+  /**
+   * “Try asking ‘…’” over the ask field. Pressing it fills the field; it goes once used. Kept in place by a slow check
+   * (not once): the editor redraws its bottom bar (a phone's sheet, the paused moment), and the words follow the
+   * editor's language, which is known only once the person's settings are read.
+   */
+  let used = false;
+  let chipsLang = '';
+  function keepChips() {
+    const ask = askWords(lang(), tr.ask);
+    const bar = document.querySelector             ('[data-part=bar]');
+    const input = bar?.querySelector('input')                           ;
+    if (used || !ask) return void clearInterval(chipTimer);
+    if (!bar || !input) return;
+    if (!chips || chipsLang !== lang()) {
+      chips?.remove();
+      chipsLang = lang();
+      chips = h('div', { class: 'try-ask', dataset: { part: 'try-ask' } }, h('em', { text: say('try.ask') }),
+        h('button', { type: 'button', title: say('try.askTip'), dataset: { action: 'try-ask' }, onclick: () => {
+          input.value = ask;
+          input.dispatchEvent(new Event('input', { bubbles: true }));
+          input.focus({ preventScroll: true });
+          input.setSelectionRange?.(ask.length, ask.length);
+          used = true;
+          chips?.remove();
+          chips = null;
+          clearInterval(chipTimer);
+          if (!card) ss?.removeItem(TOUR_KEY);
+        } }, say('ask.quote', { text: ask })));
+    }
+    if (chips.nextElementSibling !== bar) bar.before(chips);
+    // Hidden while the field has words of the person's own (the tag would cover what they are typing about).
+    chips.hidden = input.value.trim() !== '' && input.value !== ask;
+  }
+  const chipTimer = window.setInterval(keepChips, 300);
+  keepChips();
+  if (off) return;
+  raf = requestAnimationFrame(tick);
+}
+
+__def(__exports, "TOUR_OFF_KEY", () => TOUR_OFF_KEY);
+__def(__exports, "nextStep", () => nextStep);
+__def(__exports, "moreKey", () => moreKey);
+__def(__exports, "startTour", () => startTour);
+};
+__defs[107] = function (__exports) {
+'use strict';
 // local.ts
 
 // Entry of studio-shell.js: the shell page served by the local server
 // (skills/arrange/bin/studio.mjs), talking to it through createLocalHost().
 // The browser-only web demo has its own entry (src/hosts/browser/main.ts).
+//
+// A folder without a game opens on the shelf of samples instead of the editor (shelf.ts, decided 2026-11-06): the
+// server says which (api/open `shelf: true`). After a sample is picked the page reloads into the editor, and the
+// one-card guide (shelf-tour.ts) runs beside it once.
 const { start } = __require(101);
 const { createLocalHost } = __require(102);
+const { showShelf, createShelfHost } = __require(105);
+const { startTour } = __require(106);
 
-start(createLocalHost());
+const host = createLocalHost();
+const shelf = createShelfHost();
+void shelf.isShelf().then((on) => {
+  if (on) return showShelf(host, shelf);
+  start(host);
+  startTour();
+});
 
 
 };
-__require(103);
+__require(107);
 })();

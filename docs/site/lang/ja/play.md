@@ -2,7 +2,7 @@
 title: 遊ぶ
 nav: 遊ぶ
 order: 3
-written-for: 0.1.84
+written-for: 0.1.85
 description: エディタの中でゲームを遊び、ゆっくりにして、ちょうどの 1 コマで止め、その瞬間を手でも AI にでも編集し、チェックポイントとして残す。
 ---
 

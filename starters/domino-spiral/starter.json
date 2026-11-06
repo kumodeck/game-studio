@@ -1,0 +1,12 @@
+{
+  "title": "Domino Spiral",
+  "dim": "3d",
+  "blurb": "About 400 glowing dominoes wound into a spiral on a dark mirror floor. A steel ball knocks the first one over. Drag the head and the whole line follows.",
+  "thumb": "thumb.png",
+  "order": 3,
+  "try": {
+    "move": "head",
+    "pauseAt": 9.5,
+    "ask": { "en": "Make the dominoes twice as tall." }
+  }
+}

@@ -64,11 +64,13 @@ Until you pick something, one line under the game says what the editor is for: *
 
 ### No game yet?
 
-Open your AI in an **empty folder** and type `/arrange`. It asks one thing: “Want to start from a sample? Pick 3D or 2D.” It copies a small sample game into the folder and opens it. Then try three things:
+Open your AI in an **empty folder** and type `/arrange`. Your AI asks nothing: the editor opens on a shelf of small sample games. Point at one to see it move, click it to see what to try, and click **Open** (for example **Open Lantern Cove**). It is copied into your folder and opens in the editor. A small card at the top right walks you through three things, one at a time (**Skip** any time):
 
-1. Click anything and drag it.
-2. Type a change in the box at the bottom, like “add 3 more like this,” and press Enter.
-3. Click **Save**.
+1. **Move**: drag something in the game.
+2. **Play, then press P** where you want a change, and ask for it. “Try asking” over the box at the bottom puts the sample’s idea in it, like “Add three more lighthouses around the island.”
+3. **● Clip**: when the change is in, make a 10-second Before / After, ready to post.
+
+Click **Save** to keep what you moved.
 
 The samples already read your layout when they start, so what you saved is in the game right away.
 

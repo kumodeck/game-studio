@@ -78,9 +78,10 @@ Your game folder keeps what the editor wrote (`placement.json`, `library.json`, 
 
 ## Try it in 5 minutes
 
-No game yet? Open your AI in an **empty folder** and type `/arrange` (Codex: `$arrange`). It asks one question,
-"Want to start from a sample? Pick 3D or 2D," copies a small sample game into the folder and opens the editor. Then: click
-anything and drag it, ask your AI for a change in the box at the bottom ("add 3 more like this"), and click **Save**.
+No game yet? Open your AI in an **empty folder** and type `/arrange` (Codex: `$arrange`). The editor opens on a shelf
+of small sample games: point at one to see it move, then open it, and it is copied into the folder. Its card says three
+things to try: drag something, press ▶ Play and then P where you want a change and ask your AI for it (“Make the waves
+twice as tall.”), then ● Clip the Before / After. Click **Save** to keep your layout.
 The sample already loads `placement.json`, so your layout is in the game right away.
 
 ## Use it

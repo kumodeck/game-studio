@@ -4797,6 +4797,288 @@ function createHandsRelay() {
   };
 }
 
+// ---- src/server/starters.mjs ----
+// Starters: a sample game copied into a folder that has none, so `/arrange` in an empty folder
+// opens a world to play with instead of "no index.html" (2026-10-16, "first 5 minutes").
+//
+// The shape (the contract between this module and whoever makes the starters):
+//   starters/<id>/index.html     runs as-is (no build; engines from a CDN are fine)
+//   starters/<id>/starter.json   { "title", "dim": "3d" | "2d", "blurb", "thumb", "order", "try"? }
+//   starters/<id>/thumb.png      16:10, 640x400 (for the shelf; not copied into the game)
+//   starters/<id>/strings.json   optional, the words in other languages (not copied into the game):
+//                                { "ja": { "blurb", "try": { "ask", "move" } } }
+// This module only reads that shape. It never writes anywhere except the folder it fills.
+//
+// `try` (optional, decided 2026-11-06): the three things to try in this sample, shown on the editor's shelf and in
+// the one-card guide after it opens: { "move": "<placement name>", "pauseAt": 7.6, "ask": { "en": "…" }, "mark"? }.
+// `"mark": true` = the ask says "here": the guide's Play card adds "press ◎ Mark and point" (a hint, never forced).
+// `pauseAt` is the GAME's clock (seconds since its page started), not the editor's top-bar clock: the shell turns it
+// into the second the person sees (shelf.ts pauseSeconds).
+//
+// strings.json (decided 2026-11-06): starter.json is English only, because the package keeps non-English text in
+// translation files only (the export check refuses other scripts in it). The shelf merges each language of
+// strings.json into what it sends: `try.ask.<lang>`, `try.moveName.<lang>` and `blurbs.<lang>`. For a starter that is
+// `from` an example, that example's strings.json is read, then the starter's own over it (same rule as starter.json).
+//
+// A starter can also stand for a game kept elsewhere in this package (decided 2026-11-06, Neon Run): its
+// starter.json says { "from": "examples/<id>", ...fields to change }. The game is read from there (no second copy
+// to keep in step), with that folder's own starter.json under the fields given here. Only examples/<id> of this
+// package is accepted, so a starter can never point out of it.
+//
+// WHY the editor's shelf and not a question (decided 2026-11-06): with six samples, "3D or 2D?" in words cannot
+// show what they are. In a folder without a game the editor now opens on its shelf of moving pictures and copies
+// the one the person picks (server.mjs api/shelf). `--starter 3d | 2d | <id>` stays for scripts and tests: the
+// lowest `order` of that dimension wins, an id names one.
+//
+// WHY a fallback to examples/three-crates and examples/pixi-garden: the starters ship in a
+// separate wave and could be missing (an older checkout, a trimmed install). Those two examples are
+// the editor's own test games — plain, but they run without a build and the editor knows them
+// (pixi-garden carries its .studio/adapter.js). An empty folder must never end in "nothing happens".
+
+
+
+
+const DIMS = ['3d', '2d'];
+// Files that describe the starter (for a picker or a reader of this repo), not the game.
+// strings.json (decided 2026-11-06, the sample shelf): the starter's words in other languages. It is for the shelf, so
+// it is not copied into a game either.
+const STARTER_ONLY = new Set(['starter.json', 'thumb.png', 'README.md', 'strings.json']);
+// The languages strings.json may add (the shell's languages besides English).
+const LANGS = ['ja'];
+// Never copied from anywhere in a starter: tooling, the editor's hand-off notes (only the adapter,
+// the game's settings and tools under .studio/ belong to a game).
+const NEVER = new Set(['.git', 'node_modules', '.DS_Store']);
+const STUDIO_NOTES = /^(requests|shot|view-check|status\.json|.*\.md|.*\.log)$/;
+
+const FALLBACK = [
+  { id: 'three-crates', dim: '3d', title: 'Crates', blurb: 'A small three.js yard of crates, barrels and trees.' },
+  { id: 'pixi-garden', dim: '2d', title: 'Garden', blurb: 'A PixiJS garden of flowers, rocks and bushes.' },
+];
+
+/**
+ * Folders that may hold starters, nearest first. `here` is the folder of the running script:
+ * skills/arrange/bin when bundled (plugin root three levels up), src/server from the sources.
+ */
+function starterRoots(here) {
+  return [path.resolve(here, '../../../starters'), path.resolve(here, '../../starters')];
+}
+function exampleRoots(here) {
+  return [path.resolve(here, '../../../examples'), path.resolve(here, '../../examples')];
+}
+
+/**
+ * Every usable starter in `dir`, sorted 3d first, then by `order`, then id. A folder without
+ * index.html or with a broken starter.json is skipped (one bad starter never hides the others).
+ */
+async function readStarters(dir) {
+  const names = await fs.readdir(dir).catch(() => []);
+  const out = [];
+  const readJson = async (at, name) => {
+    try {
+      const m = JSON.parse(await fs.readFile(path.join(at, name), 'utf8'));
+      return m && typeof m === 'object' && !Array.isArray(m) ? m : null;
+    } catch {
+      return null;
+    }
+  };
+  const readMeta = (at) => readJson(at, 'starter.json');
+  for (const id of names) {
+    if (!/^[a-z0-9][a-z0-9-]{0,39}$/.test(id)) continue;
+    let at = path.join(dir, id);
+    let meta = await readMeta(at);
+    if (!meta) continue;
+    // The starter's own strings.json (read before `at` may move to examples/<id>; it wins over the example's).
+    const ownWords = await readJson(at, 'strings.json');
+    let words = ownWords;
+    // { "from": "examples/<id>" }: the game lives there; its own starter.json first, this one's fields over it.
+    if (meta.from !== undefined) {
+      const m = /^examples\/([a-z0-9][a-z0-9-]{0,39})$/.exec(String(meta.from));
+      if (!m) continue;
+      at = path.join(dir, '..', 'examples', m[1]);
+      const { from: _from, ...over } = meta;
+      meta = { ...((await readMeta(at)) || {}), ...over };
+      words = mergeWords(await readJson(at, 'strings.json'), ownWords);
+    }
+    if (!existsSync(path.join(at, 'index.html'))) continue;
+    if (!DIMS.includes(meta.dim)) continue;
+    out.push({
+      id,
+      dim: meta.dim,
+      title: typeof meta.title === 'string' && meta.title.trim() ? meta.title.trim().slice(0, 60) : id,
+      blurb: typeof meta.blurb === 'string' ? meta.blurb.trim().slice(0, 200) : '',
+      order: Number.isFinite(meta.order) ? meta.order : 99,
+      thumb: typeof meta.thumb === 'string' && existsSync(path.join(at, meta.thumb)) ? path.join(at, meta.thumb) : null,
+      try: readTry(withWords(meta.try, words)),
+      ...blurbsOf(words),
+      dir: at,
+    });
+  }
+  return out.sort((a, b) => DIMS.indexOf(a.dim) - DIMS.indexOf(b.dim) || a.order - b.order || a.id.localeCompare(b.id));
+}
+
+/**
+ * The starters to offer: the first folder of `roots` that has any, else the two examples
+ * (marked `fallback: true`). `starterDir` (the --starters-dir option) replaces the roots.
+ */
+async function findStarters(here, starterDir) {
+  for (const r of starterDir ? [starterDir] : starterRoots(here)) {
+    const list = await readStarters(r);
+    if (list.length) return list;
+  }
+  for (const r of exampleRoots(here)) {
+    const list = FALLBACK.filter((f) => existsSync(path.join(r, f.id, 'index.html')))
+      .map((f, i) => ({ ...f, order: i + 1, thumb: null, dir: path.join(r, f.id), fallback: true }));
+    if (list.length) return list;
+  }
+  return [];
+}
+
+/**
+ * A starter's `try`, cleaned (it is shown on the shelf and in the guide): null when there is none to show. Each part
+ * is optional; a sample that has only `ask` still gets its "Try asking" words. Unknown languages are dropped.
+ */
+function readTry(v) {
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return null;
+  const out = {};
+  if (typeof v.move === 'string' && v.move.trim()) out.move = v.move.trim().slice(0, 80);
+  if (Number.isFinite(v.pauseAt) && v.pauseAt >= 0 && v.pauseAt <= 600) out.pauseAt = Math.round(v.pauseAt * 100) / 100;
+  const ask = {};
+  for (const l of ['en', ...LANGS]) if (v.ask && typeof v.ask[l] === 'string' && v.ask[l].trim()) ask[l] = v.ask[l].trim().slice(0, 140);
+  if (Object.keys(ask).length) out.ask = ask;
+  // `mark: true` (decided 2026-11-06, Marble Rain): the ask points at a spot ("Add a spinning paddle here."), so the
+  // guide's second card says to press ◎ Mark and point before asking. Only a hint: the ask goes without a mark too.
+  if (v.mark === true) out.mark = true;
+  // What the guide calls the thing to move, per language ("Drag the duck"): `move` is a placement name the game gives
+  // (it may read "lighthouse_1"), so English defaults to that name made readable; other languages come from strings.json.
+  if (out.move) {
+    const name = { en: readableName(out.move) };
+    for (const l of LANGS) if (v.moveName && typeof v.moveName[l] === 'string' && v.moveName[l].trim()) name[l] = v.moveName[l].trim().slice(0, 60);
+    out.moveName = name;
+  }
+  return Object.keys(out).length ? out : null;
+}
+
+/**
+ * "lighthouse_1" → "lighthouse", "rope_bridge" → "rope bridge": a placement name as a person reads it. The number a
+ * game adds to tell copies apart is dropped (the guide says "the lighthouse", whichever copy is dragged).
+ */
+function readableName(name) {
+  // Every trailing number group goes, not only the last (decided 2026-11-06, Marble Rain): a grid of copies is named
+  // by row and column ("pin-1-2"), and the guide said "Drag the pin 1" — a number that means nothing to the person.
+  const n = String(name).replace(/(?:[_\-\s]*\d+)+$/, '').replace(/[_-]+/g, ' ').replace(/([a-z])([A-Z])/g, '$1 $2').trim();
+  return (n || String(name)).toLowerCase();
+}
+
+/** strings.json of an example, then the starter's own over it, one language at a time (null when neither has any). */
+function mergeWords(base, over) {
+  if (!base) return over || null;
+  if (!over) return base;
+  const out = { ...base };
+  for (const l of LANGS) {
+    if (!over[l]) continue;
+    out[l] = { ...(base[l] || {}), ...over[l], try: { ...(base[l]?.try || {}), ...(over[l].try || {}) } };
+  }
+  return out;
+}
+
+/** starter.json's `try` with the other languages of strings.json put in (`ask.<lang>`, `moveName.<lang>`). */
+function withWords(t, words) {
+  if (!t || typeof t !== 'object' || Array.isArray(t)) return t;
+  const ask = { ...(t.ask && typeof t.ask === 'object' ? t.ask : {}) };
+  const moveName = {};
+  for (const l of LANGS) {
+    const w = words?.[l]?.try;
+    if (typeof w?.ask === 'string') ask[l] = w.ask;
+    if (typeof w?.move === 'string') moveName[l] = w.move;
+  }
+  return { ...t, ask, moveName };
+}
+
+/** { blurbs: { ja: "…" } } from strings.json (the card's line in the screen's language), or nothing. */
+function blurbsOf(words) {
+  const out = {};
+  for (const l of LANGS) if (typeof words?.[l]?.blurb === 'string' && words[l].blurb.trim()) out[l] = words[l].blurb.trim().slice(0, 200);
+  return Object.keys(out).length ? { blurbs: out } : {};
+}
+
+/**
+ * Samples planned for the shelf but not in this copy yet (decided 2026-11-06: the shelf shows six, the ones still
+ * being made as "Coming"). Only shown while no starter of that id is found: once a starter folder with the id is
+ * there, it takes the card. Their words are English like every starter.json (the shelf shows titles as they are).
+ * Remove a line once its starter is in starters/ (Big Swell's went on 2026-11-06).
+ */
+const COMING = [
+  { id: 'domino-spiral', dim: '3d', title: 'Domino Spiral', order: 3, blurb: '400 glowing dominoes in a spiral. Bend the line by hand, then knock the first one.' },
+  { id: 'marble-rain', dim: '2d', title: 'Marble Rain', order: 4, blurb: 'Hundreds of marbles pour through pegs. Move a peg and they land somewhere else.' },
+];
+
+/**
+ * The shelf (the editor's first screen in a folder without a game): every starter in `order`, then id, with the
+ * planned ones not here yet as `coming: true`. Not 3d first like readStarters: the shelf is one row of six, in the
+ * order chosen for it (decided 2026-11-06), not grouped by dimension.
+ */
+function shelfList(list, o = {}) {
+  const have = new Set(list.map((s) => s.id));
+  // No "Coming" cards for the fallback examples or for samples taken from elsewhere (--starters-dir: tests, a branch).
+  const coming = o.coming === false || list.some((s) => s.fallback) ? [] : COMING.filter((c) => !have.has(c.id)).map((c) => ({ ...c, thumb: null, try: null, coming: true }));
+  return [...list, ...coming].sort((a, b) => a.order - b.order || a.id.localeCompare(b.id));
+}
+
+/** "3d" / "2d" = the first of that dimension; anything else = that id. */
+function pickStarter(list, want) {
+  const w = String(want || '').toLowerCase();
+  return DIMS.includes(w) ? list.find((s) => s.dim === w) || null : list.find((s) => s.id === w) || null;
+}
+
+/** Relative paths of the files a starter puts into a game (sorted). */
+async function starterFiles(src) {
+  const out = [];
+  async function walk(rel) {
+    const entries = await fs.readdir(path.join(src, rel), { withFileTypes: true });
+    for (const e of entries) {
+      const r = rel ? `${rel}/${e.name}` : e.name;
+      if (NEVER.has(e.name)) continue;
+      if (!rel && STARTER_ONLY.has(e.name)) continue;
+      if (rel === '.studio' && STUDIO_NOTES.test(e.name)) continue;
+      // Links are skipped: a starter is plain files, and a link could point out of the folder.
+      if (e.isSymbolicLink()) continue;
+      if (e.isDirectory()) await walk(r);
+      else if (e.isFile()) out.push(r);
+    }
+  }
+  await walk('');
+  return out.sort();
+}
+
+/**
+ * Copy a starter into `dest` (created when missing). Nothing is ever overwritten: when any file is
+ * already there, nothing is copied and `conflicts` lists them. Returns { files, conflicts }.
+ */
+async function copyStarter(starter, dest) {
+  const files = await starterFiles(starter.dir);
+  const conflicts = files.filter((f) => existsSync(path.join(dest, f)));
+  if (conflicts.length) return { files: [], conflicts };
+  for (const f of files) {
+    const to = path.join(dest, f);
+    await fs.mkdir(path.dirname(to), { recursive: true });
+    // COPYFILE_EXCL: a file that appeared since the check above is still never overwritten.
+    await fs.copyFile(path.join(starter.dir, f), to, 1);
+  }
+  return { files, conflicts: [] };
+}
+
+/**
+ * The one stdout line for a folder without a game. `shelf` (the editor is opening): the person picks a sample on the
+ * editor's shelf, so the agent asks nothing (decided 2026-11-06; it used to ask "3D or 2D?" and run --starter). Without
+ * `shelf` (a check that needs a game, e.g. --check-view): what to run instead.
+ */
+function noGameLine(root, list, o = {}) {
+  if (!list.length) return `studio: no-game ${root} - no index.html and no samples to start from`;
+  return o.shelf
+    ? `studio: no-game ${root} - the editor opens on its shelf of samples: don't ask which one, the person picks one there and it is copied into this folder`
+    : `studio: no-game ${root} - nothing to check yet: start the editor without this option, and the person picks a sample on its shelf`;
+}
+
 // ---- src/schema/hands.mjs ----
 // The AI's hands in the editor (studio-ai-hands, 2026-10-24; CONTRACT.md §3.6): what `studio.mjs <game> --do …` asks
 // the editor to do — take a motion off an object, make a motion from points, move / rename / duplicate an object, add a
@@ -5925,9 +6207,11 @@ function handsFileList(f) {
 //   /__studio/host.js     local host implementation for the shell
 //   /__studio/studio-placement.js   the loader (so a game can try it before copying it in)
 //   /__studio/api/...     JSON API (see handleApi)
+//   /__studio/shelf/<id>/<file>   a sample's own files, for the shelf's pictures (only with o.shelf; read-only)
 //   /__studio/<file>      other files of the built UI (studio-edit.js, shell assets)
 //   /<anything else>      the game folder; HTML responses get the edit script injected, and the game's copy of
 //                         the loader (studio-placement.js) is answered with the editor's own (loader-copy.mjs)
+
 
 
 
@@ -5969,6 +6253,8 @@ const GAME_TOOLS_URL = '/__studio/game-tools.js';
  * @param {object} [o.kumo]    tests only: { home, env, fetch } for the optional KUMODeck sign-in (kumo.mjs)
  * @param {object} [o.env]     tests only: the environment read for which AI started the editor (which-ai.mjs; default process.env)
  * @param {object} [o.clips]   tests only: { dir, where, reveal, run } — where ● Clip saves (clips.mjs; default Movies › KUMODeck) and the "Show in Finder" command
+ * @param {object} [o.shelf]   a folder without a game (cli.mjs): { here, startersDir } — the editor opens on the shelf of samples and
+ *                             copies the one picked into `root` (api/shelf, decided 2026-11-06). Without it there is no shelf.
  * @returns {Promise<{ url: string, origin: string, port: number, close: () => Promise<void> }>}
  */
 async function startStudioServer(o) {
@@ -6023,6 +6309,8 @@ async function startStudioServer(o) {
   ctx.hands = createHandsRelay();
   // ● Clip (stage 1, 2026-11-05; clips.mjs): the person's videos folder, never the game folder.
   ctx.clips = { ...clipPlace(), ...(o.clips || {}) };
+  // The shelf (a folder without a game): where the samples are read from, and the one opened (null until a pick).
+  if (o.shelf) ctx.shelf = { here: o.shelf.here, startersDir: o.shelf.startersDir, opened: null };
 
   server.on('request', (req, res) => {
     handle(req, res).catch((e) => {
@@ -6087,6 +6375,7 @@ async function startStudioServer(o) {
     }
 
     if (u.pathname.startsWith(PREFIX + 'api/')) return handleApi(req, res, u, ctx);
+    if (u.pathname.startsWith(PREFIX + 'shelf/')) return serveShelfFile(req, res, u.pathname.slice((PREFIX + 'shelf/').length), ctx);
     if (u.pathname === PREFIX || u.pathname + '/' === PREFIX) return serveShell(req, res, ctx);
     if (u.pathname.startsWith(PREFIX)) return serveUi(req, res, u.pathname.slice(PREFIX.length), ctx);
     if (req.method !== 'GET' && req.method !== 'HEAD') return sendJson(res, 405, { error: 'the game folder is read-only' });
@@ -6117,6 +6406,51 @@ async function startStudioServer(o) {
 async function handleApi(req, res, u, ctx) {
   const route = u.pathname.slice((PREFIX + 'api/').length);
   const m = req.method;
+
+  // The shelf (decided 2026-11-06): a folder without a game opens the editor on its samples, not on an empty game.
+  // `shelf: true` until the person opens one (then the page reloads and gets the game as usual).
+  if (route === 'open' && m === 'GET' && ctx.shelf && !(await hasGame(ctx))) {
+    return sendJson(res, 200, { shelf: true, origin: ctx.origin, gameUrl: '', title: '' });
+  }
+  if (route === 'shelf' && m === 'GET') {
+    if (!ctx.shelf) throw httpError(404, 'no shelf: this folder has a game');
+    const list = shelfList(await findStarters(ctx.shelf.here, ctx.shelf.startersDir), { coming: !ctx.shelf.startersDir });
+    return sendJson(res, 200, {
+      hasGame: await hasGame(ctx),
+      items: list.map((s) => ({
+        id: s.id, title: s.title, dim: s.dim, blurb: s.blurb, order: s.order,
+        // The card's line in other languages (a starter's strings.json, decided 2026-11-06); `blurb` stays English.
+        ...(s.blurbs ? { blurbs: s.blurbs } : {}),
+        ...(s.coming ? { coming: true } : {
+          thumb: s.thumb ? `${PREFIX}shelf/${s.id}/${path.basename(s.thumb)}` : null,
+          play: `${PREFIX}shelf/${s.id}/index.html`,
+          try: s.try || null,
+          engine: engineOf(s),
+        }),
+      })),
+    });
+  }
+  if (route === 'shelf/open' && m === 'POST') {
+    if (!ctx.shelf) throw httpError(404, 'no shelf: this folder has a game');
+    let id;
+    try {
+      ({ id } = JSON.parse((await readBody(req, 1024)).toString('utf8')));
+    } catch {
+      throw httpError(400, 'body must be JSON like {"id":"lantern-cove"}');
+    }
+    // The same pick twice (a double press, two tabs): already in, nothing copied again.
+    if (ctx.shelf.opened === id && (await hasGame(ctx))) return sendJson(res, 200, { ok: true, id, already: true });
+    // A game appeared meanwhile (the AI wrote one): never mix a sample into it.
+    if (await hasGame(ctx)) return sendJson(res, 409, { error: 'this folder has a game now', code: 'has-game' });
+    const s = (await findStarters(ctx.shelf.here, ctx.shelf.startersDir)).find((x) => x.id === id);
+    if (!s) throw httpError(404, `no sample "${String(id).slice(0, 40)}"`);
+    const r = await copyStarter(s, ctx.rootReal);
+    if (r.conflicts.length) return sendJson(res, 409, { error: `already in the folder: ${r.conflicts.slice(0, 3).join(', ')}`, code: 'conflict' });
+    ctx.shelf.opened = s.id;
+    // The same line `--starter` prints, so an agent reading the output learns the same thing either way.
+    ctx.log(`studio: started ${s.id} (${r.files.length} files) ${s.title}`);
+    return sendJson(res, 200, { ok: true, id: s.id, files: r.files.length });
+  }
 
   if (route === 'open' && m === 'GET') {
     return sendJson(res, 200, {
@@ -6675,6 +7009,39 @@ async function serveUi(req, res, name, ctx) {
     return sendBody(req, res, 200, 'text/javascript; charset=utf-8', '/* studio-edit.js is not built yet */\n');
   }
   return sendJson(res, 404, { error: 'not found' });
+}
+
+/** The folder has the page the editor opens (the shelf's question: is there a game yet). */
+async function hasGame(ctx) {
+  return fs.stat(path.join(ctx.rootReal, ctx.entry)).then((st) => st.isFile(), () => false);
+}
+
+/** "three.js" / "PixiJS" / "Phaser" for the shelf's card, read from the page's script URLs (starter.json has no engine). */
+function engineOf(s) {
+  try {
+    const html = readFileSync(path.join(s.dir, 'index.html'), 'utf8').slice(0, 64 * 1024);
+    if (/\bphaser\b/i.test(html)) return 'Phaser';
+    if (/\bpixi(\.js)?\b/i.test(html)) return 'PixiJS';
+    if (/\bthree\b/i.test(html)) return 'three.js';
+  } catch {}
+  return s.dim === '3d' ? '3D' : '2D';
+}
+
+/**
+ * A sample's own files for the shelf: its picture and, while a card is pointed at, the game itself running in a small
+ * frame (shelf.ts). Read-only, only files inside that sample's folder (resolveInside), and only while there is a shelf.
+ * The game is served as it is (no edit script): on the shelf it only plays.
+ */
+async function serveShelfFile(req, res, rest, ctx) {
+  if (!ctx.shelf) return sendJson(res, 404, { error: 'not found' });
+  if (req.method !== 'GET' && req.method !== 'HEAD') return sendJson(res, 405, { error: 'read-only' });
+  const i = rest.indexOf('/');
+  const id = i < 0 ? rest : rest.slice(0, i);
+  const s = (await findStarters(ctx.shelf.here, ctx.shelf.startersDir)).find((x) => x.id === id);
+  if (!s) return sendJson(res, 404, { error: 'no such sample' });
+  const r = await resolveInside(await fs.realpath(s.dir), i < 0 ? '/' : rest.slice(i));
+  if (!r.ok) return sendText(res, r.status, r.reason);
+  return sendFile(req, res, r.abs, r.stat);
 }
 
 async function serveGameFile(req, res, pathname, ctx) {
@@ -7426,152 +7793,6 @@ async function momentCheck(root, entry, at) {
   const r = await runMomentCheck({ rootReal: realpathSync(root), entry, at });
   process.stdout.write(r.line + '\n');
   return r.status === 'ok' ? 0 : r.status === 'failed' ? 1 : 3;
-}
-
-// ---- src/server/starters.mjs ----
-// Starters: a sample game copied into a folder that has none, so `/arrange` in an empty folder
-// opens a world to play with instead of "no index.html" (2026-10-16, "first 5 minutes").
-//
-// The shape (the contract between this module and whoever makes the starters):
-//   starters/<id>/index.html     runs as-is (no build; engines from a CDN are fine)
-//   starters/<id>/starter.json   { "title", "dim": "3d" | "2d", "blurb", "thumb", "order" }
-//   starters/<id>/thumb.png      16:10, 640x400 (for a picker; not copied into the game)
-// This module only reads that shape. It never writes anywhere except the folder it fills.
-//
-// WHY the agent picks by dimension ("3d" / "2d") and not by id: the person is asked one question
-// ("Start from a sample? 3D or 2D") and should not have to know names. The lowest `order` of that
-// dimension wins; an id still works for whoever wants a particular one.
-//
-// WHY a fallback to examples/three-crates and examples/pixi-garden: the starters ship in a
-// separate wave and could be missing (an older checkout, a trimmed install). Those two examples are
-// the editor's own test games — plain, but they run without a build and the editor knows them
-// (pixi-garden carries its .studio/adapter.js). An empty folder must never end in "nothing happens".
-
-
-
-
-const DIMS = ['3d', '2d'];
-// Files that describe the starter (for a picker or a reader of this repo), not the game.
-const STARTER_ONLY = new Set(['starter.json', 'thumb.png', 'README.md']);
-// Never copied from anywhere in a starter: tooling, the editor's hand-off notes (only the adapter,
-// the game's settings and tools under .studio/ belong to a game).
-const NEVER = new Set(['.git', 'node_modules', '.DS_Store']);
-const STUDIO_NOTES = /^(requests|shot|view-check|status\.json|.*\.md|.*\.log)$/;
-
-const FALLBACK = [
-  { id: 'three-crates', dim: '3d', title: 'Crates', blurb: 'A small three.js yard of crates, barrels and trees.' },
-  { id: 'pixi-garden', dim: '2d', title: 'Garden', blurb: 'A PixiJS garden of flowers, rocks and bushes.' },
-];
-
-/**
- * Folders that may hold starters, nearest first. `here` is the folder of the running script:
- * skills/arrange/bin when bundled (plugin root three levels up), src/server from the sources.
- */
-function starterRoots(here) {
-  return [path.resolve(here, '../../../starters'), path.resolve(here, '../../starters')];
-}
-function exampleRoots(here) {
-  return [path.resolve(here, '../../../examples'), path.resolve(here, '../../examples')];
-}
-
-/**
- * Every usable starter in `dir`, sorted 3d first, then by `order`, then id. A folder without
- * index.html or with a broken starter.json is skipped (one bad starter never hides the others).
- */
-async function readStarters(dir) {
-  const names = await fs.readdir(dir).catch(() => []);
-  const out = [];
-  for (const id of names) {
-    if (!/^[a-z0-9][a-z0-9-]{0,39}$/.test(id)) continue;
-    const at = path.join(dir, id);
-    if (!existsSync(path.join(at, 'index.html'))) continue;
-    let meta;
-    try {
-      meta = JSON.parse(await fs.readFile(path.join(at, 'starter.json'), 'utf8'));
-    } catch {
-      continue;
-    }
-    if (!meta || !DIMS.includes(meta.dim)) continue;
-    out.push({
-      id,
-      dim: meta.dim,
-      title: typeof meta.title === 'string' && meta.title.trim() ? meta.title.trim().slice(0, 60) : id,
-      blurb: typeof meta.blurb === 'string' ? meta.blurb.trim().slice(0, 200) : '',
-      order: Number.isFinite(meta.order) ? meta.order : 99,
-      thumb: typeof meta.thumb === 'string' && existsSync(path.join(at, meta.thumb)) ? path.join(at, meta.thumb) : null,
-      dir: at,
-    });
-  }
-  return out.sort((a, b) => DIMS.indexOf(a.dim) - DIMS.indexOf(b.dim) || a.order - b.order || a.id.localeCompare(b.id));
-}
-
-/**
- * The starters to offer: the first folder of `roots` that has any, else the two examples
- * (marked `fallback: true`). `starterDir` (the --starters-dir option) replaces the roots.
- */
-async function findStarters(here, starterDir) {
-  for (const r of starterDir ? [starterDir] : starterRoots(here)) {
-    const list = await readStarters(r);
-    if (list.length) return list;
-  }
-  for (const r of exampleRoots(here)) {
-    const list = FALLBACK.filter((f) => existsSync(path.join(r, f.id, 'index.html')))
-      .map((f, i) => ({ ...f, order: i + 1, thumb: null, dir: path.join(r, f.id), fallback: true }));
-    if (list.length) return list;
-  }
-  return [];
-}
-
-/** "3d" / "2d" = the first of that dimension; anything else = that id. */
-function pickStarter(list, want) {
-  const w = String(want || '').toLowerCase();
-  return DIMS.includes(w) ? list.find((s) => s.dim === w) || null : list.find((s) => s.id === w) || null;
-}
-
-/** Relative paths of the files a starter puts into a game (sorted). */
-async function starterFiles(src) {
-  const out = [];
-  async function walk(rel) {
-    const entries = await fs.readdir(path.join(src, rel), { withFileTypes: true });
-    for (const e of entries) {
-      const r = rel ? `${rel}/${e.name}` : e.name;
-      if (NEVER.has(e.name)) continue;
-      if (!rel && STARTER_ONLY.has(e.name)) continue;
-      if (rel === '.studio' && STUDIO_NOTES.test(e.name)) continue;
-      // Links are skipped: a starter is plain files, and a link could point out of the folder.
-      if (e.isSymbolicLink()) continue;
-      if (e.isDirectory()) await walk(r);
-      else if (e.isFile()) out.push(r);
-    }
-  }
-  await walk('');
-  return out.sort();
-}
-
-/**
- * Copy a starter into `dest` (created when missing). Nothing is ever overwritten: when any file is
- * already there, nothing is copied and `conflicts` lists them. Returns { files, conflicts }.
- */
-async function copyStarter(starter, dest) {
-  const files = await starterFiles(starter.dir);
-  const conflicts = files.filter((f) => existsSync(path.join(dest, f)));
-  if (conflicts.length) return { files: [], conflicts };
-  for (const f of files) {
-    const to = path.join(dest, f);
-    await fs.mkdir(path.dirname(to), { recursive: true });
-    // COPYFILE_EXCL: a file that appeared since the check above is still never overwritten.
-    await fs.copyFile(path.join(starter.dir, f), to, 1);
-  }
-  return { files, conflicts: [] };
-}
-
-/** The one stdout line for a folder without a game: what to ask, and the exact next command. */
-function noGameLine(root, list) {
-  const offer = DIMS.map((d) => list.find((s) => s.dim === d)).filter(Boolean)
-    .map((s) => `--starter ${s.dim} (${s.title})`).join(' or ');
-  return offer
-    ? `studio: no-game ${root} - ask once "Start from a sample? 3D or 2D", then run again with ${offer}`
-    : `studio: no-game ${root} - no index.html and no samples to start from`;
 }
 
 // ---- src/server/find-game.mjs ----
@@ -8549,8 +8770,9 @@ function printResults(results, ops, where, out) {
 //   studio: check-view ok|failed|skipped …   with --check-view (then the process exits)
 //   studio: entry <page> - opened …          no index.html: the game page found instead (find-game.mjs); "ready" follows
 //   studio: build-first <page> - …           the only game page needs its build first (exit 5)
-//   studio: no-game <folder> - ask once …    no game page at all: offer a starter (exit 4, see --starter)
-//   studio: started <id> (12 files)          --starter copied a sample game in; "ready" follows
+//   studio: no-game <folder> - the editor opens on its shelf …   no game page at all: the editor opens on its shelf of
+//                                            samples ("ready" follows; exit 4 only for a check that needs a game)
+//   studio: started <id> (12 files) <title>  a sample was copied in: picked on the shelf, or --starter
 //   studio: undone .studio/requests/<id>.json "…"   the person pressed "Undo AI change"
 //   studio: watching 2 waiting               --watch started with requests waiting (then one line per request, as
 //                                            above); with none waiting it goes to stderr, so it wakes nobody
@@ -8752,19 +8974,27 @@ async function main(argv) {
     // Only for the editor itself: the hand-off commands print nothing extra, so the watch stays quiet.
     if (!args.watch && !args.requests && args.status === undefined && args.do === undefined && !args.checkView && !args.shot && !args.checkMoment) process.stdout.write(found.line + '\n');
   }
+  // No game here (and no --entry naming one). Decided 2026-11-06: the editor opens anyway, on its shelf of samples, and
+  // copies the one the person picks into this folder (server.mjs api/shelf). Before, it exited 4 and the agent asked
+  // "Start from a sample? 3D or 2D" in words, then ran --starter: with six samples, words cannot show what they are.
+  // The hand-off commands only need .studio/ (a watch started right after the editor, before the pick, must not stop).
+  // A check that needs the game itself (--check-view, --shot, --check-moment) still stops with exit 4.
+  let shelf = null;
   if (!existsSync(path.join(root, entry))) {
-    // No game here. With the default page that usually means "an empty folder": say on stdout what
-    // the agent asks and runs next (the arrange skill, "A folder without a game"). Exit 4 = no game.
-    if (!args.entry) {
-      // Only the stdout line (decided 2026-11-06): stderr used to add "There’s no index.html … To open a different page,
-      // use --entry <file>." — advice for a folder WITH a game under another name, read by the AI next to "Start from a
-      // sample?" for an empty folder. A folder that has files but no page still gets the --entry hint.
-      process.stdout.write(noGameLine(root, await findStarters(here, args.startersDir)) + '\n');
-      if (!folderIsEmpty(root)) process.stderr.write(`There’s no ${entry} in ${root} yet. To open a different page, use --entry <file>.\n`);
-      return 4;
+    if (args.entry) {
+      process.stderr.write(`studio: no ${entry} in ${root}. Check the name after --entry.\n`);
+      return 2;
     }
-    process.stderr.write(`studio: no ${entry} in ${root}. Check the name after --entry.\n`);
-    return 2;
+    const list = await findStarters(here, args.startersDir);
+    const handOff = args.watch || args.requests || args.status !== undefined || args.do !== undefined;
+    const check = args.checkView || args.shot || args.checkMoment;
+    if (!handOff) {
+      process.stdout.write(noGameLine(root, list, { shelf: !check }) + '\n');
+      // A folder that has files but no page: maybe the game's page is called something else (stderr: for a human).
+      if (!folderIsEmpty(root)) process.stderr.write(`There’s no ${entry} in ${root} yet. To open a different page, use --entry <file>.\n`);
+      if (check || !list.length) return 4;
+      shelf = { here, startersDir: args.startersDir };
+    }
   }
 
   let host = '127.0.0.1';
@@ -8800,6 +9030,7 @@ async function main(argv) {
     uiDir: args.ui ? path.resolve(args.ui) : path.join(here, 'studio-ui'),
     onStop: () => stop(),
     onOpened: () => markOpened(realpathSync(root)).catch(() => {}),
+    shelf,
   });
 
   // --tool library: open the editor on the Library (the shell reads ?tool=).

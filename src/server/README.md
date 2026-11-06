@@ -9,12 +9,13 @@ dependencies). It is the local implementation of the host interface (contract 3)
     node skills/arrange/bin/studio.mjs <game folder> --requests | --status <state> [--request id] [--changed n] [--note text]
     node skills/arrange/bin/studio.mjs <game folder> --watch                 # the agent's watch (Monitor): a line per request, .studio/watch.json while it runs
     node skills/arrange/bin/studio.mjs <game folder> --do <op> [--key k …]   # the AI does editor work itself: in the open editor, else in placement.json (CONTRACT.md §3.6)
+    node skills/arrange/bin/studio.mjs <empty folder>                        # the editor opens on its shelf of samples; the one picked is copied in
     node skills/arrange/bin/studio.mjs <empty folder> --starter 3d|2d|<id>   # copy a sample game in, then open it (refused when any game page is there)
     node skills/arrange/bin/studio.mjs --starters                            # list the samples (JSON lines)
     node skills/arrange/bin/studio.mjs --version                             # this Game Studio's version alone ("0.1.82"), exit 0
 
 - `node-check.mjs` - first code in studio.mjs: on Node older than 22.13, one line ("Game Studio needs Node 22.13 or newer. You have X. Install: https://nodejs.org") and exit 1
-- `starters.mjs` - sample games for a folder without one (`starters/<id>/` with `starter.json`; falls back to examples/three-crates and pixi-garden); `studio: no-game` (exit 4) and `--starter`
+- `starters.mjs` - sample games for a folder without one (`starters/<id>/` with `starter.json` and its optional `try`; a starter may stand for `examples/<id>` with `"from"`; falls back to examples/three-crates and pixi-garden); the shelf's list (`shelfList`, with the planned samples as "Coming"), `studio: no-game` and `--starter`. The shelf itself (decided 2026-11-06): a folder without a game opens the editor on it (`server.mjs` `api/shelf`, `api/shelf/open`, `/__studio/shelf/<id>/…`)
 - `find-game.mjs` - no `index.html` (and no `--entry`): finds the person's game page by any name (`neon-orb.html`, `game.html`, `dist/index.html`) by what it runs (engine, canvas, loop; readme/about/test pages never), prints `studio: entry <page>`, serves that page's folder; `studio: build-first` (exit 5) when only a Vite source is there (2026-10-21)
 - `open-in.mjs` - the link with its pass (`--link`), where it opens (default browser unless `--open-in app`; nothing over SSH / without a display) and the two lines after every `studio: ready`: the reply's first line with the link, and where it went (link always, 2026-10-23)
 - `cli.mjs` - arguments, browser opening, stdout lines (`studio: ready|saved|added|next-step|request|stopped`), the EPERM line for sandboxes, and `--requests` / `--status` for the agent (hand-offs, CONTRACT.md §3.4)

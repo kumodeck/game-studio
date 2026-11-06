@@ -12,8 +12,9 @@
 //   studio: check-view ok|failed|skipped …   with --check-view (then the process exits)
 //   studio: entry <page> - opened …          no index.html: the game page found instead (find-game.mjs); "ready" follows
 //   studio: build-first <page> - …           the only game page needs its build first (exit 5)
-//   studio: no-game <folder> - ask once …    no game page at all: offer a starter (exit 4, see --starter)
-//   studio: started <id> (12 files)          --starter copied a sample game in; "ready" follows
+//   studio: no-game <folder> - the editor opens on its shelf …   no game page at all: the editor opens on its shelf of
+//                                            samples ("ready" follows; exit 4 only for a check that needs a game)
+//   studio: started <id> (12 files) <title>  a sample was copied in: picked on the shelf, or --starter
 //   studio: undone .studio/requests/<id>.json "…"   the person pressed "Undo AI change"
 //   studio: watching 2 waiting               --watch started with requests waiting (then one line per request, as
 //                                            above); with none waiting it goes to stderr, so it wakes nobody
@@ -215,19 +216,27 @@ export async function main(argv) {
     // Only for the editor itself: the hand-off commands print nothing extra, so the watch stays quiet.
     if (!args.watch && !args.requests && args.status === undefined && args.do === undefined && !args.checkView && !args.shot && !args.checkMoment) process.stdout.write(found.line + '\n');
   }
+  // No game here (and no --entry naming one). Decided 2026-11-06: the editor opens anyway, on its shelf of samples, and
+  // copies the one the person picks into this folder (server.mjs api/shelf). Before, it exited 4 and the agent asked
+  // "Start from a sample? 3D or 2D" in words, then ran --starter: with six samples, words cannot show what they are.
+  // The hand-off commands only need .studio/ (a watch started right after the editor, before the pick, must not stop).
+  // A check that needs the game itself (--check-view, --shot, --check-moment) still stops with exit 4.
+  let shelf = null;
   if (!existsSync(path.join(root, entry))) {
-    // No game here. With the default page that usually means "an empty folder": say on stdout what
-    // the agent asks and runs next (the arrange skill, "A folder without a game"). Exit 4 = no game.
-    if (!args.entry) {
-      // Only the stdout line (decided 2026-11-06): stderr used to add "There’s no index.html … To open a different page,
-      // use --entry <file>." — advice for a folder WITH a game under another name, read by the AI next to "Start from a
-      // sample?" for an empty folder. A folder that has files but no page still gets the --entry hint.
-      process.stdout.write(noGameLine(root, await findStarters(here, args.startersDir)) + '\n');
-      if (!folderIsEmpty(root)) process.stderr.write(`There’s no ${entry} in ${root} yet. To open a different page, use --entry <file>.\n`);
-      return 4;
+    if (args.entry) {
+      process.stderr.write(`studio: no ${entry} in ${root}. Check the name after --entry.\n`);
+      return 2;
     }
-    process.stderr.write(`studio: no ${entry} in ${root}. Check the name after --entry.\n`);
-    return 2;
+    const list = await findStarters(here, args.startersDir);
+    const handOff = args.watch || args.requests || args.status !== undefined || args.do !== undefined;
+    const check = args.checkView || args.shot || args.checkMoment;
+    if (!handOff) {
+      process.stdout.write(noGameLine(root, list, { shelf: !check }) + '\n');
+      // A folder that has files but no page: maybe the game's page is called something else (stderr: for a human).
+      if (!folderIsEmpty(root)) process.stderr.write(`There’s no ${entry} in ${root} yet. To open a different page, use --entry <file>.\n`);
+      if (check || !list.length) return 4;
+      shelf = { here, startersDir: args.startersDir };
+    }
   }
 
   let host = '127.0.0.1';
@@ -263,6 +272,7 @@ export async function main(argv) {
     uiDir: args.ui ? path.resolve(args.ui) : path.join(here, 'studio-ui'),
     onStop: () => stop(),
     onOpened: () => markOpened(realpathSync(root)).catch(() => {}),
+    shelf,
   });
 
   // --tool library: open the editor on the Library (the shell reads ?tool=).

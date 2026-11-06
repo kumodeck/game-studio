@@ -2,8 +2,9 @@
 //
 //   node test/studio-first5.browser.mjs [--real | --starters-dir <dir>] [--shots <dir>] [--video <file.mp4>] [--lang en|ja]
 //
-// 1. An empty folder: the real CLI (skills/arrange/bin/studio.mjs) says "no-game" (exit 4) and
-//    what to ask; run again with --starter 3d it copies the sample in and prints "ready".
+// 1. An empty folder: the real CLI (skills/arrange/bin/studio.mjs) says "no-game … the editor opens on its shelf"
+//    and "ready" (decided 2026-11-06; the shelf itself: studio-shelf-screen.browser.mjs). Here the sample is then
+//    copied with --starter 3d, the same copy a pick on the shelf makes, and the editor opens on it.
 // 2. The editor opens on the sample, with no first-run tips (the four-step intro, "1/4 Click an
 //    object…", was removed on 2026-10-17: the editor opens on the game alone).
 // 3. Pick → drag → ask → Save, with no tips at any step; placement.json is written.
@@ -137,8 +138,7 @@ function terminalPage(folder, noGame, started) {
       ['u', '> /arrange'],
       ['d', `  studio.mjs ${basename(folder)}`],
       ['d', '  ' + esc(noGame)],
-      ['a', "  There's no game here yet. Want to start from a sample?  [3D]  2D"],
-      ['u', '> 3D'],
+      ['a', '  Pick a sample on the shelf: point at one to see it move, then open it.'],
       ['d', '  ' + esc(started[0])],
       ['d', '  ' + esc(started[1])],
       ['a', '  Opened the editor. Click a thing and drag it; ask me in the box at the bottom; press Save.'],
@@ -159,12 +159,14 @@ async function run() {
     const folder = join(mkdtempSync(join(tmpdir(), 'studio-first5-')), 'my-first-game');
     mkdirSync(folder);
     results.folders.push(dirname(folder));
-    const probe = spawnSync(process.execPath, [CLI, folder, ...STARTERS], { encoding: 'utf8' });
-    assert.equal(probe.status, 4, probe.stderr);
-    const noGame = probe.stdout.trim();
-    assert.match(noGame, /^studio: no-game .* - ask once "Start from a sample\? 3D or 2D", then run again with --starter 3d \(.+\) or --starter 2d \(.+\)$/);
-    assert.deepEqual(readdirSync(folder), []);
-    step(`empty folder → exit 4: ${noGame.replace(folder, '<folder>')}`);
+    const probe = await startCli([folder, ...STARTERS]);
+    await probe.stop();
+    const noGame = probe.lines[0];
+    assert.match(noGame, /^studio: no-game .* - the editor opens on its shelf of samples: don't ask which one/);
+    assert.match(probe.lines[1], /^studio: ready /);
+    assert.deepEqual(readdirSync(folder).filter((f) => f !== '.studio'), []);
+    rmSync(join(folder, '.studio'), { recursive: true, force: true });
+    step(`empty folder → the shelf: ${noGame.replace(folder, '<folder>')}`);
     const cli = await startCli([folder, '--starter', '3d', ...STARTERS]);
     assert.match(cli.lines[0], /^studio: started \S+ \(\d+ files\) /);
     assert.ok(existsSync(join(folder, 'index.html')));

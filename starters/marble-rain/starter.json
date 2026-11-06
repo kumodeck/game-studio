@@ -1,0 +1,13 @@
+{
+  "title": "Marble Rain",
+  "dim": "2d",
+  "blurb": "Hundreds of glowing marbles pour through a triangle of pins and pile up in the bins. Move one pin and they fall another way.",
+  "thumb": "thumb.png",
+  "order": 4,
+  "try": {
+    "move": "pin-1-2",
+    "pauseAt": 4.5,
+    "mark": true,
+    "ask": { "en": "Add a spinning paddle here." }
+  }
+}

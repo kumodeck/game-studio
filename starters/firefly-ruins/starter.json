@@ -3,5 +3,12 @@
   "dim": "2d",
   "blurb": "An old stone gate by a still pond at sunset. Fireflies come out, and a tap sends a breeze.",
   "thumb": "thumb.png",
-  "order": 2
+  "order": 2,
+  "try": {
+    "move": "lantern",
+    "pauseAt": 4,
+    "ask": {
+      "en": "Make it night and double the fireflies."
+    }
+  }
 }

@@ -13,7 +13,8 @@
 //
 // The change it makes depends on the game it finds: Lantern Cove gets three more lighthouses
 // around the island; the three-crates example gets three more crates in a row. Anything else:
-// a comment at the end of the main script (a change that moves nothing).
+// a comment at the end of the main script (a change that moves nothing). For a paused ask, the
+// shelf's samples have their own answers (SHELF_FIXES / shelfFix, below).
 import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
@@ -95,6 +96,126 @@ export function chatReplyFor(rec) {
     : `I see the moment you stopped at.${near ? ` Nearest you is "${near}".` : ''} It does what the code says here.`;
 }
 
+// ---------------------------------------------------------------- the sample shelf's "Try asking" answers
+// The shelf (decided 2026-11-06): every sample's starter.json has `try.ask` — the one thing to ask from a paused
+// moment. Here is the stand-in's answer to each, for the tests and the clips: one change that makes the picture very
+// different in a 10-second Before / After, made the way a real AI would make it (change a number in the code).
+// One row per sample, so whoever adds a sample adds one row and nothing else here.
+//   is(folder)       — is this folder that sample (by its code: a copied sample has no starter.json)
+//   fix(folder, rec) — change the code; { files, note } (note in rec.lang), or null when the code is not as expected
+// Pass `fix: shelfFix` to startFakeAgent to answer a paused ask with them.
+const readIf = (f) => (existsSync(f) ? readFileSync(f, 'utf8') : '');
+export const SHELF_FIXES = [
+  {
+    // Big Swell: “Make the waves twice as tall.” → WAVE_HEIGHT × 2 (1.0 → 2.0; every wave and the big swell follow it).
+    id: 'big-swell',
+    is: (folder) => /const WAVE_HEIGHT = [\d.]+;/.test(readIf(join(folder, 'game.js'))),
+    fix(folder, rec) {
+      const f = join(folder, 'game.js');
+      const src = readFileSync(f, 'utf8');
+      const m = /const WAVE_HEIGHT = ([\d.]+);/.exec(src);
+      if (!m) return null;
+      const v = (Number(m[1]) * 2).toFixed(1);
+      writeFileSync(f, src.replace(m[0], `const WAVE_HEIGHT = ${v};`));
+      return { files: ['game.js'], note: rec.lang === 'ja' ? `波の高さを ${m[1]} → ${v} にしました。` : `The waves are now twice as tall (WAVE_HEIGHT ${m[1]} → ${v}).` };
+    },
+  },
+  {
+    // Lantern Cove: “Add three more lighthouses around the island.” → the same change planFor() makes for a plain ask.
+    id: 'lantern-cove',
+    is: (folder) => existsSync(join(folder, 'js/props.js')) && readIf(join(folder, 'js/main.js')).includes('Lantern Cove'),
+    fix(folder, rec) {
+      const plan = planFor(folder, rec.lang);
+      for (const step of plan.steps) step();
+      return { files: ['js/main.js'], note: plan.done + (rec.lang === 'ja' ? '。' : '.'), changed: plan.changed };
+    },
+  },
+  {
+    // Neon Run (examples/three-neon-boss): “Bring the boss in from here.” (with a ◎ mark) → the boss comes in 2 m more
+    // to the left (as test/studio-clip-ba.browser.mjs's nudgeBoss: the v0.1.82 clip).
+    id: 'three-neon-boss',
+    is: (folder) => /boss\.position\.set\(/.test(readIf(join(folder, 'game.js'))),
+    fix(folder, rec) {
+      const f = join(folder, 'game.js');
+      const src = readFileSync(f, 'utf8');
+      const m = /boss\.position\.set\((-?[\d.]+), (-?[\d.]+), (-?[\d.]+)\);/.exec(src);
+      if (!m) return null;
+      const x = (Number(m[1]) - 2).toFixed(1);
+      writeFileSync(f, src.replace(m[0], `boss.position.set(${x}, ${m[2]}, ${m[3]});`));
+      return { files: ['game.js'], note: rec.lang === 'ja' ? `ボスは X ${x} から出るようにしました。` : `The boss now comes in at X ${x}, more to the left.` };
+    },
+  },
+  {
+    // Firefly Ruins: “Make it night and double the fireflies.” → the firefly count × 2 (46 → 92) in js/life.js, and a
+    // deep blue veil over the world under the fireflies in js/main.js (so they glow brighter against it).
+    id: 'firefly-ruins',
+    is: (folder) => readIf(join(folder, 'js/main.js')).includes('Firefly Ruins') && existsSync(join(folder, 'js/life.js')),
+    fix(folder, rec) {
+      const life = join(folder, 'js/life.js'), main = join(folder, 'js/main.js');
+      const src = readFileSync(life, 'utf8');
+      const m = /for \(let i = 0; i < (\d+); i\+\+\) \{\n(\s+)const s = new Sprite\(flyTex\);/.exec(src);
+      if (!m) return null;
+      const n = Number(m[1]) * 2;
+      writeFileSync(life, src.replace(m[0], m[0].replace(`i < ${m[1]};`, `i < ${n};`)));
+      edit(main, "import { Application, Container, Rectangle, Sprite } from 'pixi.js';", "import { Application, Container, Graphics, Rectangle, Sprite } from 'pixi.js';");
+      edit(main, 'app.stage.addChild(backdrop.back, backdrop.bank, ...objects.back, backdrop.shafts, pond.pond, ...objects.front, life.layer, vignette);',
+        `// Night: a deep blue veil over the world, under the fireflies (they glow on top of it).
+const night = new Graphics().rect(-W, -H, W * 3, H * 3).fill({ color: 0x0a1030, alpha: 0.62 });
+night.studio = false;
+app.stage.addChild(backdrop.back, backdrop.bank, ...objects.back, backdrop.shafts, pond.pond, ...objects.front, night, life.layer, vignette);`);
+      return { files: ['js/life.js', 'js/main.js'], note: rec.lang === 'ja' ? `夜にして、ホタルを ${m[1]} → ${n} 匹にしました。` : `It is night now, and there are twice the fireflies (${m[1]} → ${n}).` };
+    },
+  },
+  {
+    // Domino Spiral: “Make the dominoes twice as tall.” → DOMINO_HEIGHT × 2 in game.js (1.0 → 2.0).
+    id: 'domino-spiral',
+    is: (folder) => readIf(join(folder, 'game.js')).includes('Domino Spiral'),
+    fix(folder, rec) {
+      const f = join(folder, 'game.js');
+      const src = readIf(f);
+      const m = /const DOMINO_HEIGHT = ([\d.]+);/.exec(src);
+      if (!m) return null;
+      const v = (Number(m[1]) * 2).toFixed(1);
+      writeFileSync(f, src.replace(m[0], `const DOMINO_HEIGHT = ${v};`));
+      return { files: ['game.js'], note: rec.lang === 'ja' ? `ドミノの高さを ${m[1]} → ${v} にしました。` : `The dominoes are now twice as tall (DOMINO_HEIGHT ${m[1]} → ${v}).` };
+    },
+  },
+  {
+    // Marble Rain: “Add a spinning paddle here.” (with a ◎ mark) → one [x, y] in the empty PADDLES list of game.js, at the
+    // mark (marbleRainPaddle below).
+    id: 'marble-rain',
+    is: (folder) => readIf(join(folder, 'game.js')).includes('Marble Rain'),
+    fix: (folder, rec) => marbleRainPaddle(folder, rec),
+  },
+];
+
+/** The shelf's answer for the sample in `folder` (SHELF_FIXES), as startFakeAgent's `fix`; null for any other game. */
+export function shelfFix(folder, rec) {
+  const row = SHELF_FIXES.find((r) => r.is(folder));
+  return row ? row.fix(folder, rec) : null;
+}
+
+/**
+ * Marble Rain (starters/marble-rain, sample shelf, 2026-11-06): the fix for its `try.ask` "Add a spinning paddle here."
+ * — one spinning paddle at the person's ◎ mark, written as a real AI would: the empty `const PADDLES = [];` in game.js
+ * gets one [x, y] in the board's pixels. Its row in SHELF_FIXES calls it (so `fix: shelfFix` answers it); also usable alone as `fix`.
+ * Where: the first mark's `world` (the 2D adapter's toGround = board pixels); a mark without one, its place on the
+ * frame (0–1) times the board (1280 × 800); no mark, just above the first pins. null when game.js is not Marble Rain.
+ */
+export function marbleRainPaddle(folder, rec) {
+  const f = join(folder, 'game.js');
+  if (!existsSync(f)) return null;
+  const src = readFileSync(f, 'utf8');
+  if (!src.includes('Marble Rain') || !src.includes('const PADDLES = [];')) return null;
+  const m = Array.isArray(rec.marks) ? rec.marks[0] : null;
+  const at = Array.isArray(m?.world) && m.world.length >= 2 ? m.world
+    : Array.isArray(m?.screen) ? [(m.screen.length === 4 ? (m.screen[0] + m.screen[2]) / 2 : m.screen[0]) * 1280, (m.screen.length === 4 ? (m.screen[1] + m.screen[3]) / 2 : m.screen[1]) * 800]
+      : [640, 118];
+  const [x, y] = at.map((v) => Math.round(Number(v)));
+  writeFileSync(f, src.replace('const PADDLES = [];', `const PADDLES = [[${x}, ${y}]];`));
+  return { files: ['game.js'], note: rec.lang === 'ja' ? `◎ の所に回る板を足しました（x ${x}, y ${y}）。玉をはじきます。` : `Added a spinning paddle at your mark (x ${x}, y ${y}): it bats the marbles aside.` };
+}
+
 function edit(file, from, to) {
   const s = readFileSync(file, 'utf8');
   if (!s.includes(from)) throw new Error(`fake agent: "${from.slice(0, 40)}" not found in ${file}`);
@@ -116,6 +237,9 @@ function edit(file, from, to) {
  * ● Clip stage 2 (2026-11-05; SKILL.md "Clip post"): an `ask` with `intent: "clip-post"` (✦ Rewrite) changes no files and
  * answers with the post as the note — `clipPost(rec)`'s, else a plain rewrite of its own (with the address when the
  * clip's mark is on).
+ * The shelf's samples (2026-11-06): pass `fix: shelfFix` for a paused ask on a shelf sample to get that sample's
+ * one-number fix (SHELF_FIXES). WHY not the default: older tests ask from a paused Neon Run and expect no file change
+ * (its row would move the boss); the shelf tests opt in (merged 2026-11-06).
  */
 export function startFakeAgent(folder, { slow = false, onEvent = () => {}, plan: given = null, madeCode = false, fix = null, connect = null, clipPost = null } = {}) {
   const t0 = Date.now();

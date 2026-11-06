@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+  <meta name="theme-color" content="#07060c" />
+  <title>Domino Spiral</title>
+  <style>
+    html, body { margin: 0; height: 100%; overflow: hidden; background: #07060c; touch-action: none; }
+    canvas { position: fixed; left: 0; top: 0; width: 100%; height: 100%; display: block; }
+    /* The HUD (HTML over the canvas): the title and the one thing to do, top left; how many are down, top right.
+       Small and quiet on purpose: the light running down the spiral is the show (a sample has to read in 1 second,
+       decided 2026-11-06). */
+    #hud, #count { position: fixed; top: max(14px, env(safe-area-inset-top)); color: #f4f1ff;
+      font: 600 15px/1.35 system-ui, -apple-system, sans-serif; text-shadow: 0 1px 8px rgba(10, 6, 30, .8); pointer-events: none; }
+    #hud { left: 18px; }
+    #hud .title { font-size: 20px; letter-spacing: .18em; }
+    #hud .hint { opacity: .72; font-weight: 500; }
+    #count { right: 18px; font-variant-numeric: tabular-nums; }
+  </style>
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.187.0/build/three.module.min.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.187.0/examples/jsm/"
+      }
+    }
+  </script>
+</head>
+<body>
+  <div id="hud"><div class="title">DOMINO SPIRAL</div><div class="hint">It stands itself up again after every run</div></div>
+  <div id="count">Down 0</div>
+  <script type="module" src="game.js"></script>
+</body>
+</html>

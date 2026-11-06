@@ -1,1 +1,2 @@
-{ "title": "Fake Harbor", "dim": "3d", "blurb": "Three boxes for the tests.", "thumb": "thumb.png", "order": 1 }
+{ "title": "Fake Harbor", "dim": "3d", "blurb": "Three boxes for the tests.", "thumb": "thumb.png", "order": 1,
+  "try": { "move": "crate", "pauseAt": 2.25, "ask": { "en": "Make the boxes twice as big." } } }

@@ -131,13 +131,27 @@ test('--starter again after a start that did not come up: the same sample is ope
   }
 });
 
-test('--detach: an editor that cannot start says why on stdout, with its exit code (no game: 4)', () => {
+test('--detach: an editor that cannot start says why on stdout, with its exit code (a check with no game: 4)', () => {
   const base = tmp('fail');
   try {
-    const r = run([base, '--detach', '--no-open', '--starters-dir', FAKE]);
+    const r = run([base, '--check-view', '--detach', '--no-open', '--starters-dir', FAKE]);
     assert.equal(r.status, 4);
     assert.match(r.stdout, /^studio: no-game /);
     assert.ok(!existsSync(join(base, '.studio/server.json')));
+  } finally {
+    rmSync(base, { recursive: true, force: true });
+  }
+});
+
+// Decided 2026-11-06: a folder without a game opens on the shelf, detached like any editor (its line comes first).
+test('--detach in a folder without a game: the shelf line, then ready; --stop stops it', () => {
+  const base = tmp('shelf');
+  try {
+    const r = run([base, '--detach', '--no-open', '--starters-dir', FAKE]);
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    assert.match(r.stdout, /^studio: no-game .* - the editor opens on its shelf of samples/);
+    assert.match(r.stdout, /\nstudio: ready http:\/\/127\.0\.0\.1:\d+\/__studio\/\?t=\S+ pid \d+\n/);
+    assert.equal(run([base, '--stop']).status, 0);
   } finally {
     rmSync(base, { recursive: true, force: true });
   }

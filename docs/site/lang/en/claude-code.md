@@ -29,7 +29,7 @@ Claude installs the plugin and opens the editor. It asks you once whether new ve
 
 ## From an idea to a game you can arrange
 
-1. **Have Claude make the game.** In an empty folder, ask for it: “Make a small three.js game: a harbor at dusk, boats you can sail.” Or type `/arrange` there and start from a sample (3D or 2D).
+1. **Have Claude make the game.** In an empty folder, ask for it: “Make a small three.js game: a harbor at dusk, boats you can sail.” Or type `/arrange` there and pick a sample on the editor’s shelf.
 2. **Open it in the editor.** In the game’s folder, type `/arrange`. The editor’s link is on the first line of Claude’s reply, and it opens in your browser by itself.
 3. **Arrange it by hand.** Click anything and drag it. The strip under it moves, lifts, turns and resizes. See [Editing](editing.md).
 4. **Ask Claude in the same window.** Type in the box at the bottom, like “add 3 more like this,” and press <kbd>Enter</kbd>. The box says **● Claude is watching** when Claude will get it within seconds.
