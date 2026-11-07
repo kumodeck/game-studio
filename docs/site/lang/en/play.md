@@ -2,7 +2,7 @@
 title: Play
 nav: Play
 order: 3
-written-for: 0.1.88
+written-for: 0.1.89
 description: Play your game in the editor, slow it down, pause it on the exact frame, edit that moment by hand or with your AI, and keep it as a checkpoint.
 ---
 
@@ -189,6 +189,7 @@ You paused, asked your AI for a fix, and it fixed the code ([Ask about this mome
 - You get a 10-second video (with the 8-second length; the Before adds 2 seconds to the length you picked). First the frame you asked from, with your marks and your words, for 2 seconds (**Before**). Then a wipe, and the same moment with the new code, playing for the length you picked (**After**). The last second has the mark.
 - The Before is silent. The After has the game’s sound, like any clip.
 - The video shows three bits of text at most: **Before**, **After** and what you asked. To leave your words out, turn off **Show my words on Before / After** in **⌄**.
+- Your words sit at the bottom of the Before. If the game has its own text there, like a hint or a score, they sit just above it, so neither covers the other.
 - The post is written for you: “Paused my game at 0:05, marked a spot and told Claude “bring the boss in from here”. It fixed the code. Before → After 👇”. **✦ Rewrite** works here too.
 - You can steer during the After. If you don’t, the game just goes on.
 

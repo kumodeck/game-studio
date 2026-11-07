@@ -107,6 +107,23 @@ test('big-swell: the waves twice as tall = WAVE_HEIGHT 1.0 → 2.0, nothing else
   }
 });
 
+test('three-neon-boss: the boss three times as big = boss.scale 3 and lifted 2.6 → 4.4, nothing else', async () => {
+  // Changed 2026-11-07 from “Bring the boss in from here.” (2 m more to the left: too small to see in a Before / After).
+  assert.equal(meta(SAMPLES['three-neon-boss']).try.ask.en, 'Make the boss three times as big.');
+  const folder = await copyOf(SAMPLES['three-neon-boss']);
+  try {
+    const was = readFileSync(join(folder, 'game.js'), 'utf8');
+    const line = 'boss.add(body, eye);\n  boss.position.set(0, 2.6, -26);';
+    assert.ok(was.includes(line), 'spawnBoss as shipped');
+    const r = shelfFix(folder, { lang: 'en' });
+    assert.equal(r.note, 'The boss is three times as big now.');
+    const now = readFileSync(join(folder, 'game.js'), 'utf8');
+    assert.equal(now, was.replace(line, 'boss.add(body, eye);\n  boss.scale.setScalar(3);\n  boss.position.set(0, 4.4, -26);'));
+  } finally {
+    rmSync(folder, { recursive: true, force: true });
+  }
+});
+
 test('any other game: shelfFix answers nothing (the paused chat reply stays)', async () => {
   const folder = await copyOf('examples/three-crates');
   try {

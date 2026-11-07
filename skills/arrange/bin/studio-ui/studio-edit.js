@@ -1,4 +1,4 @@
-/* KUMODeck Game Studio 0.1.88 — MIT License — built file, edit src/ instead */
+/* KUMODeck Game Studio 0.1.89 — MIT License — built file, edit src/ instead */
 (() => {
 const __defs = [];
 const __cache = [];
@@ -28005,6 +28005,61 @@ const BA_STILL_FPS = 10;
 /** The longest asked words drawn on the Before (characters, then "…"): one or two lines on a phone. */
 const BA_WORDS_MAX = 90;
 
+/** A box on the clip's frame (pixels of the frame, top-left origin). */
+                          
+            
+            
+            
+            
+ 
+
+/**
+ * Where the asked words' bubble goes on the Before (fixed 2026-11-07). It used to sit always at the bottom center, 6 %
+ * above the edge — right where many games put their own hint ("Tap or click the water to sail" in Lantern Cove, "Tap
+ * or click to send a breeze" in Firefly Ruins): the bubble lay on the hint and the hint's letters showed under its
+ * edges, in Wide and in Tall. Now the bubble keeps out of `avoid` (the game's own text on screen and the "Before"
+ * label, frame pixels):
+ *   - the bottom center when nothing is there (subtitles read best there, so it stays the first choice);
+ *   - else the free place nearest the bottom: just above or below one of the boxes, or the top (under `top`);
+ *   - when no place is free (a page full of text), the one that covers the least, nearest the bottom.
+ * `gap` = the room kept between the bubble and a box (default 2 % of the frame's short side). Always centered
+ * horizontally: the words are the video's caption, and a centered caption reads as one on a phone.
+ */
+function wordsPlace(o                                                                                                         )                           {
+  const { W, H, bw, bh } = o;
+  const x = Math.round((W - bw) / 2);
+  const gap = o.gap ?? Math.round(Math.min(W, H) * 0.02);
+  const low = H - bh - Math.round(H * 0.06); // the old place: the default when nothing is in the way
+  const high = Math.max(0, Math.min(low, o.top ?? Math.round(H * 0.03)));
+  // Only the boxes that are really there (a game can report a zero box or one off the frame).
+  const boxes = o.avoid.filter((b) => b.w > 0 && b.h > 0 && b.x < W && b.y < H && b.x + b.w > 0 && b.y + b.h > 0);
+  const covered = (y        ) => {
+    let a = 0;
+    for (const b of boxes) {
+      const ix = Math.min(x + bw, b.x + b.w) - Math.max(x, b.x);
+      const iy = Math.min(y + bh, b.y + b.h) - Math.max(y, b.y);
+      if (ix > 0 && iy > 0) a += ix * iy;
+    }
+    return a;
+  };
+  const tries = new Set        ([low, high]);
+  for (const b of boxes) {
+    tries.add(Math.round(b.y - gap - bh));
+    tries.add(Math.round(b.y + b.h + gap));
+  }
+  let best = low, bestA = Infinity;
+  // Lowest first, so on a tie (both free, or both covering as much) the one nearer the bottom wins.
+  for (const y of [...tries].filter((v) => v >= high && v <= low).sort((a, b) => b - a)) {
+    const a = covered(y);
+    if (a < bestA) {
+      best = y;
+      bestA = a;
+      if (a === 0) break;
+    }
+  }
+  return { x, y: best };
+}
+
 /** "neon-run-before-after" (the server adds "-1", "-2"…). */
 function beforeAfterStem(game        )         {
   return clipStem(game).replace(/-clip$/, '-before-after');
@@ -28172,6 +28227,7 @@ __def(__exports, "BA_ADDS_SECONDS", () => BA_ADDS_SECONDS);
 __def(__exports, "baSeconds", () => baSeconds);
 __def(__exports, "BA_STILL_FPS", () => BA_STILL_FPS);
 __def(__exports, "BA_WORDS_MAX", () => BA_WORDS_MAX);
+__def(__exports, "wordsPlace", () => wordsPlace);
 __def(__exports, "beforeAfterStem", () => beforeAfterStem);
 __def(__exports, "baWords", () => baWords);
 __def(__exports, "beforeAfterPost", () => beforeAfterPost);
@@ -28236,7 +28292,7 @@ __defs[68] = function (__exports) {
                                                                    
 const { isStudioMessage } = __require(15);
 const { nativeCancelRaf, nativeClearTimeout, nativeNow, nativeRaf, nativeSetTimeout } = __require(0);
-const { cutAtPress, markStartMs } = __require(67);
+const { cutAtPress, markStartMs, wordsPlace } = __require(67);
 const { clipTimeAt } = __require(65);
 const { startSound } = __require(66);
 const { paintPage } = __require(27);
@@ -28793,7 +28849,7 @@ function record(win     , m       , skip                          , post        
   };
 
   // ----- Before / After: the still part, the wipe, the words (stage 2) -----
-  const pill = (text        , x        , y        , f        , bg        , align                  ) => {
+  const pill = (text        , x        , y        , f        , bg        , align                  )          => {
     g.font = `700 ${f}px system-ui, -apple-system, "Segoe UI", sans-serif`;
     const w = g.measureText(text).width + f * 1.2, hgt = f * 1.7;
     const left = align === 'right' ? x - w : x;
@@ -28805,6 +28861,7 @@ function record(win     , m       , skip                          , post        
     g.fillStyle = '#fff';
     g.textBaseline = 'middle';
     g.fillText(text, left + f * 0.6, y + hgt / 2);
+    return { x: left, y, w, h: hgt };
   };
   const labelSize = () => Math.round(Math.min(W, H) * 0.045);
   /** The asked frame over the whole picture: fitted (wide) or cut to fill (tall: it was taken in the wide window). */
@@ -28824,7 +28881,60 @@ function record(win     , m       , skip                          , post        
     g.drawImage(beforeImg, (W - dw) / 2, (H - dh) / 2, dw, dh);
     g.restore();
   };
-  const drawWords = (text        ) => {
+  /**
+   * The game's own text on the Before (fixed 2026-11-07), in frame pixels: the words' bubble keeps out of it
+   * (clip-model.ts wordsPlace says why). Read from the live page, which is paused on the asked moment while the
+   * Before is drawn, so its HUD is where the asked frame shows it. Wide: the asked frame was taken in a window of the
+   * same shape, so a box maps onto the picture as drawn. Tall: the page now lays out in its 9:16 window while the
+   * picture is the wide frame cut to fill, so both readings are kept (where the HUD is in the tall page, and the same
+   * place on the picture): a hint anchored to the bottom center is then avoided in either. Text drawn inside a canvas
+   * is not seen (only the page's HTML).
+   */
+  const textBoxes = ()            => {
+    const doc = win.document;
+    const vw = win.innerWidth || 1, vh = win.innerHeight || 1;
+    const rects                                                   = [];
+    if (doc.body) {
+      const walk = doc.createTreeWalker(doc.body, 4 /* NodeFilter.SHOW_TEXT */);
+      const seen = new Set         ();
+      for (let n = walk.nextNode(), k = 0; n && k < 600 && rects.length < 40; n = walk.nextNode(), k++) {
+        const el = n.parentElement;
+        if (!el || seen.has(el) || !(n.textContent || '').trim()) continue;
+        seen.add(el);
+        if (el.closest('[data-studio-ui], game-studio-play, script, style, noscript')) continue;
+        let ours = false;
+        for (let e                 = el; e && !ours; e = e.parentElement) ours = skip(e);
+        if (ours) continue;
+        const vis = (el                                                          ).checkVisibility;
+        if (vis && !vis.call(el, { opacityProperty: true, visibilityProperty: true })) continue;
+        // The element's box (a hint's pill, its padding and background); a big container's box would cover
+        // the whole page, so for one of those only its text's own box.
+        let r                                                               = el.getBoundingClientRect();
+        if (r.width * r.height > vw * vh * 0.25) {
+          const range = doc.createRange();
+          range.selectNodeContents(n);
+          r = range.getBoundingClientRect();
+        }
+        if (r.width < 1 || r.height < 1 || r.left >= vw || r.top >= vh || r.left + r.width <= 0 || r.top + r.height <= 0) continue;
+        rects.push({ x: r.left / vw, y: r.top / vh, w: r.width / vw, h: r.height / vh });
+      }
+    }
+    const out            = [];
+    const onto = (ox        , oy        , dw        , dh        ) => {
+      for (const b of rects) out.push({ x: ox + b.x * dw, y: oy + b.y * dh, w: b.w * dw, h: b.h * dh });
+    };
+    const iw = beforeImg?.width || 0, ih = beforeImg?.height || 0;
+    if (iw && ih) {
+      const k = H > W ? Math.max(W / iw, H / ih) : Math.min(W / iw, H / ih);
+      onto((W - iw * k) / 2, (H - ih * k) / 2, iw * k, ih * k);
+    }
+    if (!iw || !ih || Math.abs(iw / ih - vw / vh) > 0.03 * (vw / vh)) {
+      const k = Math.min(W / vw, H / vh);
+      onto((W - vw * k) / 2, (H - vh * k) / 2, vw * k, vh * k);
+    }
+    return out;
+  };
+  const drawWords = (text        , avoid           , top        ) => {
     const f = Math.round(Math.min(W, H) * 0.04);
     g.font = `600 ${f}px system-ui, -apple-system, "Segoe UI", sans-serif`;
     const maxW = W * 0.84;
@@ -28843,7 +28953,8 @@ function record(win     , m       , skip                          , post        
     const lh = f * 1.3;
     const bw = Math.min(W * 0.9, Math.max(...lines.map((l) => g.measureText(l).width)) + f * 1.4);
     const bh = lines.length * lh + f * 0.8;
-    const x = (W - bw) / 2, y = H - bh - Math.round(H * 0.06);
+    // Not on the game's own text (fixed 2026-11-07: it used to be always at the bottom, over Lantern Cove's hint).
+    const { x, y } = wordsPlace({ W, H, bw, bh, avoid, top });
     g.fillStyle = 'rgba(0, 0, 0, 0.66)';
     g.beginPath();
     if (typeof g.roundRect === 'function') g.roundRect(x, y, bw, bh, Math.round(f / 2));
@@ -28863,8 +28974,15 @@ function record(win     , m       , skip                          , post        
     g.globalAlpha = 1;
     drawBeforeImage(0);
     const f = labelSize(), pad = Math.round(Math.min(W, H) * 0.035);
-    pill(before .label, W - pad, pad, f, BEFORE_BG, 'right');
-    if (before .words) drawWords(before .words);
+    const label = pill(before .label, W - pad, pad, f, BEFORE_BG, 'right');
+    let hud            = [];
+    try {
+      hud = textBoxes();
+    } catch {
+      /* a page that will not be read: the words go where they always went */
+    }
+    // The "Before" label is a box to keep out of too; the top place is under it.
+    if (before .words) drawWords(before .words, [...hud, label], label.y + label.h + pad / 2);
   };
   /** On a game frame `ms` after the After began: the Before wiped off (left to right) at first, then "After". */
   function drawAfter(ms        ) {

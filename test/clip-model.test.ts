@@ -8,7 +8,7 @@ import assert from 'node:assert/strict';
 import {
   BA_ADDS_SECONDS, BA_AFTER_SECONDS, BA_BEFORE_MS, BA_WORDS_MAX, CLIP_DEFAULT_LENGTH, CLIP_FPS, CLIP_LENGTHS, CLIP_MARK_DEFAULT, CLIP_MARK_LINES, CLIP_REPO_URL, CLIP_TALL, CLIP_WIDE, X_LIMIT,
   baSeconds, baWords, beforeAfterPost, beforeAfterStem, checkRewrite, clipFrames, cutAtPress, clipShapeFor, clipSize, clipStem, downloadName, endAfterStop, markStartMs,
-  normalizeClipPrefs, postText, recClock, withAddress, xLength,
+  normalizeClipPrefs, postText, recClock, withAddress, wordsPlace, xLength,
 } from '../src/shell/clip-model.ts';
 import { mp4Info, muxMp4, sampleTicks, type Mp4Sample } from '../src/shell/mp4.ts';
 import { translate } from '../src/shell/i18n.ts';
@@ -288,4 +288,43 @@ test('studio-clip-3: Post on X… opens X\'s compose page with the post (X\'s co
   assert.equal(`${u.origin}${u.pathname}`, X_COMPOSE);
   assert.equal(u.searchParams.get('text'), post);
   assert.deepEqual([...u.searchParams.keys()], ['text']);
+});
+
+// The asked words' bubble on the Before keeps off the game's own text (fixed 2026-11-07: it sat on Lantern Cove's and
+// Firefly Ruins' bottom hint, "Tap or click…"). bridge/play-clip.ts reads the boxes from the page; here, the rule.
+test('Before words: the bottom center when nothing is there (as before)', () => {
+  const W = 1280, H = 720, bw = 700, bh = 80;
+  assert.deepEqual(wordsPlace({ W, H, bw, bh, avoid: [] }), { x: 290, y: H - bh - Math.round(H * 0.06) });
+  // A box elsewhere (the "Before" label top right, a score top left) changes nothing.
+  assert.deepEqual(wordsPlace({ W, H, bw, bh, avoid: [{ x: 1100, y: 25, w: 150, h: 50 }, { x: 20, y: 20, w: 200, h: 40 }] }), { x: 290, y: 597 });
+});
+
+test('Before words: a hint at the bottom center (Wide) puts them just above it, not on it', () => {
+  const W = 1280, H = 720, bw = 700, bh = 80;
+  const hint = { x: 470, y: 640, w: 340, h: 44 }; // Lantern Cove's "Tap or click the water to sail", 1280×720
+  const p = wordsPlace({ W, H, bw, bh, avoid: [hint] });
+  assert.equal(p.x, 290);
+  assert.ok(p.y + bh <= hint.y, `above the hint (${p.y} + ${bh} ≤ ${hint.y})`);
+  assert.equal(p.y, hint.y - Math.round(Math.min(W, H) * 0.02) - bh, 'the nearest free place to the bottom');
+});
+
+test('Before words: Tall, a wide hint band at the bottom and a HUD over it: still free of both', () => {
+  const W = 720, H = 1280, bw = 650, bh = 120;
+  const avoid = [{ x: -500, y: 1180, w: 1700, h: 70 }, { x: 160, y: 1190, w: 400, h: 50 }, { x: 40, y: 1000, w: 640, h: 60 }];
+  const p = wordsPlace({ W, H, bw, bh, avoid });
+  for (const b of avoid) assert.ok(p.y + bh <= b.y || p.y >= b.y + b.h, `clear of ${JSON.stringify(b)} (y ${p.y})`);
+  assert.ok(p.y < 1000 && p.y > 600, `just above the HUD, not at the top (y ${p.y})`);
+});
+
+test('Before words: the top (under the "Before" label) when the bottom half is full; least covered when all is', () => {
+  const W = 1280, H = 720, bw = 700, bh = 80;
+  const label = { x: 1120, y: 25, w: 135, h: 49 };
+  const p = wordsPlace({ W, H, bw, bh, avoid: [label, { x: 0, y: 300, w: 1280, h: 420 }], top: label.y + label.h + 12 });
+  assert.equal(p.y, 300 - 14 - bh, 'just above the full half (gap 14 = 2 % of 720)');
+  // The text up to just under the label: the top place itself.
+  assert.equal(wordsPlace({ W, H, bw, bh, avoid: [label, { x: 0, y: 150, w: 1280, h: 570 }], top: 86 }).y, 86);
+  // Text everywhere: still a place (inside the frame), the one covering the least.
+  const full = wordsPlace({ W, H, bw, bh, avoid: [{ x: 0, y: 0, w: 1280, h: 500 }, { x: 0, y: 560, w: 1280, h: 160 }] });
+  assert.ok(full.y >= 0 && full.y + bh <= H);
+  assert.ok(full.y + bh > 500 && full.y < 560, `the band between the two (y ${full.y})`);
 });

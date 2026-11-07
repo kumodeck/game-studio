@@ -46,7 +46,7 @@
 import type { BridgeToShell, ShellToBridge } from '../contract.ts';
 import { isStudioMessage } from '../contract.ts';
 import { nativeCancelRaf, nativeClearTimeout, nativeNow, nativeRaf, nativeSetTimeout } from '../core/native.ts';
-import { cutAtPress, markStartMs } from '../shell/clip-model.ts';
+import { cutAtPress, markStartMs, wordsPlace, type ClipBox } from '../shell/clip-model.ts';
 import { clipTimeAt, type ClipSoundState, type SoundClock } from '../shell/clip-sound-model.ts';
 import { startSound, type SoundCapture } from './clip-sound.ts';
 import { paintPage } from './play-shot.ts';
@@ -603,7 +603,7 @@ function record(win: Win, m: Start, skip: (el: Element) => boolean, post: (m: Br
   };
 
   // ----- Before / After: the still part, the wipe, the words (stage 2) -----
-  const pill = (text: string, x: number, y: number, f: number, bg: string, align: 'left' | 'right') => {
+  const pill = (text: string, x: number, y: number, f: number, bg: string, align: 'left' | 'right'): ClipBox => {
     g.font = `700 ${f}px system-ui, -apple-system, "Segoe UI", sans-serif`;
     const w = g.measureText(text).width + f * 1.2, hgt = f * 1.7;
     const left = align === 'right' ? x - w : x;
@@ -615,6 +615,7 @@ function record(win: Win, m: Start, skip: (el: Element) => boolean, post: (m: Br
     g.fillStyle = '#fff';
     g.textBaseline = 'middle';
     g.fillText(text, left + f * 0.6, y + hgt / 2);
+    return { x: left, y, w, h: hgt };
   };
   const labelSize = () => Math.round(Math.min(W, H) * 0.045);
   /** The asked frame over the whole picture: fitted (wide) or cut to fill (tall: it was taken in the wide window). */
@@ -634,7 +635,60 @@ function record(win: Win, m: Start, skip: (el: Element) => boolean, post: (m: Br
     g.drawImage(beforeImg, (W - dw) / 2, (H - dh) / 2, dw, dh);
     g.restore();
   };
-  const drawWords = (text: string) => {
+  /**
+   * The game's own text on the Before (fixed 2026-11-07), in frame pixels: the words' bubble keeps out of it
+   * (clip-model.ts wordsPlace says why). Read from the live page, which is paused on the asked moment while the
+   * Before is drawn, so its HUD is where the asked frame shows it. Wide: the asked frame was taken in a window of the
+   * same shape, so a box maps onto the picture as drawn. Tall: the page now lays out in its 9:16 window while the
+   * picture is the wide frame cut to fill, so both readings are kept (where the HUD is in the tall page, and the same
+   * place on the picture): a hint anchored to the bottom center is then avoided in either. Text drawn inside a canvas
+   * is not seen (only the page's HTML).
+   */
+  const textBoxes = (): ClipBox[] => {
+    const doc = win.document;
+    const vw = win.innerWidth || 1, vh = win.innerHeight || 1;
+    const rects: { x: number; y: number; w: number; h: number }[] = [];
+    if (doc.body) {
+      const walk = doc.createTreeWalker(doc.body, 4 /* NodeFilter.SHOW_TEXT */);
+      const seen = new Set<Element>();
+      for (let n = walk.nextNode(), k = 0; n && k < 600 && rects.length < 40; n = walk.nextNode(), k++) {
+        const el = n.parentElement;
+        if (!el || seen.has(el) || !(n.textContent || '').trim()) continue;
+        seen.add(el);
+        if (el.closest('[data-studio-ui], game-studio-play, script, style, noscript')) continue;
+        let ours = false;
+        for (let e: Element | null = el; e && !ours; e = e.parentElement) ours = skip(e);
+        if (ours) continue;
+        const vis = (el as Element & { checkVisibility?: (o: object) => boolean }).checkVisibility;
+        if (vis && !vis.call(el, { opacityProperty: true, visibilityProperty: true })) continue;
+        // The element's box (a hint's pill, its padding and background); a big container's box would cover
+        // the whole page, so for one of those only its text's own box.
+        let r: { left: number; top: number; width: number; height: number } = el.getBoundingClientRect();
+        if (r.width * r.height > vw * vh * 0.25) {
+          const range = doc.createRange();
+          range.selectNodeContents(n);
+          r = range.getBoundingClientRect();
+        }
+        if (r.width < 1 || r.height < 1 || r.left >= vw || r.top >= vh || r.left + r.width <= 0 || r.top + r.height <= 0) continue;
+        rects.push({ x: r.left / vw, y: r.top / vh, w: r.width / vw, h: r.height / vh });
+      }
+    }
+    const out: ClipBox[] = [];
+    const onto = (ox: number, oy: number, dw: number, dh: number) => {
+      for (const b of rects) out.push({ x: ox + b.x * dw, y: oy + b.y * dh, w: b.w * dw, h: b.h * dh });
+    };
+    const iw = beforeImg?.width || 0, ih = beforeImg?.height || 0;
+    if (iw && ih) {
+      const k = H > W ? Math.max(W / iw, H / ih) : Math.min(W / iw, H / ih);
+      onto((W - iw * k) / 2, (H - ih * k) / 2, iw * k, ih * k);
+    }
+    if (!iw || !ih || Math.abs(iw / ih - vw / vh) > 0.03 * (vw / vh)) {
+      const k = Math.min(W / vw, H / vh);
+      onto((W - vw * k) / 2, (H - vh * k) / 2, vw * k, vh * k);
+    }
+    return out;
+  };
+  const drawWords = (text: string, avoid: ClipBox[], top: number) => {
     const f = Math.round(Math.min(W, H) * 0.04);
     g.font = `600 ${f}px system-ui, -apple-system, "Segoe UI", sans-serif`;
     const maxW = W * 0.84;
@@ -653,7 +707,8 @@ function record(win: Win, m: Start, skip: (el: Element) => boolean, post: (m: Br
     const lh = f * 1.3;
     const bw = Math.min(W * 0.9, Math.max(...lines.map((l) => g.measureText(l).width)) + f * 1.4);
     const bh = lines.length * lh + f * 0.8;
-    const x = (W - bw) / 2, y = H - bh - Math.round(H * 0.06);
+    // Not on the game's own text (fixed 2026-11-07: it used to be always at the bottom, over Lantern Cove's hint).
+    const { x, y } = wordsPlace({ W, H, bw, bh, avoid, top });
     g.fillStyle = 'rgba(0, 0, 0, 0.66)';
     g.beginPath();
     if (typeof g.roundRect === 'function') g.roundRect(x, y, bw, bh, Math.round(f / 2));
@@ -673,8 +728,15 @@ function record(win: Win, m: Start, skip: (el: Element) => boolean, post: (m: Br
     g.globalAlpha = 1;
     drawBeforeImage(0);
     const f = labelSize(), pad = Math.round(Math.min(W, H) * 0.035);
-    pill(before!.label, W - pad, pad, f, BEFORE_BG, 'right');
-    if (before!.words) drawWords(before!.words);
+    const label = pill(before!.label, W - pad, pad, f, BEFORE_BG, 'right');
+    let hud: ClipBox[] = [];
+    try {
+      hud = textBoxes();
+    } catch {
+      /* a page that will not be read: the words go where they always went */
+    }
+    // The "Before" label is a box to keep out of too; the top place is under it.
+    if (before!.words) drawWords(before!.words, [...hud, label], label.y + label.h + pad / 2);
   };
   /** On a game frame `ms` after the After began: the Before wiped off (left to right) at first, then "After". */
   function drawAfter(ms: number) {

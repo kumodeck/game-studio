@@ -221,6 +221,61 @@ export const BA_STILL_FPS = 10;
 /** The longest asked words drawn on the Before (characters, then "…"): one or two lines on a phone. */
 export const BA_WORDS_MAX = 90;
 
+/** A box on the clip's frame (pixels of the frame, top-left origin). */
+export interface ClipBox {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+/**
+ * Where the asked words' bubble goes on the Before (fixed 2026-11-07). It used to sit always at the bottom center, 6 %
+ * above the edge — right where many games put their own hint ("Tap or click the water to sail" in Lantern Cove, "Tap
+ * or click to send a breeze" in Firefly Ruins): the bubble lay on the hint and the hint's letters showed under its
+ * edges, in Wide and in Tall. Now the bubble keeps out of `avoid` (the game's own text on screen and the "Before"
+ * label, frame pixels):
+ *   - the bottom center when nothing is there (subtitles read best there, so it stays the first choice);
+ *   - else the free place nearest the bottom: just above or below one of the boxes, or the top (under `top`);
+ *   - when no place is free (a page full of text), the one that covers the least, nearest the bottom.
+ * `gap` = the room kept between the bubble and a box (default 2 % of the frame's short side). Always centered
+ * horizontally: the words are the video's caption, and a centered caption reads as one on a phone.
+ */
+export function wordsPlace(o: { W: number; H: number; bw: number; bh: number; avoid: readonly ClipBox[]; top?: number; gap?: number }): { x: number; y: number } {
+  const { W, H, bw, bh } = o;
+  const x = Math.round((W - bw) / 2);
+  const gap = o.gap ?? Math.round(Math.min(W, H) * 0.02);
+  const low = H - bh - Math.round(H * 0.06); // the old place: the default when nothing is in the way
+  const high = Math.max(0, Math.min(low, o.top ?? Math.round(H * 0.03)));
+  // Only the boxes that are really there (a game can report a zero box or one off the frame).
+  const boxes = o.avoid.filter((b) => b.w > 0 && b.h > 0 && b.x < W && b.y < H && b.x + b.w > 0 && b.y + b.h > 0);
+  const covered = (y: number) => {
+    let a = 0;
+    for (const b of boxes) {
+      const ix = Math.min(x + bw, b.x + b.w) - Math.max(x, b.x);
+      const iy = Math.min(y + bh, b.y + b.h) - Math.max(y, b.y);
+      if (ix > 0 && iy > 0) a += ix * iy;
+    }
+    return a;
+  };
+  const tries = new Set<number>([low, high]);
+  for (const b of boxes) {
+    tries.add(Math.round(b.y - gap - bh));
+    tries.add(Math.round(b.y + b.h + gap));
+  }
+  let best = low, bestA = Infinity;
+  // Lowest first, so on a tie (both free, or both covering as much) the one nearer the bottom wins.
+  for (const y of [...tries].filter((v) => v >= high && v <= low).sort((a, b) => b - a)) {
+    const a = covered(y);
+    if (a < bestA) {
+      best = y;
+      bestA = a;
+      if (a === 0) break;
+    }
+  }
+  return { x, y: best };
+}
+
 /** "neon-run-before-after" (the server adds "-1", "-2"…). */
 export function beforeAfterStem(game: string): string {
   return clipStem(game).replace(/-clip$/, '-before-after');

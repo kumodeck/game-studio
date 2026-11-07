@@ -148,18 +148,20 @@ export const SHELF_FIXES = [
     },
   },
   {
-    // Neon Run (examples/three-neon-boss): “Bring the boss in from here.” (with a ◎ mark) → the boss comes in 2 m more
-    // to the left (as test/studio-clip-ba.browser.mjs's nudgeBoss: the v0.1.82 clip).
+    // Neon Run (examples/three-neon-boss): “Make the boss three times as big.” → the boss made 3× (boss.scale) and
+    // lifted 2.6 → 4.4 so the bigger body (radius 1.1 → 3.3) still hovers over the road, in spawnBoss of game.js.
+    // Changed 2026-11-07: the ask was “Bring the boss in from here.” (the boss 2 m more to the left), a change too small
+    // to see in a 10-second Before / After or by someone trying the sample; three times the size reads at a glance.
     id: 'three-neon-boss',
     is: (folder) => /boss\.position\.set\(/.test(readIf(join(folder, 'game.js'))),
     fix(folder, rec) {
       const f = join(folder, 'game.js');
       const src = readFileSync(f, 'utf8');
-      const m = /boss\.position\.set\((-?[\d.]+), (-?[\d.]+), (-?[\d.]+)\);/.exec(src);
+      const m = /boss\.add\(body, eye\);\n(\s+)boss\.position\.set\((-?[\d.]+), (-?[\d.]+), (-?[\d.]+)\);/.exec(src);
       if (!m) return null;
-      const x = (Number(m[1]) - 2).toFixed(1);
-      writeFileSync(f, src.replace(m[0], `boss.position.set(${x}, ${m[2]}, ${m[3]});`));
-      return { files: ['game.js'], note: rec.lang === 'ja' ? `ボスは X ${x} から出るようにしました。` : `The boss now comes in at X ${x}, more to the left.` };
+      const y = (Number(m[3]) + 1.8).toFixed(1);
+      writeFileSync(f, src.replace(m[0], `boss.add(body, eye);\n${m[1]}boss.scale.setScalar(3);\n${m[1]}boss.position.set(${m[2]}, ${y}, ${m[4]});`));
+      return { files: ['game.js'], note: rec.lang === 'ja' ? 'ボスを 3 倍の大きさにしました。' : 'The boss is three times as big now.' };
     },
   },
   {
