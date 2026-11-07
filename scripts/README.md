@@ -3,6 +3,7 @@
 - `build.mjs` — builds dist/ with nothing but Node
 - `bundle.mjs` — the tiny ES module bundler build.mjs uses
 - `build-web-demo.mjs` — builds the browser-only web demo into one static folder (`--out <dir>`): the editor with `src/hosts/browser`, the two starters (`starters/`) as the samples, KUMODeck's tab icon (`web-demo-icon/`), and copies of the three.js / PixiJS modules they import (no CDN at run time)
+- `web-demo-cdn.mjs` — the web demo's jsDelivr URL → `vendor/` rewrites that are only text (2026-11-07: a classic `<script src>` too, for Marble Rain's Phaser), kept apart so a test checks them without a build
 - `web-demo-delivered.mjs` — the web demo's copy of a sample in its "AI delivered it" form (pause walk 2 fix, 2026-10-28: Neon Run with `codeMoment()` values and save / load, so the demo's paused moment has numbers to turn). `build-web-demo.mjs` applies it; the example in `examples/` stays as it ships
 - `build-docs.mjs` — builds the public docs (`docs/site/`) into static pages: English at the top, Japanese in `ja/`. `build-web-demo.mjs` calls it for the demo's `/docs/`; `--out <dir>` builds the docs alone to look at
 - `seo.mjs` — what search engines and link previews read (2026-10-29): each page's description, canonical, hreflang, Open Graph and JSON-LD, plus `sitemap.xml` and `robots.txt`. The site's address comes from `build-web-demo.mjs --site-url <address>` (or `GAME_STUDIO_SITE_URL`), never from here; without it, the tags that need a full address are left out

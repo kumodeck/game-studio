@@ -80,7 +80,7 @@ import { aiNameKey, aiPresence, presenceKey, presenceQuiet, presenceSure, QUIET_
 import { bounces, saveLoud } from './save-loud.ts';
 import { askView as questionView } from './ai-ask.ts';
 import { playLine, playWords } from './play-ask.ts';
-import { clockNow, clockText, createMomentBar, madeRows, speedText, splitMoves, type HeardClock } from './moment.ts';
+import { clockNow, clockText, createMomentBar, madeRows, speedText, splitMoves, stepTipPlace, type HeardClock } from './moment.ts';
 import { chatOnLine, historyOf, type ChatModel } from './moment-talk.ts';
 import { askFieldShown, askPhShort, createMomentShot, momentAskOffline, momentFocusOk, momentKeyPasses, shotTimeOnClock } from './moment-ask.ts';
 import { createMomentValues, momentNumber, unitText } from './moment-values.ts';
@@ -3772,16 +3772,18 @@ export function start(host: StudioHost) {
     // "Next frame . · ⚑ Make this a checkpoint" under ▶| and ⚑ (fix 1 ✕8, pause walk 2 ✕11): its right end just past ⚑'s,
     // reaching left (over the game's top-left, which the floating list covers anyway — not right over its middle, where
     // Neon Run's ⚠ BOSS is); an arrow under each button (shell.css .step-tip ::before / ::after at --a1 / --a2).
+    // Where the buttons themselves stand over the game's middle (1016 px), it hangs under the game's top row (moment.ts
+    // stepTipPlace, fixed 2026-11-07: it covered ⚠ BOSS's left half).
     const st = momentBar.stepTip;
     if (!st.hidden) {
       const sb = momentBar.stepBtn.getBoundingClientRect();
       const fb = momentBar.flagBtn.getBoundingClientRect();
-      const mid = (b: DOMRect) => b.left + b.width / 2 - sr.left;
-      const left = fb.width > 0 ? Math.max(8, Math.round(fb.right + 10 - sr.left - st.offsetWidth)) : Math.max(8, Math.round(mid(sb) - 19));
-      st.style.left = `${left}px`;
-      st.style.setProperty('--a1', `${Math.round(mid(sb) - left - 5)}px`);
-      st.style.setProperty('--a2', `${Math.round(mid(fb) - left - 5)}px`);
-      st.dataset.two = fb.width > 0 ? 'on' : '';
+      const p = stepTipPlace({ left: sr.left, width: sr.width }, sb, fb.width > 0 ? fb : null, st.offsetWidth);
+      st.style.left = `${p.left}px`;
+      st.style.top = `${p.top}px`;
+      st.style.setProperty('--a1', `${p.a1}px`);
+      st.style.setProperty('--a2', `${p.a2}px`);
+      st.dataset.two = p.two ? 'on' : '';
     }
   }
   /** What the game page's overlay needs (play/on). The web demo too, with `ai: false` (pause-edit decision 12). */

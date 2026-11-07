@@ -25,8 +25,25 @@ const PKG = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const CLI = join(PKG, 'skills/arrange/bin/studio.mjs');
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-/** What to change, by the game in the folder. Each step is one file write. */
-export function planFor(folder, lang = 'en') {
+/**
+ * Where the stand-in's three lighthouses stand, by the opening camera the ask came with (`view.eye`: the editor's
+ * camera; Lantern Cove's wide one stands at x = 8, the portrait phone's at x = -4). [key, x, z, scale].
+ * Fixed 2026-11-07: the spots were (-38,-27 / 31,-8 / 27,13), and from the opening camera none of the three showed
+ * (beyond the left and right edges; the sample's "Try asking" After showed no change). These are found by projecting
+ * terrain.js height() through main.js's two opening cameras (16:9 and 4:3 frames, and a portrait phone): on the
+ * headland right of the lighthouse (the sail covers the headland's middle), on the far hills between the sail and the
+ * sea stack, and on the right-hand beach in front of the cottage (wide) or the headland's near ledge (portrait, which
+ * sees only the headland). test/fix-1107.test.ts checks every spot is on land and inside its camera.
+ */
+export function lighthouseSpots(view) {
+  const wide = !view || !Array.isArray(view.eye) || view.eye[0] > 2;
+  return wide
+    ? [['lighthouse-cliff', -20, -17, 0.5], ['lighthouse-far', -24, -91, 0.9], ['lighthouse-shore', 15, -8, 0.55]]
+    : [['lighthouse-cliff', -20, -17, 0.5], ['lighthouse-far', -24, -91, 0.9], ['lighthouse-ledge', -22, -11, 0.5]];
+}
+
+/** What to change, by the game in the folder. Each step is one file write. `view`: the ask's camera (lighthouseSpots). */
+export function planFor(folder, lang = 'en', view = null) {
   const ja = lang === 'ja';
   const lc = join(folder, 'js/main.js');
   if (existsSync(join(folder, 'js/props.js')) && existsSync(lc) && readFileSync(lc, 'utf8').includes('Lantern Cove')) {
@@ -38,9 +55,9 @@ export function planFor(folder, lang = 'en') {
       steps: [
         () => edit(lc, "import { makeTerrain, makeDepthField } from './terrain.js';", "import { makeTerrain, makeDepthField, height } from './terrain.js';"),
         () => edit(lc, 'for (const p of props.all) scene.add(p);\n', `for (const p of props.all) scene.add(p);
-// Three more lighthouses around the island, smaller than the main one: on the far headland, the
-// beach rise and the point by the pier. Copies of the main lighthouse, each with its own mark.
-for (const [key, x, z, s] of [['lighthouse-west', -38, -27, 0.7], ['lighthouse-east', 31, -8, 0.75], ['lighthouse-point', 27, 13, 0.65]]) {
+// Three more lighthouses around the island, smaller than the main one, where the opening view sees
+// them. Copies of the main lighthouse, each with its own mark.
+for (const [key, x, z, s] of ${JSON.stringify(lighthouseSpots(view))}) {
   const lh = props.lighthouse.clone();
   lh.userData = { studioKey: key };
   lh.name = key;
@@ -125,7 +142,7 @@ export const SHELF_FIXES = [
     id: 'lantern-cove',
     is: (folder) => existsSync(join(folder, 'js/props.js')) && readIf(join(folder, 'js/main.js')).includes('Lantern Cove'),
     fix(folder, rec) {
-      const plan = planFor(folder, rec.lang);
+      const plan = planFor(folder, rec.lang, rec.view);
       for (const step of plan.steps) step();
       return { files: ['js/main.js'], note: plan.done + (rec.lang === 'ja' ? '。' : '.'), changed: plan.changed };
     },
@@ -289,7 +306,7 @@ export function startFakeAgent(folder, { slow = false, onEvent = () => {}, plan:
           return;
         }
         // `plan`: a change of the test's own (studio-play-after-ai: another object's colour), else the game's usual one.
-        const plan = given || planFor(folder, lang);
+        const plan = given || planFor(folder, lang, rec.view);
         await sleep(gap.wake); // a Monitor wakes the agent within a few seconds
         status('received', '--request', ask[2]);
         note('received');

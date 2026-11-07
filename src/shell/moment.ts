@@ -34,7 +34,8 @@
 //   - ✕11: ⚑ was a picture only, and "Next frame ." under ▶| had no twin for it: the first pause's line now says both —
 //     "Next frame . · ⚑ Make this a checkpoint", one pill with an arrow under each button (main.ts placePlayTip: it
 //     reaches left from ⚑, over the game's top-left that the floating list covers, not right over its middle). Gone at
-//     the first ▶| or ⚑, at Resume, or after 8 s.
+//     the first ▶| or ⚑, at Resume, or after 8 s. Fixed 2026-11-07: where ▶| and ⚑ stand over the game's middle (1016 px),
+//     it hangs under the game's top row instead (stepTipPlace).
 //   - ✕5: a phone and the side window show no such line at all (the bar has no ⚑ there and a phone no . key; the line
 //     sat on the game's SCORE), and the first-Play line wraps at the right under ❚❚ instead of crossing the HUD
 //     (shell.css).
@@ -164,6 +165,38 @@ export interface MomentBar {
 
 /** The first-Play line stays this long (02-find.md: "8 s or the first pause"). */
 export const FIRST_TIP_MS = 8000;
+
+/**
+ * Where "Next frame . · ⚑ Make this a checkpoint" hangs (main.ts placePlayTip), in the stage's own px: `left` and
+ * `top` of the pill, `a1` / `a2` the arrows under ▶| and ⚑ (shell.css .step-tip ::before / ::after).
+ *
+ * Its right end is just past ⚑'s and it reaches left, over the game's top-left that the floating list covers anyway
+ * (pause walk 2 ✕11). Fixed 2026-11-07: the aim was "never over the game's middle, where Neon Run's ⚠ BOSS is", but at
+ * 1016 px ▶| and ⚑ themselves stand over the game's middle, so reaching left still covered the left half of ⚠ BOSS
+ * (Product Hunt shots, 11/7). A game's banner at its top-middle (BOSS, a title, a timer) is drawn centred, so: when the
+ * pill crosses the game's middle band (± STEP_TIP_MID px of the stage's centre), it hangs lower, under the game's top
+ * row (STEP_TIP_LOW), its arrows still under the two buttons. Not moved sideways: the arrows must stay under ▶| and ⚑.
+ * At 1280 px and wider the pill ends left of the band and stays at the top (8 px), as before.
+ * `flag` null: ⚑ not shown (a game that cannot be held there): the pill starts under ▶| and has one arrow.
+ */
+export const STEP_TIP_MID = 80; // half of a centred banner's width the pill keeps off (Neon Run's ⚠ BOSS is 134 px wide)
+export const STEP_TIP_TOP = 8; // the pill's usual top in the stage (shell.css .play-tip)
+export const STEP_TIP_LOW = 64; // under a game's top row: Neon Run's banner ends 50 px down (top 14 + 36)
+export interface Span { left: number; width: number }
+export function stepTipPlace(stage: Span, step: Span, flag: Span | null, tipWidth: number): { left: number; top: number; a1: number; a2: number; two: boolean } {
+  const mid = (b: Span) => b.left + b.width / 2 - stage.left;
+  const two = !!flag && flag.width > 0;
+  const left = two ? Math.max(8, Math.round(flag.left + flag.width + 10 - stage.left - tipWidth)) : Math.max(8, Math.round(mid(step) - 19));
+  const c = stage.width / 2;
+  const overMiddle = left < c + STEP_TIP_MID && left + tipWidth > c - STEP_TIP_MID;
+  return {
+    left,
+    top: overMiddle ? STEP_TIP_LOW : STEP_TIP_TOP,
+    a1: Math.round(mid(step) - left - 5),
+    a2: two ? Math.round(mid(flag) - left - 5) : 0,
+    two,
+  };
+}
 
 export function createMomentBar(d: MomentBarDeps): MomentBar {
   const word = h('span', { class: 'play-word' });

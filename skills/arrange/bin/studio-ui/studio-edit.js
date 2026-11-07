@@ -1,4 +1,4 @@
-/* KUMODeck Game Studio 0.1.87 — MIT License — built file, edit src/ instead */
+/* KUMODeck Game Studio 0.1.88 — MIT License — built file, edit src/ instead */
 (() => {
 const __defs = [];
 const __cache = [];

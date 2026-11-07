@@ -43,6 +43,7 @@
 //                               and their import map pointed at vendor/
 //   vendor/<pkg>@<ver>/…        the CDN modules the samples import, copied (only the files used); three.js is
 //                               vendor/three@0.187.0/ (npm, the same as the samples' import maps)
+//                               and a classic <script src> from jsDelivr is copied there too (Marble Rain's Phaser)
 //   docs/, docs/ja/             the public docs, English and Japanese (docs/site/, built by build-docs.mjs; decided
 //                               2026-10-22: "put the docs on the demo site, English first, Japanese too")
 //
@@ -63,6 +64,7 @@ import { injectEditScript } from '../src/server/files.mjs';
 import { listAssets } from '../src/server/assets.mjs';
 import { readStarters, starterFiles } from '../src/server/starters.mjs';
 import { DELIVERED } from './web-demo-delivered.mjs';
+import { CDN, classicScriptsToVendor, vendorOf } from './web-demo-cdn.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const SRC = join(ROOT, 'src');
@@ -96,7 +98,6 @@ for (let i = 2; i < process.argv.length; i++) {
 }
 // readStarters' own order (src/server/starters.mjs): 3D first, then `order`, then the id.
 SAMPLES.sort((a, b) => ['3d', '2d'].indexOf(a.dim) - ['3d', '2d'].indexOf(b.dim) || a.order - b.order || a.id.localeCompare(b.id));
-const CDN = /^https:\/\/cdn\.jsdelivr\.net\/npm\/((?:@[^/]+\/)?[^/@]+@[^/]+)\/(.*)$/;
 
 // three.js in the demo is npm three@0.187.0, the same as the samples' import maps (2026-11-02).
 // History: from 2026-10-24 to 2026-11-02 the demo alone used three.js r187dev — GitHub mrdoob/three.js `dev` at
@@ -111,8 +112,7 @@ const CDN = /^https:\/\/cdn\.jsdelivr\.net\/npm\/((?:@[^/]+\/)?[^/@]+@[^/]+)\/(.
 // makes it, and it still imports the unminified ./three.core.js). The r187dev copy had taken the unminified
 // three.module.js instead. Measured 2026-11-02 (gzip -9): three.module 129 KB → 89 KB, ≈40 KB smaller; three.core.js
 // (290 KB) is the same either way. One version everywhere also means the demo shows what a person gets.
-/** The folder in vendor/ and the file in it for a jsDelivr npm URL's package@version and path. */
-const vendorOf = (pkgAt, path) => `${pkgAt}/${path}`;
+// CDN and vendorOf (the jsDelivr URL → vendor/ path) are in scripts/web-demo-cdn.mjs.
 
 function arg(name, fallback) {
   const i = process.argv.indexOf(name);
@@ -207,6 +207,7 @@ write('lp.js', readFileSync(join(SRC, 'hosts/browser/lp.js'), 'utf8'));
 
 // ---- 2. the samples ----
 const vendorWanted = new Set(); // CDN URLs to copy
+const vendorClassic = new Set(); // CDN URLs of classic <script src> files (copied as they are, not scanned for imports)
 const games = [];
 for (const s of SAMPLES) {
   const from = s.dir;
@@ -249,6 +250,11 @@ for (const s of SAMPLES) {
       }
       return `<script type="importmap">\n    ${JSON.stringify(map)}\n  </script>`;
     });
+    // A classic <script src> from jsDelivr (Marble Rain's Phaser, a global build; fixed 2026-11-07): the same vendor/
+    // copy as an import map's URL (scripts/web-demo-cdn.mjs says why).
+    const classic = classicScriptsToVendor(html, up);
+    html = classic.html;
+    for (const url of classic.urls) vendorClassic.add(url);
     if (/https?:\/\/cdn\./.test(html)) throw new Error(`${s.id}/${rel} still loads from a CDN`);
     html = injectEditScript(html, `${up}__studio/studio-edit.js`, `${up}__studio/${s.id}/adapter.js`, `${up}__studio/${s.id}/tools.js`);
     // Before the edit script: the game's fetch('./placement.json') is answered from the browser's save.
@@ -304,6 +310,12 @@ while (queue.length) {
     else if (/^https?:/.test(spec)) throw new Error(`${url} imports ${spec} (absolute URL)`);
     // Bare specifiers ("three") resolve through the page's import map: already listed.
   }
+}
+
+for (const url of vendorClassic) {
+  const c = CDN.exec(url);
+  write(`vendor/${vendorOf(c[1], c[2])}`, await fetchCached(url));
+  done.add(url);
 }
 
 // ---- 4. the docs (/docs/ and /docs/ja/): the header's "Game Studio" and the tab icon point one folder up, here ----

@@ -1702,7 +1702,15 @@ button.shelf-file.to:hover { background: var(--raise-2); }
 .page-window-plate { width: min(420px, 100%); max-height: 100%; overflow: auto; padding: 8px 16px 16px; border-radius: var(--R);
   background: var(--glass-thick); -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur); box-shadow: var(--shadow);
   animation: studio-fade var(--dur-in) var(--ease); }
-.page-window-plate .page-head { background: transparent; }
+/* Its head ("‹ Close · Ideas for your AI") stays at the plate's top edge while the rows scroll under it. Fixed
+   2026-11-07: it was transparent (the column's --col did not belong on the glass), so a scrolled plate showed its rows
+   through the head's words, and above them in the plate's 8 px top padding (sticky stopped at the padding, top: 0).
+   Now it is the plate's own glass laid twice (--glass-thick is 94 % opaque: once let the rows' words show faintly
+   through; twice is 99.6 %, the rows are gone and the colour is still the plate's, light and dark alike), from edge to
+   edge (the plate's 16 px sides and 8 px top taken back by the margins) and stuck at the plate's very top (top: -8px =
+   the padding). */
+.page-window-plate .page-head { top: -8px; margin: -8px -16px 0; padding: 12px 16px 8px;
+  background-color: var(--glass-thick); background-image: linear-gradient(var(--glass-thick), var(--glass-thick)); }
 .keys-scrim { z-index: 6; }
 .keys-sheet { position: absolute; z-index: 7; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(880px, calc(100% - 32px)); max-height: calc(100% - 32px);
   display: flex; flex-direction: column; overflow: hidden; padding: 16px 20px 14px; border-radius: var(--R);

@@ -2,7 +2,7 @@
 title: Play
 nav: Play
 order: 3
-written-for: 0.1.87
+written-for: 0.1.88
 description: Play your game in the editor, slow it down, pause it on the exact frame, edit that moment by hand or with your AI, and keep it as a checkpoint.
 ---
 
@@ -99,7 +99,7 @@ The same moment means the same state: the score, the time left and what the game
 ### Slow it down, one frame at a time
 
 - **Speed** (**1× ⌄** in the top bar) plays at **1×**, **½×** or **¼×**. Set it before the boss comes and the moment is easy to catch. Every game slows the same way, because Studio holds the game’s clock. Sound is off while it’s slow. The next ▶ Play starts at 1× again.
-- **▶| Next frame** (or <kbd>.</kbd>) steps one frame while paused: the time moves by 0:00.01 or 0:00.02. Hold it down to go on at the speed you chose. The first time you pause, a small label under **▶|** and **⚑** says **Next frame . · ⚑ Make this a checkpoint**.
+- **▶| Next frame** (or <kbd>.</kbd>) steps one frame while paused: the time moves by 0:00.01 or 0:00.02. Hold it down to go on at the speed you chose. The first time you pause, a small label under **▶|** and **⚑** says **Next frame . · ⚑ Make this a checkpoint**. In a narrow window it hangs a little lower, so it doesn’t cover a sign at the top middle of your game, like a boss warning.
 
 ![The Speed menu in the top bar: 1×, ½×, ¼×](media/pause-speed.webp)
 
