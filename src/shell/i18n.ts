@@ -608,6 +608,11 @@ const en = {
   'clip.shape.wide': 'Wide 1280×720',
   'clip.shape.tall': 'Tall 720×1280',
   'clip.words': 'Show my words on Before / After',
+  // Stage 3 (decided 2026-11-07): the game's sound in the clip (on by default), and the one line when a clip was saved
+  // without it. AAC is what X takes; Chrome and Edge encode it on Mac and Windows (checked there, not elsewhere).
+  'clip.sound': 'Record the game’s sound',
+  'clip.noSound': 'Saved without sound: this browser can’t record it. For sound, use Chrome or Edge on Mac or Windows.',
+  'clip.soundFailed': 'Saved without sound: the game’s sound couldn’t be recorded this time. Press ● Clip again to try.',
   'clip.ba': 'Clip Before / After',
   'clip.baTip': 'Make a {s}-second video: the frame you asked from, then the new code from the same moment',
   'clip.baAdds': 'Before / After adds {s} s: the frame you asked from',
@@ -1947,6 +1952,9 @@ const ja: Partial<Record<Key, string>> = {
   'clip.shape.wide': '横 1280×720',
   'clip.shape.tall': '縦 720×1280',
   'clip.words': '前 / 後に頼んだ言葉を出す',
+  'clip.sound': 'ゲームの音も録る',
+  'clip.noSound': '音なしで保存しました。このブラウザでは音を録れません。音も録るには Mac か Windows の Chrome・Edge を使ってください。',
+  'clip.soundFailed': '音なしで保存しました。今回はゲームの音を録れませんでした。もう一度 ● クリップを押してください。',
   'clip.ba': '前 / 後をクリップに',
   'clip.baTip': '{s} 秒の動画にする: 頼んだ時の 1 コマ → 同じ瞬間から新しいコード',
   'clip.baAdds': '前 / 後は頼んだ時の 1 コマの分 {s} 秒長くなります',

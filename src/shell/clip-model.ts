@@ -77,6 +77,12 @@ export interface ClipPrefs {
    * words can be turned off in ⌄").
    */
   words: boolean;
+  /**
+   * Stage 3 (decided 2026-11-07): the game's sound in the clip. On by default — a game's sound is part of what it is,
+   * and X plays a video muted until it is tapped, so sound in the file costs the person nothing. Off for someone who
+   * plays music of their own while recording, or a game whose sound they do not want posted.
+   */
+  sound: boolean;
 }
 
 /** A hand-edited or older prefs file reads as the defaults for anything it does not say right. */
@@ -85,7 +91,8 @@ export function normalizeClipPrefs(raw: unknown): ClipPrefs {
   const seconds = CLIP_LENGTHS.includes(r.seconds as ClipLength) ? (r.seconds as ClipLength) : CLIP_DEFAULT_LENGTH;
   const mark = typeof r.mark === 'boolean' ? r.mark : CLIP_MARK_DEFAULT;
   const words = typeof r.words === 'boolean' ? r.words : true;
-  return { seconds, mark, words, ...(r.shape === 'wide' || r.shape === 'tall' ? { shape: r.shape } : {}) };
+  const sound = typeof r.sound === 'boolean' ? r.sound : true;
+  return { seconds, mark, words, sound, ...(r.shape === 'wide' || r.shape === 'tall' ? { shape: r.shape } : {}) };
 }
 
 /** Frames in a clip of `seconds` (whole frames). */

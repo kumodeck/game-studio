@@ -2,7 +2,7 @@
 title: Play
 nav: Play
 order: 3
-written-for: 0.1.86
+written-for: 0.1.87
 description: Play your game in the editor, slow it down, pause it on the exact frame, edit that moment by hand or with your AI, and keep it as a checkpoint.
 ---
 
@@ -159,7 +159,7 @@ Want to show what you made or fixed? Press **● Clip** in the top bar, right of
 - While it records, the button is red and says the time left (**0:05 left · Stop**). On a phone, the round **●** shows the seconds left. A red frame goes round the game: only what’s inside it is in the video. Your game’s picture and its HTML (the score, the health bar) are in it. The editor, the address and your folder names aren’t.
 - Press it again to stop early. The video ends one second after your press, even when the computer is busy. The button says **Ending…**, then **Saving…**.
 - In Edit, **● Clip** starts Play first. A paused game goes on.
-- **⌄** picks the shape (**Wide 1280×720**, or **Tall 720×1280** for a phone screen), the length (6, 8 or 12 seconds; a Before / After adds 2) and whether the last second says **Made with KUMODeck Game Studio**. It remembers what you pick. On a phone, there’s no **⌄**: hold **●** instead.
+- **⌄** picks the shape (**Wide 1280×720**, or **Tall 720×1280** for a phone screen), the length (6, 8 or 12 seconds; a Before / After adds 2), whether the last second says **Made with KUMODeck Game Studio** and whether the video has the game’s sound (**Record the game’s sound**, on unless you turn it off). It remembers what you pick. On a phone, there’s no **⌄**: hold **●** instead.
 - **Tall** isn’t a crop. While it records, the editor gives your game a tall window, so a game that fits itself to its window lays out tall. On a phone, clips are Tall unless you pick Wide.
 
 When it’s done, one line shows where it went and the post to go with it:
@@ -174,7 +174,9 @@ When it’s done, one line shows where it went and the post to go with it:
 - The last second of the video says **Made with KUMODeck Game Studio** and the address, small, in the corner, and so does the post. **Remove “Made with”** takes both off this clip, and new clips leave them off until you turn the mark back on in **⌄**.
 - Nothing leaves your computer. The editor doesn’t post anything; you do.
 
-It’s a 1280 × 720 MP4 (H.264) at 30 frames a second, with no sound. A few things don’t record yet: a game that draws with WebGPU, and a game that draws images from another site. Clip says so over the game, with **✦ Ask Claude**: it pauses the game and puts the request in the field (switch to WebGL, or move the images into the game’s folder). You send it. The HTML over your game is drawn the same way as the picture your AI gets: boxes, text and images, without shadows or gradients.
+It’s a 1280 × 720 MP4 (H.264) at 30 frames a second, with the game’s sound (AAC): what it plays with Web Audio and with `<audio>` and `<video>`. Your game sounds the same while it records. A game that makes no sound gets a video with no sound. If your browser can’t record sound, the clip is saved without it and the line says so; Chrome and Edge on Mac and Windows record it. Games that draw with WebGPU (PixiJS, three.js’s WebGPURenderer) record too.
+
+One thing doesn’t record yet: a game that draws images from another site. Clip says so over the game, with **✦ Ask Claude**: it pauses the game and puts the request in the field (move the images into the game’s folder). You send it. The HTML over your game is drawn the same way as the picture your AI gets: boxes, text and images, without shadows or gradients.
 
 In the web demo, the video downloads instead (**Downloaded to your Downloads**).
 
@@ -185,6 +187,7 @@ You paused, asked your AI for a fix, and it fixed the code ([Ask about this mome
 ![Before / After with Clip Before / After at its foot, beside Keep · Resume](media/clip-before-after.webp)
 
 - You get a 10-second video (with the 8-second length; the Before adds 2 seconds to the length you picked). First the frame you asked from, with your marks and your words, for 2 seconds (**Before**). Then a wipe, and the same moment with the new code, playing for the length you picked (**After**). The last second has the mark.
+- The Before is silent. The After has the game’s sound, like any clip.
 - The video shows three bits of text at most: **Before**, **After** and what you asked. To leave your words out, turn off **Show my words on Before / After** in **⌄**.
 - The post is written for you: “Paused my game at 0:05, marked a spot and told Claude “bring the boss in from here”. It fixed the code. Before → After 👇”. **✦ Rewrite** works here too.
 - You can steer during the After. If you don’t, the game just goes on.

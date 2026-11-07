@@ -1,7 +1,7 @@
 // ● Clip, stage 1 (decided 2026-11-05; src/shell/clip.ts, src/bridge/play-clip.ts, src/shell/mp4.ts, src/server/clips.mjs) in
 // a headless browser: the real local server, the built editor, examples/three-neon-boss (three.js + an HTML HUD).
 //
-//   node test/studio-clip.browser.mjs [--only local,demo,tall,phone,refuse] [--shots <dir>] [--lang en|ja] [--keep <dir>]
+//   node test/studio-clip.browser.mjs [--only local,demo,tall,phone,refuse,sound,webgpu] [--shots <dir>] [--lang en|ja] [--keep <dir>]
 //
 // local  PC 1280×800, the local editor:
 //   1. In Edit, "● Clip ⌄" in the top bar right of Undo / Redo; ⌄ lists 6 / 8 / 12 s (8 checked), the mark (checked),
@@ -35,6 +35,13 @@
 //          shape opens Clip options too.
 //   refuse a game that draws an image from another site (another port here): the line says so and what to do, with
 //          ✦ Ask …; pressed, the game pauses and the request is in the field (not sent).
+// stage 3 (decided 2026-11-07):
+//   local  the sample game makes no sound: its MP4 has no sound track (as before).
+//   sound  a Web Audio tone and an <audio> tone in the game: the MP4 has an AAC-LC 48 kHz stereo track as long as the
+//          picture, each tone in it once (not twice, no gap: ffmpeg decodes it), the game's sound still playing after;
+//          Clip options › "Record the game’s sound" off → the next clip has no sound track, and it is remembered.
+//   webgpu a box drawn with WebGPU (plain; PixiJS 8 and three.js WebGPURenderer with STUDIO_WEBGPU_LIBS) is recorded,
+//          not refused: its color read back from the MP4. Needs a GPU (STUDIO_ANGLE=metal); skipped without an adapter.
 // --shots: clip-*.png (the docs' clip / clip-saved pictures). --keep: copies the saved MP4 there (a sample to look at).
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
@@ -55,7 +62,7 @@ const take = (flag, d = null) => {
   const i = args.indexOf(flag);
   return i >= 0 ? args[i + 1] : d;
 };
-const ONLY = (take('--only') || 'local,demo,tall,phone,refuse').split(',');
+const ONLY = (take('--only') || 'local,demo,tall,phone,refuse,sound,webgpu').split(',');
 const SHOTS = take('--shots') ? resolve(take('--shots')) : null;
 const KEEP = take('--keep') ? resolve(take('--keep')) : null;
 const LANG = take('--lang', 'en');
@@ -82,7 +89,9 @@ function mp4Info(b) {
       else if (ty === 'stsz') info.samples = b.readUInt32BE(body + 8);
       else if (ty === 'stss') info.keys = b.readUInt32BE(body + 4);
       else if (ty === 'stsd') info.codec = type(body + 12);
-      if (['moov', 'trak', 'mdia', 'minf', 'stbl'].includes(ty)) walk(body, at + size, depth + 1);
+      // The first trak only (the video): a clip with sound has a second one (stage 3), whose boxes would overwrite these.
+      if (ty === 'trak') info.traks = (info.traks || 0) + 1;
+      if (['moov', 'mdia', 'minf', 'stbl'].includes(ty) || (ty === 'trak' && info.traks === 1)) walk(body, at + size, depth + 1);
       at += size;
     }
   };
@@ -258,6 +267,9 @@ async function local() {
       check(Math.abs(info.seconds * 1000 - endAfterStop(pressMs)) < 45, `the clip ends one second after the press: ${info.seconds.toFixed(3)} s for a press at ${(pressMs / 1000).toFixed(3)} s`);
     }
     check(info.keys >= 2, `key frames at the start and at the mark's second (${info.keys})`);
+    // Stage 3: this game makes no sound, so its clip has no sound track (never a silent one).
+    const streams = probe(join(clips, files[0]));
+    if (streams) check(!streams.streams.some((x) => x.codec_type === 'audio'), 'a game with no sound: no sound track');
     if (KEEP) copyFileSync(join(clips, files[0]), join(KEEP, `clip-sample-${ja ? 'ja' : 'en'}.mp4`));
     // 7. ✦ Rewrite (stage 2): the stand-in's post, the address put back (the mark is on), the AI line left as it was.
     check(!!s.line.rewrite, '✦ Rewrite on the post\'s row (an AI is watching)');
@@ -611,12 +623,310 @@ async function refuse() {
   }
 }
 
+// ----- stage 3 (decided 2026-11-07): the game's sound, and WebGPU -----
+
+/** ffprobe's streams of a file (null when ffprobe is not on this machine: the checks that need it are said, not run). */
+function probe(path) {
+  try {
+    return JSON.parse(execFileSync('ffprobe', ['-v', 'error', '-show_streams', '-show_format', '-of', 'json', path], { encoding: 'utf8' }));
+  } catch (e) {
+    if (e.code === 'ENOENT') return null;
+    throw e;
+  }
+}
+/** The clip's left channel, decoded by ffmpeg to 48 kHz floats (null without ffmpeg). WHY not `-ac 1`: ffmpeg's own
+ * downmix adds the two sides at −3 dB each, so a centered sound reads 1.41× as loud as it was made. */
+function pcm(path) {
+  try {
+    const out = execFileSync('ffmpeg', ['-v', 'error', '-i', path, '-vn', '-af', 'pan=mono|c0=c0', '-ar', '48000', '-f', 'f32le', '-'], { maxBuffer: 64 << 20 });
+    return new Float32Array(out.buffer, out.byteOffset, out.length / 4);
+  } catch (e) {
+    if (e.code === 'ENOENT') return null;
+    throw e;
+  }
+}
+/** How loud one frequency is in `x` (Goertzel; ≈ the sine's own amplitude). */
+function toneLevel(x, f, rate = 48000) {
+  const w = (2 * Math.PI * f) / rate, c = 2 * Math.cos(w);
+  let s1 = 0, s2 = 0;
+  for (let i = 0; i < x.length; i++) { const s0 = x[i] + c * s1 - s2; s2 = s1; s1 = s0; }
+  return (2 * Math.sqrt(Math.max(0, s1 * s1 + s2 * s2 - c * s1 * s2))) / x.length;
+}
+
+/** The neon-boss example in a temp folder with the local server; `prefs` merged into .studio/ui/prefs.json. */
+async function setUp(prefs = {}) {
+  const root = mkdtempSync(join(tmpdir(), 'studio-clip-'));
+  const clips = mkdtempSync(join(tmpdir(), 'studio-clip-movies-'));
+  cpSync(join(PKG, 'examples/three-neon-boss'), root, { recursive: true, filter: (p) => !p.includes('/.studio/') && !p.endsWith('/.studio') });
+  mkdirSync(join(root, '.studio/ui'), { recursive: true });
+  writeFileSync(join(root, '.studio/ui/prefs.json'), JSON.stringify({ version: 1, lang: LANG, ...prefs }));
+  const srv = await startStudioServer({ root, uiDir: UI, log: () => {}, env: { CLAUDECODE: '1' }, clips: { dir: clips, where: 'movies', reveal: 'finder', run: () => {} } });
+  browser ??= await launch();
+  const page = await newPage(browser, { width: 1280, height: 800 });
+  const state = async () => JSON.parse(await page.eval(STATE));
+  const until = (fn, ms) => untilOn(state, fn, ms);
+  const close = async () => {
+    await page.close().catch(() => {});
+    await srv.close();
+    rmSync(root, { recursive: true, force: true });
+    rmSync(clips, { recursive: true, force: true });
+  };
+  /** Edit → ▶ Play, and the Play page running (the one in front, its clock going). */
+  const play = async () => {
+    await page.goto(srv.url);
+    await page.waitFor(`document.querySelectorAll('.obj').length > 0`, 90000);
+    await sleep(1200);
+    await page.eval(`document.querySelector('button.play').click()`);
+    const s = await until((x) => x.playing, 30000);
+    await page.waitFor(`(() => { const f = document.querySelector('iframe.game:not(.leaving)'); const t = document.querySelector('[data-part=play-time]')?.textContent || '';
+      return !!f?.contentWindow?.__gameStudio && document.querySelectorAll('iframe.game').length === 1 && /0:0[1-9]/.test(t); })()`, 30000).catch(() => null);
+    await sleep(500);
+    return !!s;
+  };
+  /** ● Clip, Stop after `ms`, and the saved file (its path) once the line came. */
+  const clip = async (ms) => {
+    let s = await state();
+    await page.click(s.clip.x, s.clip.y);
+    s = await until((x) => x.state === 'rec', 20000);
+    if (!s) return null;
+    await sleep(ms);
+    s = await state();
+    await page.click(s.clip.x, s.clip.y);
+    s = await until((x) => !!x.line && x.state === 'idle', 60000);
+    if (!s) return null;
+    const files = readdirSync(clips).filter((f) => f.endsWith('.mp4')).sort();
+    return { s, path: join(clips, files[files.length - 1]), files };
+  };
+  return { root, clips, srv, page, state, until, close, play, clip };
+}
+
+/** In the game page: `src` as an async function of (w = the game's window). */
+const inGame = (src) => `(async () => { const w = document.querySelector('iframe.game:not(.leaving)').contentWindow; return await (${src})(w); })()`;
+
+// The game's sound in the clip: a Web Audio tone (440 Hz, through the game's own AudioContext to its speakers) and an
+// <audio> one (660 Hz, `new Audio()`, not in the page) — the two ways games make sound.
+async function sound() {
+  console.log('sound: a game with a Web Audio tone and an <audio> tone, PC 1280×800');
+  const t = await setUp();
+  const { page, state, until } = t;
+  try {
+    check(await t.play(), 'playing');
+    // ⌄ has the Sound row, checked.
+    let s = await state();
+    await page.click(s.more.x, s.more.y);
+    s = await until((x) => !!x.menu, 3000);
+    check(!!s && s.menu.includes(translate(LANG, 'clip.sound')), `⌄ has "${translate(LANG, 'clip.sound')}"`);
+    const checked = await page.eval(`document.querySelector('[data-action=ctx-clip-sound]')?.getAttribute('aria-checked') || ''`);
+    check(checked === 'true', `…on by default (aria-checked ${checked})`);
+    if (SHOTS) writeFileSync(join(SHOTS, `clip-${ja ? 'ja' : 'en'}-sound-1-menu.png`), await page.screenshot());
+    await page.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
+    await page.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
+    await sleep(300);
+    // A click in the game: the person's first tap, which lets its sound start (the browser's autoplay rule).
+    const g = await page.eval(`JSON.stringify(document.querySelector('iframe.game:not(.leaving)').getBoundingClientRect())`).then(JSON.parse);
+    await page.click(g.x + g.width / 2, g.y + g.height / 2);
+    await sleep(300);
+    const made = await page.eval(inGame(`async (w) => {
+      const ctx = new w.AudioContext();
+      await ctx.resume().catch(() => {});
+      const osc = ctx.createOscillator(), gain = ctx.createGain();
+      osc.frequency.value = 440; gain.gain.value = 0.3;
+      // connect() still returns its argument (so chains work), the speakers included.
+      const back = osc.connect(gain).connect(ctx.destination);
+      osc.start();
+      w.__tone = { ctx, osc };
+      // 8 s long: a short file's loop point (seek back to 0) leaves a gap of the element's own in the sound, which read
+      // here as the capture's (a 1 s file dipped to 0 every second, 2026-11-07).
+      const sr = 22050, len = sr * 8; const buf = new ArrayBuffer(44 + len * 2); const dv = new DataView(buf);
+      const ws = (o, s) => { for (let i = 0; i < s.length; i++) dv.setUint8(o + i, s.charCodeAt(i)); };
+      ws(0, 'RIFF'); dv.setUint32(4, 36 + len * 2, true); ws(8, 'WAVE'); ws(12, 'fmt '); dv.setUint32(16, 16, true); dv.setUint16(20, 1, true); dv.setUint16(22, 1, true);
+      dv.setUint32(24, sr, true); dv.setUint32(28, sr * 2, true); dv.setUint16(32, 2, true); dv.setUint16(34, 16, true); ws(36, 'data'); dv.setUint32(40, len * 2, true);
+      for (let i = 0; i < len; i++) dv.setInt16(44 + i * 2, Math.round(Math.sin((i / sr) * 2 * Math.PI * 660) * 12000), true);
+      const a = new w.Audio(URL.createObjectURL(new Blob([buf], { type: 'audio/wav' })));
+      a.loop = true;
+      let played = 'ok';
+      try { await a.play(); } catch (e) { played = String(e); }
+      w.__beep = a;
+      return JSON.stringify({ state: ctx.state, chained: back === ctx.destination, played });
+    }`)).then(JSON.parse);
+    check(made.state === 'running' && made.played === 'ok', `the game's sound plays (${JSON.stringify(made)})`);
+    check(made.chained, 'connect() to the speakers returns the speakers, as before (a chain still works)');
+    await sleep(400);
+    const got = await t.clip(1800);
+    check(!!got, 'the clip was saved');
+    if (!got) return console.log(`  · ${page.logs.slice(-8).join('\n  · ')}`);
+    check(!got.s.note, `no line about the sound ("${got.s.note}")`);
+    const st = await j(page, STATS);
+    console.log(`  sound: ${st?.sound}`);
+    check(st?.sound === 'on', `the game page says the sound is in (${st?.sound})`);
+    if (SHOTS) writeFileSync(join(SHOTS, `clip-${ja ? 'ja' : 'en'}-sound-2-saved.png`), await page.screenshot());
+    if (KEEP) copyFileSync(got.path, join(KEEP, `clip-sound-${ja ? 'ja' : 'en'}.mp4`));
+    const p = probe(got.path);
+    if (!p) console.log('  · no ffprobe here: the sound track was not read back');
+    else {
+      const v = p.streams.find((x) => x.codec_type === 'video'), a = p.streams.find((x) => x.codec_type === 'audio');
+      console.log(`  ffprobe: video ${v?.codec_name} ${v?.width}×${v?.height} ${v?.duration} s · audio ${a?.codec_name} ${a?.profile} ${a?.sample_rate} Hz ${a?.channels} ch ${a?.duration} s`);
+      check(v?.codec_name === 'h264' && v.width === 1280, 'the video as before (H.264 1280×720)');
+      check(a?.codec_name === 'aac' && a.profile === 'LC' && Number(a.sample_rate) === 48000 && a.channels === 2, 'a sound track: AAC-LC, 48 kHz, stereo');
+      check(!!a && Math.abs(Number(a.duration) - Number(v.duration)) < 0.12, `the sound as long as the picture (${a?.duration} s / ${v?.duration} s)`);
+      const x = a ? pcm(got.path) : null;
+      if (x) {
+        // The middle of the clip (the start and the mark's second have the press and the stop around them).
+        // From 0.4 s: an <audio> already playing at the press is reached when its captureStream track starts, up to ~0.3 s
+        // in (seen here; clip-sound.ts says so too). To 0.3 s before the end.
+        const mid = x.subarray(Math.round(0.4 * 48000), Math.max(Math.round(0.4 * 48000) + 4800, x.length - Math.round(0.3 * 48000)));
+        // Each tone's level in every 50 ms of the middle (Goertzel). WHY pieces and not one level over it all: a Stop the
+        // busy game page reads late cuts the sound where it cuts the picture (play-clip.ts stop(): what came between the
+        // press and the message is left out), and one level across that cut reads low, the two sides out of phase.
+        const pieces = [];
+        for (let at = 0; at + 2400 <= mid.length; at += 2400) {
+          const seg = mid.subarray(at, at + 2400);
+          pieces.push({ at: 0.4 + at / 48000, a: toneLevel(seg, 440), b: toneLevel(seg, 660), n: toneLevel(seg, 550) });
+        }
+        const median = (v) => [...v].sort((p, q) => p - q)[Math.floor(v.length / 2)];
+        const l440 = median(pieces.map((p) => p.a)), l660 = median(pieces.map((p) => p.b)), l550 = Math.max(...pieces.map((p) => p.n));
+        console.log(`  levels: 440 Hz ${l440.toFixed(3)} (Web Audio, 0.30 made) · 660 Hz ${l660.toFixed(3)} (<audio>, 0.37 made) · 550 Hz ${l550.toFixed(3)} at most (none)`);
+        // The left side of a centered sound: the level as made. Twice that = the sound captured twice.
+        check(l440 > 0.22 && l440 < 0.38, `the Web Audio tone, once (${l440.toFixed(3)})`);
+        check(l660 > 0.28 && l660 < 0.46, `the <audio> tone, once (${l660.toFixed(3)})`);
+        check(l550 < 0.06, `nothing that was not played (${l550.toFixed(3)})`);
+        // No gap and nothing twice: every 50 ms piece has each tone at about its level. (A sound taken twice, the two copies
+        // a little apart, read twice as loud in places and gone in others: seen once, 2026-11-07.) The one or two pieces
+        // across a late Stop's cut (the game page's own count says where) are left out.
+        const st2 = await j(page, STATS);
+        const cutAt = st2 && st2.dropped > 0 ? st2.endMs / 1000 - 1 : null;
+        const odd = pieces.filter((p) => !(cutAt !== null && Math.abs(p.at + 0.025 - cutAt) < 0.06) && (p.a < 0.15 || p.a > 0.45 || p.b < 0.2 || p.b > 0.55));
+        if (odd.length) console.log(`  odd: ${odd.map((p) => `${p.at.toFixed(2)} s ${p.a.toFixed(2)}/${p.b.toFixed(2)}`).join(', ')} · stats ${JSON.stringify(st2)} · clip ${(x.length / 48000).toFixed(3)} s`);
+        check(odd.length === 0, `both tones steady, never twice or gone (${odd.length} odd 50 ms piece(s)${cutAt !== null ? `; a late Stop's cut at ${cutAt.toFixed(2)} s left out` : ''})`);
+      }
+    }
+    // Sound off in ⌄: the next clip has no sound track, and the choice is kept.
+    s = await state();
+    await page.click(s.more.x, s.more.y);
+    await until((x) => !!x.menu, 3000);
+    await page.eval(`document.querySelector('[data-action=ctx-clip-sound]')?.click()`);
+    await sleep(400);
+    const prefs = JSON.parse(readFileSync(join(t.root, '.studio/ui/prefs.json'), 'utf8'));
+    check(prefs.clip?.sound === false, `Sound off is remembered (prefs.json clip ${JSON.stringify(prefs.clip)})`);
+    await page.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
+    await page.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
+    await sleep(300);
+    const off = await t.clip(1200);
+    check(!!off && off.files.length === 2, 'a second clip');
+    const p2 = off && probe(off.path);
+    if (p2) check(!p2.streams.some((x) => x.codec_type === 'audio'), 'with Sound off: no sound track');
+    // The game's own sound went on through both clips (nothing of ours stopped it).
+    const still = await page.eval(inGame(`async (w) => JSON.stringify({ ctx: w.__tone.ctx.state, beep: !w.__beep.paused })`)).then(JSON.parse);
+    check(still.ctx === 'running' && still.beep, `the game's sound still plays (${JSON.stringify(still)})`);
+  } finally {
+    await t.close();
+  }
+}
+
+// A WebGPU canvas in the game (stage 3): it used to be refused ("Clip can't record WebGPU yet"); its picture is taken in
+// its own frame now. Plain WebGPU always; PixiJS 8 and three.js's WebGPURenderer too when STUDIO_WEBGPU_LIBS names a
+// folder with pixi.min.mjs and three/ (three.webgpu.js, three.core.js) — the test downloads nothing itself. Needs a
+// GPU: STUDIO_ANGLE=metal (or another ANGLE back end with WebGPU); without an adapter it says so and skips.
+async function webgpu() {
+  const libs = process.env.STUDIO_WEBGPU_LIBS ? resolve(process.env.STUDIO_WEBGPU_LIBS) : null;
+  const kinds = ['plain', ...(libs ? ['pixi', 'three'] : [])];
+  console.log(`webgpu: ${kinds.join(', ')}, PC 1280×800`);
+  let lib = null;
+  if (libs) {
+    const { createServer } = await import('node:http');
+    lib = createServer((q, res) => {
+      const f = join(libs, decodeURIComponent(new URL(q.url, 'http://x').pathname));
+      if (!f.startsWith(libs) || !existsSync(f)) return res.writeHead(404).end();
+      res.writeHead(200, { 'Content-Type': 'text/javascript', 'Access-Control-Allow-Origin': '*' }).end(readFileSync(f));
+    });
+    await new Promise((r) => lib.listen(0, '127.0.0.1', r));
+  }
+  const libUrl = lib ? `http://127.0.0.1:${lib.address().port}` : '';
+  const t = await setUp();
+  const { page } = t;
+  try {
+    check(await t.play(), 'playing');
+    const has = await page.eval(inGame(`async (w) => !!(w.navigator.gpu && await w.navigator.gpu.requestAdapter())`));
+    if (!has) return console.log('  · no WebGPU adapter in this browser (try STUDIO_ANGLE=metal): skipped');
+    // One magenta box drawn by WebGPU (each kind its own way), 240×140 at (20, 120), over the game.
+    const BOX = { x: 20, y: 120, w: 240, h: 140 };
+    for (const kind of kinds) {
+      const made = await page.eval(inGame(`async (w) => {
+        const d = w.document;
+        let c, how = '';
+        if (${JSON.stringify(kind)} === 'plain') {
+          c = d.createElement('canvas'); c.width = ${BOX.w}; c.height = ${BOX.h};
+          const ad = await w.navigator.gpu.requestAdapter(); const dev = await ad.requestDevice();
+          const ctx = c.getContext('webgpu'); ctx.configure({ device: dev, format: w.navigator.gpu.getPreferredCanvasFormat(), alphaMode: 'opaque' });
+          const frame = () => {
+            const e = dev.createCommandEncoder();
+            e.beginRenderPass({ colorAttachments: [{ view: ctx.getCurrentTexture().createView(), loadOp: 'clear', storeOp: 'store', clearValue: { r: 1, g: 0, b: 1, a: 1 } }] }).end();
+            dev.queue.submit([e.finish()]);
+            w.requestAnimationFrame(frame);
+          };
+          w.requestAnimationFrame(frame);
+          how = 'webgpu (plain)';
+        } else if (${JSON.stringify(kind)} === 'pixi') {
+          const P = await import(${JSON.stringify(`${libUrl}/pixi.min.mjs`)});
+          const app = new P.Application();
+          await app.init({ preference: 'webgpu', width: ${BOX.w}, height: ${BOX.h}, background: 0xff00ff, antialias: false });
+          app.stage.addChild(new P.Graphics().rect(0, 0, 20, 20).fill(0xffff00));
+          c = app.canvas; how = app.renderer.name || String(app.renderer.type);
+        } else {
+          const T = await import(${JSON.stringify(`${libUrl}/three/three.webgpu.js`)});
+          const r = new T.WebGPURenderer({ antialias: false }); await r.init(); r.setPixelRatio(1); r.setSize(${BOX.w}, ${BOX.h});
+          const scene = new T.Scene(); scene.background = new T.Color(0xff00ff); const cam = new T.PerspectiveCamera(50, ${BOX.w / BOX.h}, 0.1, 10);
+          r.setAnimationLoop(() => r.render(scene, cam));
+          c = r.domElement; how = r.backend && r.backend.isWebGPUBackend ? 'webgpu' : 'webgl (fallback)';
+        }
+        c.dataset.clipTest = ${JSON.stringify(kind)};
+        c.style.cssText = 'position:fixed;left:${BOX.x}px;top:${BOX.y}px;width:${BOX.w}px;height:${BOX.h}px;z-index:5';
+        d.body.append(c);
+        return JSON.stringify({ how, vw: w.innerWidth, vh: w.innerHeight });
+      }`)).then(JSON.parse);
+      console.log(`  ${kind}: drawn with ${made.how}, the game's window ${made.vw}×${made.vh}`);
+      check(/webgpu/i.test(made.how), `${kind}: the box is drawn with WebGPU (${made.how})`);
+      await sleep(800);
+      const got = await t.clip(1500);
+      check(!!got, `${kind}: the clip was saved, not refused ("${got?.s?.note || ''}")`);
+      // Taken in its own frame (play-clip.ts `gpu`), not read later: a person's browser may have shown and dropped it.
+      const st = await j(page, STATS);
+      check((st?.gpu ?? 0) > 0, `${kind}: its picture taken in its own frame (${st?.gpu} time(s))`);
+      if (!got) {
+        console.log(`  · ${page.logs.slice(-6).join('\n  · ')}`);
+        continue;
+      }
+      // The box's middle in the video: the page is fitted into 1280×720 (play-clip.ts fit).
+      const k = Math.min(1280 / made.vw, 720 / made.vh), ox = (1280 - made.vw * k) / 2, oy = (720 - made.vh * k) / 2;
+      const px = Math.round(ox + (BOX.x + BOX.w / 2 + 30) * k), py = Math.round(oy + (BOX.y + BOX.h / 2) * k);
+      try {
+        const rgb = execFileSync('ffmpeg', ['-v', 'error', '-ss', '0.8', '-i', got.path, '-frames:v', '1', '-vf', `crop=4:4:${px}:${py}`, '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-']);
+        const [r, g, b] = rgb;
+        check(r > 190 && g < 90 && b > 190, `${kind}: the box is in the clip, magenta at (${px}, ${py}): rgb(${r}, ${g}, ${b})`);
+      } catch (e) {
+        if (e.code === 'ENOENT') console.log('  · no ffmpeg here: the picture was not read back');
+        else throw e;
+      }
+      if (KEEP) copyFileSync(got.path, join(KEEP, `clip-webgpu-${kind}.mp4`));
+      await page.eval(inGame(`async (w) => { w.document.querySelector('[data-clip-test]')?.remove(); return true; }`));
+      // The line closed for the next one.
+      await page.eval(`document.querySelector('[data-action=clip-close]')?.click()`);
+      await sleep(300);
+    }
+  } finally {
+    await t.close();
+    lib?.close();
+  }
+}
+
 try {
   if (ONLY.includes('local')) await local();
   if (ONLY.includes('demo')) await demo();
   if (ONLY.includes('tall')) await tall();
   if (ONLY.includes('phone')) await phone();
   if (ONLY.includes('refuse')) await refuse();
+  if (ONLY.includes('sound')) await sound();
+  if (ONLY.includes('webgpu')) await webgpu();
 } catch (e) {
   console.error(e);
   failed++;

@@ -1689,7 +1689,7 @@ game resumes. A second press ends the clip one second later.
   `paintPage`, again only when the page changed, ≤ 10 / s) with the canvases' live pictures between them, fitted into
   16:9 on black. Encoded with WebCodecs `VideoEncoder` (`avc1.42E01F`, AVC format), each chunk posted to the editor page.
   The editor's own parts (`data-studio-ui`, `game-studio-*`) are never drawn.
-- **Messages**: `studio:clip/start { id, seconds, fps, w, h, codec, bitrate, mark, lines, before? }`, `studio:clip/stop { id, at? }` →
+- **Messages**: `studio:clip/start { id, seconds, fps, w, h, codec, bitrate, mark, lines, before?, sound? }`, `studio:clip/stop { id, at? }` →
   `studio:clip/started { total }`, `config { avcc, alt? }`, `chunk { data, key, ts, dur, alt? }` (transferred),
   `progress { done, total }`, `done { frames, markFrom }`, or `error { why: webgpu | tainted | no-encoder | nothing |
   failed, msg? }`. A WebGPU canvas (seen through `getContext('webgpu')`) and a canvas the browser refuses to read
@@ -1706,7 +1706,7 @@ game resumes. A second press ends the clip one second later.
   Remove “Made with”, ✕, and the post (no AI, its X count; in the editor's language since walk 2 △11 — `clip.post.*`
   in i18n.ts, English written by clip-model.ts) with Copy post. A host
   without `clips` (the web demo) gives the MP4 as a download. Nothing is sent anywhere.
-- Not yet: sound, WebGPU, "the last 10 seconds" (stage 3).
+- Not yet: "the last 10 seconds" (stage 3). Sound and WebGPU came in stage 3 (below).
 
 **Stage 2 (decided 2026-11-05):**
 
@@ -1733,6 +1733,32 @@ game resumes. A second press ends the clip one second later.
   only within 280 as X counts, the address put right for the mark (`checkRewrite`); else the person's post stays.
 - **A phone**: ● Clip in the bar while playing; the saved line has **Share…** (Web Share with the MP4 file and the post)
   instead of Show in Finder, or **Save to this phone** (a download) where the browser cannot share files.
+
+**Stage 3 (decided 2026-11-07): sound and WebGPU.**
+
+- **The game's sound** (`src/bridge/clip-sound.ts`, rules in `src/shell/clip-sound-model.ts`): with `start.sound` (Clip
+  ⌄ "Record the game’s sound", `prefs.json` `clip.sound`, on unless turned off) the clip gets an AAC-LC track (48 kHz
+  stereo, 128 kb/s, WebCodecs `AudioEncoder`), the second track of the MP4 (`mp4.ts`: `soun`, `mp4a` + `esds`).
+  How it is reached without changing what the person hears: installed before the game's code, every connection to a
+  context's speakers (`connect(ctx.destination)`) goes to one gain node of the bridge's (the tap), which goes to the
+  speakers; while recording the tap also feeds a `MediaStreamAudioDestinationNode`. `<audio>` / `<video>` elements that
+  play (in the page or `new Audio()`) are taken with `captureStream()` (not Firefox's muting `mozCaptureStream`); one
+  sent through Web Audio (`createMediaElementSource`) is in the tap already. All of it is mixed in one AudioContext of
+  the bridge's, whose recorder (AudioWorklet; ScriptProcessor when a page blocks the worklet's `blob:` script) outputs
+  silence. The samples are laid on the clip's own time (`clipTimeAt`, `layOut`): the game picture's 0:00 and a late
+  stop's moved clock are the video's, so a Before / After's still part is silent and a late stop cuts the sound where it
+  cuts the picture. Encoded at the end and posted as `studio:clip/sound { rate, channels, asc, chunks[{ data, ts, dur }] }`
+  before `done`; `done.sound` = `on | silent | off | unsupported | failed` (`soundMsg?`). `silent` (peak under −80 dB) and
+  `off` give no sound track at all, never a silent one. `unsupported` (no AAC encoder in this browser) and `failed` save
+  the clip without sound and the line says so (`clip.noSound` / `clip.soundFailed`). Both ends of the clip (with and
+  without the mark) carry the same sound. A limit: an element already playing at the press is in the clip from when its
+  captured track starts (up to ~0.3 s in, measured in headless Chrome).
+- **WebGPU**: recorded, no longer refused. While a clip records, every canvas that took its texture this frame
+  (`GPUCanvasContext.getCurrentTexture`, wrapped) is copied to a picture of the bridge's in a microtask after the game's
+  `GPUQueue.submit` — in the task that drew it, before the browser shows it (a WebGPU canvas has no
+  `preserveDrawingBuffer`) — and the clip draws that picture. Checked with plain WebGPU, PixiJS 8 (`preference:
+  'webgpu'`) and three.js `WebGPURenderer` (`test/studio-clip.browser.mjs` `webgpu`). `error.why: webgpu` stays in the
+  contract for a bridge before stage 3.
 
 ### 3.6 The AI's hands: editor work done by the AI (`--do`, 2026-10-24)
 

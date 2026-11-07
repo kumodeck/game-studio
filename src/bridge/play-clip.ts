@@ -31,17 +31,24 @@
 //   - Tall (720×1280): only the size changes here; the editor gives the game a 9:16 window while recording, so the page
 //     fills the frame. The asked frame (taken in the wide window) is cut to fill a tall frame (cover), never squeezed.
 //
+// Stage 3 (decided 2026-11-07):
+//   - the game's sound (clip-sound.ts): captured from the start of the game's picture, encoded as AAC at the end and
+//     posted (`studio:clip/sound`) before `done`, which says how it went (`sound`: on / silent / off / unsupported /
+//     failed). A game that made no sound gets no sound track, as before;
+//   - WebGPU: no longer refused. Its picture is taken in its own frame while recording (`gpu` below), since a WebGPU
+//     canvas has no equivalent of WebGL's preserveDrawingBuffer (which play-ask.ts turns on for WebGL). `webgpu` stays
+//     in the refusals for an older bridge's answer.
 // Said in one line instead of recording (`studio:clip/error`):
-//   - webgpu: a canvas drawing with WebGPU — its picture is readable only inside its own frame callback (no equivalent of
-//     WebGL's preserveDrawingBuffer, which play-ask.ts turns on for WebGL), so it would come out black. Later stage;
 //   - tainted: a canvas that drew a picture from another site without CORS cannot be read at all (the browser refuses
 //     the VideoFrame); the person can ask their AI to keep the pictures in the game's folder;
 //   - no-encoder: no WebCodecs H.264 in this browser.
-// Not drawn (play-shot.ts's limits): CSS gradients, shadows, SVG, rotated boxes; sound is a later stage.
+// Not drawn (play-shot.ts's limits): CSS gradients, shadows, SVG, rotated boxes.
 import type { BridgeToShell, ShellToBridge } from '../contract.ts';
 import { isStudioMessage } from '../contract.ts';
 import { nativeCancelRaf, nativeClearTimeout, nativeNow, nativeRaf, nativeSetTimeout } from '../core/native.ts';
 import { cutAtPress, markStartMs } from '../shell/clip-model.ts';
+import { clipTimeAt, type ClipSoundState, type SoundClock } from '../shell/clip-sound-model.ts';
+import { startSound, type SoundCapture } from './clip-sound.ts';
 import { paintPage } from './play-shot.ts';
 
 type Win = Window & typeof globalThis;
@@ -57,8 +64,49 @@ const QUEUE_MAX = 6;
 const webgpuCanvases = new WeakSet<HTMLCanvasElement>();
 
 /**
- * Remember which canvases draw with WebGPU (a canvas does not say so itself). Installed with the bridge, before the
- * game's code, like play-ask.ts's keepWebGLPictures. Nothing else changes.
+ * WebGPU (stage 3, decided 2026-11-07): a WebGPU canvas has no preserveDrawingBuffer, so its picture is sure to be
+ * readable only in the task that drew it — before the browser shows it. While a clip records (`on` > 0), every canvas
+ * that took its texture this frame (getCurrentTexture) is copied into a picture of ours right after the game submits its
+ * work (a microtask: after the game's frame callback, before the frame is shown), and the clip draws that picture.
+ * Checked in headless Chrome with a GPU (2026-11-07): plain WebGPU, PixiJS 8 (preference 'webgpu') and three.js's
+ * WebGPURenderer all record. Outside a clip nothing is copied: the two wrapped calls only check `on`.
+ */
+const gpu = {
+  on: 0,
+  pending: new Set<HTMLCanvasElement>(),
+  queued: false,
+  snaps: new WeakMap<HTMLCanvasElement, OffscreenCanvas>(),
+  /** Pictures taken so far (a clip's stats say how many were taken while it recorded). */
+  taken: 0,
+};
+
+function snapGpu() {
+  gpu.queued = false;
+  for (const c of gpu.pending) {
+    const w = c.width, h = c.height;
+    if (!w || !h) continue;
+    let s = gpu.snaps.get(c);
+    if (!s || s.width !== w || s.height !== h) {
+      s = new OffscreenCanvas(w, h);
+      gpu.snaps.set(c, s);
+    }
+    const g = s.getContext('2d') as Ctx2D | null;
+    if (!g) continue;
+    g.clearRect(0, 0, w, h);
+    try {
+      g.drawImage(c, 0, 0);
+      gpu.taken++;
+    } catch {
+      /* a canvas the browser will not read: the clip draws it live instead */
+    }
+  }
+  gpu.pending.clear();
+}
+
+/**
+ * Remember which canvases draw with WebGPU (a canvas does not say so itself), and take their pictures in their own frame
+ * while a clip records (see `gpu`). Installed with the bridge, before the game's code, like play-ask.ts's
+ * keepWebGLPictures. Nothing else changes.
  */
 export function watchCanvasKinds(win: Win) {
   const proto = win.HTMLCanvasElement && win.HTMLCanvasElement.prototype;
@@ -71,6 +119,30 @@ export function watchCanvasKinds(win: Win) {
   } as typeof proto.getContext & { __studioClip?: boolean };
   wrapped.__studioClip = true;
   proto.getContext = wrapped;
+  type GpuCtx = { canvas: unknown; getCurrentTexture(): unknown };
+  const G = win as unknown as { GPUCanvasContext?: { prototype: GpuCtx }; GPUQueue?: { prototype: { submit(...a: unknown[]): unknown } } };
+  const ctxProto = G.GPUCanvasContext?.prototype;
+  const queueProto = G.GPUQueue?.prototype;
+  if (!ctxProto || !queueProto || typeof ctxProto.getCurrentTexture !== 'function' || typeof queueProto.submit !== 'function') return;
+  const current = ctxProto.getCurrentTexture;
+  const submit = queueProto.submit;
+  try {
+    ctxProto.getCurrentTexture = function (this: GpuCtx) {
+      const t = current.call(this);
+      if (gpu.on && this.canvas instanceof win.HTMLCanvasElement) gpu.pending.add(this.canvas);
+      return t;
+    };
+    queueProto.submit = function (this: unknown, ...a: unknown[]) {
+      const r = submit.apply(this, a);
+      if (gpu.on && gpu.pending.size && !gpu.queued) {
+        gpu.queued = true;
+        queueMicrotask(snapGpu);
+      }
+      return r;
+    };
+  } catch {
+    /* frozen: a WebGPU game is drawn live (it reads as its last shown frame in Chrome) */
+  }
 }
 
 export interface PlayClipOptions {
@@ -153,6 +225,16 @@ function record(win: Win, m: Start, skip: (el: Element) => boolean, post: (m: Br
    * frame can come a second late), and moved on a late stop (see stop()).
    */
   let t0 = nativeNow();
+  /**
+   * Stage 3: `t0` over time, for the sound (clip-sound-model.ts clipTimeAt): one at the first live frame, one at a late
+   * stop. The game's sound before the first live frame is not in the clip (a Before / After's still part is silent).
+   */
+  const clocks: SoundClock[] = [];
+  /** The game's sound for this clip (stage 3; `m.sound` = Sound is on in Clip options), null = none captured. */
+  let sound: SoundCapture | null = null;
+  /** This clip is counted in `gpu.on` (WebGPU pictures taken in their frames) until it ends. */
+  let gpuOn = false;
+  let gpuFrom = 0;
   const origin = (win.performance && win.performance.timeOrigin) || 0;
   const fail = (why: Extract<BridgeToShell, { type: 'studio:clip/error' }>['why'], msg?: string) => {
     if (over) return;
@@ -183,6 +265,9 @@ function record(win: Win, m: Start, skip: (el: Element) => boolean, post: (m: Br
         dropFromUs = Math.round(c.tailSlot * usPerFrame);
         stats.dropped = c.drop;
         t0 = now - (c.tailSlot * dt - base);
+        // The sound follows the same clock (stage 3): what it recorded between the press and now is laid over by what
+        // comes after, as the picture's frames are.
+        clocks.push({ from: now, t0 });
         slot = c.tailSlot - 1;
       }
     },
@@ -197,11 +282,6 @@ function record(win: Win, m: Start, skip: (el: Element) => boolean, post: (m: Br
   const W_ = win as unknown as { VideoEncoder?: typeof VideoEncoder; VideoFrame?: typeof VideoFrame; OffscreenCanvas?: typeof OffscreenCanvas };
   if (!W_.VideoEncoder || !W_.VideoFrame || !W_.OffscreenCanvas) {
     nativeSetTimeout(() => fail('no-encoder'), 0);
-    return handle;
-  }
-  const canvases = () => Array.from(win.document.querySelectorAll('canvas')).filter((c) => !skip(c) && !c.closest('[data-studio-ui]'));
-  if (canvases().some((c) => webgpuCanvases.has(c) && c.getBoundingClientRect().width > 0)) {
-    nativeSetTimeout(() => fail('webgpu'), 0);
     return handle;
   }
 
@@ -314,8 +394,10 @@ function record(win: Win, m: Start, skip: (el: Element) => boolean, post: (m: Br
       const r = p.canvas.getBoundingClientRect();
       if (r.width < 1 || r.height < 1) continue;
       g.globalAlpha = p.alpha;
+      // A WebGPU canvas: the picture taken in its own frame (see `gpu`), else the canvas itself (before its first frame).
+      const src = webgpuCanvases.has(p.canvas) ? (gpu.snaps.get(p.canvas) ?? p.canvas) : p.canvas;
       try {
-        g.drawImage(p.canvas, fit.ox + r.left * fit.k, fit.oy + r.top * fit.k, r.width * fit.k, r.height * fit.k);
+        g.drawImage(src, fit.ox + r.left * fit.k, fit.oy + r.top * fit.k, r.width * fit.k, r.height * fit.k);
       } catch {
         /* a canvas with no size yet */
       }
@@ -362,6 +444,13 @@ function record(win: Win, m: Start, skip: (el: Element) => boolean, post: (m: Br
   }
 
   function finish() {
+    sound?.abort();
+    sound = null;
+    if (gpuOn) {
+      gpuOn = false;
+      gpu.on = Math.max(0, gpu.on - 1);
+      stats.gpu = gpu.taken - gpuFrom;
+    }
     nativeClearTimeout(timer);
     if (raf !== undefined) nativeCancelRaf(raf);
     watch?.disconnect();
@@ -380,6 +469,10 @@ function record(win: Win, m: Start, skip: (el: Element) => boolean, post: (m: Br
   // stoppedAt / late / dropped (stage 2): the press in the clip's time, how late the message came after it (ms), and how
   // many recorded frames that dropped.
   const stats = { frames: 0, paints: 0, paint: 0, compose: 0, encode: 0, waits: 0, started: t0, stoppedAt: -1, late: 0, dropped: 0, endMs: Math.round(endMs), chunks: 0,
+    /** Stage 3: how the clip's sound ended up ('' while recording). */
+    sound: '' as ClipSoundState | '',
+    /** Stage 3: WebGPU pictures taken in their own frame while this clip recorded (0 = no WebGPU canvas). */
+    gpu: 0,
     /** The game picture's 0:00 on the shared clock (timeOrigin + now): a test checks the press against its own clock. */
     t0Wall: 0 };
   try {
@@ -423,6 +516,7 @@ function record(win: Win, m: Start, skip: (el: Element) => boolean, post: (m: Br
     if (live === 0) {
       t0 = nativeNow();
       stats.t0Wall = origin + t0;
+      clocks.push({ from: t0, t0 });
     }
     const lastSlot = slot;
     slot = Math.max(slot + 1, Math.round((base + nativeNow() - t0) / dt));
@@ -489,8 +583,22 @@ function record(win: Win, m: Start, skip: (el: Element) => boolean, post: (m: Br
     if (over) return;
     over = true;
     flushing = false;
+    // The sound (stage 3): its capture stops here and is encoded on the clip's time; posted before `done`, so the
+    // editor has it when it writes the MP4. A failure of the sound never loses the clip: it is saved without it.
+    let soundState: ClipSoundState = m.sound ? 'silent' : 'off';
+    let soundMsg = '';
+    const snd = sound;
+    sound = null;
+    if (snd) {
+      const r = await snd.finish({ endMs, clipAt: (perf) => clipTimeAt(perf, clocks, base) }).catch((e) => ({ state: 'failed' as const, msg: String((e as Error)?.message || e) }));
+      soundState = r.state;
+      if (r.state === 'on') {
+        post({ type: 'studio:clip/sound', id, rate: r.rate, channels: r.channels, asc: r.asc, chunks: r.chunks }, [r.asc, ...r.chunks.map((c) => c.data)]);
+      } else if (r.msg) soundMsg = r.msg;
+      stats.sound = r.state;
+    }
     finish();
-    post({ type: 'studio:clip/done', id, frames: i, seconds: Math.round(endMs) / 1000, markAt: Math.round(tailMs * 1000) });
+    post({ type: 'studio:clip/done', id, frames: i, seconds: Math.round(endMs) / 1000, markAt: Math.round(tailMs * 1000), sound: soundState, ...(soundMsg ? { soundMsg } : {}) });
     ended();
   };
 
@@ -616,6 +724,11 @@ function record(win: Win, m: Start, skip: (el: Element) => boolean, post: (m: Br
     next();
   };
 
+  // The sound and the WebGPU pictures start with the recording (the encoder is set up; nothing was refused).
+  if (m.sound) sound = startSound(win);
+  gpuOn = true;
+  gpu.on++;
+  gpuFrom = gpu.taken;
   if (before) void still();
   else {
     post({ type: 'studio:clip/started', id, total: Math.round(endMs) });

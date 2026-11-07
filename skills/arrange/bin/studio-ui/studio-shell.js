@@ -1,4 +1,4 @@
-/* KUMODeck Game Studio 0.1.86 — MIT License — built file, edit src/ instead */
+/* KUMODeck Game Studio 0.1.87 — MIT License — built file, edit src/ instead */
 (() => {
 const __defs = [];
 const __cache = [];
@@ -920,7 +920,9 @@ const TOOL_ID_RE = /^[a-z0-9][a-z0-9-]{0,39}$/;
                                                                                                                              
                                                                                                                   
      
-                                                
+                                                                                        
+                                                                                 
+                      
  
 
 /**
@@ -1450,7 +1452,12 @@ const MSG_PREFIX = 'studio:';
                                                                                                                       
                                                                                                                           
          
-                                                                                                                                   
+                                                                                                                                  
+         
+                                                                                                                          
+                                                                    
+         
+                       
      
                                                                                                                         
                                                                                                                        
@@ -1750,14 +1757,20 @@ const MSG_PREFIX = 'studio:';
                                                                                                                         
                                                                                                                                         
                                      
-                                                                                                                    
+                                                                                                                                                                                  
                                                                     
      
                                                               
                                                                                 
                                                                                                                       
                                                                              
-                                                                                             
+     
+                                                                                                                         
+                                                                                                                   
+                                                                                                                 
+     
+                                                                                                                                                              
+                                                                                                                                                                            
                                                                                                                             
      
                                                                                                                           
@@ -18760,6 +18773,11 @@ const en = {
   'clip.shape.wide': 'Wide 1280×720',
   'clip.shape.tall': 'Tall 720×1280',
   'clip.words': 'Show my words on Before / After',
+  // Stage 3 (decided 2026-11-07): the game's sound in the clip (on by default), and the one line when a clip was saved
+  // without it. AAC is what X takes; Chrome and Edge encode it on Mac and Windows (checked there, not elsewhere).
+  'clip.sound': 'Record the game’s sound',
+  'clip.noSound': 'Saved without sound: this browser can’t record it. For sound, use Chrome or Edge on Mac or Windows.',
+  'clip.soundFailed': 'Saved without sound: the game’s sound couldn’t be recorded this time. Press ● Clip again to try.',
   'clip.ba': 'Clip Before / After',
   'clip.baTip': 'Make a {s}-second video: the frame you asked from, then the new code from the same moment',
   'clip.baAdds': 'Before / After adds {s} s: the frame you asked from',
@@ -20099,6 +20117,9 @@ const ja                               = {
   'clip.shape.wide': '横 1280×720',
   'clip.shape.tall': '縦 720×1280',
   'clip.words': '前 / 後に頼んだ言葉を出す',
+  'clip.sound': 'ゲームの音も録る',
+  'clip.noSound': '音なしで保存しました。このブラウザでは音を録れません。音も録るには Mac か Windows の Chrome・Edge を使ってください。',
+  'clip.soundFailed': '音なしで保存しました。今回はゲームの音を録れませんでした。もう一度 ● クリップを押してください。',
   'clip.ba': '前 / 後をクリップに',
   'clip.baTip': '{s} 秒の動画にする: 頼んだ時の 1 コマ → 同じ瞬間から新しいコード',
   'clip.baAdds': '前 / 後は頼んだ時の 1 コマの分 {s} 秒長くなります',
@@ -24224,6 +24245,12 @@ const X_LIMIT = 280;
                                     
      
                  
+     
+                                                                                                                      
+                                                                                                                     
+                                                                                             
+     
+                 
  
 
 /** A hand-edited or older prefs file reads as the defaults for anything it does not say right. */
@@ -24232,7 +24259,8 @@ function normalizeClipPrefs(raw         )            {
   const seconds = CLIP_LENGTHS.includes(r.seconds              ) ? (r.seconds              ) : CLIP_DEFAULT_LENGTH;
   const mark = typeof r.mark === 'boolean' ? r.mark : CLIP_MARK_DEFAULT;
   const words = typeof r.words === 'boolean' ? r.words : true;
-  return { seconds, mark, words, ...(r.shape === 'wide' || r.shape === 'tall' ? { shape: r.shape } : {}) };
+  const sound = typeof r.sound === 'boolean' ? r.sound : true;
+  return { seconds, mark, words, sound, ...(r.shape === 'wide' || r.shape === 'tall' ? { shape: r.shape } : {}) };
 }
 
 /** Frames in a clip of `seconds` (whole frames). */
@@ -35859,6 +35887,118 @@ __def(__exports, "gripEnd", () => gripEnd);
 };
 __defs[99] = function (__exports) {
 'use strict';
+// clip-sound-model.ts
+
+// ● Clip stage 3 (decided 2026-11-07): the pure rules of a clip's sound — the encoder's settings, how the captured pieces
+// are laid on the clip's own time, and when a clip gets no sound track at all. Unit tests: test/clip-sound.test.ts. The
+// capture is in the game page (bridge/clip-sound.ts), the track in the MP4 in shell/mp4.ts.
+//
+// WHY the sound is laid on the CLIP's time and not simply appended: the video is not real time end to end. A Before /
+// After starts with a still part encoded as fast as the encoder takes it, and a stop that reaches a busy game page late
+// drops the frames recorded after the press and goes on from there (play-clip.ts stop()). The sound follows the same
+// clock — the game picture's 0:00 (`t0`), moved when the video's is — so what is heard is what is seen.
+
+/** AAC-LC: what X takes in an MP4 (not Opus), and what every player plays. */
+const SOUND_CODEC = 'mp4a.40.2';
+/** The mixing context's rate (the encoder takes 48000 and 44100; 48000 is what most systems run at). */
+const SOUND_RATE = 48000;
+const SOUND_CHANNELS = 2;
+/** 128 kb/s stereo: clean for music and effects, ~200 KB for 12 s (the video is ~4 MB). */
+const SOUND_BITRATE = 128_000;
+/**
+ * Below this peak the clip has no sound track (about −80 dB). WHY not "any non-zero sample": a context that is running but
+ * playing nothing still passes tiny dither / denormal values through some graphs, and a game that made no sound must
+ * come out as before — a video-only MP4, not one with a silent track (decided 2026-11-07).
+ */
+const SOUND_SILENT_PEAK = 1e-4;
+
+/**
+ * How a clip's sound ended up (the bridge says it in `studio:clip/done`):
+ *   on          — a sound track is in the clip;
+ *   silent      — the game made no sound while recording: no track (as before stage 3);
+ *   off         — the person turned Sound off in Clip options;
+ *   unsupported — the game made sound, but this browser cannot encode AAC: the clip has none, and the line says so;
+ *   failed      — the sound could not be captured or encoded (the clip is still saved, without it).
+ */
+                                                                                
+
+/** The editor's one line for a clip saved without its sound, or null when there is nothing to say (silent, off, on). */
+function soundNoteKey(state                            )                {
+  if (state === 'unsupported') return 'clip.noSound';
+  if (state === 'failed') return 'clip.soundFailed';
+  return null;
+}
+
+/**
+ * The game picture's 0:00 over time: `from` = the page's clock (performance.now) from which `t0` holds. play-clip.ts adds
+ * one when the first live frame is taken and one when a late stop moves the clock (see its stop()).
+ */
+                             
+               
+             
+ 
+
+/**
+ * The clip's time (ms) of a moment on the page's clock, or null before the game's picture started (the sound then is
+ * not in the clip: a Before / After's still part is silent). `base` = where the game's picture starts in the clip.
+ */
+function clipTimeAt(perf        , clocks                       , base        )                {
+  let c                    = null;
+  for (const k of clocks) if (k.from <= perf + 1e-6) c = k;
+  return c ? base + (perf - c.t0) : null;
+}
+
+/** A captured piece of sound: its first sample's place in the clip (ms) and its samples, one array per channel. */
+                             
+               
+                       
+ 
+
+/**
+ * The clip's sound, one array per channel, from 0:00 to `endMs` at `rate`: every piece written at its place, LATER pieces
+ * over earlier ones (so after a late stop the sound from after the message replaces what was recorded between the press
+ * and the message, as the video's frames do). Nothing before 0:00 or after the end. Mono pieces go to both channels.
+ * `peak` = the loudest sample in the clip (SOUND_SILENT_PEAK decides if there is a track).
+ */
+function layOut(pieces                       , o                                                    )                                         {
+  const ch = o.channels ?? SOUND_CHANNELS;
+  const n = Math.max(0, Math.round((o.endMs * o.rate) / 1000));
+  const data = Array.from({ length: ch }, () => new Float32Array(n));
+  for (const p of pieces) {
+    if (!p.data.length || !Number.isFinite(p.atMs)) continue;
+    const at = Math.round((p.atMs * o.rate) / 1000);
+    const len = p.data[0] .length;
+    const from = Math.max(0, -at);
+    const to = Math.min(len, n - at);
+    if (to <= from) continue;
+    for (let c = 0; c < ch; c++) {
+      const src = p.data[Math.min(c, p.data.length - 1)] ;
+      data[c] .set(src.subarray(from, to), at + from);
+    }
+  }
+  let peak = 0;
+  for (const d of data) for (let i = 0; i < d.length; i++) {
+    const v = Math.abs(d[i] );
+    if (v > peak) peak = v;
+  }
+  return { data, peak };
+}
+
+/** The encoder is fed in pieces of this many frames (100 ms at 48 kHz): small enough not to hold up the page. */
+const SOUND_FEED_FRAMES = 4800;
+
+__def(__exports, "SOUND_CODEC", () => SOUND_CODEC);
+__def(__exports, "SOUND_RATE", () => SOUND_RATE);
+__def(__exports, "SOUND_CHANNELS", () => SOUND_CHANNELS);
+__def(__exports, "SOUND_BITRATE", () => SOUND_BITRATE);
+__def(__exports, "SOUND_SILENT_PEAK", () => SOUND_SILENT_PEAK);
+__def(__exports, "soundNoteKey", () => soundNoteKey);
+__def(__exports, "clipTimeAt", () => clipTimeAt);
+__def(__exports, "layOut", () => layOut);
+__def(__exports, "SOUND_FEED_FRAMES", () => SOUND_FEED_FRAMES);
+};
+__defs[100] = function (__exports) {
+'use strict';
 // mp4.ts
 
 // The MP4 box for ● Clip (decided 2026-11-05): one H.264 video track, written by hand. Pure; test/clip-model.test.ts
@@ -35870,8 +36010,9 @@ __defs[99] = function (__exports) {
 // dependencies, so a muxer library would be the first one. MediaRecorder could write an MP4 itself, but it takes the
 // frames' times from the wall clock (stage 2's still "Before" and Try's wait could not be cut), so it is not used.
 //
-// The layout ("fast start"): ftyp, moov (all the tables), then mdat with every sample in one chunk. moov goes first so a
-// player (and X's upload check) can start before the whole file is read.
+// The layout ("fast start"): ftyp, moov (all the tables), then mdat with every sample in one chunk per track (the video's,
+// then the sound's). moov goes first so a player (and X's upload check) can start before the whole file is read.
+// Stage 3 (decided 2026-11-07): an optional second track, the game's sound as AAC-LC (Mp4Audio below).
 
                             
                                                                                                    
@@ -35968,19 +36109,194 @@ function sampleTicks(samples             , timescale = MP4_TIMESCALE, endUs     
   });
 }
 
-/** The whole MP4 file. Throws when there is nothing to write. */
-function muxMp4(t          )             {
+/**
+ * ● Clip stage 3 (decided 2026-11-07): the game's sound, AAC-LC as the browser's AudioEncoder gave it (bridge/clip-sound.ts).
+ * A second track ("soun", mp4a + esds) next to the video; absent = a clip without a sound track at all (a game that made
+ * no sound, a browser that cannot encode AAC, or the person turned Sound off) — never a silent track. WHY AAC: X takes
+ * AAC-LC in MP4 (not Opus), and every player plays it.
+ */
+                           
+                                                                                                                             
+               
+                   
+                                                                                               
+                  
+                                                                                                                      
+                                                                
+ 
+
+/** An MPEG-4 descriptor (esds): tag, one length byte (every one here is under 128), body. */
+function descriptor(tag        , body            )             {
+  if (body.length > 127) throw new Error('descriptor too long');
+  const o = new Uint8Array(2 + body.length);
+  o[0] = tag;
+  o[1] = body.length;
+  o.set(body, 2);
+  return o;
+}
+
+/** The esds box of an AAC track: ES_Descriptor ⊃ DecoderConfigDescriptor (MPEG-4 audio, 0x40) ⊃ the ASC, and SLConfig. */
+function esds(a          , avgBitrate        )             {
+  const dcd = new Out();
+  dcd.u8(0x40); // objectTypeIndication: MPEG-4 Audio (AAC)
+  dcd.u8(0x15); // streamType 5 (audio) << 2 | upStream 0 | reserved 1
+  dcd.u8(0); // bufferSizeDB (24 bits): 0 = unknown, which players accept
+  dcd.u16(0);
+  dcd.u32(avgBitrate); // maxBitrate
+  dcd.u32(avgBitrate); // avgBitrate
+  dcd.bytes(descriptor(0x05, a.asc));
+  const es = new Out();
+  es.u16(0); // ES_ID
+  es.u8(0); // flags
+  es.bytes(descriptor(0x04, dcd.done()));
+  es.bytes(descriptor(0x06, Uint8Array.of(0x02))); // SLConfig: predefined 2 (MP4)
+  return fullBox('esds', 0, 0, (o) => o.bytes(descriptor(0x03, es.done())));
+}
+
+/** Run-length coded durations (stts): a steady track is one entry. */
+function stts(ticks          )             {
+  const runs                          = [];
+  for (const d of ticks) {
+    const last = runs[runs.length - 1];
+    if (last && last[1] === d) last[0]++;
+    else runs.push([1, d]);
+  }
+  return fullBox('stts', 0, 0, (m) => {
+    m.u32(runs.length);
+    for (const [c, d] of runs) (m.u32(c), m.u32(d));
+  });
+}
+
+/** One trak: its header, media header (`timescale`, `total` ticks), handler, and the sample tables around `entry`. */
+function trak(o   
+                                                                                                                
+                                                                                             
+ )             {
+  const n = o.sizes.length;
+  return box('trak', (tr) => {
+    tr.bytes(fullBox('tkhd', 0, 3, (m) => {
+      m.u32(0);
+      m.u32(0);
+      m.u32(o.id);
+      m.u32(0);
+      m.u32(o.movieDur);
+      m.zeros(8);
+      m.u16(0); // layer
+      m.u16(o.kind === 'soun' ? 1 : 0); // alternate group
+      m.u16(o.kind === 'soun' ? 0x0100 : 0); // volume: 1.0 for sound, 0 for video
+      m.u16(0);
+      matrix(m);
+      m.u32((o.w ?? 0) * 0x10000);
+      m.u32((o.h ?? 0) * 0x10000);
+    }));
+    tr.bytes(box('mdia', (md) => {
+      md.bytes(fullBox('mdhd', 0, 0, (m) => {
+        m.u32(0);
+        m.u32(0);
+        m.u32(o.timescale);
+        m.u32(o.total);
+        m.u16(0x55c4); // "und"
+        m.u16(0);
+      }));
+      md.bytes(fullBox('hdlr', 0, 0, (m) => {
+        m.u32(0);
+        m.str(o.kind);
+        m.zeros(12);
+        m.str(o.kind === 'soun' ? 'SoundHandler' : 'VideoHandler');
+        m.u8(0);
+      }));
+      md.bytes(box('minf', (mi) => {
+        if (o.kind === 'soun') mi.bytes(fullBox('smhd', 0, 0, (m) => m.zeros(4)));
+        else mi.bytes(fullBox('vmhd', 0, 1, (m) => m.zeros(8)));
+        mi.bytes(box('dinf', (d) => d.bytes(fullBox('dref', 0, 0, (m) => {
+          m.u32(1);
+          m.bytes(fullBox('url ', 0, 1, () => undefined));
+        }))));
+        mi.bytes(box('stbl', (st) => {
+          st.bytes(fullBox('stsd', 0, 0, (m) => {
+            m.u32(1);
+            m.bytes(o.entry);
+          }));
+          st.bytes(stts(o.ticks));
+          // Video: the key frames. Sound: none written = every sample is a sync sample (AAC frames all are).
+          if (o.keys) {
+            const keys = o.keys;
+            st.bytes(fullBox('stss', 0, 0, (m) => {
+              m.u32(keys.length);
+              for (const k of keys) m.u32(k);
+            }));
+          }
+          st.bytes(fullBox('stsc', 0, 0, (m) => {
+            m.u32(1);
+            m.u32(1); // first chunk
+            m.u32(n); // samples per chunk: all of them
+            m.u32(1); // sample description
+          }));
+          st.bytes(fullBox('stsz', 0, 0, (m) => {
+            m.u32(0);
+            m.u32(n);
+            for (const sz of o.sizes) m.u32(sz);
+          }));
+          st.bytes(fullBox('stco', 0, 0, (m) => {
+            m.u32(1);
+            m.u32(o.offset);
+          }));
+        }));
+      }));
+    }));
+  });
+}
+
+/** The whole MP4 file. Throws when there is nothing to write. `audio` (stage 3): the sound track, absent = video only. */
+function muxMp4(t                                        )             {
   if (!t.samples.length) throw new Error('no samples');
   const ticks = sampleTicks(t.samples, MP4_TIMESCALE, t.endUs);
   const total = ticks.reduce((a, b) => a + b, 0);
-  const movieDur = Math.round((total * MOVIE_TIMESCALE) / MP4_TIMESCALE);
   const n = t.samples.length;
+  const a = t.audio && t.audio.samples.length ? t.audio : null;
+  // The sound's ticks are its own samples (timescale = rate); its last frame lasts its own duration.
+  const aTicks = a ? sampleTicks(a.samples.map((s) => ({ ...s, key: true })), a.rate) : [];
+  const aTotal = aTicks.reduce((x, y) => x + y, 0);
+  const movieDur = Math.max(Math.round((total * MOVIE_TIMESCALE) / MP4_TIMESCALE), a ? Math.round((aTotal * MOVIE_TIMESCALE) / a.rate) : 0);
+  const videoBytes = t.samples.reduce((x, s) => x + s.data.length, 0);
+  const audioBytes = a ? a.samples.reduce((x, s) => x + s.data.length, 0) : 0;
 
   const ftyp = box('ftyp', (o) => {
     o.str('isom');
     o.u32(0x200);
     for (const b of ['isom', 'iso2', 'avc1', 'mp41']) o.str(b);
   });
+
+  const avc1 = box('avc1', (x) => {
+    x.zeros(6);
+    x.u16(1); // data reference index
+    x.zeros(16);
+    x.u16(t.width);
+    x.u16(t.height);
+    x.u32(0x00480000); // 72 dpi
+    x.u32(0x00480000);
+    x.u32(0);
+    x.u16(1); // frames per sample
+    x.zeros(32); // compressor name
+    x.u16(0x0018); // depth
+    x.u16(0xffff);
+    x.bytes(box('avcC', (c) => c.bytes(t.avcc)));
+  });
+  // The sound's bit rate for esds, from the bytes and the length (players use it only as a hint).
+  const aSeconds = a ? aTotal / a.rate : 0;
+  const mp4a = a
+    ? box('mp4a', (x) => {
+        x.zeros(6);
+        x.u16(1); // data reference index
+        x.zeros(8);
+        x.u16(a.channels);
+        x.u16(16); // sample size
+        x.u16(0);
+        x.u16(0);
+        x.u32((a.rate & 0xffff) * 0x10000); // 16.16; 48000 and 44100 fit in 16 bits
+        x.bytes(esds(a, aSeconds > 0 ? Math.round((audioBytes * 8) / aSeconds) : 0));
+      })
+    : null;
 
   const moovWith = (mdatData        ) =>
     box('moov', (o) => {
@@ -35994,112 +36310,27 @@ function muxMp4(t          )             {
         m.zeros(10);
         matrix(m);
         m.zeros(24);
-        m.u32(2); // next track id
+        m.u32(a ? 3 : 2); // next track id
       }));
-      o.bytes(box('trak', (tr) => {
-        tr.bytes(fullBox('tkhd', 0, 3, (m) => {
-          m.u32(0);
-          m.u32(0);
-          m.u32(1); // track id
-          m.u32(0);
-          m.u32(movieDur);
-          m.zeros(8);
-          m.u16(0); // layer
-          m.u16(0); // alternate group
-          m.u16(0); // volume (video)
-          m.u16(0);
-          matrix(m);
-          m.u32(t.width * 0x10000);
-          m.u32(t.height * 0x10000);
-        }));
-        tr.bytes(box('mdia', (md) => {
-          md.bytes(fullBox('mdhd', 0, 0, (m) => {
-            m.u32(0);
-            m.u32(0);
-            m.u32(MP4_TIMESCALE);
-            m.u32(total);
-            m.u16(0x55c4); // "und"
-            m.u16(0);
-          }));
-          md.bytes(fullBox('hdlr', 0, 0, (m) => {
-            m.u32(0);
-            m.str('vide');
-            m.zeros(12);
-            m.str('VideoHandler');
-            m.u8(0);
-          }));
-          md.bytes(box('minf', (mi) => {
-            mi.bytes(fullBox('vmhd', 0, 1, (m) => m.zeros(8)));
-            mi.bytes(box('dinf', (d) => d.bytes(fullBox('dref', 0, 0, (m) => {
-              m.u32(1);
-              m.bytes(fullBox('url ', 0, 1, () => undefined));
-            }))));
-            mi.bytes(box('stbl', (st) => {
-              st.bytes(fullBox('stsd', 0, 0, (m) => {
-                m.u32(1);
-                m.bytes(box('avc1', (a) => {
-                  a.zeros(6);
-                  a.u16(1); // data reference index
-                  a.zeros(16);
-                  a.u16(t.width);
-                  a.u16(t.height);
-                  a.u32(0x00480000); // 72 dpi
-                  a.u32(0x00480000);
-                  a.u32(0);
-                  a.u16(1); // frames per sample
-                  a.zeros(32); // compressor name
-                  a.u16(0x0018); // depth
-                  a.u16(0xffff);
-                  a.bytes(box('avcC', (c) => c.bytes(t.avcc)));
-                }));
-              }));
-              // Durations, run-length coded (a steady 30 fps clip is one entry).
-              const runs                          = [];
-              for (const d of ticks) {
-                const last = runs[runs.length - 1];
-                if (last && last[1] === d) last[0]++;
-                else runs.push([1, d]);
-              }
-              st.bytes(fullBox('stts', 0, 0, (m) => {
-                m.u32(runs.length);
-                for (const [c, d] of runs) (m.u32(c), m.u32(d));
-              }));
-              const keys = t.samples.flatMap((s, i) => (s.key ? [i + 1] : []));
-              st.bytes(fullBox('stss', 0, 0, (m) => {
-                m.u32(keys.length);
-                for (const k of keys) m.u32(k);
-              }));
-              st.bytes(fullBox('stsc', 0, 0, (m) => {
-                m.u32(1);
-                m.u32(1); // first chunk
-                m.u32(n); // samples per chunk: all of them
-                m.u32(1); // sample description
-              }));
-              st.bytes(fullBox('stsz', 0, 0, (m) => {
-                m.u32(0);
-                m.u32(n);
-                for (const s of t.samples) m.u32(s.data.length);
-              }));
-              st.bytes(fullBox('stco', 0, 0, (m) => {
-                m.u32(1);
-                m.u32(mdatData);
-              }));
-            }));
-          }));
-        }));
-      }));
+      o.bytes(trak({ id: 1, movieDur, timescale: MP4_TIMESCALE, total, kind: 'vide', w: t.width, h: t.height, entry: avc1, ticks,
+        sizes: t.samples.map((s) => s.data.length), keys: t.samples.flatMap((s, i) => (s.key ? [i + 1] : [])), offset: mdatData }));
+      // mdat holds the video's samples, then the sound's: each track is one chunk (a 12 s clip is a few MB, read whole).
+      if (a && mp4a) {
+        o.bytes(trak({ id: 2, movieDur, timescale: a.rate, total: aTotal, kind: 'soun', entry: mp4a, ticks: aTicks,
+          sizes: a.samples.map((s) => s.data.length), keys: null, offset: mdatData + videoBytes }));
+      }
     });
 
-  // moov's size does not depend on the offset's value, so build it once to learn where mdat's data starts.
+  // moov's size does not depend on the offsets' values, so build it once to learn where mdat's data starts.
   const moovSize = moovWith(0).length;
   const moov = moovWith(ftyp.length + moovSize + 8);
-  const dataSize = t.samples.reduce((a, s) => a + s.data.length, 0);
   const o = new Out();
   o.bytes(ftyp);
   o.bytes(moov);
-  o.u32(8 + dataSize);
+  o.u32(8 + videoBytes + audioBytes);
   o.str('mdat');
   for (const s of t.samples) o.bytes(s.data);
+  if (a) for (const s of a.samples) o.bytes(s.data);
   return o.done();
 }
 
@@ -36108,51 +36339,70 @@ function muxMp4(t          )             {
                 
                 
                  
-                                            
+                                                  
                   
                   
                
                 
                                              
                      
+                                                                   
+                                                                                                    
  
 
 /** Reads back the boxes muxMp4 writes (not a general MP4 reader). null when it does not read as one. */
 function mp4Info(b            )                 {
   const dv = new DataView(b.buffer, b.byteOffset, b.byteLength);
   const type = (at        ) => String.fromCharCode(b[at] , b[at + 1] , b[at + 2] , b[at + 3] );
-  const info                                         = { order: [] };
+                                                                                                                                                                      
+  const order           = [];
+  let brand = '';
+  const traks         = [];
+  let cur              = null;
   const walk = (from        , to        , depth        ) => {
     let at = from;
     while (at + 8 <= to) {
       const size = dv.getUint32(at);
       const ty = type(at + 4);
       if (size < 8 || at + size > to) return;
-      if (depth === 0) info.order.push(ty);
+      if (depth === 0) order.push(ty);
       const body = at + 8;
-      if (ty === 'ftyp') info.brand = type(body);
-      else if (ty === 'tkhd') {
-        info.width = dv.getUint32(at + size - 8) / 0x10000;
-        info.height = dv.getUint32(at + size - 4) / 0x10000;
-      } else if (ty === 'mdhd') info.seconds = dv.getUint32(body + 16) / dv.getUint32(body + 12);
-      else if (ty === 'stsz') info.samples = dv.getUint32(body + 8);
-      else if (ty === 'stss') info.keys = dv.getUint32(body + 4);
-      else if (ty === 'stsd') info.codec = type(body + 12);
+      if (ty === 'ftyp') brand = type(body);
+      else if (ty === 'trak') traks.push((cur = {}));
+      else if (cur && ty === 'tkhd') {
+        cur.width = dv.getUint32(at + size - 8) / 0x10000;
+        cur.height = dv.getUint32(at + size - 4) / 0x10000;
+      } else if (cur && ty === 'mdhd') cur.seconds = dv.getUint32(body + 16) / dv.getUint32(body + 12);
+      else if (cur && ty === 'hdlr') cur.kind = type(body + 8);
+      else if (cur && ty === 'stsz') cur.samples = dv.getUint32(body + 8);
+      else if (cur && ty === 'stss') cur.keys = dv.getUint32(body + 4);
+      else if (cur && ty === 'stsd') {
+        // The first sample entry: its type, and for sound its channels and rate (mp4a's fixed fields).
+        const e = body + 8;
+        cur.codec = type(e + 4);
+        if (cur.codec === 'mp4a') {
+          cur.channels = dv.getUint16(e + 8 + 16);
+          cur.rate = dv.getUint16(e + 8 + 24);
+        }
+      }
       if (['moov', 'trak', 'mdia', 'minf', 'stbl'].includes(ty)) walk(body, at + size, depth + 1);
       at += size;
     }
   };
   walk(0, b.length, 0);
-  if (!info.brand || info.samples === undefined || info.seconds === undefined) return null;
+  const v = traks.find((x) => x.kind === 'vide') ?? traks[0];
+  const s = traks.find((x) => x.kind === 'soun');
+  if (!brand || !v || v.samples === undefined || v.seconds === undefined) return null;
   return {
-    brand: info.brand,
-    width: info.width ?? 0,
-    height: info.height ?? 0,
-    seconds: info.seconds,
-    samples: info.samples,
-    keys: info.keys ?? 0,
-    codec: info.codec ?? '',
-    fastStart: info.order.indexOf('moov') >= 0 && info.order.indexOf('moov') < info.order.indexOf('mdat'),
+    brand,
+    width: v.width ?? 0,
+    height: v.height ?? 0,
+    seconds: v.seconds,
+    samples: v.samples,
+    keys: v.keys ?? 0,
+    codec: v.codec ?? '',
+    fastStart: order.indexOf('moov') >= 0 && order.indexOf('moov') < order.indexOf('mdat'),
+    audio: s ? { codec: s.codec ?? '', rate: s.rate ?? 0, channels: s.channels ?? 0, samples: s.samples ?? 0, seconds: s.seconds ?? 0 } : null,
   };
 }
 
@@ -36161,7 +36411,7 @@ __def(__exports, "sampleTicks", () => sampleTicks);
 __def(__exports, "muxMp4", () => muxMp4);
 __def(__exports, "mp4Info", () => mp4Info);
 };
-__defs[100] = function (__exports) {
+__defs[101] = function (__exports) {
 'use strict';
 // clip.ts
 
@@ -36196,8 +36446,13 @@ __defs[100] = function (__exports) {
 //     line's "8 s · Tall 720×1280 ⌄" opens them too, for the next clip — the same words as ⌄ on a computer.
 //   - Post on X… (computer): X's compose page with the post written, and the clip shown in its folder — one press and
 //     one drag, where it was Copy post, open X, paste, Show in Finder, drag.
-//   - WebGPU / a picture from another site: the line says what to do next, with "✦ Ask Claude" to put the request in
-//     the field (not sent: the person sends it).
+//   - A picture from another site (and WebGPU from a bridge before stage 3): the line says what to do next, with "✦ Ask
+//     Claude" to put the request in the field (not sent: the person sends it).
+// Stage 3 (decided 2026-11-07):
+//   - The game's sound in the clip (Clip options › "Record the game’s sound", on by default): the bridge sends it as AAC
+//     before `done`, and both ends of the clip carry the same sound track. A game that made no sound gets no track; a
+//     browser that cannot encode AAC saves the clip without sound and the line says so, with what to use instead.
+//   - WebGPU games record (play-clip.ts takes their picture in their own frame).
 // WHY no key (⌘K lists it instead): while playing, the keys are the game's (keymap.ts); a letter would fight its controls.
 // WHY the next seconds, not the last ones: recording all through ▶ Play costs heat and battery, and a clip that only
 // starts on a press never records what the person did not mean to show.
@@ -36206,7 +36461,8 @@ const { h } = __require(16);
 const { icon } = __require(21);
                                                    
 const { BA_ADDS_SECONDS, BA_BEFORE_MS, BA_STILL_FPS, BA_WIPE_MS, CLIP_BITRATE, CLIP_CODEC, CLIP_FPS, CLIP_HOLD_MS, CLIP_LENGTHS, CLIP_MARK_LINES, CLIP_SHAPES, X_LIMIT, baSeconds, baWords, beforeAfterPost, beforeAfterStem, checkRewrite, clipShapeFor, clipSize, clipStem, downloadName, leftClock, postText, recLeftMs, withAddress, xComposeUrl, xLength } = __require(57);
-const { muxMp4 } = __require(99);
+const { soundNoteKey } = __require(99);
+const { muxMp4 } = __require(100);
 
 /** What ✦ Rewrite tells the AI with the post (StudioRequestInput.clip). */
                                   
@@ -36302,6 +36558,8 @@ function createClip(d          ) {
   let alt              = [];
   let avcc                    = null;
   let altAvcc                    = null;
+  /** Stage 3: the game's sound for this clip (`studio:clip/sound`, before `done`), null = the clip has none. */
+  let audio                  = null;
   let saved               = null;
   /** When the game page last said something about this clip: a page that went (Reload, Play from the start) says nothing more. */
   let heard = 0;
@@ -36423,6 +36681,8 @@ function createClip(d          ) {
     rows.push({ sep: true },
       { id: 'clip-mark', label: t('clip.mark'), checked: p.mark, run: () => (d.setPrefs({ ...d.prefs(), mark: !d.prefs().mark }), (wanted = d.prefs())) },
       { id: 'clip-words', label: t('clip.words'), checked: p.words, run: () => (d.setPrefs({ ...d.prefs(), words: !d.prefs().words }), (wanted = d.prefs())) },
+      // Stage 3 (decided 2026-11-07): the game's sound, on by default; one row, as the mark's.
+      { id: 'clip-sound', label: t('clip.sound'), checked: p.sound, run: () => (d.setPrefs({ ...d.prefs(), sound: !d.prefs().sound }), (wanted = d.prefs())) },
       { sep: true }, { note: `${t('clip.saveTo', { dir })} ${t('clip.local')}` });
     d.menu(at, rows);
   }
@@ -36440,6 +36700,7 @@ function createClip(d          ) {
     alt = [];
     avcc = null;
     altAvcc = null;
+    audio = null;
   }
 
   /**
@@ -36479,7 +36740,7 @@ function createClip(d          ) {
     render();
     const { w, h: hh } = clipSize(shape);
     d.post({ type: 'studio:clip/start', id, seconds: wanted.seconds, fps: CLIP_FPS, w, h: hh, codec: CLIP_CODEC, bitrate: CLIP_BITRATE,
-      mark: wanted.mark, lines: [...CLIP_MARK_LINES] });
+      mark: wanted.mark, lines: [...CLIP_MARK_LINES], sound: wanted.sound });
     waitStarted(5000);
   }
 
@@ -36517,7 +36778,7 @@ function createClip(d          ) {
     const { w, h: hh } = clipSize(shape);
     const words = wanted.words ? baWords(o.asked) : '';
     d.post({ type: 'studio:clip/start', id, seconds: total, fps: CLIP_FPS, w, h: hh, codec: CLIP_CODEC, bitrate: CLIP_BITRATE,
-      mark: wanted.mark, lines: [...CLIP_MARK_LINES],
+      mark: wanted.mark, lines: [...CLIP_MARK_LINES], sound: wanted.sound,
       // "Before" / "After" in English whatever the editor's language: the video goes to X (as the mark's lines).
       before: { image, ms: BA_BEFORE_MS, wipeMs: BA_WIPE_MS, label: 'Before', after: 'After', stillFps: BA_STILL_FPS, ...(words ? { words } : {}) } });
     // The still part is encoded before `started`: on a slow machine that is a few seconds.
@@ -36568,9 +36829,12 @@ function createClip(d          ) {
       case 'studio:clip/chunk':
         (m.alt ? alt : main).push({ data: new Uint8Array(m.data), key: m.key, ts: m.ts, dur: m.dur });
         break;
+      case 'studio:clip/sound':
+        audio = { rate: m.rate, channels: m.channels, asc: new Uint8Array(m.asc), samples: m.chunks.map((c) => ({ data: new Uint8Array(c.data), ts: c.ts, dur: c.dur })) };
+        break;
       case 'studio:clip/done':
         window.clearInterval(clock);
-        void finish(m.seconds, m.markAt);
+        void finish(m.seconds, m.markAt, m.sound);
         break;
       case 'studio:clip/error': {
         window.clearInterval(clock);
@@ -36595,7 +36859,7 @@ function createClip(d          ) {
     return { text: t('clip.failed', { msg: msg || '?' }) };
   }
 
-  async function finish(length        , markAt        ) {
+  async function finish(length        , markAt        , soundState                 ) {
     stopping = false;
     setState('saving');
     const seconds = Math.round(length * 10) / 10;
@@ -36607,12 +36871,14 @@ function createClip(d          ) {
       alt.sort((a, b) => a.ts - b.ts);
       if (!avcc || !main.length) throw new Error('no video');
       const endUs = Math.round(length * 1e6);
-      file = muxMp4({ width: w, height: hh, avcc, samples: main, endUs });
+      // The sound (stage 3) is the same track in both ends: only the picture's last second differs.
+      const sound = soundState === 'on' ? audio : null;
+      file = muxMp4({ width: w, height: hh, avcc, samples: main, endUs, audio: sound });
       // The other end: the frames before the mark's second, then the second encoder's. Only when both encoders set up
       // the same way (the same SPS / PPS), so one MP4 header describes both — nearly always in one browser, checked.
       const cut = markAt - 1;
       if (altAvcc && sameBytes(altAvcc, avcc) && alt.length && alt[0] .key) {
-        other = muxMp4({ width: w, height: hh, avcc, samples: [...main.filter((s) => s.ts < cut), ...alt], endUs });
+        other = muxMp4({ width: w, height: hh, avcc, samples: [...main.filter((s) => s.ts < cut), ...alt], endUs, audio: sound });
       }
     } catch (e) {
       setState('idle');
@@ -36621,6 +36887,7 @@ function createClip(d          ) {
     }
     main = [];
     alt = [];
+    audio = null;
     const made = ba;
     ba = null;
     const stem = made ? beforeAfterStem(d.game()) : clipStem(d.game());
@@ -36635,6 +36902,9 @@ function createClip(d          ) {
     saved = { ...ok, seconds, shape, mark: wanted.mark, other, file, post: postFor(wanted.mark), postFor, rewritten: false, rewriting: false, ctx };
     setState('idle');
     showLine();
+    // Saved without its sound (stage 3): one line under the saved rows, with what to do (another browser / try again).
+    const noteKey = soundNoteKey(soundState);
+    if (noteKey) say(t(noteKey), 10000);
   }
 
   /** Save (the server's folder) or download (the web demo). `replace` = the name of the clip saved before. */
@@ -36853,7 +37123,7 @@ function sameBytes(a            , b            ) {
 
 __def(__exports, "createClip", () => createClip);
 };
-__defs[101] = function (__exports) {
+__defs[102] = function (__exports) {
 'use strict';
 // main.ts
 
@@ -36939,7 +37209,7 @@ const { uiAsPlacement, uiEntries, withUi } = __require(91);
 const { createUiWire } = __require(96);
 const { createUiMissing } = __require(97);
 const { barPress, FOLD_DRAG, gripEnd, readFold, writeFold } = __require(98);
-const { createClip } = __require(100);
+const { createClip } = __require(101);
 const { baSeconds, normalizeClipPrefs } = __require(57);
 
                                                                         
@@ -44382,7 +44652,7 @@ function start(host            ) {
 
 __def(__exports, "start", () => start);
 };
-__defs[102] = function (__exports) {
+__defs[103] = function (__exports) {
 'use strict';
 // host-local.ts
 
@@ -44617,7 +44887,7 @@ function createLocalHost(base         = LOCAL_PATHS.api)             {
 __def(__exports, "HANDS_BEAT_MS", () => HANDS_BEAT_MS);
 __def(__exports, "createLocalHost", () => createLocalHost);
 };
-__defs[103] = function (__exports) {
+__defs[104] = function (__exports) {
 'use strict';
 // shelf-strings.ts
 
@@ -44759,7 +45029,7 @@ __def(__exports, "askWords", () => askWords);
 __def(__exports, "moveWords", () => moveWords);
 __def(__exports, "blurbWords", () => blurbWords);
 };
-__defs[104] = function (__exports) {
+__defs[105] = function (__exports) {
 'use strict';
 // shelf-css.ts
 
@@ -44890,7 +45160,7 @@ const SHELF_CSS = `
 
 __def(__exports, "SHELF_CSS", () => SHELF_CSS);
 };
-__defs[105] = function (__exports) {
+__defs[106] = function (__exports) {
 'use strict';
 // shelf.ts
 
@@ -44917,8 +45187,8 @@ const { LOCAL_PATHS } = __require(0);
 const { h } = __require(16);
 const { detectLang } = __require(39);
 const { normalizeUi, effectiveTheme } = __require(58);
-const { shelfText, askWords, moveWords, blurbWords } = __require(103);
-const { SHELF_CSS } = __require(104);
+const { shelfText, askWords, moveWords, blurbWords } = __require(104);
+const { SHELF_CSS } = __require(105);
 
 /** One card, as the server sends it (server.mjs api/shelf). */
                             
@@ -45251,7 +45521,7 @@ __def(__exports, "pauseSeconds", () => pauseSeconds);
 __def(__exports, "showShelf", () => showShelf);
 __def(__exports, "createShelfHost", () => createShelfHost);
 };
-__defs[106] = function (__exports) {
+__defs[107] = function (__exports) {
 'use strict';
 // shelf-tour.ts
 
@@ -45269,9 +45539,9 @@ __defs[106] = function (__exports) {
 // so main.ts carries no tour code: when the guide is done there is nothing of it left running.
                                            
 const { h } = __require(16);
-const { shelfText, askWords, moveWords } = __require(103);
-const { SHELF_CSS } = __require(104);
-const { TOUR_KEY, pauseSeconds } = __require(105);
+const { shelfText, askWords, moveWords } = __require(104);
+const { SHELF_CSS } = __require(105);
+const { TOUR_KEY, pauseSeconds } = __require(106);
 
 /** Set once Skip or Done is pressed: no guide again on this device (any sample, any folder). */
 const TOUR_OFF_KEY = 'studio.shelfTour.off';
@@ -45467,7 +45737,7 @@ __def(__exports, "nextStep", () => nextStep);
 __def(__exports, "moreKey", () => moreKey);
 __def(__exports, "startTour", () => startTour);
 };
-__defs[107] = function (__exports) {
+__defs[108] = function (__exports) {
 'use strict';
 // local.ts
 
@@ -45478,10 +45748,10 @@ __defs[107] = function (__exports) {
 // A folder without a game opens on the shelf of samples instead of the editor (shelf.ts, decided 2026-11-06): the
 // server says which (api/open `shelf: true`). After a sample is picked the page reloads into the editor, and the
 // one-card guide (shelf-tour.ts) runs beside it once.
-const { start } = __require(101);
-const { createLocalHost } = __require(102);
-const { showShelf, createShelfHost } = __require(105);
-const { startTour } = __require(106);
+const { start } = __require(102);
+const { createLocalHost } = __require(103);
+const { showShelf, createShelfHost } = __require(106);
+const { startTour } = __require(107);
 
 const host = createLocalHost();
 const shelf = createShelfHost();
@@ -45493,5 +45763,5 @@ void shelf.isShelf().then((on) => {
 
 
 };
-__require(107);
+__require(108);
 })();

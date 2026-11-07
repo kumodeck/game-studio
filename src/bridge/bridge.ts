@@ -26,6 +26,7 @@ import { findUi as findUiNow, markHudCanvases, type Rect } from './ui-found.ts';
 import { runSelfCheck } from './selfcheck.ts';
 import { createEditor, type Editor } from './editor.ts';
 import { startPlayAsk, type PlayAskHandle } from './play-ask.ts';
+import { watchSound } from './clip-sound.ts';
 import { startPlayClip, watchCanvasKinds } from './play-clip.ts';
 import { startMomentValues } from './moment-values.ts';
 import { fromCheckpoint, startCheckpointHold, startMomentSave, type CheckpointHold } from './moment-load.ts';
@@ -341,6 +342,9 @@ export function startBridge(opts: BridgeOptions): void {
     // ● Clip (stage 1, 2026-11-05; play-clip.ts): the recording is made here, in the game page (the editor page cannot read
     // another origin's frame). The WebGPU watch goes in now, before the game's code makes its canvases.
     watchCanvasKinds(win);
+    // Stage 3 (2026-11-07; clip-sound.ts): the game's sound reaches a clip through one gain node of ours between its graph
+    // and its speakers — put in now, before its first sound, so nothing is re-wired when a clip starts.
+    watchSound(win);
     startPlayClip({ win, parentOrigin, skip: (e) => e.tagName.startsWith('GAME-STUDIO') || e.hasAttribute('data-studio-ui') });
     // This moment's values (pause-edit stage 2, 2026-10-28; moment-values.ts): the game's codeMoment() read and changed
     // for the editor page — in an edit page and a page opened for Play alike (the moment's editor may be either).

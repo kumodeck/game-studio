@@ -15,6 +15,9 @@
 //   4. The file: an MP4 of 10 s (2 s still + 8 s of the After), 1280×720, a key frame at 0, at 2 s and at the mark
 //      (9 s); its frames read back with ffmpeg (when there): 1 s = the Before (the still frame, "Before"), 2.1 s = the
 //      wipe, 5 s = the After, 9.5 s = the mark — and the still part's frames are the same picture (it is held).
+//   5. (stage 3, decided 2026-11-07) The sound: the Try's page makes a 440 Hz tone (Web Audio) while it waits at the
+//      moment; the clip has an AAC track 10 s long, silent over the Before (its 2 s still part) and with the tone over
+//      the After (read back with ffmpeg / ffprobe, when there).
 // --tall: the same with Clip ⌄ → Tall (720×1280). --shots: clip-ba-*.png (and the frames as PNG). --keep: the MP4.
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
@@ -93,7 +96,9 @@ function mp4Info(b) {
         info.deltas = [];
         for (let k = 0; k < n; k++) for (let c = b.readUInt32BE(body + 8 + k * 8), d = b.readUInt32BE(body + 12 + k * 8); c > 0; c--) info.deltas.push(d);
       } else if (ty === 'stsd') info.codec = type(body + 12);
-      if (['moov', 'trak', 'mdia', 'minf', 'stbl'].includes(ty)) walk(body, at + size, depth + 1);
+      // The first trak only (the video): a clip with sound has a second one (stage 3), whose boxes would overwrite these.
+      if (ty === 'trak') info.traks = (info.traks || 0) + 1;
+      if (['moov', 'mdia', 'minf', 'stbl'].includes(ty) || (ty === 'trak' && info.traks === 1)) walk(body, at + size, depth + 1);
       at += size;
     }
   };
@@ -186,6 +191,11 @@ async function run() {
     // ja uses one word for Before / After everywhere since 2026-11-06.
     check((ja ? /前 \/ 後をクリップに/ : /Clip Before \/ After/).test(clipBtn.text), `the panel's "${clipBtn.text}"`);
     await shot('panel');
+    // 5. (stage 3) The Try's page makes a sound of its own: a steady 440 Hz tone through its AudioContext (the editor's
+    // frame allows autoplay, and this page was opened by the person's press).
+    const toned = await page.eval(`(async () => { const w = ${GW}; const ctx = new w.AudioContext(); await Promise.race([ctx.resume(), new Promise((r) => setTimeout(r, 800))]).catch(() => {});
+      const o = ctx.createOscillator(), g = ctx.createGain(); o.frequency.value = 440; g.gain.value = 0.3; o.connect(g).connect(ctx.destination); o.start(); w.__tone = ctx; return ctx.state; })()`);
+    console.log(`  the Try's tone: ${toned}`);
     // 3. Pressed.
     const t0 = Date.now();
     await page.click(clipBtn.x, clipBtn.y);
@@ -224,6 +234,28 @@ async function run() {
     check(Math.abs(info.seconds - 10) < 0.05, `10 s (${info.seconds?.toFixed(3)})`);
     check(info.keyTimes[0] === 0 && info.keyTimes.some((k) => Math.abs(k - 2) < 0.04) && info.keyTimes.some((k) => Math.abs(k - 9) < 0.04), 'key frames at 0, at the After (2 s) and at the mark (9 s)');
     if (KEEP) copyFileSync(fileP, join(KEEP, `clip-ba-sample-${ja ? 'ja' : 'en'}${TALL ? '-tall' : ''}.mp4`));
+    // 5. The sound (stage 3): a track as long as the clip, quiet over the Before, the tone over the After.
+    const pr = spawnSync('ffprobe', ['-v', 'error', '-show_streams', '-of', 'json', fileP], { encoding: 'utf8' });
+    if (pr.status === 0 && toned === 'running') {
+      const a = JSON.parse(pr.stdout).streams.find((x) => x.codec_type === 'audio');
+      check(a?.codec_name === 'aac' && Math.abs(Number(a.duration) - 10) < 0.15, `a sound track, AAC, ${a?.duration} s`);
+      if (a) {
+        const raw = execFileSync('ffmpeg', ['-v', 'error', '-i', fileP, '-vn', '-af', 'pan=mono|c0=c0', '-ar', '48000', '-f', 'f32le', '-'], { maxBuffer: 64 << 20 });
+        const x = new Float32Array(raw.buffer, raw.byteOffset, raw.length / 4);
+        // Goertzel: how loud 440 Hz is over [from, to) seconds (≈ the sine's amplitude).
+        const level = (from, to) => {
+          const seg = x.subarray(Math.round(from * 48000), Math.round(to * 48000));
+          const w = (2 * Math.PI * 440) / 48000, c = 2 * Math.cos(w);
+          let s1 = 0, s2 = 0;
+          for (let k = 0; k < seg.length; k++) { const s0 = seg[k] + c * s1 - s2; s2 = s1; s1 = s0; }
+          return (2 * Math.sqrt(Math.max(0, s1 * s1 + s2 * s2 - c * s1 * s2))) / Math.max(1, seg.length);
+        };
+        const before = level(0.1, 1.8), after = level(2.4, 8.8);
+        console.log(`  440 Hz: Before ${before.toFixed(3)} · After ${after.toFixed(3)} (0.30 made)`);
+        check(before < 0.02, `the Before is silent (${before.toFixed(3)}): the still frame has no sound`);
+        check(after > 0.15 && after < 0.42, `the After has the game's sound, once (${after.toFixed(3)})`);
+      }
+    } else console.log(`  · the sound not read back (ffprobe ${pr.status === 0 ? 'here' : 'missing'}, the tone ${toned})`);
     // Its frames, read back by ffmpeg (when this machine has it).
     const ff = spawnSync('ffmpeg', ['-version'], { encoding: 'utf8' });
     if (ff.status === 0) {

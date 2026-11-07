@@ -904,7 +904,9 @@ export interface UiPrefs {
    * ● Clip ⌄'s choices (stage 1, 2026-11-05; shell/clip-model.ts): the length and whether the end carries the mark. Absent =
    * never chosen: the defaults of clip-model.ts (so a change of the default reaches everyone who has not chosen).
    */
-  clip?: { seconds: 6 | 8 | 12; mark: boolean };
+  clip?: { seconds: 6 | 8 | 12; mark: boolean; shape?: 'wide' | 'tall'; words?: boolean;
+    /** Stage 3 (decided 2026-11-07): the game's sound in clips (absent = on). */
+    sound?: boolean };
 }
 
 /**
@@ -1434,7 +1436,12 @@ export type ShellToBridge =
        * on it; the game's own picture follows, wiped in over `wipeMs`, with `after` ("After"). `seconds` is the whole
        * clip (the still part included). `started` comes once the still part is encoded: the editor resumes the game then.
        */
-      before?: { image: ArrayBuffer; ms: number; wipeMs: number; label: string; after: string; words?: string; stillFps: number } }
+      before?: { image: ArrayBuffer; ms: number; wipeMs: number; label: string; after: string; words?: string; stillFps: number };
+      /**
+       * Stage 3 (decided 2026-11-07): record the game's sound too (Clip options' Sound, on by default). Absent = no sound
+       * (an older editor, which would not know what to do with it).
+       */
+      sound?: boolean }
   /**
    * ● Clip pressed again: end one mark-second after the press. `at` (stage 2, decided 2026-11-05): when it was pressed,
    * as performance.timeOrigin + performance.now() in the editor page (one clock for both pages). WHY: a busy game page
@@ -1734,14 +1741,20 @@ export type BridgeToShell =
    * of the second encoder, the end the other way); a `chunk` per encoded frame (AVC samples, ts / dur in µs; `alt` = of
    * the other end); `progress` every frame (`done` / `total` in ms); `done` with the frames, the clip's length (s) and where the mark's
    * second starts (`markAt`, µs); or
-   * `error` (why: webgpu = a WebGPU canvas, tainted = a picture from another site, no-encoder = no WebCodecs H.264,
+   * `error` (why: webgpu = a WebGPU canvas — only from a bridge before stage 3, which records WebGPU now; tainted = a picture from another site, no-encoder = no WebCodecs H.264,
    * nothing = no picture on screen, failed = anything else, `msg`).
    */
   | { type: 'studio:clip/started'; id: string; total: number }
   | { type: 'studio:clip/config'; id: string; avcc: ArrayBuffer; alt?: boolean }
   | { type: 'studio:clip/chunk'; id: string; data: ArrayBuffer; key: boolean; ts: number; dur: number; alt?: boolean }
   | { type: 'studio:clip/progress'; id: string; done: number; total: number }
-  | { type: 'studio:clip/done'; id: string; frames: number; seconds: number; markAt: number }
+  /**
+   * Stage 3 (decided 2026-11-07): the clip's sound, AAC-LC (`asc` = its AudioSpecificConfig; chunks' ts / dur in µs from
+   * the clip's 0:00), sent once, before `done`, only when there is sound. `done.sound` says how the sound ended up
+   * (shell/clip-sound-model.ts ClipSoundState: on / silent / off / unsupported / failed, `soundMsg` for failed).
+   */
+  | { type: 'studio:clip/sound'; id: string; rate: number; channels: number; asc: ArrayBuffer; chunks: Array<{ data: ArrayBuffer; ts: number; dur: number }> }
+  | { type: 'studio:clip/done'; id: string; frames: number; seconds: number; markAt: number; sound?: 'on' | 'silent' | 'off' | 'unsupported' | 'failed'; soundMsg?: string }
   | { type: 'studio:clip/error'; id: string; why: 'webgpu' | 'tainted' | 'no-encoder' | 'nothing' | 'failed'; msg?: string }
   /**
    * This moment's values (pause-edit stage 2; §1.14), in reply to `moment/ask` and `moment/set`: `values` null = the game

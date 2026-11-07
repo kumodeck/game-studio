@@ -66,11 +66,12 @@ test('the mark: on by default, two English lines, and the prefs keep what the pe
   assert.equal(CLIP_MARK_DEFAULT, true);
   assert.deepEqual([...CLIP_MARK_LINES], ['Made with KUMODeck Game Studio', 'github.com/kumodeck/game-studio']);
   assert.ok(CLIP_REPO_URL.endsWith(CLIP_MARK_LINES[1]));
-  assert.deepEqual(normalizeClipPrefs(undefined), { seconds: 8, mark: CLIP_MARK_DEFAULT, words: true });
-  assert.deepEqual(normalizeClipPrefs({ seconds: 12, mark: false }), { seconds: 12, mark: false, words: true });
-  assert.deepEqual(normalizeClipPrefs({ seconds: 9, mark: 'no' }), { seconds: 8, mark: CLIP_MARK_DEFAULT, words: true });
+  // Stage 3: `sound` (on unless turned off) in every one.
+  assert.deepEqual(normalizeClipPrefs(undefined), { seconds: 8, mark: CLIP_MARK_DEFAULT, words: true, sound: true });
+  assert.deepEqual(normalizeClipPrefs({ seconds: 12, mark: false }), { seconds: 12, mark: false, words: true, sound: true });
+  assert.deepEqual(normalizeClipPrefs({ seconds: 9, mark: 'no' }), { seconds: 8, mark: CLIP_MARK_DEFAULT, words: true, sound: true });
   // Stage 2: the shape once chosen, the words on Before / After (on unless turned off); an odd shape reads as not chosen.
-  assert.deepEqual(normalizeClipPrefs({ seconds: 6, mark: true, shape: 'tall', words: false }), { seconds: 6, mark: true, words: false, shape: 'tall' });
+  assert.deepEqual(normalizeClipPrefs({ seconds: 6, mark: true, shape: 'tall', words: false }), { seconds: 6, mark: true, words: false, sound: true, shape: 'tall' });
   assert.equal('shape' in normalizeClipPrefs({ shape: 'square' }), false);
 });
 

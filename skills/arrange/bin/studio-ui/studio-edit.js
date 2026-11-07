@@ -1,4 +1,4 @@
-/* KUMODeck Game Studio 0.1.86 — MIT License — built file, edit src/ instead */
+/* KUMODeck Game Studio 0.1.87 — MIT License — built file, edit src/ instead */
 (() => {
 const __defs = [];
 const __cache = [];
@@ -5013,7 +5013,9 @@ const TOOL_ID_RE = /^[a-z0-9][a-z0-9-]{0,39}$/;
                                                                                                                              
                                                                                                                   
      
-                                                
+                                                                                        
+                                                                                 
+                      
  
 
 /**
@@ -5543,7 +5545,12 @@ const MSG_PREFIX = 'studio:';
                                                                                                                       
                                                                                                                           
          
-                                                                                                                                   
+                                                                                                                                  
+         
+                                                                                                                          
+                                                                    
+         
+                       
      
                                                                                                                         
                                                                                                                        
@@ -5843,14 +5850,20 @@ const MSG_PREFIX = 'studio:';
                                                                                                                         
                                                                                                                                         
                                      
-                                                                                                                    
+                                                                                                                                                                                  
                                                                     
      
                                                               
                                                                                 
                                                                                                                       
                                                                              
-                                                                                             
+     
+                                                                                                                         
+                                                                                                                   
+                                                                                                                 
+     
+                                                                                                                                                              
+                                                                                                                                                                            
                                                                                                                             
      
                                                                                                                           
@@ -27201,6 +27214,572 @@ __def(__exports, "startPlayAsk", () => startPlayAsk);
 };
 __defs[65] = function (__exports) {
 'use strict';
+// ../shell/clip-sound-model.ts
+
+// ● Clip stage 3 (decided 2026-11-07): the pure rules of a clip's sound — the encoder's settings, how the captured pieces
+// are laid on the clip's own time, and when a clip gets no sound track at all. Unit tests: test/clip-sound.test.ts. The
+// capture is in the game page (bridge/clip-sound.ts), the track in the MP4 in shell/mp4.ts.
+//
+// WHY the sound is laid on the CLIP's time and not simply appended: the video is not real time end to end. A Before /
+// After starts with a still part encoded as fast as the encoder takes it, and a stop that reaches a busy game page late
+// drops the frames recorded after the press and goes on from there (play-clip.ts stop()). The sound follows the same
+// clock — the game picture's 0:00 (`t0`), moved when the video's is — so what is heard is what is seen.
+
+/** AAC-LC: what X takes in an MP4 (not Opus), and what every player plays. */
+const SOUND_CODEC = 'mp4a.40.2';
+/** The mixing context's rate (the encoder takes 48000 and 44100; 48000 is what most systems run at). */
+const SOUND_RATE = 48000;
+const SOUND_CHANNELS = 2;
+/** 128 kb/s stereo: clean for music and effects, ~200 KB for 12 s (the video is ~4 MB). */
+const SOUND_BITRATE = 128_000;
+/**
+ * Below this peak the clip has no sound track (about −80 dB). WHY not "any non-zero sample": a context that is running but
+ * playing nothing still passes tiny dither / denormal values through some graphs, and a game that made no sound must
+ * come out as before — a video-only MP4, not one with a silent track (decided 2026-11-07).
+ */
+const SOUND_SILENT_PEAK = 1e-4;
+
+/**
+ * How a clip's sound ended up (the bridge says it in `studio:clip/done`):
+ *   on          — a sound track is in the clip;
+ *   silent      — the game made no sound while recording: no track (as before stage 3);
+ *   off         — the person turned Sound off in Clip options;
+ *   unsupported — the game made sound, but this browser cannot encode AAC: the clip has none, and the line says so;
+ *   failed      — the sound could not be captured or encoded (the clip is still saved, without it).
+ */
+                                                                                
+
+/** The editor's one line for a clip saved without its sound, or null when there is nothing to say (silent, off, on). */
+function soundNoteKey(state                            )                {
+  if (state === 'unsupported') return 'clip.noSound';
+  if (state === 'failed') return 'clip.soundFailed';
+  return null;
+}
+
+/**
+ * The game picture's 0:00 over time: `from` = the page's clock (performance.now) from which `t0` holds. play-clip.ts adds
+ * one when the first live frame is taken and one when a late stop moves the clock (see its stop()).
+ */
+                             
+               
+             
+ 
+
+/**
+ * The clip's time (ms) of a moment on the page's clock, or null before the game's picture started (the sound then is
+ * not in the clip: a Before / After's still part is silent). `base` = where the game's picture starts in the clip.
+ */
+function clipTimeAt(perf        , clocks                       , base        )                {
+  let c                    = null;
+  for (const k of clocks) if (k.from <= perf + 1e-6) c = k;
+  return c ? base + (perf - c.t0) : null;
+}
+
+/** A captured piece of sound: its first sample's place in the clip (ms) and its samples, one array per channel. */
+                             
+               
+                       
+ 
+
+/**
+ * The clip's sound, one array per channel, from 0:00 to `endMs` at `rate`: every piece written at its place, LATER pieces
+ * over earlier ones (so after a late stop the sound from after the message replaces what was recorded between the press
+ * and the message, as the video's frames do). Nothing before 0:00 or after the end. Mono pieces go to both channels.
+ * `peak` = the loudest sample in the clip (SOUND_SILENT_PEAK decides if there is a track).
+ */
+function layOut(pieces                       , o                                                    )                                         {
+  const ch = o.channels ?? SOUND_CHANNELS;
+  const n = Math.max(0, Math.round((o.endMs * o.rate) / 1000));
+  const data = Array.from({ length: ch }, () => new Float32Array(n));
+  for (const p of pieces) {
+    if (!p.data.length || !Number.isFinite(p.atMs)) continue;
+    const at = Math.round((p.atMs * o.rate) / 1000);
+    const len = p.data[0] .length;
+    const from = Math.max(0, -at);
+    const to = Math.min(len, n - at);
+    if (to <= from) continue;
+    for (let c = 0; c < ch; c++) {
+      const src = p.data[Math.min(c, p.data.length - 1)] ;
+      data[c] .set(src.subarray(from, to), at + from);
+    }
+  }
+  let peak = 0;
+  for (const d of data) for (let i = 0; i < d.length; i++) {
+    const v = Math.abs(d[i] );
+    if (v > peak) peak = v;
+  }
+  return { data, peak };
+}
+
+/** The encoder is fed in pieces of this many frames (100 ms at 48 kHz): small enough not to hold up the page. */
+const SOUND_FEED_FRAMES = 4800;
+
+__def(__exports, "SOUND_CODEC", () => SOUND_CODEC);
+__def(__exports, "SOUND_RATE", () => SOUND_RATE);
+__def(__exports, "SOUND_CHANNELS", () => SOUND_CHANNELS);
+__def(__exports, "SOUND_BITRATE", () => SOUND_BITRATE);
+__def(__exports, "SOUND_SILENT_PEAK", () => SOUND_SILENT_PEAK);
+__def(__exports, "soundNoteKey", () => soundNoteKey);
+__def(__exports, "clipTimeAt", () => clipTimeAt);
+__def(__exports, "layOut", () => layOut);
+__def(__exports, "SOUND_FEED_FRAMES", () => SOUND_FEED_FRAMES);
+};
+__defs[66] = function (__exports) {
+'use strict';
+// clip-sound.ts
+
+// ● Clip stage 3 (decided 2026-11-07; CONTRACT.md §3.5.4): the game's sound in the clip, captured in the game page.
+// The rules (where a piece goes in the clip, when there is no track) are in shell/clip-sound-model.ts; play-clip.ts
+// starts a capture with each clip and asks for the encoded sound at its end; shell/mp4.ts writes it as a second track.
+//
+// How the sound is reached, without changing what the person hears:
+//   - Web Audio: every connection the game makes to a context's speakers (`node.connect(ctx.destination)`) goes to one
+//     gain node of ours instead (the "tap"), which goes to the speakers. Installed with the bridge, before the game's
+//     code, so the game's graph is the same from its first sound on and nothing is re-wired when a clip starts — WHY:
+//     re-wiring a running graph at the press clicks, and wiring a second path to the speakers doubles the sound.
+//     While recording, the tap also feeds a MediaStreamAudioDestinationNode, which plays nothing.
+//   - <audio> / <video> (in the page or `new Audio()`, which most small games use for effects): captureStream() on each
+//     element that plays while recording. It does not change the element's own playing (Chrome, Edge; Firefox's
+//     prefixed mozCaptureStream mutes the element, so it is not used). An element the game sends through Web Audio
+//     (createMediaElementSource) is already in the tap and is not captured twice. Its limit: an element already playing
+//     at the press is heard in the clip from when its captured track starts, up to ~0.3 s in (measured in headless
+//     Chrome, 2026-11-07); capturing every element all the time to avoid that would cost while nobody records.
+//   - Both go into one mixing AudioContext of ours, whose recorder (an AudioWorklet; a ScriptProcessor where a page's
+//     rules block the worklet's blob: script) copies the samples out. Its own output is silence: nothing of ours is heard.
+// The samples are kept (12 s of stereo is ~5 MB) and encoded at the end with the browser's AAC encoder (WebCodecs
+// AudioEncoder), so a late stop can drop the same stretch from the sound as from the picture (clip-sound-model.ts).
+// A browser without an AAC encoder still captures, to know whether the game made sound: then the clip is saved without
+// it and the editor says so in one line (`unsupported`). A game that made no sound gets no track (`silent`).
+const { nativeClearTimeout, nativeNow, nativeSetTimeout } = __require(0);
+const { SOUND_BITRATE, SOUND_CHANNELS, SOUND_CODEC, SOUND_FEED_FRAMES, SOUND_RATE, SOUND_SILENT_PEAK, layOut } = __require(65);
+
+                                      
+
+/** What a capture gives at its end: the encoded track, or why there is none. */
+                         
+                                                                                                                                    
+                                                           
+
+                               
+     
+                                                                                                                        
+                                                               
+     
+                                                                                              
+                
+ 
+
+                
+                                      
+                                       
+ 
+
+/** One per page: the taps, the elements seen playing, the capture under way. */
+const S = {
+  installed: false,
+  taps: new WeakMap                            (),
+  /** The contexts with a tap (weak: a context the game drops is not kept alive here). */
+  tapped: []                                ,
+  /** Our own mixing contexts: never tapped (their recorder's silence would come back into the clip). */
+  ours: new WeakSet                  (),
+  /** Elements sent through Web Audio by the game: their sound is in the tap already. */
+  routed: new WeakSet                  (),
+  /** Elements the game played (`new Audio()` is not in the document, so a scan would miss it). */
+  media: []                                    ,
+  seen: new WeakSet                  (),
+  live: null               ,
+  connect: null                                                          ,
+};
+
+/**
+ * Install the taps (before the game's code, like play-clip.ts's watchCanvasKinds). Nothing is recorded until a clip
+ * starts; the only change before that is one gain node between the game's graph and its speakers.
+ */
+function watchSound(win     ) {
+  if (S.installed) return;
+  S.installed = true;
+  const NodeProto = win.AudioNode && win.AudioNode.prototype;
+  const Dest = win.AudioDestinationNode;
+  const Offline = win.OfflineAudioContext;
+  if (NodeProto && Dest) {
+    const connect = NodeProto.connect                                                            ;
+    const disconnect = NodeProto.disconnect                                                            ;
+    S.connect = connect;
+    const tapOf = (d         )                  => {
+      if (!(d instanceof Dest)) return null;
+      const ctx = d.context;
+      // An OfflineAudioContext renders to a buffer, never to the speakers: not the game's sound.
+      if (S.ours.has(ctx) || (Offline && ctx instanceof Offline)) return null;
+      let tap = S.taps.get(ctx);
+      if (!tap) {
+        try {
+          tap = ctx.createGain();
+          connect.call(tap, d);
+        } catch {
+          return null;
+        }
+        S.taps.set(ctx, tap);
+        if (typeof WeakRef === 'function') S.tapped.push(new WeakRef(ctx                ));
+        S.live?.addContext(ctx                );
+      }
+      return tap;
+    };
+    const wrappedConnect = function (                 ...a           ) {
+      const tap = this instanceof win.GainNode && S.taps.get(this.context) === this ? null : tapOf(a[0]);
+      if (!tap) return connect.apply(this, a);
+      connect.apply(this, [tap, ...a.slice(1)]);
+      // What connect() returns is its first argument: the speakers, so `a.connect(b).connect(ctx.destination)` chains as before.
+      return a[0];
+    };
+    const wrappedDisconnect = function (                 ...a           ) {
+      const d = a[0];
+      const tap = d instanceof Dest ? S.taps.get(d.context) : undefined;
+      if (!tap || tap === this) return disconnect.apply(this, a);
+      try {
+        return disconnect.apply(this, [tap, ...a.slice(1)]);
+      } catch {
+        // Connected straight to the speakers after all (made before the bridge, or by a frozen copy of connect).
+        return disconnect.apply(this, a);
+      }
+    };
+    try {
+      NodeProto.connect = wrappedConnect                                       ;
+      NodeProto.disconnect = wrappedDisconnect                                          ;
+    } catch {
+      /* a frozen prototype: Web Audio is not in clips, nothing else changes */
+    }
+  }
+  const Ctx = win.AudioContext                                                                   ;
+  const mes = Ctx && Ctx.prototype.createMediaElementSource;
+  if (Ctx && mes) {
+    Ctx.prototype.createMediaElementSource = function (                    el                  ) {
+      S.routed.add(el);
+      return mes.call(this, el);
+    };
+  }
+  const MediaProto = win.HTMLMediaElement && win.HTMLMediaElement.prototype;
+  const play = MediaProto && MediaProto.play;
+  if (MediaProto && play) {
+    MediaProto.play = function (                      ) {
+      remember(this);
+      const r = play.call(this);
+      S.live?.addMedia(this);
+      return r;
+    };
+  }
+}
+
+function remember(el                  ) {
+  if (S.seen.has(el) || typeof WeakRef !== 'function') return;
+  S.seen.add(el);
+  S.media.push(new WeakRef(el));
+  // A game that makes a new Audio() per shot: keep the list to the ones still around.
+  if (S.media.length > 256) S.media = S.media.filter((r) => !!r.deref());
+}
+
+/** The recorder in the mixing context: copies 4096 frames at a time out, each with the context's frame number. */
+const WORKLET = `class StudioClipSound extends AudioWorkletProcessor {
+  constructor() { super(); this.buf = [new Float32Array(4096), new Float32Array(4096)]; this.n = 0; this.at = 0; this.on = true;
+    this.port.onmessage = (e) => { if (e.data === 'end') { this.flush(); this.on = false; this.port.postMessage({ end: true }); } }; }
+  flush() { if (!this.n) return; this.port.postMessage({ frame: this.at, ch: [this.buf[0].slice(0, this.n), this.buf[1].slice(0, this.n)] }); this.n = 0; }
+  process(inputs) {
+    if (!this.on) return false;
+    const inp = inputs[0] || [];
+    const len = inp[0] ? inp[0].length : 128;
+    if (this.n === 0) this.at = currentFrame;
+    for (let c = 0; c < 2; c++) { const src = inp[c] || inp[0]; if (src) this.buf[c].set(src, this.n); else this.buf[c].fill(0, this.n, this.n + len); }
+    this.n += len;
+    if (this.n + 128 > 4096) this.flush();
+    return true;
+  }
+}
+registerProcessor('studio-clip-sound', StudioClipSound);`;
+
+/**
+ * Start capturing the game's sound for one clip. `can` = this browser can encode AAC (checked by the caller once; a
+ * capture without it still learns whether there was sound). The mixing context is made at the first sound source, so a
+ * game with no sound at all never gets one.
+ */
+function startSound(win     )               {
+  let mix                      = null;
+  let sum                  = null;
+  let recorder                   = null;
+  let workletPort                     = null;
+  let failedWhy = '';
+  let over = false;
+  const pieces                                                 = [];
+  const undo                    = [];
+  const attached = new WeakSet        ();
+
+  const ensureMix = ()          => {
+    if (mix) return true;
+    try {
+      try {
+        mix = new win.AudioContext({ sampleRate: SOUND_RATE, latencyHint: 'interactive' });
+      } catch {
+        mix = new win.AudioContext();
+      }
+    } catch (e) {
+      failedWhy = String((e         )?.message || e);
+      return false;
+    }
+    S.ours.add(mix);
+    sum = mix.createGain();
+    void mix.resume().catch(() => {});
+    const m = mix;
+    const s = sum;
+    const viaScript = () => {
+      // The fallback: runs on the page's thread, so a very busy page can miss a buffer — still better than no sound.
+      const sp = m.createScriptProcessor(4096, SOUND_CHANNELS, SOUND_CHANNELS);
+      sp.onaudioprocess = (e) => {
+        if (over) return;
+        const b = e.inputBuffer;
+        const data = Array.from({ length: SOUND_CHANNELS }, (_, c) => b.getChannelData(Math.min(c, b.numberOfChannels - 1)).slice());
+        pieces.push({ frame: Math.round(e.playbackTime * m.sampleRate) - b.length, data });
+      };
+      s.connect(sp);
+      sp.connect(m.destination);
+      recorder = sp;
+    };
+    try {
+      const url = URL.createObjectURL(new Blob([WORKLET], { type: 'text/javascript' }));
+      m.audioWorklet.addModule(url).then(() => {
+        URL.revokeObjectURL(url);
+        if (over) return;
+        const w = new AudioWorkletNode(m, 'studio-clip-sound', { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [SOUND_CHANNELS],
+          channelCount: SOUND_CHANNELS, channelCountMode: 'explicit' });
+        w.port.onmessage = (e              ) => {
+          const d = e.data                                           ;
+          if (d && d.ch) pieces.push({ frame: d.frame ?? 0, data: d.ch });
+        };
+        workletPort = w.port;
+        s.connect(w);
+        // Its output is silence; connected so the context runs it.
+        w.connect(m.destination);
+        recorder = w;
+      }, () => {
+        URL.revokeObjectURL(url);
+        if (!over) viaScript();
+      });
+    } catch {
+      viaScript();
+    }
+    return true;
+  };
+
+  const live       = {
+    addContext(ctx) {
+      if (over || attached.has(ctx) || S.ours.has(ctx) || ctx.state === 'closed') return;
+      const tap = S.taps.get(ctx);
+      if (!tap || !ensureMix() || !mix || !sum) return;
+      attached.add(ctx);
+      try {
+        const out = ctx.createMediaStreamDestination();
+        tap.connect(out);
+        const src = mix.createMediaStreamSource(out.stream);
+        src.connect(sum);
+        undo.push(() => {
+          try {
+            tap.disconnect(out);
+          } catch {
+            /* already */
+          }
+          src.disconnect();
+          for (const t of out.stream.getTracks()) t.stop();
+        });
+      } catch (e) {
+        failedWhy = String((e         )?.message || e);
+      }
+    },
+    addMedia(el) {
+      if (over || attached.has(el) || S.routed.has(el)) return;
+      const cap = (el                                                            ).captureStream;
+      if (typeof cap !== 'function') return;
+      let stream             ;
+      try {
+        // Throws for an element playing another site's file without CORS: its sound is not readable, like such a picture.
+        stream = cap.call(el);
+      } catch {
+        return;
+      }
+      if (!ensureMix() || !mix || !sum) return;
+      attached.add(el);
+      const m = mix;
+      const s = sum;
+      // The element's own volume and mute (captureStream gives the sound before them).
+      const gain = m.createGain();
+      const level = () => (gain.gain.value = el.muted ? 0 : el.volume);
+      level();
+      el.addEventListener('volumechange', level);
+      gain.connect(s);
+      const sources              = [];
+      // Each track once. WHY: Chrome can also send `addtrack` for a track getTracks() gave already, and a track taken
+      // twice was in the clip twice — the two copies a little apart in time, so the sound came out doubled in places and
+      // gone in others (the screen test's <audio> tone read 0.73 and 0.00 where 0.37 was played, 2026-11-07).
+      const took = new Set        ();
+      const take = (t                  ) => {
+        if (took.has(t.id)) return;
+        took.add(t.id);
+        if (t.kind !== 'audio') return void t.stop(); // a <video>'s picture: not needed
+        try {
+          const src = m.createMediaStreamSource(new MediaStream([t]));
+          src.connect(gain);
+          sources.push(src);
+        } catch {
+          /* a track that ended already */
+        }
+      };
+      stream.getTracks().forEach(take);
+      // An element that has not loaded yet gets its track later.
+      const onTrack = (e                       ) => take(e.track);
+      stream.addEventListener('addtrack', onTrack);
+      undo.push(() => {
+        el.removeEventListener('volumechange', level);
+        stream.removeEventListener('addtrack', onTrack);
+        for (const n of sources) n.disconnect();
+        gain.disconnect();
+        for (const t of stream.getTracks()) t.stop();
+      });
+    },
+  };
+
+  // What is there already: every tapped context, every element seen playing (and any in the page) that plays now.
+  S.live = live;
+  for (const r of S.tapped) {
+    const c = r.deref();
+    if (c) live.addContext(c);
+  }
+  const playing = (e                  ) => !e.paused && !e.ended;
+  for (const r of S.media) {
+    const e = r.deref();
+    if (e && playing(e)) live.addMedia(e);
+  }
+  for (const e of Array.from(win.document.querySelectorAll('audio, video'))                      ) if (playing(e)) live.addMedia(e);
+  // An element in the page that starts by itself (autoplay, a `play` from the page's own controls): media events do not
+  // bubble, the capture phase still sees them on the document (as play-pause.ts does).
+  const onPlay = (e       ) => {
+    const el = e.target                           ;
+    if (el && typeof (el                               ).captureStream === 'function') live.addMedia(el);
+  };
+  win.document.addEventListener('play', onPlay, true);
+  undo.push(() => win.document.removeEventListener('play', onPlay, true));
+
+  const stop = () => {
+    if (S.live === live) S.live = null;
+    over = true;
+    for (const u of undo.splice(0)) {
+      try {
+        u();
+      } catch {
+        /* gone */
+      }
+    }
+  };
+
+  return {
+    abort() {
+      stop();
+      void mix?.close().catch(() => {});
+    },
+    async finish(o) {
+      // The recorder's last part first (the worklet's buffer), then everything let go.
+      const m = mix;
+      let map                                           = null;
+      if (m) {
+        // The mixing context's frames on the page's clock: getOutputTimestamp says when its sound at `contextTime` is
+        // heard, which is when the game's own sound is heard too (both go out the same way). A context that has not
+        // started yet (no time to say) falls back to now = its current time.
+        try {
+          const ts = m.getOutputTimestamp();
+          if (ts && (ts.performanceTime ?? 0) > 0 && (ts.contextTime ?? 0) > 0) map = { ctxTime: ts.contextTime , perf: ts.performanceTime  };
+        } catch {
+          /* older browser */
+        }
+        if (!map) map = { ctxTime: m.currentTime, perf: nativeNow() };
+        if (workletPort) {
+          const port = workletPort;
+          await new Promise      ((ok) => {
+            const t = nativeSetTimeout(ok, 400);
+            port.addEventListener('message', (e              ) => {
+              if ((e.data                     )?.end) {
+                nativeClearTimeout(t);
+                ok();
+              }
+            });
+            port.postMessage('end');
+          });
+        }
+      }
+      stop();
+      recorder?.disconnect();
+      const rate = m ? m.sampleRate : SOUND_RATE;
+      void m?.close().catch(() => {});
+      if (!m) return failedWhy ? { state: 'failed', msg: failedWhy } : { state: 'silent' };
+      const mapped               = [];
+      for (const p of pieces) {
+        const perf = map .perf + (p.frame / rate - map .ctxTime) * 1000;
+        const at = o.clipAt(perf);
+        if (at !== null) mapped.push({ atMs: at, data: p.data });
+      }
+      const { data, peak } = layOut(mapped, { rate, endMs: o.endMs });
+      if (peak < SOUND_SILENT_PEAK) return { state: 'silent' };
+      return encode(win, data, rate);
+    },
+  };
+}
+
+/** The clip's sound as AAC (WebCodecs AudioEncoder), or `unsupported` when this browser has no AAC encoder. */
+async function encode(win     , data                , rate        )                       {
+  const W = win                                                                                   ;
+  if (!W.AudioEncoder || !W.AudioData) return { state: 'unsupported' };
+  const config                     = { codec: SOUND_CODEC, sampleRate: rate, numberOfChannels: SOUND_CHANNELS, bitrate: SOUND_BITRATE };
+  try {
+    const ok = await W.AudioEncoder.isConfigSupported(config);
+    if (!ok.supported) return { state: 'unsupported' };
+  } catch {
+    return { state: 'unsupported' };
+  }
+  const chunks                                                        = [];
+  let asc                     = null;
+  let err = '';
+  const enc = new W.AudioEncoder({
+    output: (c, meta) => {
+      const d = meta?.decoderConfig?.description;
+      if (d && !asc) {
+        const v = d instanceof ArrayBuffer ? new Uint8Array(d) : new Uint8Array((d                   ).buffer, (d                   ).byteOffset, (d                   ).byteLength);
+        asc = v.slice().buffer;
+      }
+      const buf = new ArrayBuffer(c.byteLength);
+      c.copyTo(buf);
+      chunks.push({ data: buf, ts: c.timestamp, dur: c.duration ?? Math.round((1024 * 1e6) / rate) });
+    },
+    error: (e) => (err = String((e         )?.message || e)),
+  });
+  try {
+    enc.configure(config);
+    const n = data[0] .length;
+    for (let at = 0; at < n && !err; at += SOUND_FEED_FRAMES) {
+      const len = Math.min(SOUND_FEED_FRAMES, n - at);
+      const planar = new Float32Array(len * SOUND_CHANNELS);
+      for (let c = 0; c < SOUND_CHANNELS; c++) planar.set(data[c] .subarray(at, at + len), c * len);
+      const ad = new W.AudioData({ format: 'f32-planar', sampleRate: rate, numberOfFrames: len, numberOfChannels: SOUND_CHANNELS, timestamp: Math.round((at * 1e6) / rate), data: planar });
+      enc.encode(ad);
+      ad.close();
+    }
+    await enc.flush();
+    enc.close();
+  } catch (e) {
+    err = err || String((e         )?.message || e);
+  }
+  if (err || !asc || !chunks.length) return { state: 'failed', msg: err || 'no sound out of the encoder' };
+  return { state: 'on', rate, channels: SOUND_CHANNELS, asc, chunks };
+}
+
+__def(__exports, "watchSound", () => watchSound);
+__def(__exports, "startSound", () => startSound);
+};
+__defs[67] = function (__exports) {
+'use strict';
 // ../shell/clip-model.ts
 
 // ● Clip, stage 1 (decided 2026-11-05): the pure rules — how long a clip is, what its file is called, the words of the X
@@ -27282,6 +27861,12 @@ const X_LIMIT = 280;
                                     
      
                  
+     
+                                                                                                                      
+                                                                                                                     
+                                                                                             
+     
+                 
  
 
 /** A hand-edited or older prefs file reads as the defaults for anything it does not say right. */
@@ -27290,7 +27875,8 @@ function normalizeClipPrefs(raw         )            {
   const seconds = CLIP_LENGTHS.includes(r.seconds              ) ? (r.seconds              ) : CLIP_DEFAULT_LENGTH;
   const mark = typeof r.mark === 'boolean' ? r.mark : CLIP_MARK_DEFAULT;
   const words = typeof r.words === 'boolean' ? r.words : true;
-  return { seconds, mark, words, ...(r.shape === 'wide' || r.shape === 'tall' ? { shape: r.shape } : {}) };
+  const sound = typeof r.sound === 'boolean' ? r.sound : true;
+  return { seconds, mark, words, sound, ...(r.shape === 'wide' || r.shape === 'tall' ? { shape: r.shape } : {}) };
 }
 
 /** Frames in a clip of `seconds` (whole frames). */
@@ -27598,7 +28184,7 @@ __def(__exports, "CLIP_HOLD_MS", () => CLIP_HOLD_MS);
 __def(__exports, "X_COMPOSE", () => X_COMPOSE);
 __def(__exports, "xComposeUrl", () => xComposeUrl);
 };
-__defs[66] = function (__exports) {
+__defs[68] = function (__exports) {
 'use strict';
 // play-clip.ts
 
@@ -27635,17 +28221,24 @@ __defs[66] = function (__exports) {
 //   - Tall (720×1280): only the size changes here; the editor gives the game a 9:16 window while recording, so the page
 //     fills the frame. The asked frame (taken in the wide window) is cut to fill a tall frame (cover), never squeezed.
 //
+// Stage 3 (decided 2026-11-07):
+//   - the game's sound (clip-sound.ts): captured from the start of the game's picture, encoded as AAC at the end and
+//     posted (`studio:clip/sound`) before `done`, which says how it went (`sound`: on / silent / off / unsupported /
+//     failed). A game that made no sound gets no sound track, as before;
+//   - WebGPU: no longer refused. Its picture is taken in its own frame while recording (`gpu` below), since a WebGPU
+//     canvas has no equivalent of WebGL's preserveDrawingBuffer (which play-ask.ts turns on for WebGL). `webgpu` stays
+//     in the refusals for an older bridge's answer.
 // Said in one line instead of recording (`studio:clip/error`):
-//   - webgpu: a canvas drawing with WebGPU — its picture is readable only inside its own frame callback (no equivalent of
-//     WebGL's preserveDrawingBuffer, which play-ask.ts turns on for WebGL), so it would come out black. Later stage;
 //   - tainted: a canvas that drew a picture from another site without CORS cannot be read at all (the browser refuses
 //     the VideoFrame); the person can ask their AI to keep the pictures in the game's folder;
 //   - no-encoder: no WebCodecs H.264 in this browser.
-// Not drawn (play-shot.ts's limits): CSS gradients, shadows, SVG, rotated boxes; sound is a later stage.
+// Not drawn (play-shot.ts's limits): CSS gradients, shadows, SVG, rotated boxes.
                                                                    
 const { isStudioMessage } = __require(15);
 const { nativeCancelRaf, nativeClearTimeout, nativeNow, nativeRaf, nativeSetTimeout } = __require(0);
-const { cutAtPress, markStartMs } = __require(65);
+const { cutAtPress, markStartMs } = __require(67);
+const { clipTimeAt } = __require(65);
+const { startSound } = __require(66);
 const { paintPage } = __require(27);
 
                                       
@@ -27661,8 +28254,49 @@ const QUEUE_MAX = 6;
 const webgpuCanvases = new WeakSet                   ();
 
 /**
- * Remember which canvases draw with WebGPU (a canvas does not say so itself). Installed with the bridge, before the
- * game's code, like play-ask.ts's keepWebGLPictures. Nothing else changes.
+ * WebGPU (stage 3, decided 2026-11-07): a WebGPU canvas has no preserveDrawingBuffer, so its picture is sure to be
+ * readable only in the task that drew it — before the browser shows it. While a clip records (`on` > 0), every canvas
+ * that took its texture this frame (getCurrentTexture) is copied into a picture of ours right after the game submits its
+ * work (a microtask: after the game's frame callback, before the frame is shown), and the clip draws that picture.
+ * Checked in headless Chrome with a GPU (2026-11-07): plain WebGPU, PixiJS 8 (preference 'webgpu') and three.js's
+ * WebGPURenderer all record. Outside a clip nothing is copied: the two wrapped calls only check `on`.
+ */
+const gpu = {
+  on: 0,
+  pending: new Set                   (),
+  queued: false,
+  snaps: new WeakMap                                    (),
+  /** Pictures taken so far (a clip's stats say how many were taken while it recorded). */
+  taken: 0,
+};
+
+function snapGpu() {
+  gpu.queued = false;
+  for (const c of gpu.pending) {
+    const w = c.width, h = c.height;
+    if (!w || !h) continue;
+    let s = gpu.snaps.get(c);
+    if (!s || s.width !== w || s.height !== h) {
+      s = new OffscreenCanvas(w, h);
+      gpu.snaps.set(c, s);
+    }
+    const g = s.getContext('2d')                ;
+    if (!g) continue;
+    g.clearRect(0, 0, w, h);
+    try {
+      g.drawImage(c, 0, 0);
+      gpu.taken++;
+    } catch {
+      /* a canvas the browser will not read: the clip draws it live instead */
+    }
+  }
+  gpu.pending.clear();
+}
+
+/**
+ * Remember which canvases draw with WebGPU (a canvas does not say so itself), and take their pictures in their own frame
+ * while a clip records (see `gpu`). Installed with the bridge, before the game's code, like play-ask.ts's
+ * keepWebGLPictures. Nothing else changes.
  */
 function watchCanvasKinds(win     ) {
   const proto = win.HTMLCanvasElement && win.HTMLCanvasElement.prototype;
@@ -27675,6 +28309,30 @@ function watchCanvasKinds(win     ) {
   }                                                        ;
   wrapped.__studioClip = true;
   proto.getContext = wrapped;
+                                                                  
+  const G = win                                                                                                                           ;
+  const ctxProto = G.GPUCanvasContext?.prototype;
+  const queueProto = G.GPUQueue?.prototype;
+  if (!ctxProto || !queueProto || typeof ctxProto.getCurrentTexture !== 'function' || typeof queueProto.submit !== 'function') return;
+  const current = ctxProto.getCurrentTexture;
+  const submit = queueProto.submit;
+  try {
+    ctxProto.getCurrentTexture = function (            ) {
+      const t = current.call(this);
+      if (gpu.on && this.canvas instanceof win.HTMLCanvasElement) gpu.pending.add(this.canvas);
+      return t;
+    };
+    queueProto.submit = function (               ...a           ) {
+      const r = submit.apply(this, a);
+      if (gpu.on && gpu.pending.size && !gpu.queued) {
+        gpu.queued = true;
+        queueMicrotask(snapGpu);
+      }
+      return r;
+    };
+  } catch {
+    /* frozen: a WebGPU game is drawn live (it reads as its last shown frame in Chrome) */
+  }
 }
 
                                   
@@ -27757,6 +28415,16 @@ function record(win     , m       , skip                          , post        
    * frame can come a second late), and moved on a late stop (see stop()).
    */
   let t0 = nativeNow();
+  /**
+   * Stage 3: `t0` over time, for the sound (clip-sound-model.ts clipTimeAt): one at the first live frame, one at a late
+   * stop. The game's sound before the first live frame is not in the clip (a Before / After's still part is silent).
+   */
+  const clocks               = [];
+  /** The game's sound for this clip (stage 3; `m.sound` = Sound is on in Clip options), null = none captured. */
+  let sound                      = null;
+  /** This clip is counted in `gpu.on` (WebGPU pictures taken in their frames) until it ends. */
+  let gpuOn = false;
+  let gpuFrom = 0;
   const origin = (win.performance && win.performance.timeOrigin) || 0;
   const fail = (why                                                              , msg         ) => {
     if (over) return;
@@ -27787,6 +28455,9 @@ function record(win     , m       , skip                          , post        
         dropFromUs = Math.round(c.tailSlot * usPerFrame);
         stats.dropped = c.drop;
         t0 = now - (c.tailSlot * dt - base);
+        // The sound follows the same clock (stage 3): what it recorded between the press and now is laid over by what
+        // comes after, as the picture's frames are.
+        clocks.push({ from: now, t0 });
         slot = c.tailSlot - 1;
       }
     },
@@ -27801,11 +28472,6 @@ function record(win     , m       , skip                          , post        
   const W_ = win                                                                                                                               ;
   if (!W_.VideoEncoder || !W_.VideoFrame || !W_.OffscreenCanvas) {
     nativeSetTimeout(() => fail('no-encoder'), 0);
-    return handle;
-  }
-  const canvases = () => Array.from(win.document.querySelectorAll('canvas')).filter((c) => !skip(c) && !c.closest('[data-studio-ui]'));
-  if (canvases().some((c) => webgpuCanvases.has(c) && c.getBoundingClientRect().width > 0)) {
-    nativeSetTimeout(() => fail('webgpu'), 0);
     return handle;
   }
 
@@ -27918,8 +28584,10 @@ function record(win     , m       , skip                          , post        
       const r = p.canvas.getBoundingClientRect();
       if (r.width < 1 || r.height < 1) continue;
       g.globalAlpha = p.alpha;
+      // A WebGPU canvas: the picture taken in its own frame (see `gpu`), else the canvas itself (before its first frame).
+      const src = webgpuCanvases.has(p.canvas) ? (gpu.snaps.get(p.canvas) ?? p.canvas) : p.canvas;
       try {
-        g.drawImage(p.canvas, fit.ox + r.left * fit.k, fit.oy + r.top * fit.k, r.width * fit.k, r.height * fit.k);
+        g.drawImage(src, fit.ox + r.left * fit.k, fit.oy + r.top * fit.k, r.width * fit.k, r.height * fit.k);
       } catch {
         /* a canvas with no size yet */
       }
@@ -27966,6 +28634,13 @@ function record(win     , m       , skip                          , post        
   }
 
   function finish() {
+    sound?.abort();
+    sound = null;
+    if (gpuOn) {
+      gpuOn = false;
+      gpu.on = Math.max(0, gpu.on - 1);
+      stats.gpu = gpu.taken - gpuFrom;
+    }
     nativeClearTimeout(timer);
     if (raf !== undefined) nativeCancelRaf(raf);
     watch?.disconnect();
@@ -27984,6 +28659,10 @@ function record(win     , m       , skip                          , post        
   // stoppedAt / late / dropped (stage 2): the press in the clip's time, how late the message came after it (ms), and how
   // many recorded frames that dropped.
   const stats = { frames: 0, paints: 0, paint: 0, compose: 0, encode: 0, waits: 0, started: t0, stoppedAt: -1, late: 0, dropped: 0, endMs: Math.round(endMs), chunks: 0,
+    /** Stage 3: how the clip's sound ended up ('' while recording). */
+    sound: ''                       ,
+    /** Stage 3: WebGPU pictures taken in their own frame while this clip recorded (0 = no WebGPU canvas). */
+    gpu: 0,
     /** The game picture's 0:00 on the shared clock (timeOrigin + now): a test checks the press against its own clock. */
     t0Wall: 0 };
   try {
@@ -28027,6 +28706,7 @@ function record(win     , m       , skip                          , post        
     if (live === 0) {
       t0 = nativeNow();
       stats.t0Wall = origin + t0;
+      clocks.push({ from: t0, t0 });
     }
     const lastSlot = slot;
     slot = Math.max(slot + 1, Math.round((base + nativeNow() - t0) / dt));
@@ -28093,8 +28773,22 @@ function record(win     , m       , skip                          , post        
     if (over) return;
     over = true;
     flushing = false;
+    // The sound (stage 3): its capture stops here and is encoded on the clip's time; posted before `done`, so the
+    // editor has it when it writes the MP4. A failure of the sound never loses the clip: it is saved without it.
+    let soundState                 = m.sound ? 'silent' : 'off';
+    let soundMsg = '';
+    const snd = sound;
+    sound = null;
+    if (snd) {
+      const r = await snd.finish({ endMs, clipAt: (perf) => clipTimeAt(perf, clocks, base) }).catch((e) => ({ state: 'failed'         , msg: String((e         )?.message || e) }));
+      soundState = r.state;
+      if (r.state === 'on') {
+        post({ type: 'studio:clip/sound', id, rate: r.rate, channels: r.channels, asc: r.asc, chunks: r.chunks }, [r.asc, ...r.chunks.map((c) => c.data)]);
+      } else if (r.msg) soundMsg = r.msg;
+      stats.sound = r.state;
+    }
     finish();
-    post({ type: 'studio:clip/done', id, frames: i, seconds: Math.round(endMs) / 1000, markAt: Math.round(tailMs * 1000) });
+    post({ type: 'studio:clip/done', id, frames: i, seconds: Math.round(endMs) / 1000, markAt: Math.round(tailMs * 1000), sound: soundState, ...(soundMsg ? { soundMsg } : {}) });
     ended();
   };
 
@@ -28220,6 +28914,11 @@ function record(win     , m       , skip                          , post        
     next();
   };
 
+  // The sound and the WebGPU pictures start with the recording (the encoder is set up; nothing was refused).
+  if (m.sound) sound = startSound(win);
+  gpuOn = true;
+  gpu.on++;
+  gpuFrom = gpu.taken;
   if (before) void still();
   else {
     post({ type: 'studio:clip/started', id, total: Math.round(endMs) });
@@ -28231,7 +28930,7 @@ function record(win     , m       , skip                          , post        
 __def(__exports, "watchCanvasKinds", () => watchCanvasKinds);
 __def(__exports, "startPlayClip", () => startPlayClip);
 };
-__defs[67] = function (__exports) {
+__defs[69] = function (__exports) {
 'use strict';
 // moment-load.ts
 
@@ -28522,7 +29221,7 @@ __def(__exports, "MOMENT_WAIT_MS", () => MOMENT_WAIT_MS);
 __def(__exports, "LOAD_PROMISE_MS", () => LOAD_PROMISE_MS);
 __def(__exports, "startCheckpointHold", () => startCheckpointHold);
 };
-__defs[68] = function (__exports) {
+__defs[70] = function (__exports) {
 'use strict';
 // moment-values.ts
 
@@ -28545,7 +29244,7 @@ __defs[68] = function (__exports) {
 // opened for Play alike — the moment's editor may be either (play-move.ts) and `--do list` asks in Edit too.
                                                                                 
 const { isStudioMessage } = __require(15);
-const { momentHooks } = __require(67);
+const { momentHooks } = __require(69);
 
 /** One value as the loader keeps it (codeMoment, src/loader/studio-placement.js). */
                  
@@ -28700,7 +29399,7 @@ __def(__exports, "fitValue", () => fitValue);
 __def(__exports, "setValue", () => setValue);
 __def(__exports, "startMomentValues", () => startMomentValues);
 };
-__defs[69] = function (__exports) {
+__defs[71] = function (__exports) {
 'use strict';
 // levels.ts
 
@@ -28755,7 +29454,7 @@ function pickLevel(list         , href        , inFrame         )               
 __def(__exports, "cleanLevels", () => cleanLevels);
 __def(__exports, "pickLevel", () => pickLevel);
 };
-__defs[70] = function (__exports) {
+__defs[72] = function (__exports) {
 'use strict';
 // early-press.ts
 
@@ -28837,7 +29536,7 @@ function watchEarlyTaps(win        )            {
 
 __def(__exports, "watchEarlyTaps", () => watchEarlyTaps);
 };
-__defs[71] = function (__exports) {
+__defs[73] = function (__exports) {
 'use strict';
 // connect-wait.ts
 
@@ -28936,7 +29635,7 @@ __def(__exports, "connectStep", () => connectStep);
 __def(__exports, "uiOnlyMayOpen", () => uiOnlyMayOpen);
 __def(__exports, "waitReason", () => waitReason);
 };
-__defs[72] = function (__exports) {
+__defs[74] = function (__exports) {
 'use strict';
 // bridge.ts
 
@@ -28956,17 +29655,18 @@ const { findUi: findUiNow, markHudCanvases } = __require(28);
 const { runSelfCheck } = __require(29);
 const { createEditor } = __require(59);
 const { startPlayAsk } = __require(64);
-const { startPlayClip, watchCanvasKinds } = __require(66);
-const { startMomentValues } = __require(68);
-const { fromCheckpoint, startCheckpointHold, startMomentSave } = __require(67);
+const { watchSound } = __require(66);
+const { startPlayClip, watchCanvasKinds } = __require(68);
+const { startMomentValues } = __require(70);
+const { fromCheckpoint, startCheckpointHold, startMomentSave } = __require(69);
 const { createPlaySwitch } = __require(53);
 const { arrangeInPlay, moveInPlay } = __require(52);
 const { applyPlacement, placementForLevel } = __require(22);
-const { pickLevel } = __require(69);
-const { watchEarlyTaps } = __require(70);
+const { pickLevel } = __require(71);
+const { watchEarlyTaps } = __require(72);
                                                     
 const { nativeNow, nativeSetTimeout } = __require(0);
-const { connectStep, uiOnlyMayOpen, waitReason, LATE_LOOK_MS, LOOK_MS } = __require(71);
+const { connectStep, uiOnlyMayOpen, waitReason, LATE_LOOK_MS, LOOK_MS } = __require(73);
 
                                 
                            
@@ -29271,6 +29971,9 @@ function startBridge(opts               )       {
     // ● Clip (stage 1, 2026-11-05; play-clip.ts): the recording is made here, in the game page (the editor page cannot read
     // another origin's frame). The WebGPU watch goes in now, before the game's code makes its canvases.
     watchCanvasKinds(win);
+    // Stage 3 (2026-11-07; clip-sound.ts): the game's sound reaches a clip through one gain node of ours between its graph
+    // and its speakers — put in now, before its first sound, so nothing is re-wired when a clip starts.
+    watchSound(win);
     startPlayClip({ win, parentOrigin, skip: (e) => e.tagName.startsWith('GAME-STUDIO') || e.hasAttribute('data-studio-ui') });
     // This moment's values (pause-edit stage 2, 2026-10-28; moment-values.ts): the game's codeMoment() read and changed
     // for the editor page — in an edit page and a page opened for Play alike (the moment's editor may be either).
@@ -29516,7 +30219,7 @@ function startBridge(opts               )       {
 __def(__exports, "readEditParams", () => readEditParams);
 __def(__exports, "startBridge", () => startBridge);
 };
-__defs[73] = function (__exports) {
+__defs[75] = function (__exports) {
 'use strict';
 // main.ts
 
@@ -29535,11 +30238,11 @@ __require(0);
 // the three.js adapter: it installs __THREE_DEVTOOLS__ and wraps rAF/render.
 __require(1);
 const { threeProbe } = __require(14);
-const { startBridge } = __require(72);
+const { startBridge } = __require(74);
 
 startBridge({ builtins: [threeProbe] });
 
 
 };
-__require(73);
+__require(75);
 })();

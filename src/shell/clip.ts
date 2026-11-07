@@ -29,8 +29,13 @@
 //     line's "8 s · Tall 720×1280 ⌄" opens them too, for the next clip — the same words as ⌄ on a computer.
 //   - Post on X… (computer): X's compose page with the post written, and the clip shown in its folder — one press and
 //     one drag, where it was Copy post, open X, paste, Show in Finder, drag.
-//   - WebGPU / a picture from another site: the line says what to do next, with "✦ Ask Claude" to put the request in
-//     the field (not sent: the person sends it).
+//   - A picture from another site (and WebGPU from a bridge before stage 3): the line says what to do next, with "✦ Ask
+//     Claude" to put the request in the field (not sent: the person sends it).
+// Stage 3 (decided 2026-11-07):
+//   - The game's sound in the clip (Clip options › "Record the game’s sound", on by default): the bridge sends it as AAC
+//     before `done`, and both ends of the clip carry the same sound track. A game that made no sound gets no track; a
+//     browser that cannot encode AAC saves the clip without sound and the line says so, with what to use instead.
+//   - WebGPU games record (play-clip.ts takes their picture in their own frame).
 // WHY no key (⌘K lists it instead): while playing, the keys are the game's (keymap.ts); a letter would fight its controls.
 // WHY the next seconds, not the last ones: recording all through ▶ Play costs heat and battery, and a clip that only
 // starts on a press never records what the person did not mean to show.
@@ -43,7 +48,8 @@ import {
   baSeconds, baWords, beforeAfterPost, beforeAfterStem, checkRewrite, clipShapeFor, clipSize, clipStem, downloadName, leftClock, postText, recLeftMs, withAddress, xComposeUrl, xLength,
   type ClipPrefs, type ClipRefusal, type ClipShape, type PostSay,
 } from './clip-model.ts';
-import { muxMp4, type Mp4Sample } from './mp4.ts';
+import { soundNoteKey, type ClipSoundState } from './clip-sound-model.ts';
+import { muxMp4, type Mp4Audio, type Mp4Sample } from './mp4.ts';
 
 /** What ✦ Rewrite tells the AI with the post (StudioRequestInput.clip). */
 export interface ClipPostContext {
@@ -139,6 +145,8 @@ export function createClip(d: ClipDeps) {
   let alt: Mp4Sample[] = [];
   let avcc: Uint8Array | null = null;
   let altAvcc: Uint8Array | null = null;
+  /** Stage 3: the game's sound for this clip (`studio:clip/sound`, before `done`), null = the clip has none. */
+  let audio: Mp4Audio | null = null;
   let saved: Saved | null = null;
   /** When the game page last said something about this clip: a page that went (Reload, Play from the start) says nothing more. */
   let heard = 0;
@@ -260,6 +268,8 @@ export function createClip(d: ClipDeps) {
     rows.push({ sep: true },
       { id: 'clip-mark', label: t('clip.mark'), checked: p.mark, run: () => (d.setPrefs({ ...d.prefs(), mark: !d.prefs().mark }), (wanted = d.prefs())) },
       { id: 'clip-words', label: t('clip.words'), checked: p.words, run: () => (d.setPrefs({ ...d.prefs(), words: !d.prefs().words }), (wanted = d.prefs())) },
+      // Stage 3 (decided 2026-11-07): the game's sound, on by default; one row, as the mark's.
+      { id: 'clip-sound', label: t('clip.sound'), checked: p.sound, run: () => (d.setPrefs({ ...d.prefs(), sound: !d.prefs().sound }), (wanted = d.prefs())) },
       { sep: true }, { note: `${t('clip.saveTo', { dir })} ${t('clip.local')}` });
     d.menu(at, rows);
   }
@@ -277,6 +287,7 @@ export function createClip(d: ClipDeps) {
     alt = [];
     avcc = null;
     altAvcc = null;
+    audio = null;
   }
 
   /**
@@ -316,7 +327,7 @@ export function createClip(d: ClipDeps) {
     render();
     const { w, h: hh } = clipSize(shape);
     d.post({ type: 'studio:clip/start', id, seconds: wanted.seconds, fps: CLIP_FPS, w, h: hh, codec: CLIP_CODEC, bitrate: CLIP_BITRATE,
-      mark: wanted.mark, lines: [...CLIP_MARK_LINES] });
+      mark: wanted.mark, lines: [...CLIP_MARK_LINES], sound: wanted.sound });
     waitStarted(5000);
   }
 
@@ -354,7 +365,7 @@ export function createClip(d: ClipDeps) {
     const { w, h: hh } = clipSize(shape);
     const words = wanted.words ? baWords(o.asked) : '';
     d.post({ type: 'studio:clip/start', id, seconds: total, fps: CLIP_FPS, w, h: hh, codec: CLIP_CODEC, bitrate: CLIP_BITRATE,
-      mark: wanted.mark, lines: [...CLIP_MARK_LINES],
+      mark: wanted.mark, lines: [...CLIP_MARK_LINES], sound: wanted.sound,
       // "Before" / "After" in English whatever the editor's language: the video goes to X (as the mark's lines).
       before: { image, ms: BA_BEFORE_MS, wipeMs: BA_WIPE_MS, label: 'Before', after: 'After', stillFps: BA_STILL_FPS, ...(words ? { words } : {}) } });
     // The still part is encoded before `started`: on a slow machine that is a few seconds.
@@ -405,9 +416,12 @@ export function createClip(d: ClipDeps) {
       case 'studio:clip/chunk':
         (m.alt ? alt : main).push({ data: new Uint8Array(m.data), key: m.key, ts: m.ts, dur: m.dur });
         break;
+      case 'studio:clip/sound':
+        audio = { rate: m.rate, channels: m.channels, asc: new Uint8Array(m.asc), samples: m.chunks.map((c) => ({ data: new Uint8Array(c.data), ts: c.ts, dur: c.dur })) };
+        break;
       case 'studio:clip/done':
         window.clearInterval(clock);
-        void finish(m.seconds, m.markAt);
+        void finish(m.seconds, m.markAt, m.sound);
         break;
       case 'studio:clip/error': {
         window.clearInterval(clock);
@@ -432,7 +446,7 @@ export function createClip(d: ClipDeps) {
     return { text: t('clip.failed', { msg: msg || '?' }) };
   }
 
-  async function finish(length: number, markAt: number) {
+  async function finish(length: number, markAt: number, soundState?: ClipSoundState) {
     stopping = false;
     setState('saving');
     const seconds = Math.round(length * 10) / 10;
@@ -444,12 +458,14 @@ export function createClip(d: ClipDeps) {
       alt.sort((a, b) => a.ts - b.ts);
       if (!avcc || !main.length) throw new Error('no video');
       const endUs = Math.round(length * 1e6);
-      file = muxMp4({ width: w, height: hh, avcc, samples: main, endUs });
+      // The sound (stage 3) is the same track in both ends: only the picture's last second differs.
+      const sound = soundState === 'on' ? audio : null;
+      file = muxMp4({ width: w, height: hh, avcc, samples: main, endUs, audio: sound });
       // The other end: the frames before the mark's second, then the second encoder's. Only when both encoders set up
       // the same way (the same SPS / PPS), so one MP4 header describes both — nearly always in one browser, checked.
       const cut = markAt - 1;
       if (altAvcc && sameBytes(altAvcc, avcc) && alt.length && alt[0]!.key) {
-        other = muxMp4({ width: w, height: hh, avcc, samples: [...main.filter((s) => s.ts < cut), ...alt], endUs });
+        other = muxMp4({ width: w, height: hh, avcc, samples: [...main.filter((s) => s.ts < cut), ...alt], endUs, audio: sound });
       }
     } catch (e) {
       setState('idle');
@@ -458,6 +474,7 @@ export function createClip(d: ClipDeps) {
     }
     main = [];
     alt = [];
+    audio = null;
     const made = ba;
     ba = null;
     const stem = made ? beforeAfterStem(d.game()) : clipStem(d.game());
@@ -472,6 +489,9 @@ export function createClip(d: ClipDeps) {
     saved = { ...ok, seconds, shape, mark: wanted.mark, other, file, post: postFor(wanted.mark), postFor, rewritten: false, rewriting: false, ctx };
     setState('idle');
     showLine();
+    // Saved without its sound (stage 3): one line under the saved rows, with what to do (another browser / try again).
+    const noteKey = soundNoteKey(soundState);
+    if (noteKey) say(t(noteKey), 10000);
   }
 
   /** Save (the server's folder) or download (the web demo). `replace` = the name of the clip saved before. */
