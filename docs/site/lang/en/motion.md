@@ -18,17 +18,17 @@ The quickest way: select something in the game, then press **Motion** at the rig
 
 There are two ways in, and no list of ready-made kinds: you make a motion by showing it.
 
-- **Make a motion**: where the thing stands now is the start (0 s). The timeline opens small at the bottom and one line says **Drag it to where it should move (Esc to cancel)**. Drag it there and let go: that is where it is at 1 s, and the motion plays right away to show you. That one drag is one change (**Save · 1**) and one <kbd>⌘</kbd><kbd>Z</kbd> takes it all back.
+- **Make a motion**: where the thing stands now is the start (0 s). The timeline opens small at the bottom and one line says **Drag it to where it should go. It goes there and back (Esc to cancel)**. Drag it there and let go: that is where it is at 1 s, and right away it goes there and back, over and over, to show you. That one drag is one change (**Save · 1**) and one <kbd>⌘</kbd><kbd>Z</kbd> takes it all back.
 - Keep going: each time you move, turn or resize it again, a point is added one second after the last, and that second plays. **Done** (or <kbd>Esc</kbd>) stops adding. <kbd>⌘</kbd><kbd>Z</kbd> takes one step back at a time.
 - **Use a saved motion**: choose one you already made (only when the Library has some).
 
-![Made by showing it: the line “▶ Preview  Repeat Once · When does it move?”, and the timeline under it with two points](media/motion-make.webp)
+![Made by showing it: the line “▶ Preview  Repeat Back and forth · When does it move?”, and the timeline under it with two points](media/motion-make.webp)
 
 After **Done**, the timeline’s top line is where you change how it repeats and when it moves:
 
-**▶ Preview** · Repeat **[Once ▾]** · When does it move? **[When game starts ▾]**
+**▶ Preview** · Repeat **[Back and forth ▾]** · When does it move? **[When game starts ▾]**
 
-- **Repeat** is **Once**, **Loop** or **Back and forth**.
+- **Repeat** is **Back and forth** for a motion you made by dragging it, and you can change it to **Once** or **Loop**.
 - **When does it move?** is [when it starts](#when-it-starts).
 - **How long** it takes is where its last point is on the timeline: the seconds are on the ruler, and only there. Drag the last point right to make it longer, left to make it shorter (the ruler has a little shaded room past the end for that).
 

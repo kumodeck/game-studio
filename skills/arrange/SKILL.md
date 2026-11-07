@@ -126,14 +126,18 @@ marks (§5) go into that same file.
   DOM menu is three.js).
 - **A UI drawn in the canvas** (a score, a health bar, a button, a minimap painted with `fillText` / `fillRect` /
   `drawImage` over the game — often in a second 2D canvas on top of a three.js one, and no `data-studio-key`; in Phaser
-  a `this.add.text(…)` score or a `setScrollFactor(0)` HUD, in Pixi a HUD `Text` / container): make it
-  editable the first time you look at the game, **without asking** — all of it at once — and say so in one line in
-  the game's words ("I made the score, the health bar and the JUMP button movable in the editor; they look the same").
-  How: "UI drawn in the canvas" (§4). Decided on 2026-10-24: do not ask — it is a rewrite of
-  the drawing, but its picture stays the same to the pixel, and a UI the person cannot pick is a dead end in the
-  editor. The one line is a report, never a how-to: no "press Save", no "open the UI layer", no editor steps.
-  Until you do, the editor shows that UI with faint dotted frames "Not selectable yet" (`--do list` → `uiFound`: where
-  it sees UI it cannot select — your checklist of what to deliver).
+  a `this.add.text(…)` score or a `setScrollFactor(0)` HUD, in Pixi a HUD `Text` / container): the first time you look
+  at a game with one and nothing of it is delivered yet, **ask once**, in the game's words, in your own window — "The
+  score and the health bar are drawn inside the game's picture. Want them movable in the editor too?" — and do it only
+  on a yes, or when they ask for it later (the ✦ on the editor's line "This UI can't be selected yet": an `ask` with
+  `intent: "ui-code"`). Then do **all of it at once**, never one part per request, and say so in one line in the
+  game's words ("I made the score, the health bar and the JUMP button movable in the editor; they look the same").
+  How: "UI drawn in the canvas" (§4). Decided on 2026-11-07 (it was "do not ask" from 2026-10-24): it is a rewrite of
+  the drawing code the person did not ask for, so it waits for their yes; one question, and one yes covers every part.
+  A no: leave the drawing as it is and do not ask again in this talk (the dotted frames and their ✦ stay for later).
+  The one line is a report, never a how-to: no "press Save", no "open the UI layer", no editor steps.
+  Until it is done, the editor shows that UI with faint dotted frames "Not selectable yet" (`--do list` → `uiFound`:
+  where it sees UI it cannot select — your checklist of what to deliver).
 - `adapters/` is in the same folder as this `SKILL.md`. Each example is short and commented; you copy one and fit it
   to the game. Details in [`references/adapters.md`](references/adapters.md).
 - If the game is built by a bundler, open the folder the bundler writes (`npm run build`; started on the project
@@ -940,8 +944,8 @@ know where it is. You make it editable by rewriting the drawing **once** so it r
 loader's `codeUi()`; the editor then lists it in the UI layer with the HTML UI (one list, top of the screen first), with
 the same frame, strip and card — the person sees no difference between the two (do not tell them "canvas" or "HTML").
 
-**Deliver it** (the first time you look at a game with such a UI, without asking — §1 — or when asked "make this UI
-editable": an `ask` with `intent: "ui-code"`, from the ✦ on the line "This UI can't be selected yet"):
+**Deliver it** (after the one question of §1 was answered yes, or when asked "make this UI editable": an `ask` with
+`intent: "ui-code"`, from the ✦ on the line "This UI can't be selected yet"):
 
 1. **Find every one** the game draws fixed on the screen: `fillText` / `fillRect` / `arc` / `drawImage` of a score, a
    bar, a button, a minimap; in Phaser a HUD text (`this.add.text`, often `setScrollFactor(0)`), in Pixi a HUD `Text` or

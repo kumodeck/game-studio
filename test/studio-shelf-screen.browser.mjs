@@ -114,6 +114,14 @@ async function run() {
       assert.equal(await page.eval(`document.querySelectorAll('[role=dialog], .scrim').length`), 0);
       assert.ok(await page.eval(`!!document.querySelector('[data-part=samples-own] code')`), 'Have a game already? … /arrange');
       step(`shelf: ${cards.map((c) => c.id + (c.coming ? ' (Coming)' : '')).join(', ')}`);
+      // Every card's picture starts at the card's top edge (decided 2026-11-07: in v0.1.85 a <button> card with a shorter
+      // blurb than its row's tallest had its content centred, 8-9 px of plate over its picture).
+      const gaps = await j(page, `JSON.stringify([...document.querySelectorAll('[data-part=samples-card]')].map((c) => {
+        const p = c.querySelector('.samples-pic').getBoundingClientRect(); const w = c.querySelector('.samples-txt').getBoundingClientRect();
+        return [c.dataset.id, Math.round((p.top - c.getBoundingClientRect().top) * 10) / 10, Math.round((w.top - p.bottom) * 10) / 10]; }))`);
+      // …and the words right under it (the editor's button gap, 6 px, is not between them).
+      assert.ok(gaps.every(([, g, u]) => Math.abs(g) <= 0.5 && Math.abs(u) <= 0.5), `every picture at its card's top, the words right under it: ${JSON.stringify(gaps)}`);
+      step('every card\'s picture starts at its top edge (no 8 px gap)');
       await shot(page, `1-shelf-dark-pc-${LANG}`);
 
       // 3. Pointing plays that sample, one at a time.

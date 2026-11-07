@@ -122,8 +122,9 @@ try {
       // 1 open
       let f = await j(FOOT);
       await shot(1, 'open');
-      const LINE = ja ? 'ゲームを手で直す場所。コードは、いつもの AI が書く。' : 'Shape your game by hand. Your AI writes the code.';
-      check(f.intro === LINE, `open: the one line ("${f.intro}")`);
+      // Decided 2026-11-07: "Grab anything. Tell {ai} the rest." (ja: the i18n table's sentence, with the AI's name in it).
+      const LINE = ja ? /^\S.*(Claude|Codex|AI) / : /^Grab anything\. Tell (Claude|Codex|your AI) the rest\.$/;
+      check(LINE.test(f.intro ?? ''), `open: the one line ("${f.intro}")`);
       check(!!f.introBox && !!f.barBox && f.introBox.bottom <= f.barBox.top + 1, 'open: the line sits over the ask row (under the game)');
 
       // 2 pick the gate (the list's own action: the same as a click on it in the game)

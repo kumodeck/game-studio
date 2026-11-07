@@ -1,4 +1,4 @@
-/* KUMODeck Game Studio 0.1.85 — MIT License — built file, edit src/ instead */
+/* KUMODeck Game Studio 0.1.86 — MIT License — built file, edit src/ instead */
 (() => {
 const __defs = [];
 const __cache = [];
@@ -18236,8 +18236,10 @@ const en = {
   'tl.when.sayNow': 'Custom',
   // "Make a motion" by showing it (studio-no-presets; the kinds — Back and forth, Round, Once, Spin — are gone).
   'tl.make': '+ Make a motion',
-  'tl.make.drag': 'Drag {name} to where it should move (Esc to cancel)',
-  'tl.made.more': 'Moves 0–{t} s. Keep moving to add a second.',
+  // Decided 2026-11-07 (the experience review's question 2, answer (a)): a made motion goes there and back, so the line
+  // says so before the drag and after it (it was "where it should move" and "Moves 0–1 s", a motion that went once).
+  'tl.make.drag': 'Drag {name} to where it should go. It goes there and back (Esc to cancel)',
+  'tl.made.more': 'Goes there and back, 0–{t} s. Keep moving to add a second.',
   'tl.make.done': 'Done',
   'tl.make.doneTip': 'Stop adding points (Esc)',
   // studio-ui-lead (2026-10-23): the picked keys' row under the line — what it is, what each menu does, Delete as a button.
@@ -18526,9 +18528,11 @@ const en = {
   // Plan step 7 (2026-10-23): the sheet's tabs (Scene | the picked object | Motion), named for a screen reader.
   'sheet.tabs': 'What the sheet shows',
   // The one line under the game until the first pick (the words picked for plan "decide 1", kept after a wording check).
-  // Decided 2026-11-06 (first-screen fix): it says the whole loop in one line — move by hand, Save, the AI puts it in
-  // the code — so the field next to it no longer needs to talk about the AI before the person asks (presenceQuiet).
-  'intro.line': 'Move things by hand. Save, and {ai} puts it in your code.',
+  // Decided 2026-11-06 (first-screen fix): it says the whole loop in one line, so the field next to it no longer needs
+  // to talk about the AI before the person asks (presenceQuiet). Decided 2026-11-07 (the experience review's question
+  // 3, answer (a)): what the tool is, as the split between hand and voice — anything on screen can be grabbed, the rest
+  // is said to the AI. It was "Move things by hand. Save, and {ai} puts it in your code.", which read as a how-to.
+  'intro.line': 'Grab anything. Tell {ai} the rest.',
   // One line about the hand-off to the AI (requests and the AI's status).
   'ai.waiting': 'Sent your {what} to {ai}. Waiting for a reply…',
   // The one calm line when the request could not wake the AI right now (hands-on test 2026-10-19: "Your AI
@@ -19010,7 +19014,10 @@ const en = {
   'check.pose-roundtrip': 'Moves may not stick in this game yet.',
   // studio-blank-level (2026-10-23): it said "Moving things may not show in this game yet." — a hands-on try: "I don't know
   // what that means". It shows only for a real fault now (check-note.ts), so it says what happens, where.
-  'check.screen-changes': 'Things you move here may not move on the game screen.',
+  // Decided 2026-11-07: the whole line is this one (no "Your AI has the details." after it, checkNoteText): what moved
+  // in the editor may not show in the game's picture, and the AI already has how to fix it (.studio/check.md). It was
+  // "Things you move here may not move on the game screen.", which read as the editor being broken.
+  'check.screen-changes': 'Things you move in the editor may not show in the game’s picture. Your AI has been told how to fix it.',
   'check.anchor-follows': 'The handles may not follow things in this game yet.',
   'check.restored': 'An object may have shifted slightly while the editor checked this game.',
   // Rebrand 2026-10-16: top bar, left column, ⌘K list, hand-off.
@@ -19670,8 +19677,8 @@ const ja                               = {
   'tl.when.cueNow': '合図を受け取ったら（AI）',
   'tl.when.sayNow': 'カスタム',
   'tl.make': '＋ 動きを作る',
-  'tl.make.drag': '{name} を、動いてほしい所までドラッグしてください（Esc でやめる）',
-  'tl.made.more': '0〜{t} 秒の動きができました。続けて動かすと 1 秒ずつ足されます',
+  'tl.make.drag': '{name} を、行き先までドラッグしてください。行って戻ります（Esc でやめる）',
+  'tl.made.more': '0〜{t} 秒で行って戻る動きができました。続けて動かすと 1 秒ずつ足されます',
   'tl.make.done': '終わる',
   'tl.make.doneTip': 'ポイントを足すのをやめる（Esc）',
   'tl.sel': '選択中: {n}',
@@ -19926,7 +19933,7 @@ const ja                               = {
   'sheet.fold': 'たたむ',
   'sheet.unfold': '一覧とカードを出す',
   'sheet.tabs': 'シートに出す物',
-  'intro.line': '手で動かして保存すると、{ai}がコードに入れます。',
+  'intro.line': '何でも掴めます。ほかは {ai}に頼んでください。',
   'ai.waiting': '{what}を {ai}に送りました。返事を待っています…',
   'ai.kept': '{ai}へのメモとして残しました。{ai2}が読むまでゲームは変わりません。',
   'ai.onIt': '{ai}が取りかかっています',
@@ -20319,7 +20326,7 @@ const ja                               = {
   'check.has-objects': 'このゲームには、まだ選べる物がありません。',
   'check.keys-valid': '保存しても位置が残らない物があるかもしれません。',
   'check.pose-roundtrip': 'このゲームでは、まだ動かした位置が残らないことがあります。',
-  'check.screen-changes': 'エディタで物を動かしても、ゲームの画面では動かないことがあります。',
+  'check.screen-changes': 'エディタで動かした物が、ゲームの絵に出ないことがあります。AI に直し方を伝えてあります。',
   'check.anchor-follows': 'このゲームでは、まだハンドルが物に付いてこないことがあります。',
   'check.restored': 'エディタの確認で、物が少しずれたかもしれません。',
   'app.brand': 'Studio',
@@ -27562,7 +27569,7 @@ function createTimeline(d              , makePanel                             =
       gestureNames.set(key, name);
       // The first motion of an object plays when the game starts; another waits (in the person's words, for now).
       const starts = clipsOf(key).some((x) => whenOf(x).on === 'start');
-      c = { name, len: Math.max(1, snapT(time, MAX_LEN)), repeat: 'once', when: starts ? { on: 'say' } : { on: 'start' }, keys: {} };
+      c = { name, len: Math.max(1, snapT(time, MAX_LEN)), repeat: firstRepeat(key), when: starts ? { on: 'say' } : { on: 'start' }, keys: {} };
       chosen.set(key, c.name);
       madeKey = key;
     }
@@ -27582,6 +27589,17 @@ function createTimeline(d              , makePanel                             =
     }
     m = withClip(m, name, c);
     return m;
+  }
+  /**
+   * The repeat of a motion made here. "Make a motion" (the drag to where it should go) = 'pingpong', there and back
+   * (decided 2026-11-07, the experience review's question 2, answer (a)): the moment the person lets go, the thing
+   * visibly goes there and comes back, and keeps doing so, which says "this moves" better than anything. With 'once' (the
+   * way until v0.1.85) it went there once, stopped, and looked like a plain move until ▶ was pressed again. Once / Loop
+   * stay one choice away (Repeat in the top line). Every other first key (● Rec on a thing being linked, K, a paste) keeps
+   * 'once': nothing there says where it should go and back.
+   */
+  function firstRepeat(key        )               {
+    return making?.key === key ? 'pingpong' : 'once';
   }
   /** Is a gesture on `key` a key now (● on, the timeline open), or a move of its place? */
   // While Try runs the scene, a move is never a key (the time line is the game's clock then, not a moment of the clip).
@@ -27966,7 +27984,7 @@ function createTimeline(d              , makePanel                             =
     // no point to it; "Convert to coordinates" is the way to points.
     if (ruleKeeps(key)) return true;
     const pose = shownPose(key) ;
-    let c = clipOf(key) ?? { name: firstName(key), len: Math.max(1, snapT(time, MAX_LEN)), repeat: 'once'                , when: { on: 'start' }              , keys: {} };
+    let c = clipOf(key) ?? { name: firstName(key), len: Math.max(1, snapT(time, MAX_LEN)), repeat: firstRepeat(key), when: { on: 'start' }              , keys: {} };
     const name = c.name;
     const chs = CHANNELS.filter((ch) => c.keys[ch]?.length);
     for (const ch of chs.length ? chs : (['p']                   )) {
@@ -33947,7 +33965,19 @@ function checkNoteId(check                        , items                       
   return shown[0]?.id ?? null;
 }
 
+/**
+ * The line as the person reads it: the check's own words, then "Your AI has the details." — except a check whose words
+ * already say what the AI has (decided 2026-11-07: "screen-changes" ends with "Your AI has been told how to fix it.", and
+ * the two endings one after the other said the same thing twice).
+ */
+function checkNoteText(id             , t                         )         {
+  return SAYS_AI.has(id) ? t('check.' + id) : `${t('check.' + id)} ${t('status.checkFail')}`;
+}
+/** The checks whose own line already ends with what the AI was told (checkNoteText). */
+const SAYS_AI = new Set             (['screen-changes']);
+
 __def(__exports, "checkNoteId", () => checkNoteId);
+__def(__exports, "checkNoteText", () => checkNoteText);
 };
 __defs[86] = function (__exports) {
 'use strict';
@@ -36899,7 +36929,7 @@ const { installTooltips } = __require(81);
 const { createShortcutSheet } = __require(82);
 const { createContextMenu } = __require(83);
 const { Levels, worldOf } = __require(84);
-const { checkNoteId } = __require(85);
+const { checkNoteId, checkNoteText } = __require(85);
 const { createLevelSwitch, makeRows } = __require(86);
 const { contextRows } = __require(87);
 const { bigChanges, createSafeSave } = __require(88);
@@ -40952,8 +40982,10 @@ function start(host            ) {
       if (was === at) return;
     }
     if (!momentCanCheckpoint || !host.checkpoints) return checkpointNone(at);
-    // △12 (an open question; (a) "keep what was seen" until it is decided, 2026-10-28): what was moved and set in this moment is kept too — said
-    // under the field, small, because the card says "Just for this moment" about the same moves.
+    // △12, decided 2026-11-07 (answer (a), "keep what was seen"; it was an open question from 2026-10-28): what was moved and
+    // set in this moment is kept in the checkpoint too (the game's save() reads the moment as it shows, with those moves:
+    // "the boss comes from the left" can be made once and tried again and again). Said under the field, small, because
+    // the card says "Just for this moment" about the same moves.
     cpPop.name(at, { name: defaultCheckpointName(clockNow(playHeard, performance.now())), label: t('checkpoint.name'), button: t('checkpoint.keep'),
       note: t('checkpoint.keepsMoved'), keep: (name) => keepCheckpoint(name, at) });
   }
@@ -43582,7 +43614,7 @@ function start(host            ) {
       // .studio/check.md) and are never shown here. test/i18n-words.test.mjs keeps code words out of these lines.
       // Not when the move test hit something the game moves itself, the ground / sky, or a hidden object (check-note.ts).
       const first = checkNoteId(check, worldItems, levels.isBlank());
-      if (first) line('note', `${t('check.' + first)} ${t('status.checkFail')}`);
+      if (first) line('note', checkNoteText(first, t));
     }
     status.hidden = !status.childNodes.length;
     // The wait line over the game (waitLine above): until the objects are found, unless the game failed or is playing.
@@ -44740,7 +44772,14 @@ const SHELF_CSS = `
   font: 14px/1.4 -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
 .samples-page button { font: inherit; color: inherit; border: 0; background: none; cursor: pointer; padding: 0; text-align: inherit; min-height: 0; }
 /* The editor's own button look (shell.css: inline-flex, centred, one line) is for its small presses; a card is a block. */
-.samples-page button.samples-card, .samples-page button.samples-back { display: block; white-space: normal; text-align: left; border-radius: 14px; }
+.samples-page button.samples-back { display: block; white-space: normal; text-align: left; border-radius: 14px; }
+/* A card is a column from the top (decided 2026-11-07). WHY: a <button> centres what is in it up and down, whatever its
+   display; the grid stretches every card of a row to the tallest one (a three-line blurb), so a card with a two-line
+   blurb had its picture and words pushed down by half the difference: 8-9 px of the card's own plate showed over the
+   picture of Lantern Cove, Neon Run and Firefly Ruins in v0.1.85. A flex column starts at the top in every browser.
+   gap 0: the editor's buttons have a gap between their icon and words, which a flex card would put under its picture. */
+.samples-page button.samples-card { display: flex; flex-direction: column; justify-content: flex-start; align-items: stretch;
+  gap: 0; white-space: normal; text-align: left; border-radius: 14px; }
 .samples-page button.samples-card:hover { background: var(--plate); }
 .samples-bar { height: 44px; display: flex; align-items: center; gap: 10px; padding: 0 14px; }
 .samples-logo { width: 16px; height: 16px; border-radius: 4px; background: var(--studio-fg); flex: none; }
@@ -44759,12 +44798,12 @@ const SHELF_CSS = `
 .samples-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; align-items: stretch; }
 @media (max-width: 900px) { .samples-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 
-.samples-card { display: block; width: 100%; background: var(--plate); border-radius: 14px; overflow: hidden;
+.samples-card { display: flex; flex-direction: column; width: 100%; background: var(--plate); border-radius: 14px; overflow: hidden;
   box-shadow: var(--plate-shadow); position: relative; transition: transform .2s cubic-bezier(.2, .8, .2, 1), box-shadow .2s; }
 .samples-card:not(.coming):hover, .samples-card:focus-visible, .samples-card.is-live { transform: translateY(-2px); box-shadow: 0 0 0 2px var(--studio-fg), var(--glass-shadow); outline: none; }
 .samples-card.coming { cursor: default; }
 .samples-card.coming .samples-pic { filter: saturate(.4); opacity: .7; }
-.samples-pic { aspect-ratio: 16 / 10; background: #000; position: relative; overflow: hidden; }
+.samples-pic { aspect-ratio: 16 / 10; background: #000; position: relative; overflow: hidden; flex: none; }
 .samples-pic img, .samples-live { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; border: 0; display: block; }
 .samples-live { opacity: 0; transition: opacity .3s ease-out; pointer-events: none; background: transparent; }
 .samples-live.on { opacity: 1; }

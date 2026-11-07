@@ -84,8 +84,10 @@ const en = {
   'tl.when.sayNow': 'Custom',
   // "Make a motion" by showing it (studio-no-presets; the kinds — Back and forth, Round, Once, Spin — are gone).
   'tl.make': '+ Make a motion',
-  'tl.make.drag': 'Drag {name} to where it should move (Esc to cancel)',
-  'tl.made.more': 'Moves 0–{t} s. Keep moving to add a second.',
+  // Decided 2026-11-07 (the experience review's question 2, answer (a)): a made motion goes there and back, so the line
+  // says so before the drag and after it (it was "where it should move" and "Moves 0–1 s", a motion that went once).
+  'tl.make.drag': 'Drag {name} to where it should go. It goes there and back (Esc to cancel)',
+  'tl.made.more': 'Goes there and back, 0–{t} s. Keep moving to add a second.',
   'tl.make.done': 'Done',
   'tl.make.doneTip': 'Stop adding points (Esc)',
   // studio-ui-lead (2026-10-23): the picked keys' row under the line — what it is, what each menu does, Delete as a button.
@@ -374,9 +376,11 @@ const en = {
   // Plan step 7 (2026-10-23): the sheet's tabs (Scene | the picked object | Motion), named for a screen reader.
   'sheet.tabs': 'What the sheet shows',
   // The one line under the game until the first pick (the words picked for plan "decide 1", kept after a wording check).
-  // Decided 2026-11-06 (first-screen fix): it says the whole loop in one line — move by hand, Save, the AI puts it in
-  // the code — so the field next to it no longer needs to talk about the AI before the person asks (presenceQuiet).
-  'intro.line': 'Move things by hand. Save, and {ai} puts it in your code.',
+  // Decided 2026-11-06 (first-screen fix): it says the whole loop in one line, so the field next to it no longer needs
+  // to talk about the AI before the person asks (presenceQuiet). Decided 2026-11-07 (the experience review's question
+  // 3, answer (a)): what the tool is, as the split between hand and voice — anything on screen can be grabbed, the rest
+  // is said to the AI. It was "Move things by hand. Save, and {ai} puts it in your code.", which read as a how-to.
+  'intro.line': 'Grab anything. Tell {ai} the rest.',
   // One line about the hand-off to the AI (requests and the AI's status).
   'ai.waiting': 'Sent your {what} to {ai}. Waiting for a reply…',
   // The one calm line when the request could not wake the AI right now (hands-on test 2026-10-19: "Your AI
@@ -858,7 +862,10 @@ const en = {
   'check.pose-roundtrip': 'Moves may not stick in this game yet.',
   // studio-blank-level (2026-10-23): it said "Moving things may not show in this game yet." — a hands-on try: "I don't know
   // what that means". It shows only for a real fault now (check-note.ts), so it says what happens, where.
-  'check.screen-changes': 'Things you move here may not move on the game screen.',
+  // Decided 2026-11-07: the whole line is this one (no "Your AI has the details." after it, checkNoteText): what moved
+  // in the editor may not show in the game's picture, and the AI already has how to fix it (.studio/check.md). It was
+  // "Things you move here may not move on the game screen.", which read as the editor being broken.
+  'check.screen-changes': 'Things you move in the editor may not show in the game’s picture. Your AI has been told how to fix it.',
   'check.anchor-follows': 'The handles may not follow things in this game yet.',
   'check.restored': 'An object may have shifted slightly while the editor checked this game.',
   // Rebrand 2026-10-16: top bar, left column, ⌘K list, hand-off.
@@ -1518,8 +1525,8 @@ const ja: Partial<Record<Key, string>> = {
   'tl.when.cueNow': '合図を受け取ったら（AI）',
   'tl.when.sayNow': 'カスタム',
   'tl.make': '＋ 動きを作る',
-  'tl.make.drag': '{name} を、動いてほしい所までドラッグしてください（Esc でやめる）',
-  'tl.made.more': '0〜{t} 秒の動きができました。続けて動かすと 1 秒ずつ足されます',
+  'tl.make.drag': '{name} を、行き先までドラッグしてください。行って戻ります（Esc でやめる）',
+  'tl.made.more': '0〜{t} 秒で行って戻る動きができました。続けて動かすと 1 秒ずつ足されます',
   'tl.make.done': '終わる',
   'tl.make.doneTip': 'ポイントを足すのをやめる（Esc）',
   'tl.sel': '選択中: {n}',
@@ -1774,7 +1781,7 @@ const ja: Partial<Record<Key, string>> = {
   'sheet.fold': 'たたむ',
   'sheet.unfold': '一覧とカードを出す',
   'sheet.tabs': 'シートに出す物',
-  'intro.line': '手で動かして保存すると、{ai}がコードに入れます。',
+  'intro.line': '何でも掴めます。ほかは {ai}に頼んでください。',
   'ai.waiting': '{what}を {ai}に送りました。返事を待っています…',
   'ai.kept': '{ai}へのメモとして残しました。{ai2}が読むまでゲームは変わりません。',
   'ai.onIt': '{ai}が取りかかっています',
@@ -2167,7 +2174,7 @@ const ja: Partial<Record<Key, string>> = {
   'check.has-objects': 'このゲームには、まだ選べる物がありません。',
   'check.keys-valid': '保存しても位置が残らない物があるかもしれません。',
   'check.pose-roundtrip': 'このゲームでは、まだ動かした位置が残らないことがあります。',
-  'check.screen-changes': 'エディタで物を動かしても、ゲームの画面では動かないことがあります。',
+  'check.screen-changes': 'エディタで動かした物が、ゲームの絵に出ないことがあります。AI に直し方を伝えてあります。',
   'check.anchor-follows': 'このゲームでは、まだハンドルが物に付いてこないことがあります。',
   'check.restored': 'エディタの確認で、物が少しずれたかもしれません。',
   'app.brand': 'Studio',

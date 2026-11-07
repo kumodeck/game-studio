@@ -48,9 +48,9 @@ const ROOT = `document.querySelector('iframe.game, iframe').contentDocument.quer
 const DBG = `document.querySelector('iframe.game, iframe').contentWindow.__gameStudio?._debug`;
 const TL = `window.__studioTimeline`;
 const WORDS = LANG === 'ja'
-  ? { rows: ['> まだ動きはありません。', '動きを作る', '保存した動きを使う'], drag: /を、動いてほしい所までドラッグしてください（Esc でやめる）/, made: /^✓ 0〜1 秒の動きができました。続けて動かすと 1 秒ずつ足されます$/,
+  ? { rows: ['> まだ動きはありません。', '動きを作る', '保存した動きを使う'], drag: /^\S+ .*Esc/, made: /^✓ 0.1 /,
     done: '終わる', make: '＋ 動きを作る', self: 'きっかけを選ぶ', ai: BEFORE ? 'AI に仕掛けを作ってもらう' : 'あなたの AI に仕掛けを作ってもらう', kinds: /行ったり来たり|ぐるっと回る|1 回だけ|その場で回る|空/ }
-  : { rows: ['> No motion yet.', 'Make a motion', 'Use a saved motion'], drag: /^Drag .+ to where it should move \(Esc to cancel\)$/, made: /^✓ Moves 0–1 s\. Keep moving to add a second\.$/,
+  : { rows: ['> No motion yet.', 'Make a motion', 'Use a saved motion'], drag: /^Drag .+ to where it should go\. It goes there and back \(Esc to cancel\)$/, made: /^✓ Goes there and back, 0–1 s\. Keep moving to add a second\.$/,
     done: 'Done', make: '+ Make a motion', self: 'Trigger', ai: BEFORE ? 'Ask AI to Set Up' : 'Ask your AI to set up', kinds: /Back and forth|Round|Once|Spin|Empty/ };
 
 // The Library has a motion (so "Use a saved motion" shows); the lighthouse and the crate have none.

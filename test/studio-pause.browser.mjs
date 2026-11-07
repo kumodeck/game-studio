@@ -2027,7 +2027,7 @@ async function checkpoint(theme = 'light') {
     const pop = await j(page, `(() => { const e = document.querySelector('[data-part=checkpoint-pop]'); if (!e || e.hidden) return null; const r = e.getBoundingClientRect(); return JSON.stringify({ top: r.top, left: r.left }); })()`);
     if (!(pop.top >= flag.bottom && Math.abs(pop.left - flag.left) < 4)) await shot(tag, 'debug-pop');
     assert.ok(pop.top >= flag.bottom && Math.abs(pop.left - flag.left) < 4, `the field hangs under ⚑ ${JSON.stringify({ pop, flag })}`);
-    // △12 ((a) "keep what was seen" until it is decided): what was moved and set in this moment is kept too — said under the field.
+    // △12, decided 2026-11-07 (answer (a), "keep what was seen"): what was moved and set in this moment is kept too — said under the field.
     assert.equal(await page.eval(`document.querySelector('[data-part=checkpoint-keeps]')?.textContent || ''`), ja ? 'この瞬間に動かした物と数も残ります。' : 'What you moved and set in this moment is kept too.');
     // The first pause's line names ⚑ too (✕11): "Next frame . · ⚑ Make this a checkpoint" — it stepped aside for the field.
     assert.equal(await page.eval(`document.querySelector('[data-part=step-tip]')?.hidden`), true, 'the first-pause line gone at ⚑');

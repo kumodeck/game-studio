@@ -530,7 +530,7 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
       gestureNames.set(key, name);
       // The first motion of an object plays when the game starts; another waits (in the person's words, for now).
       const starts = clipsOf(key).some((x) => whenOf(x).on === 'start');
-      c = { name, len: Math.max(1, snapT(time, MAX_LEN)), repeat: 'once', when: starts ? { on: 'say' } : { on: 'start' }, keys: {} };
+      c = { name, len: Math.max(1, snapT(time, MAX_LEN)), repeat: firstRepeat(key), when: starts ? { on: 'say' } : { on: 'start' }, keys: {} };
       chosen.set(key, c.name);
       madeKey = key;
     }
@@ -550,6 +550,17 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
     }
     m = withClip(m, name, c);
     return m;
+  }
+  /**
+   * The repeat of a motion made here. "Make a motion" (the drag to where it should go) = 'pingpong', there and back
+   * (decided 2026-11-07, the experience review's question 2, answer (a)): the moment the person lets go, the thing
+   * visibly goes there and comes back, and keeps doing so, which says "this moves" better than anything. With 'once' (the
+   * way until v0.1.85) it went there once, stopped, and looked like a plain move until ▶ was pressed again. Once / Loop
+   * stay one choice away (Repeat in the top line). Every other first key (● Rec on a thing being linked, K, a paste) keeps
+   * 'once': nothing there says where it should go and back.
+   */
+  function firstRepeat(key: string): MotionRepeat {
+    return making?.key === key ? 'pingpong' : 'once';
   }
   /** Is a gesture on `key` a key now (● on, the timeline open), or a move of its place? */
   // While Try runs the scene, a move is never a key (the time line is the game's clock then, not a moment of the clip).
@@ -934,7 +945,7 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
     // no point to it; "Convert to coordinates" is the way to points.
     if (ruleKeeps(key)) return true;
     const pose = shownPose(key)!;
-    let c = clipOf(key) ?? { name: firstName(key), len: Math.max(1, snapT(time, MAX_LEN)), repeat: 'once' as MotionRepeat, when: { on: 'start' } as MotionWhen, keys: {} };
+    let c = clipOf(key) ?? { name: firstName(key), len: Math.max(1, snapT(time, MAX_LEN)), repeat: firstRepeat(key), when: { on: 'start' } as MotionWhen, keys: {} };
     const name = c.name;
     const chs = CHANNELS.filter((ch) => c.keys[ch]?.length);
     for (const ch of chs.length ? chs : (['p'] as MotionChannel[])) {

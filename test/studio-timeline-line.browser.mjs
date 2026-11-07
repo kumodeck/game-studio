@@ -55,9 +55,9 @@ const TL = `window.__studioTimeline`;
 const ROOT = `document.querySelector('iframe.game, iframe').contentDocument.querySelector('[data-studio-ui]').shadowRoot`;
 const WORDS = LANG === 'ja'
   ? { when: 'いつ動く？', sel: '選択中: 1', toNext: '進み方', ease: 'なめらかに（自然な加減速）', turns: '通り道', smooth: '丸くなめらかに', del: '削除',
-    made: /^✓ 0〜1 秒の動きができました/, done: '終わる', motion: '動き', make: '＋ 動きを作る', off: 'この物から外す' }
+    made: /^✓ 0.1 /, done: '終わる', motion: '動き', make: '＋ 動きを作る', off: 'この物から外す' }
   : { when: 'When does it move?', sel: '1 selected', toNext: 'Pace', ease: 'Smooth (slow start & stop)', turns: 'Path', smooth: 'Smooth curve', del: 'Delete',
-    made: /^✓ Moves 0–1 s\./, done: 'Done', motion: 'Motion', make: '+ Make a motion', off: 'Take it off this object' };
+    made: /^✓ Goes there and back, 0–1 s\./, done: 'Done', motion: 'Motion', make: '+ Make a motion', off: 'Take it off this object' };
 
 // The boat has "Motion" (keys at 0, 1.5 and 3 s, lifted in the middle, turning); the Library has "Hop" for the crate.
 const FILE = { version: 1, tool: 'placement', dim: '3d', space: 'local', objects: {},

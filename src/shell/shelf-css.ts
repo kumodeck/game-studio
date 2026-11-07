@@ -7,7 +7,14 @@ export const SHELF_CSS = `
   font: 14px/1.4 -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
 .samples-page button { font: inherit; color: inherit; border: 0; background: none; cursor: pointer; padding: 0; text-align: inherit; min-height: 0; }
 /* The editor's own button look (shell.css: inline-flex, centred, one line) is for its small presses; a card is a block. */
-.samples-page button.samples-card, .samples-page button.samples-back { display: block; white-space: normal; text-align: left; border-radius: 14px; }
+.samples-page button.samples-back { display: block; white-space: normal; text-align: left; border-radius: 14px; }
+/* A card is a column from the top (decided 2026-11-07). WHY: a <button> centres what is in it up and down, whatever its
+   display; the grid stretches every card of a row to the tallest one (a three-line blurb), so a card with a two-line
+   blurb had its picture and words pushed down by half the difference: 8-9 px of the card's own plate showed over the
+   picture of Lantern Cove, Neon Run and Firefly Ruins in v0.1.85. A flex column starts at the top in every browser.
+   gap 0: the editor's buttons have a gap between their icon and words, which a flex card would put under its picture. */
+.samples-page button.samples-card { display: flex; flex-direction: column; justify-content: flex-start; align-items: stretch;
+  gap: 0; white-space: normal; text-align: left; border-radius: 14px; }
 .samples-page button.samples-card:hover { background: var(--plate); }
 .samples-bar { height: 44px; display: flex; align-items: center; gap: 10px; padding: 0 14px; }
 .samples-logo { width: 16px; height: 16px; border-radius: 4px; background: var(--studio-fg); flex: none; }
@@ -26,12 +33,12 @@ export const SHELF_CSS = `
 .samples-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; align-items: stretch; }
 @media (max-width: 900px) { .samples-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 
-.samples-card { display: block; width: 100%; background: var(--plate); border-radius: 14px; overflow: hidden;
+.samples-card { display: flex; flex-direction: column; width: 100%; background: var(--plate); border-radius: 14px; overflow: hidden;
   box-shadow: var(--plate-shadow); position: relative; transition: transform .2s cubic-bezier(.2, .8, .2, 1), box-shadow .2s; }
 .samples-card:not(.coming):hover, .samples-card:focus-visible, .samples-card.is-live { transform: translateY(-2px); box-shadow: 0 0 0 2px var(--studio-fg), var(--glass-shadow); outline: none; }
 .samples-card.coming { cursor: default; }
 .samples-card.coming .samples-pic { filter: saturate(.4); opacity: .7; }
-.samples-pic { aspect-ratio: 16 / 10; background: #000; position: relative; overflow: hidden; }
+.samples-pic { aspect-ratio: 16 / 10; background: #000; position: relative; overflow: hidden; flex: none; }
 .samples-pic img, .samples-live { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; border: 0; display: block; }
 .samples-live { opacity: 0; transition: opacity .3s ease-out; pointer-events: none; background: transparent; }
 .samples-live.on { opacity: 1; }

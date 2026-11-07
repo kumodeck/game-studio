@@ -973,7 +973,7 @@ codeMoment({ values: { … },
 - **In the editor page** (`src/shell/checkpoints.ts`, `main.ts`): ⚑ right of Speed while paused (not on a phone's bar)
   and ⚑ Checkpoint at the right of This moment's head (every width; pause walk 2 fix ✕1), and ⌘K "Make this a
   checkpoint" → the name field under the one pressed (above it when there is no room under it), the game's time first
-  ("0:42", selected), under it "What you moved and set in this moment is kept too." (△12 (a)); Enter keeps it
+  ("0:42", selected), under it "What you moved and set in this moment is kept too." (△12, decided 2026-11-07: a checkpoint keeps the moment as it shows, moves and values included); Enter keeps it
   (`CheckpointHost.add`) and the field's line says "Checkpoint “Before the boss” kept · ▶ Play ⌄ opens it" (a phone /
   the side window: "… kept · in Edit, ⚑ Checkpoints opens it" — no ▶ Play ⌄ there); Esc closes. A game without the
   hooks: one line, "This game can't start from the middle yet." and This moment's ✦ Have {ai} connect this moment to

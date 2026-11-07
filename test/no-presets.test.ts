@@ -43,8 +43,9 @@ test('no kind\'s words on screen: the template keys are gone in both languages, 
   assert.equal(translate('en', 'motion.tool.make'), 'Make a motion');
   assert.equal(translate('ja', 'motion.tool.saved'), '保存した動きを使う');
   assert.equal(translate('en', 'motion.tool.saved'), 'Use a saved motion');
-  assert.equal(translate('ja', 'tl.make.drag', { name: '木箱' }), '木箱 を、動いてほしい所までドラッグしてください（Esc でやめる）');
-  assert.match(translate('en', 'tl.make.drag', { name: 'crate' }), /^Drag crate to where it should move \(Esc to cancel\)$/);
+  // Decided 2026-11-07: the line says where it goes and that it comes back (the made motion is there and back).
+  assert.match(translate('ja', 'tl.make.drag', { name: 'crate' }), /^crate .*Esc/);
+  assert.match(translate('en', 'tl.make.drag', { name: 'crate' }), /^Drag crate to where it should go\. It goes there and back \(Esc to cancel\)$/);
 });
 
 // ----- 2. a file made before -----
@@ -111,6 +112,8 @@ test('make → drag: 0 s where it stood, 1 s where it was put, and it plays from
   const c = r.tl.motionOf('crate')!.clips![0]!;
   assert.deepEqual(c.keys.p!.map((k) => [k.t, k.v]), [[0, [0, 0, 0]], [1, [2, 0, 0]]], 'two keys');
   assert.deepEqual(c.when, { on: 'start' }, 'its first motion plays when the game starts');
+  // Decided 2026-11-07 (answer (a)): there and back, so it is seen moving the moment the drag ends (it was 'once').
+  assert.equal(c.repeat ?? r.lib.get(c.use ?? c.name)?.repeat, 'pingpong', 'a made motion goes there and back');
   assert.equal(r.tl.state().playing, true, 'it plays to show it');
   assert.ok(n() > 0);
   assert.equal(r.view().making, 'more');

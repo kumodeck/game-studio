@@ -10,7 +10,7 @@ description: Move, resize and restyle the title, score and buttons over your gam
 
 Many games have a layer of text and buttons over the world: a title, a score, a Start button. You can move and resize those too, change their words and colors, and look at every screen of your game: the title, the game itself, the pause screen, game over.
 
-It works on UI made with HTML. Read [what it can’t do yet](#what-it-cant-do-yet).
+It works on UI made with HTML, and on a score or a button your game draws inside its picture once your AI has made it movable ([UI drawn inside the game](#ui-drawn-inside-the-game)). Read [what it can’t do yet](#what-it-cant-do-yet).
 
 ## Scene and UI
 
@@ -66,15 +66,22 @@ If your game keeps its colors and fonts in CSS variables, **Theme** under the li
 
 The editor only shows UI your game has marked. Ask your AI: “let me edit the UI in Game Studio.” It marks each piece (the title, the score) in your game’s HTML, and each screen. Ask it to put your colors in a theme, too, if you want the **Theme** rows.
 
+## UI drawn inside the game
+
+Some games paint their score, health bar or buttons inside the game’s picture instead of in HTML. The editor can’t tell those apart from the world, so at first it shows them with a faint dotted frame, **Not selectable yet**.
+
+The first time your AI looks at such a game, it asks you once whether to make them movable in the editor. Say yes, or later press the dotted frame and **✦** on the line under the game: your AI makes all of them movable in one go. They look exactly the same, and from then on you select and move them like the HTML UI, in the same list.
+
 ## Save
 
-Save writes where you moved each piece, how big it is, its new words and colors, and the theme. Your game reads it when it starts, like the rest of your layout, so the title is where you put it and says what you wrote, with or without the editor. Your AI can then write it into your game’s code.
+Save writes where you moved each piece, how big it is, its new words and colors, and the theme. Your AI then writes it into your game’s code (its CSS, or where the game draws it) and clears it from the editor’s file: the code is what your game keeps. Until then your game reads the file when it starts, so the title is where you put it, with or without the editor.
+
+A piece you moved keeps to the nearest edge or corner of the screen: put the score in the top right, and it stays in the top right on a phone and on a wide screen.
 
 ## What it can’t do yet
 
-- Only HTML UI. A HUD drawn inside the game (in Phaser, PixiJS or three.js) comes in a later stage.
 - No turning, duplicating or deleting, and no new text, buttons or pictures yet.
-- One size for every screen width: no separate phone layout yet.
+- One size for every screen width: no separate phone layout yet (a moved piece does keep to its nearest edge).
 - Pieces whose position the game changes itself (an animated score, say) aren’t listed.
 
 Next: [Make with AI](make-with-ai.md).

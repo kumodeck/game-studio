@@ -526,7 +526,7 @@ img.thumb:not([src]) { content: url("data:image/gif;base64,R0lGODlhAQABAIAAAAAAA
 .cp-keep { height: 28px; padding: 0 12px; border-radius: 999px; background: var(--solid); color: var(--solid-fg); font-weight: 600; }
 .cp-err { margin: 0; color: var(--danger); max-width: 280px; }
 .cp-line { margin: 0; max-width: 280px; line-height: 1.45; word-break: keep-all; overflow-wrap: anywhere; }
-/* △12 (an open question; (a) "keep what was seen" until it is decided): "Things you moved and numbers you changed in this moment are kept too." */
+/* △12, decided 2026-11-07 (answer (a), "keep what was seen"): "What you moved and set in this moment is kept too." */
 /* "⚑ Checkpoints · 1 ⌄" over a phone's list in Edit (pause walk 2 ✕1; main.ts cpListBtn): ▶ Play ⌄'s checkpoint rows there. */
 .cp-list-btn { flex: none; display: flex; align-items: center; gap: 8px; min-height: var(--h); margin: 0 8px 4px; padding: 0 12px; border-radius: 10px;
   background: var(--raise); color: var(--text); font-size: var(--fs-s); font-weight: 500; text-align: left; }

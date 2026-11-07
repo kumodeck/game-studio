@@ -23,6 +23,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { startStudioServer } from '../src/server/server.mjs';
 import { launch, newPage } from './adapters-2d/cdp.mjs';
+import { translate } from '../src/shell/i18n.ts';
 
 const PKG = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const args = process.argv.slice(2);
@@ -59,6 +60,9 @@ const TL = `window.__studioTimeline`;
 const WORDS = LANG === 'ja'
   ? { play: '見る', fine: '細かく調整', rep: 'くり返し 1 回だけ', opts: ['1 回だけ', 'ループ', '行って戻る'], when: 'いつ動く？', rec: '動きを記録', link: '連携する物', pace: '進み方' }
   : { play: 'Preview', fine: 'Fine-tune', rep: 'Repeat Once', opts: ['Once', 'Loop', 'Back and forth'], when: 'When does it move?', rec: 'Rec motion', link: 'Link an object', pace: 'Pace' };
+// Decided 2026-11-07: a motion made by dragging goes there and back, so its Repeat reads the third choice, not Once.
+WORDS.rep = WORDS.rep.replace(WORDS.opts[0], WORDS.opts[2]);
+WORDS.pause = translate(LANG, 'tl.pause');
 
 /** What is cut on the line, the picked keys' row and Fine-tune: a menu narrower than its words, a text that overflows, a part past the plate's edge. */
 const CUT = `(() => { const bad = []; const m = document.createElement('canvas').getContext('2d');
@@ -138,7 +142,9 @@ async function run(game, size, theme) {
         `${tag}: the line is ▶ · Repeat · when · Fine-tune ✦ ⌄ (${parts.join(' · ')})`);
       check(!parts.includes('tl-more-btn') && !parts.includes('tl-now') && !parts.includes('tl-auto'), `${tag}: no ⋯, no time readout, no ● on the line`);
       const play = await j(`JSON.stringify(document.querySelector('[data-part=tl-play] .tl-play-w')?.textContent ?? null)`);
-      check(play === WORDS.play, `${tag}: "▶ ${WORDS.play}" (${play})`);
+      // Decided 2026-11-07: a made motion goes there and back and keeps going, so right after Done the button may be ❚❚ Pause.
+      const playing = await j(`JSON.stringify(${TL}.state().playing)`);
+      check(play === (playing ? WORDS.pause : WORDS.play), `${tag}: "▶ ${WORDS.play}", or "${WORDS.pause}" while it goes there and back (${play})`);
       check(rep?.said === WORDS.rep, `${tag}: "${WORDS.rep}" — the word "Repeat" before the menu (${rep?.said})`);
       check(JSON.stringify(rep?.opts) === JSON.stringify(WORDS.opts), `${tag}: Repeat offers ${WORDS.opts.join(' / ')} (${rep?.opts})`);
       const secs = await j(SECS);

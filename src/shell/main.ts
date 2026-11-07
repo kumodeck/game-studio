@@ -116,7 +116,7 @@ import { installTooltips } from './tooltip.ts';
 import { createShortcutSheet } from './shortcuts.ts';
 import { createContextMenu, type MenuEntry } from './context-menu.ts';
 import { Levels, worldOf, type WorldPart } from './levels.ts';
-import { checkNoteId } from './check-note.ts';
+import { checkNoteId, checkNoteText } from './check-note.ts';
 import { createLevelSwitch, makeRows } from './level-switch.ts';
 import { contextRows, type CtxPlace } from './context-rows.ts';
 import { bigChanges, createSafeSave } from './safe-save.ts';
@@ -4169,8 +4169,10 @@ export function start(host: StudioHost) {
       if (was === at) return;
     }
     if (!momentCanCheckpoint || !host.checkpoints) return checkpointNone(at);
-    // △12 (an open question; (a) "keep what was seen" until it is decided, 2026-10-28): what was moved and set in this moment is kept too — said
-    // under the field, small, because the card says "Just for this moment" about the same moves.
+    // △12, decided 2026-11-07 (answer (a), "keep what was seen"; it was an open question from 2026-10-28): what was moved and
+    // set in this moment is kept in the checkpoint too (the game's save() reads the moment as it shows, with those moves:
+    // "the boss comes from the left" can be made once and tried again and again). Said under the field, small, because
+    // the card says "Just for this moment" about the same moves.
     cpPop.name(at, { name: defaultCheckpointName(clockNow(playHeard, performance.now())), label: t('checkpoint.name'), button: t('checkpoint.keep'),
       note: t('checkpoint.keepsMoved'), keep: (name) => keepCheckpoint(name, at) });
   }
@@ -6799,7 +6801,7 @@ export function start(host: StudioHost) {
       // .studio/check.md) and are never shown here. test/i18n-words.test.mjs keeps code words out of these lines.
       // Not when the move test hit something the game moves itself, the ground / sky, or a hidden object (check-note.ts).
       const first = checkNoteId(check, worldItems, levels.isBlank());
-      if (first) line('note', `${t('check.' + first)} ${t('status.checkFail')}`);
+      if (first) line('note', checkNoteText(first, t));
     }
     status.hidden = !status.childNodes.length;
     // The wait line over the game (waitLine above): until the objects are found, unless the game failed or is playing.

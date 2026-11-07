@@ -30,3 +30,14 @@ export function checkNoteId(check: SelfCheckResult | null, items: readonly Pick<
   const shown = gameOwn ? failed.filter((c) => !MOVING.has(c.id)) : failed;
   return shown[0]?.id ?? null;
 }
+
+/**
+ * The line as the person reads it: the check's own words, then "Your AI has the details." — except a check whose words
+ * already say what the AI has (decided 2026-11-07: "screen-changes" ends with "Your AI has been told how to fix it.", and
+ * the two endings one after the other said the same thing twice).
+ */
+export function checkNoteText(id: SelfCheckId, t: (key: string) => string): string {
+  return SAYS_AI.has(id) ? t('check.' + id) : `${t('check.' + id)} ${t('status.checkFail')}`;
+}
+/** The checks whose own line already ends with what the AI was told (checkNoteText). */
+const SAYS_AI = new Set<SelfCheckId>(['screen-changes']);
